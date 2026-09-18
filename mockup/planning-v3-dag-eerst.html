@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup — Planning personeel v3 "dag-eerst" · Cowork 18-09-2026 · AKKOORD Peter 18-09 · BOUWNORM</title>
+<style>
+:root{--bg:#f6f7f8;--panel:#fff;--border:#e6e8ea;--text:#12181f;--muted:#5b6470;--faint:#687180;--primary:#0e7a6e;--primary-fg:#fff;--accent-bg:#e6f4f2;--ok:#1c7a54;--ok-bg:#e4f4ec;--warn:#b45309;--warn-bg:#fdf3e3;--danger:#b42318;--danger-bg:#fceceb;--info:#3548a5;--info-bg:#eaeefb;--purple:#6941c6;--purple-bg:#f1ecfb;--rail:#101b19;--rail-text:#c7d2cf;--rail-actief:#16332e;--rail-accent:#4fd1c0;--radius:12px;--shadow:0 1px 2px rgba(18,24,31,.06),0 4px 14px rgba(18,24,31,.06);--font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+*{box-sizing:border-box}body{margin:0;font-family:var(--font);color:var(--text);background:var(--bg);font-size:13.5px;line-height:1.4}
+.mock-kop{background:#fff;border-bottom:1px solid var(--border);padding:12px 22px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.mock-kop h1{font-size:15px;margin:0}.mock-kop .sub{color:var(--muted);font-size:12px}
+.mock-tabs{display:flex;gap:6px;flex-wrap:wrap}.mock-tabs button{border:1px solid var(--border);background:#fff;padding:6px 12px;border-radius:999px;font:inherit;cursor:pointer}
+.mock-tabs button.on{background:var(--rail);color:#fff;border-color:var(--rail)}
+.scherm{display:none}.scherm.on{display:block}
+.shell{display:grid;grid-template-columns:200px 1fr;min-height:calc(100vh - 58px)}
+.rail{background:var(--rail);color:var(--rail-text);padding:16px 10px;font-size:13px}
+.rail .logo{font-weight:700;color:#fff;padding:6px 10px 16px}.rail a{display:block;padding:7px 10px;border-radius:8px;color:var(--rail-text)}
+.rail a.on{background:var(--rail-actief);color:#fff}.rail .sec{color:#7d8c88;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;padding:12px 10px 4px}
+main{padding:18px 22px;min-width:0}
+.kop{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.kop h2{margin:0;font-size:19px}.kop .sub{color:var(--muted);font-size:12.5px}
+.btn{font:inherit;font-weight:600;padding:7px 12px;border-radius:8px;border:1px solid var(--primary);background:var(--primary);color:#fff;cursor:pointer}
+.btn.sec{background:#fff;color:var(--text);border-color:var(--border)}
+.toggle{display:inline-flex;border:1px solid var(--border);border-radius:999px;overflow:hidden;background:#fff}
+.toggle span{padding:6px 12px;font-size:12.5px;cursor:pointer}.toggle span.on{background:var(--rail);color:#fff}
+.chip{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;font-weight:500;white-space:nowrap;vertical-align:middle}
+.c-ok{background:var(--ok-bg);color:var(--ok)}.c-warn{background:var(--warn-bg);color:var(--warn)}.c-danger{background:var(--danger-bg);color:var(--danger)}.c-info{background:var(--info-bg);color:var(--info)}.c-grijs{background:#eef0f2;color:var(--muted)}.c-purple{background:var(--purple-bg);color:var(--purple)}
+/* projectbalk */
+.pbalk{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:12px;box-shadow:var(--shadow)}
+.pbalk .rij{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.pbalk input{font:inherit;padding:6px 10px;border:1px solid var(--border);border-radius:8px;min-width:260px}
+.pbalk .lijst{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.ptegel{flex:0 0 auto;border:1px dashed #b9c1c8;border-radius:10px;padding:7px 10px;background:#fafbfb;cursor:grab;min-width:150px}
+.ptegel b{display:block;font-size:12.5px}.ptegel span{font-size:11.5px;color:var(--muted)}
+.ptegel.act{border-style:solid;border-color:#cfd6dc}
+/* conflicten */
+.conf{background:var(--warn-bg);border:1px solid #f1d7a8;border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:12.5px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.conf b{color:var(--warn)}.conf a{color:var(--primary);text-decoration:underline;cursor:pointer}
+/* grid */
+.layout{display:grid;grid-template-columns:1fr 250px;gap:14px;align-items:start}
+.grid{background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.dagen{display:grid;grid-template-columns:repeat(5,1fr);position:sticky;top:0;background:#fafbfb;border-bottom:1px solid var(--border);z-index:2}
+.dagen div{padding:9px 10px;border-right:1px solid var(--border);font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.dagen div b{display:block;color:var(--text);font-size:12.5px;text-transform:none;letter-spacing:0}
+.dagen div.vandaag{background:var(--accent-bg)}.dagen div:last-child{border-right:0}
+.kolommen{display:grid;grid-template-columns:repeat(5,1fr);min-height:520px}
+.kol{border-right:1px solid var(--border);padding:8px;display:flex;flex-direction:column;gap:8px;min-height:100%}
+.kol:last-child{border-right:0}.kol.vandaag{background:#f7fbfa}
+.kaart{background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 9px;box-shadow:0 1px 2px rgba(0,0,0,.05);position:relative;cursor:pointer}
+.kaart.sel{outline:2px solid var(--primary);outline-offset:1px}
+.kaart .n{font-weight:600;font-size:12.5px;line-height:1.25}.kaart .s{font-size:11.5px;color:var(--muted)}
+.kaart .ploeg{display:flex;gap:3px;flex-wrap:wrap;margin-top:6px;align-items:center}
+.av{width:22px;height:22px;border-radius:50%;background:var(--info-bg);color:var(--info);font-size:9.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.av.u{background:var(--ok-bg);color:var(--ok);border:1.5px solid var(--ok)}.av.c{background:var(--warn-bg);color:var(--warn);border:1.5px solid var(--warn)}
+.kaart .meta{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.d-grijs{background:#c5cbd1}.d-blauw{background:#3548a5}.d-groen{background:var(--ok)}.d-oranje{background:var(--warn)}
+.handvat{position:absolute;right:-7px;top:50%;transform:translateY(-50%);width:14px;height:14px;border-radius:50%;background:var(--primary);border:2px solid #fff;box-shadow:0 0 0 1px var(--primary);cursor:ew-resize}
+.kaart.ghost{border:2px dashed var(--primary);background:var(--accent-bg);opacity:.85}
+.kaart.leeg{border-style:dashed;color:var(--muted);text-align:center;padding:14px 8px;background:#fafbfb}
+.drop{border:2px dashed #b9c1c8;border-radius:10px;padding:10px;text-align:center;color:var(--faint);font-size:11.5px;margin-top:auto}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--rail);color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.25);display:flex;gap:14px;align-items:center}
+.toast a{color:var(--rail-accent);text-decoration:underline;cursor:pointer}
+/* pool */
+.pool{background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);position:sticky;top:12px}
+.pool h3{margin:0;padding:10px 12px;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.pool input{font:inherit;width:calc(100% - 20px);margin:8px 10px 4px;padding:6px 9px;border:1px solid var(--border);border-radius:8px}
+.pool .p{display:flex;justify-content:space-between;align-items:center;padding:6px 12px;border-bottom:1px solid #f0f2f4;font-size:12.5px;cursor:grab}
+.pool .p:last-child{border-bottom:0}.pool .p .r{font-size:11px;color:var(--muted)}
+.pool .p.vol .r{color:var(--ok)}.pool .p.afw{opacity:.55}
+/* paneel */
+.paneel{position:fixed;right:0;top:58px;bottom:0;width:400px;background:#fff;border-left:1px solid var(--border);box-shadow:-10px 0 40px rgba(18,24,31,.15);padding:16px 18px;overflow:auto;z-index:5}
+.paneel h3{margin:0 0 2px;font-size:15px}.paneel .sub{color:var(--muted);font-size:12.5px;margin-bottom:10px}
+.paneel input[type=search]{font:inherit;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin:8px 0}
+.pl{display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid #f0f2f4;font-size:13px}
+.pl .st{margin-left:auto;font-size:11.5px;color:var(--muted)}.pl .st.w{color:var(--warn)}.pl .st.g{color:var(--ok)}
+.pl input{width:16px;height:16px}
+.paneel .acties{display:flex;gap:8px;margin:10px 0}
+.paneel .voet{position:sticky;bottom:0;background:#fff;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+/* per-project */
+table.pp{width:100%;border-collapse:collapse}
+table.pp th{font-size:11px;text-transform:uppercase;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);background:#fafbfb;position:sticky;top:0}
+table.pp td{padding:7px 10px;border-bottom:1px solid var(--border);font-size:12.5px;vertical-align:top}
+table.pp td.c{text-align:center}
+.notities{margin:22px 0 40px;background:#fff;border:1px dashed #c9ced3;border-radius:var(--radius);padding:16px 22px;font-size:13px}
+.notities ol{margin:6px 0 0;padding-left:22px}.notities li{margin:5px 0}
+.hint{font-size:12px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body>
+<div class="mock-kop">
+  <div><h1>Planning personeel v3 — dag-eerst</h1><div class="sub">Peter 18-09: projecten naar dagen slepen (zoals Transport) · vulhandvat over de week (Excel) · klik op kaart = ploeg kiezen, ploeg sleept mee · AKKOORD Peter 18-09 · BOUWNORM (gebouwd 18-09, frontend/src/planning/DagEerstGrid.tsx e.a.) · vervangt planning-steigerbouw.html (22-08)</div></div>
+  <div class="mock-tabs"><button class="on" onclick="toon('a',this)">① Week dag-eerst</button><button onclick="toon('b',this)">② Vulhandvat (slepen)</button><button onclick="toon('c',this)">③ Ploeg kiezen</button><button onclick="toon('d',this)">④ Per project (lezen)</button><button onclick="toon('n',this)">Notities</button></div>
+</div>
+
+<!-- ===================== A: WEEK DAG-EERST ===================== -->
+<section id="a" class="scherm on">
+<div class="shell">
+  <nav class="rail"><div class="logo">Nijenhuis</div><div class="sec">Werk</div><a>Werkvoorraad</a><a class="on">Planning</a><div class="sec">Inzicht</div><a>Zoeken</a><a>Projecten</a><a>Beoordelen</a><div class="sec">Beheer</div><a>Veldwerkers</a><a>Instellingen</a></nav>
+  <main>
+    <div class="kop">
+      <div><h2>Planning · Universal Steigerbouw</h2><div class="sub">Week 38 · 14 – 20 sep 2026 · 27 mensen gepland · 6 projecten · <span class="chip c-warn">2 conflicten</span></div></div>
+      <div style="display:flex;gap:8px;align-items:center"><button class="btn sec">‹ Week 37</button><button class="btn sec">Week 39 ›</button><span class="toggle"><span class="on">Per dag</span><span>Per project</span></span><span class="toggle"><span class="on">Personeel</span><span>Transport</span><span>Werkopdrachten</span></span></div>
+    </div>
+
+    <div class="pbalk">
+      <div class="rij"><b style="font-size:12px">Projecten</b><input type="search" placeholder="Zoek op nummer, plaats of opdrachtgever… (83 actief)"><span class="chip c-grijs">sleep een project naar een dag</span><span style="margin-left:auto;font-size:12px;color:var(--muted)">gepland deze week eerst</span></div>
+      <div class="lijst">
+        <div class="ptegel act"><b>25026 Arnhem-Kronenburg</b><span>Pleijweg · ma–wo · 4 man</span></div>
+        <div class="ptegel act"><b>26023 Nieuwegein</b><span>Wessels · ma–vr · 3 man</span></div>
+        <div class="ptegel act"><b>26031 Rijssen</b><span>Olieman · ma–wo · 5 man</span></div>
+        <div class="ptegel act"><b>26040 Apeldoorn</b><span>De Bazar · do–vr · 3 man</span></div>
+        <div class="ptegel"><b>144 Breda</b><span>Moeskops · niet gepland</span></div>
+        <div class="ptegel"><b>25011 Zwolle</b><span>Ben Kuijer · niet gepland</span></div>
+        <div class="ptegel"><b>26018 Deventer</b><span>Kempen Facilities · niet gepland</span></div>
+        <div class="ptegel"><b>26022 Zwolle</b><span>Bouwadvies Oost · niet gepland</span></div>
+        <div class="ptegel" style="min-width:60px;text-align:center"><span>+ 75</span></div>
+      </div>
+    </div>
+
+    <div class="conf"><b>2 conflicten deze week</b><span>wo 16-9: <b>M. Sanli</b> op Arnhem én Rijssen</span> · <span>do 17-9: <b>R. Yücetaş</b> afwezig (verlof) maar gepland op Nieuwegein</span><a style="margin-left:auto">Toon in grid</a></div>
+
+    <div class="layout">
+      <div class="grid">
+        <div class="dagen"><div>ma<b>14 sep · 9 man</b></div><div>di<b>15 sep · 9 man</b></div><div>wo<b>16 sep · 12 man</b></div><div>do<b>17 sep · 8 man</b></div><div class="vandaag">vr · vandaag<b>18 sep · 6 man</b></div></div>
+        <div class="kolommen">
+          <div class="kol">
+            <div class="kaart"><div class="n">25026 Arnhem-Kronenburg</div><div class="s">Pleijweg · opbouw fase 2</div><div class="ploeg"><span class="av u">OO</span><span class="av">MS</span><span class="av">RY</span><span class="av">SH</span><span class="s" style="margin-left:4px">4</span></div><div class="meta"><span><span class="dot d-blauw"></span>uren ingevuld 3/4</span><span>08:00 · bus 2</span></div></div>
+            <div class="kaart"><div class="n">26023 Nieuwegein</div><div class="s">Wessels · Blokhoeve</div><div class="ploeg"><span class="av u">RE</span><span class="av">VP</span><span class="av">ZP</span><span class="s" style="margin-left:4px">3</span></div><div class="meta"><span><span class="dot d-groen"></span>gekeurd</span><span>07:30</span></div></div>
+            <div class="kaart"><div class="n">26031 Rijssen</div><div class="s">Olieman · zijgevel</div><div class="ploeg"><span class="av">HL</span><span class="av">AS</span><span class="s" style="margin-left:4px">2</span></div><div class="meta"><span><span class="dot d-grijs"></span>geen uren</span><span>—</span></div></div>
+            <div class="drop">sleep project of persoon hierheen</div>
+          </div>
+          <div class="kol">
+            <div class="kaart"><div class="n">25026 Arnhem-Kronenburg</div><div class="s">Pleijweg</div><div class="ploeg"><span class="av u">OO</span><span class="av">MS</span><span class="av">RY</span><span class="av">SH</span><span class="s" style="margin-left:4px">4</span></div><div class="meta"><span><span class="dot d-blauw"></span>uren 4/4</span><span>08:00</span></div></div>
+            <div class="kaart"><div class="n">26023 Nieuwegein</div><div class="s">Wessels</div><div class="ploeg"><span class="av u">RE</span><span class="av">VP</span><span class="av">ZP</span><span class="s" style="margin-left:4px">3</span></div><div class="meta"><span><span class="dot d-blauw"></span>uren 3/3</span><span>07:30</span></div></div>
+            <div class="kaart"><div class="n">26031 Rijssen</div><div class="s">Olieman</div><div class="ploeg"><span class="av">HL</span><span class="av">AS</span><span class="s" style="margin-left:4px">2</span></div><div class="meta"><span><span class="dot d-blauw"></span>uren 2/2</span><span>—</span></div></div>
+            <div class="drop">sleep hierheen</div>
+          </div>
+          <div class="kol">
+            <div class="kaart"><div class="n">25026 Arnhem-Kronenburg</div><div class="s">Pleijweg · laatste dag</div><div class="ploeg"><span class="av u">OO</span><span class="av c" title="ook op Rijssen">MS</span><span class="av">RY</span><span class="av">SH</span><span class="s" style="margin-left:4px">4</span></div><div class="meta"><span><span class="chip c-warn">conflict: M. Sanli 2×</span></span><span>08:00</span></div></div>
+            <div class="kaart"><div class="n">26023 Nieuwegein</div><div class="s">Wessels</div><div class="ploeg"><span class="av u">RE</span><span class="av">VP</span><span class="av">ZP</span><span class="s" style="margin-left:4px">3</span></div><div class="meta"><span><span class="dot d-grijs"></span>geen uren</span><span>07:30</span></div></div>
+            <div class="kaart"><div class="n">26031 Rijssen</div><div class="s">Olieman · afbouw</div><div class="ploeg"><span class="av">HL</span><span class="av">AS</span><span class="av c">MS</span><span class="av">IO</span><span class="av">RD</span><span class="s" style="margin-left:4px">5</span></div><div class="meta"><span><span class="dot d-grijs"></span>geen uren</span><span>—</span></div></div>
+            <div class="drop">sleep hierheen</div>
+          </div>
+          <div class="kol">
+            <div class="kaart"><div class="n">26023 Nieuwegein</div><div class="s">Wessels</div><div class="ploeg"><span class="av u">RE</span><span class="av">VP</span><span class="av c" title="afwezig">RY</span><span class="s" style="margin-left:4px">3</span></div><div class="meta"><span><span class="chip c-warn">R. Yücetaş afwezig</span></span><span>07:30</span></div></div>
+            <div class="kaart"><div class="n">26040 Apeldoorn</div><div class="s">De Bazar · gevelsteiger</div><div class="ploeg"><span class="av u">OO</span><span class="av">MS</span><span class="av">SH</span><span class="s" style="margin-left:4px">3</span></div><div class="meta"><span><span class="dot d-grijs"></span>toekomst</span><span>08:00</span></div></div>
+            <div class="kaart leeg">144 Breda<br><span class="s">gereserveerd · nog geen ploeg</span></div>
+            <div class="drop">sleep hierheen</div>
+          </div>
+          <div class="kol vandaag">
+            <div class="kaart"><div class="n">26023 Nieuwegein</div><div class="s">Wessels</div><div class="ploeg"><span class="av u">RE</span><span class="av">VP</span><span class="av">ZP</span><span class="s" style="margin-left:4px">3</span></div><div class="meta"><span><span class="dot d-grijs"></span>vandaag</span><span>07:30</span></div></div>
+            <div class="kaart"><div class="n">26040 Apeldoorn</div><div class="s">De Bazar</div><div class="ploeg"><span class="av u">OO</span><span class="av">MS</span><span class="av">SH</span><span class="s" style="margin-left:4px">3</span></div><div class="meta"><span><span class="dot d-grijs"></span>vandaag</span><span>08:00</span></div></div>
+            <div class="drop">sleep hierheen</div>
+          </div>
+        </div>
+      </div>
+      <aside class="pool">
+        <h3>ZZP'ers &amp; uitvoerders <button class="btn sec" style="padding:3px 8px;font-size:11px">+ ZZP'er</button></h3>
+        <input type="search" placeholder="Zoek…">
+        <div style="padding:2px 12px 6px;font-size:11px;color:var(--muted)">Sleep naar een kaart om toe te voegen · dg = gepland deze week</div>
+        <div class="p vol"><span>Orfan Ogur <span class="chip c-ok">uitv.</span></span><span class="r">5 dg</span></div>
+        <div class="p vol"><span>Reijer <span class="chip c-ok">uitv.</span></span><span class="r">5 dg</span></div>
+        <div class="p"><span>M. Sanli</span><span class="r" style="color:var(--warn)">4 dg · conflict wo</span></div>
+        <div class="p"><span>R. Yücetaş</span><span class="r" style="color:var(--warn)">3 dg · verlof do</span></div>
+        <div class="p"><span>S. Hasturk</span><span class="r">4 dg</span></div>
+        <div class="p"><span>V. Ponchev</span><span class="r">5 dg</span></div>
+        <div class="p"><span>Z.V. Panchev</span><span class="r">3 dg</span></div>
+        <div class="p"><span>Hakim Lali</span><span class="r">3 dg</span></div>
+        <div class="p"><span>Adem Sarac</span><span class="r">3 dg</span></div>
+        <div class="p"><span>I. Onel</span><span class="r">1 dg</span></div>
+        <div class="p"><span>R. Demir</span><span class="r">1 dg</span></div>
+        <div class="p"><span>A. Alizada</span><span class="r">0 dg · vrij</span></div>
+        <div class="p"><span>A.B Guzel</span><span class="r">0 dg · vrij</span></div>
+        <div class="p"><span>Amani Sarac</span><span class="r">0 dg · vrij</span></div>
+        <div class="p afw"><span>Baki Genc.</span><span class="r">afwezig t/m 25-9</span></div>
+        <div class="p"><span>C. Akti</span><span class="r">0 dg · vrij</span></div>
+        <div style="padding:8px 12px;font-size:11.5px;color:var(--muted)">… 24 meer · <a style="color:var(--primary)">alleen vrij tonen</a></div>
+      </aside>
+    </div>
+  </main>
+</div>
+</section>
+
+<!-- ===================== B: VULHANDVAT ===================== -->
+<section id="b" class="scherm">
+<div class="shell">
+  <nav class="rail"><div class="logo">Nijenhuis</div><div class="sec">Werk</div><a>Werkvoorraad</a><a class="on">Planning</a></nav>
+  <main>
+    <div class="kop"><div><h2>Vulhandvat — kaart + ploeg over de week slepen</h2><div class="sub">Kaart geselecteerd op maandag → bolletje rechts vastpakken → naar vrijdag slepen. Tijdens het slepen zie je een voorbeeld; conflicten kleuren direct oranje. Loslaten = opslaan + "Ongedaan maken".</div></div></div>
+    <div class="grid" style="max-width:1100px">
+      <div class="dagen"><div>ma<b>14 sep</b></div><div>di<b>15 sep</b></div><div>wo<b>16 sep</b></div><div>do<b>17 sep</b></div><div>vr<b>18 sep</b></div></div>
+      <div class="kolommen" style="min-height:260px">
+        <div class="kol"><div class="kaart sel"><div class="n">25011 Zwolle Weeshuispassage</div><div class="s">Ben Kuijer · start</div><div class="ploeg"><span class="av u">RE</span><span class="av">AA</span><span class="av">AG</span><span class="av">AS</span><span class="s" style="margin-left:4px">4</span></div><div class="meta"><span><span class="dot d-grijs"></span>nieuw</span><span>07:30</span></div><div class="handvat" title="sleep om te kopiëren"></div></div></div>
+        <div class="kol"><div class="kaart ghost"><div class="n">25011 Zwolle Weeshuispassage</div><div class="s">kopie · zelfde ploeg</div><div class="ploeg"><span class="av u">RE</span><span class="av">AA</span><span class="av">AG</span><span class="av">AS</span></div></div></div>
+        <div class="kol"><div class="kaart ghost"><div class="n">25011 Zwolle Weeshuispassage</div><div class="s">kopie · zelfde ploeg</div><div class="ploeg"><span class="av u">RE</span><span class="av">AA</span><span class="av">AG</span><span class="av">AS</span></div></div></div>
+        <div class="kol"><div class="kaart ghost"><div class="n">25011 Zwolle Weeshuispassage</div><div class="s">kopie · 1 conflict</div><div class="ploeg"><span class="av u">RE</span><span class="av">AA</span><span class="av c" title="A.B Guzel al op Nieuwegein">AG</span><span class="av">AS</span></div><div class="meta"><span class="chip c-warn">A.B Guzel al gepland (Nieuwegein)</span></div></div></div>
+        <div class="kol vandaag"><div class="kaart ghost"><div class="n">25011 Zwolle Weeshuispassage</div><div class="s">kopie · zelfde ploeg</div><div class="ploeg"><span class="av u">RE</span><span class="av">AA</span><span class="av">AG</span><span class="av">AS</span></div></div></div>
+      </div>
+    </div>
+    <p class="hint">Regels: kopiëren nooit over een bestaande kaart van hetzelfde project heen (die wordt dan overgeslagen); afwezig/dubbel = oranje, nooit blokkerend; élke gekopieerde persoon-dag = één audit-regel; Cmd/Ctrl-Z of "Ongedaan maken" zet de hele sleep terug. Ook per persoon: een initiaal-bolletje van kaart naar kaart slepen = die persoon verplaatsen/toevoegen.</p>
+    <div class="toast">Gekopieerd naar di–vr · 16 persoon-dagen · <b style="color:#ffd58a">1 conflict</b> <a>Ongedaan maken</a> <a>Toon conflict</a></div>
+  </main>
+</div>
+</section>
+
+<!-- ===================== C: PLOEG KIEZEN ===================== -->
+<section id="c" class="scherm">
+<div class="shell">
+  <nav class="rail"><div class="logo">Nijenhuis</div><div class="sec">Werk</div><a>Werkvoorraad</a><a class="on">Planning</a></nav>
+  <main>
+    <div class="kop"><div><h2>Klik op een kaart → ploeg kiezen (paneel rechts, geen pop-up)</h2><div class="sub">Volledige lijst met vinkjes, beschikbaarheid voor díe dag, zoeken, "zelfde ploeg als gisteren", "toepassen op hele week".</div></div></div>
+    <div class="grid" style="max-width:700px">
+      <div class="dagen"><div>ma<b>14 sep</b></div><div>di<b>15 sep</b></div><div>wo<b>16 sep</b></div><div>do<b>17 sep</b></div><div>vr<b>18 sep</b></div></div>
+      <div class="kolommen" style="min-height:200px">
+        <div class="kol"><div class="kaart sel"><div class="n">25011 Zwolle Weeshuispassage</div><div class="s">Ben Kuijer</div><div class="ploeg"><span class="av u">RE</span><span class="av">AA</span><span class="av">AG</span><span class="s" style="margin-left:4px">3</span></div></div></div>
+        <div class="kol"></div><div class="kol"></div><div class="kol"></div><div class="kol vandaag"></div>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="paneel">
+  <h3>25011 Zwolle Weeshuispassage</h3>
+  <div class="sub">maandag 14 sep · Ben Kuijer · starttijd <b>07:30</b> <a style="color:var(--primary);cursor:pointer">wijzigen</a></div>
+  <div class="acties"><button class="btn sec" style="font-size:12px">Zelfde ploeg als vrijdag 11-9</button><button class="btn sec" style="font-size:12px">Toepassen op hele week</button></div>
+  <input type="search" placeholder="Zoek persoon…">
+  <div style="font-size:11.5px;color:var(--muted);margin:2px 0 6px">3 gekozen · beschikbaarheid voor ma 14 sep</div>
+  <div class="pl"><input type="checkbox" checked><span class="av u">RE</span><span>Reijer <span class="chip c-ok">uitv.</span></span><span class="st g">vrij</span></div>
+  <div class="pl"><input type="checkbox" checked><span class="av">AA</span><span>A. Alizada</span><span class="st g">vrij</span></div>
+  <div class="pl"><input type="checkbox" checked><span class="av">AG</span><span>A.B Guzel</span><span class="st g">vrij</span></div>
+  <div class="pl"><input type="checkbox"><span class="av">AS</span><span>Adem Sarac</span><span class="st g">vrij</span></div>
+  <div class="pl"><input type="checkbox"><span class="av">AM</span><span>Amani Sarac</span><span class="st g">vrij</span></div>
+  <div class="pl"><input type="checkbox"><span class="av c">MS</span><span>M. Sanli</span><span class="st w">al op Arnhem-Kronenburg</span></div>
+  <div class="pl"><input type="checkbox"><span class="av c">RY</span><span>R. Yücetaş</span><span class="st w">al op Arnhem-Kronenburg</span></div>
+  <div class="pl"><input type="checkbox"><span class="av u">OO</span><span>Orfan Ogur <span class="chip c-ok">uitv.</span></span><span class="st w">al op Arnhem-Kronenburg</span></div>
+  <div class="pl" style="opacity:.55"><input type="checkbox" disabled><span class="av">BG</span><span>Baki Genc.</span><span class="st">afwezig t/m 25-9</span></div>
+  <div class="pl"><input type="checkbox"><span class="av">CA</span><span>C. Akti</span><span class="st g">vrij</span></div>
+  <div class="pl"><input type="checkbox"><span class="av">DW</span><span>Damian Wazny</span><span class="st g">vrij</span></div>
+  <div class="pl"><input type="checkbox"><span class="av">HL</span><span>Hakim Lali</span><span class="st w">al op Rijssen</span></div>
+  <div style="font-size:11.5px;color:var(--muted);padding:6px">… 28 meer</div>
+  <div class="voet"><span style="font-size:12px;color:var(--muted)">Iemand met conflict kiezen mag — kaart wordt oranje</span><div style="display:flex;gap:8px"><button class="btn sec">Annuleren</button><button class="btn">Opslaan (3)</button></div></div>
+</div>
+</section>
+
+<!-- ===================== D: PER PROJECT ===================== -->
+<section id="d" class="scherm">
+<div class="shell">
+  <nav class="rail"><div class="logo">Nijenhuis</div><div class="sec">Werk</div><a>Werkvoorraad</a><a class="on">Planning</a></nav>
+  <main>
+    <div class="kop"><div><h2>Toggle "Per project" — lees- en controleweergave</h2><div class="sub">Zelfde week, zelfde data, gedraaid: één rij per project. Bewerken gebeurt alleen in "Per dag"; klik hier op een cel = spring naar die kaart. Hier zie je continuïteit en de weekstaat-stand per project.</div></div><span class="toggle"><span>Per dag</span><span class="on">Per project</span></span></div>
+    <div class="grid">
+      <table class="pp">
+        <thead><tr><th style="width:240px">Project</th><th class="c">ma 14</th><th class="c">di 15</th><th class="c">wo 16</th><th class="c">do 17</th><th class="c">vr 18</th><th>Week</th></tr></thead>
+        <tbody>
+          <tr><td><b>25026 Arnhem-Kronenburg</b><div class="s" style="font-size:11.5px;color:var(--muted)">Pleijweg</div></td><td class="c">4 <span class="dot d-blauw"></span></td><td class="c">4 <span class="dot d-blauw"></span></td><td class="c">4 <span class="chip c-warn">1</span></td><td class="c" style="color:var(--faint)">—</td><td class="c" style="color:var(--faint)">—</td><td>12 mandagen · uren 11/12 · <span class="chip c-warn">1 conflict</span></td></tr>
+          <tr><td><b>26023 Nieuwegein</b><div style="font-size:11.5px;color:var(--muted)">Wessels</div></td><td class="c">3 <span class="dot d-groen"></span></td><td class="c">3 <span class="dot d-blauw"></span></td><td class="c">3 <span class="dot d-grijs"></span></td><td class="c">3 <span class="chip c-warn">1</span></td><td class="c">3</td><td>15 mandagen · uren 6/15 · <span class="chip c-warn">verlof do</span></td></tr>
+          <tr><td><b>26031 Rijssen</b><div style="font-size:11.5px;color:var(--muted)">Olieman</div></td><td class="c">2 <span class="dot d-grijs"></span></td><td class="c">2 <span class="dot d-blauw"></span></td><td class="c">5 <span class="chip c-warn">1</span></td><td class="c" style="color:var(--faint)">—</td><td class="c" style="color:var(--faint)">—</td><td>9 mandagen · uren 2/9</td></tr>
+          <tr><td><b>26040 Apeldoorn</b><div style="font-size:11.5px;color:var(--muted)">De Bazar</div></td><td class="c" style="color:var(--faint)">—</td><td class="c" style="color:var(--faint)">—</td><td class="c" style="color:var(--faint)">—</td><td class="c">3</td><td class="c">3</td><td>6 mandagen · start do</td></tr>
+          <tr><td><b>144 Breda</b><div style="font-size:11.5px;color:var(--muted)">Moeskops</div></td><td class="c" style="color:var(--faint)">—</td><td class="c" style="color:var(--faint)">—</td><td class="c" style="color:var(--faint)">—</td><td class="c"><span class="chip c-grijs">gereserveerd</span></td><td class="c" style="color:var(--faint)">—</td><td>nog geen ploeg</td></tr>
+        </tbody>
+      </table>
+      <div style="padding:8px 12px;font-size:11.5px;color:var(--muted)">78 actieve projecten zonder planning deze week · <a style="color:var(--primary)">tonen</a></div>
+    </div>
+  </main>
+</div>
+</section>
+
+<!-- ===================== NOTITIES ===================== -->
+<section id="n" class="scherm">
+<main style="max-width:980px;margin:0 auto">
+<div class="notities">
+<b>Ontwerpnotities (onderdeel van het akkoord)</b>
+<ol>
+<li><b>Dag-eerst is de bewerkweergave</b>: vijf dagkolommen, sticky dagkop mét dagtotaal; per dag projectkaarten mét ploeg (initialen, uitvoerder groen omrand), starttijd, urenstatus-stip (grijs geen · blauw ingevuld · groen gekeurd · oranje afgekeurd/vraag — bestaand 15-09) en conflict-chip.</li>
+<li><b>Projectbalk</b> boven het grid: alle actieve projecten, zoekbaar, gepland-deze-week eerst; slepen naar een dag = lege kaart ("gereserveerd", grijs). Zonder balk zijn 83 projecten onvindbaar.</li>
+<li><b>Vulhandvat</b> (Excel): kaart + ploeg kopiëren over dagen; voorbeeld tijdens slepen; bestaande kaart van hetzelfde project wordt overgeslagen; afwezig/dubbel = oranje, nooit blokkerend; Cmd/Ctrl-Z + toast "Ongedaan maken"; één audit-regel per (persoon, dag). Beslispunt: ook over de weekgrens? voorstel nee.</li>
+<li><b>Ploeg kiezen</b>: paneel rechts (geen modaal), volledige lijst mét vinkjes en beschikbaarheid voor die dag (vrij · al op ‹project› · afwezig), zoeken, "Zelfde ploeg als ‹vorige werkdag›", "Toepassen op hele week"; conflict kiezen mag.</li>
+<li><b>Slepen van personen</b>: pool → kaart = toevoegen; initiaal → andere kaart = verplaatsen (met Alt/Option = kopiëren). Pool toont "N dg" + vrij/afwezig; filter "alleen vrij".</li>
+<li><b>Conflictenbalk</b> boven het grid: dubbel gepland op één dag, afwezig, &gt; 5 op één kaart (besluit C), ZZP'er zonder dossier — klik = spring naar kaart. Nooit blokkerend: kantoor beslist.</li>
+<li><b>Per project = lezen</b>: continuïteit en weekstaat-stand per project (het huidige grid gedraaid), bewerken alleen in dag-eerst — één bewerkroute, geen twee waarheden. Het kantoor-signaal "geplande week zonder weekstaat" blijft hierop werken.</li>
+<li><b>Ongewijzigd</b>: meldingen per veldwerker × week (gebundeld), audit `achteraf` bij plannen in een verstreken/lopende week, Transport- en Werkopdrachten-tabs (hergebruiken de kaartcomponent), uitvoerder-app (project-eerst, geen planningstab).</li>
+<li><b>Schaal</b>: één query per week (kaarten + ploegen + status), geen N+1; 200+ veldwerkers in de pool = gevirtualiseerd.</li>
+</ol>
+</div>
+</main>
+</section>
+
+<script>function toon(id,btn){document.querySelectorAll('.scherm').forEach(s=>s.classList.remove('on'));document.getElementById(id).classList.add('on');document.querySelectorAll('.mock-tabs button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');window.scrollTo(0,0)}</script>
+</body>
+</html>

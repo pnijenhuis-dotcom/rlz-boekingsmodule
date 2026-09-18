@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { AfwezigKaart } from '../veldwerkers/AfwezigKaart'
 import { ApiError, apiFetch } from '../api/client'
 import type { AdministratieDto } from '../api/types'
 import {
@@ -178,6 +179,8 @@ export function DossierModal({
         )}
         {fout && <div className="fout">{fout}</div>}
         {dossier === null && !fout && <SkeletonRegels />}
+        {/* Planning v3 slice 5 (18-09): kaartje "Afwezig" — op deze dagen niet plannen (pool/paneel/conflictenbalk). */}
+        {administratieId && <AfwezigKaart administratieId={administratieId} gebruikerId={veldwerker.gebruiker_id} naam={veldwerker.naam} />}
         {dossier !== null && (
           <>
             <BedrijfsgegevensBlok

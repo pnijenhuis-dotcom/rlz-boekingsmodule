@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 /** Sticky dagkop planning (Peter 18-09, screenshot: MA 14-9 … VR 18-9 verdwenen bij verticaal scrollen). Playwright staat
- * niet in de repo (18-09) — deze guard toetst de bron: beide grids (Personeel + Transport) staan in een intern scrollende
+ * niet in de repo (18-09) — deze guard toetst de bron: alle grids (Personeel dag-eerst v3 + Per project + Transport) staan in een intern scrollende
  * `.tabel-scroll.sticky-koppen.plan-scroll` en components.css geeft de thead-cellen een dekkende achtergrond + rand. De
  * kliktest (scroll 800 px → kop zichtbaar) staat in het rapport. */
 
@@ -11,9 +11,9 @@ const lees = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
 
 describe('sticky dagkop planning', () => {
   it('Personeel-grid en Transport-dagagenda scrollen intern mét sticky koppen', () => {
-    for (const bestand of ['./PlanningScreen.tsx', './TransportTab.tsx']) {
+    for (const bestand of ['./DagEerstGrid.tsx', './PerProjectWeergave.tsx', './TransportTab.tsx']) {
       const bron = lees(bestand)
-      const wrapper = bron.match(/className="tabel-scroll sticky-koppen plan-scroll"[\s\S]{0,200}?<table className="plan-grid"/)
+      const wrapper = bron.match(/className="tabel-scroll sticky-koppen plan-scroll"[\s\S]{0,400}?<table[\s\S]{0,200}?className=\{?[`'"]?plan-grid/)
       expect(wrapper, `${bestand}: plan-grid moet in .tabel-scroll.sticky-koppen.plan-scroll staan`).not.toBeNull()
       expect(bron.match(/<div className="tabel-scroll">\s*<table className="plan-grid"/), `${bestand}: kale wrapper`).toBeNull()
     }

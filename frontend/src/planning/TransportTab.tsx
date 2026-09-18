@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent as ReactDragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client'
 import { Badge, Button, Select, useToastOptioneel, SkeletonRegels } from '../ui/basis'
 import { BestellingPopup } from './BestellingPopup'
 import { MateriaalstandPaneel } from './MateriaalstandPaneel'
+import { maakSleepPayload, useDagDrop } from './useDagDrop'
 import { aantalTekst as miniStandTekst, haalMateriaallijst as haalMiniMateriaallijst, type MateriaallijstItemDto } from '../materiaal/miniVoorraadApi'
 import {
   bevestigTransport,
@@ -121,7 +122,17 @@ export function TransportTab({
   const [bakZoek, setBakZoek] = useState('')
   const [bakSelectie, setBakSelectie] = useState<string | null>(null)
   const [levKeuze, setLevKeuze] = useState<{ projectId: string; label: string; datum: string; bestellingId: string | null } | null>(null)
-  const [dragOverDag, setDragOverDag] = useState<string | null>(null)
+  // 18-09: gedeelde drag-mechaniek (useDagDrop) — óók de basis voor het Planning v3-dag-eerst-grid; gedrag ongewijzigd.
+  const { dragOverDag, dagDropProps } = useDagDrop<HTMLTableCellElement>((datum, payload) => {
+    if (!payload) return
+    if (payload.soort === 't') {
+      const t = vindTransport(payload.id)
+      if (t) void verschuif(t, datum)
+    } else if (payload.soort === 'bak') {
+      const chip = bak.find((c) => c.project_id === payload.id)
+      if (chip) startPlan(chip.project_id, chip.label, datum, null)
+    }
+  })
 
   useEffect(() => {
     setBakState(leesBak(administratieId))
@@ -292,18 +303,6 @@ export function TransportTab({
     }
   }
 
-  function celDrop(e: ReactDragEvent<HTMLTableCellElement>, datum: string) {
-    e.preventDefault()
-    setDragOverDag(null)
-    const payload = e.dataTransfer.getData('text/plain')
-    if (payload.startsWith('t:')) {
-      const t = vindTransport(payload.slice(2))
-      if (t) void verschuif(t, datum)
-    } else if (payload.startsWith('bak:')) {
-      const chip = bak.find((c) => c.project_id === payload.slice(4))
-      if (chip) startPlan(chip.project_id, chip.label, datum, null)
-    }
-  }
 
   function statusRegel(t: TransportDto): string {
     const risico = wachtrisicoKeys.has(`${t.project_id}|${t.datum}`) && t.status === 'gereserveerd'
@@ -342,7 +341,7 @@ export function TransportTab({
         draggable={sleepbaar}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move'
-          e.dataTransfer.setData('text/plain', `t:${t.id}`)
+          e.dataTransfer.setData('text/plain', maakSleepPayload('t', t.id))
         }}
         onClick={(e) => {
           e.stopPropagation()
@@ -472,12 +471,7 @@ export function TransportTab({
                       <td
                         key={datum}
                         onClick={() => celKlik(datum)}
-                        onDragOver={(e) => {
-                          e.preventDefault()
-                          setDragOverDag(datum)
-                        }}
-                        onDragLeave={() => setDragOverDag((h) => (h === datum ? null : h))}
-                        onDrop={(e) => celDrop(e, datum)}
+                        {...dagDropProps(datum)}
                         style={{
                           verticalAlign: 'top',
                           padding: 5,
@@ -571,7 +565,7 @@ export function TransportTab({
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.effectAllowed = 'copy'
-                    e.dataTransfer.setData('text/plain', `bak:${c.project_id}`)
+                    e.dataTransfer.setData('text/plain', maakSleepPayload('bak', c.project_id))
                   }}
                   onClick={() => setBakSelectie(bakSelectie === c.project_id ? null : c.project_id)}
                   style={{

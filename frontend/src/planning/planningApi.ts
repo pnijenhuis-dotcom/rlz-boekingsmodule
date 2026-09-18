@@ -116,6 +116,69 @@ export interface PlanningPoolPersoonDto {
   naam: string
   rol: string
   geplande_dagen: string // heel = 1, half = 0,5 — besluit C: > 5 kleurt als zacht signaal
+  /** V3 dag-eerst (18-09, CONTRACT_4): ISO-datum tot wanneer deze persoon afwezig is als een afwezigheid de week
+   * overlapt, anders null/afwezig. */
+  afwezig_tot?: string | null
+  /** Optioneel (verzoek 4F aan 4B): ZZP'er zonder compleet dossier — voedt de conflictenbalk. Ontbreekt = geen signaal. */
+  dossier_onvolledig?: boolean
+}
+
+/* --- V3 dag-eerst (Peter 18-09, mockup planning-v3-dag-eerst.html, CONTRACT_4; migratie 0161) ------------------- */
+
+/** Lege kaart voor project × dag ("gereserveerd", grijs): een project dat op een dag gesleept is zonder ploeg. */
+export interface PlanningReserveringDto {
+  id: string
+  project_id: string
+  projectnaam: string | null
+  datum: string
+}
+
+/** Afwezigheid (minimaal: "op deze dagen niet plannen" — géén verlofadministratie/saldo/goedkeuring). */
+export interface AfwezigheidDto {
+  id: string
+  gebruiker_id: string
+  van: string
+  tot: string
+  reden: string | null
+  /** Additief (4B): gezet bij beëindigen (tot vervroegd); nooit een DELETE. */
+  beeindigd_op?: string | null
+}
+
+export type PlanningBulkBron = 'vulhandvat' | 'ploeg' | 'ongedaan'
+/** Contract-afwijking 4B (18-09): dagdeel = de bestaande enumeratie heel/half (geen ochtend/middag). */
+export type PlanningDagdeelV3 = 'heel' | 'half'
+
+export interface PlanningBulkItemDto {
+  gebruiker_id: string
+  project_id: string
+  datum: string
+  dagdeel?: PlanningDagdeelV3
+}
+
+export interface PlanningBulkRequest {
+  administratie_id: string
+  bron: PlanningBulkBron
+  verwijderen?: boolean
+  correlatie_id?: string | null
+  items: PlanningBulkItemDto[]
+}
+
+export interface PlanningBulkResultaatItemDto {
+  gebruiker_id: string
+  project_id: string
+  datum: string
+  dagdeel: PlanningDagdeelV3
+  uitkomst: 'gedaan' | 'overgeslagen' | 'conflict'
+  reden: string | null
+  conflict: 'project' | 'afwezig' | null
+  conflict_projectnaam: string | null
+}
+
+export interface PlanningBulkResultaatDto {
+  correlatie_id: string
+  /** verwijderen=false: de daadwerkelijk aangemaakte items; verwijderen=true: de verwijderde items. */
+  aangemaakt: PlanningBulkItemDto[]
+  resultaten: PlanningBulkResultaatItemDto[]
 }
 
 export interface BuitenPlanningMeldingDto {
@@ -152,6 +215,9 @@ export interface PlanningWeekDto {
   dubbele_dag_tellers: DubbeleDagTellerDto[]
   // Wachtrisico (steigerbouw-run D5): personeel gepland op een dag zonder bevestigde levering.
   wachtrisico?: { project_id: string; project_naam: string | null; datum: string; aantal_personen: number; transport_id: string | null; leverancier_naam: string | null; samenvatting: string }[]
+  /** V3 dag-eerst (18-09, additief — oudere responses missen ze): reserveringen van deze week + afwezigheid die de week overlapt. */
+  reserveringen?: PlanningReserveringDto[]
+  afwezigheid?: AfwezigheidDto[]
 }
 
 export function haalPlanning(administratieId: string, jaar: number, weeknummer: number): Promise<PlanningWeekDto> {
@@ -200,6 +266,41 @@ export function zetDagdeel(payload: {
   dagdeel: 'heel' | 'half'
 }): Promise<void> {
   return apiPostJson(`/uren/kantoor/planning/dagdeel?administratie_id=${payload.administratie_id}`, payload)
+}
+
+/* --- V3 dag-eerst: bulkroute, reservering, afwezigheid (18-09, CONTRACT_4) ---------------------- */
+
+/** Eén transactie voor N persoon-dagen (vulhandvat, ploeg-paneel, ongedaan maken): overgeslagen/conflict is géén
+ * fout, alleen een echte fout rolt alles terug. Limiet 200 items (server 422). */
+export function planBulk(payload: PlanningBulkRequest): Promise<PlanningBulkResultaatDto> {
+  return apiPostJson(`/uren/kantoor/planning/bulk?administratie_id=${payload.administratie_id}`, payload)
+}
+
+export function maakReservering(payload: { administratie_id: string; project_id: string; datum: string }): Promise<PlanningReserveringDto> {
+  return apiPostJson(`/uren/kantoor/planning/reservering?administratie_id=${payload.administratie_id}`, payload)
+}
+
+export function verwijderReservering(payload: { administratie_id: string; id: string }): Promise<void> {
+  return apiPostJson(`/uren/kantoor/planning/reservering/verwijderen?administratie_id=${payload.administratie_id}`, payload)
+}
+
+export function haalAfwezigheidOp(administratieId: string, gebruikerId: string): Promise<AfwezigheidDto[]> {
+  return apiJson(`/uren/kantoor/afwezigheid?administratie_id=${administratieId}&gebruiker_id=${gebruikerId}`)
+}
+
+export function voegAfwezigheidToe(payload: {
+  administratie_id: string
+  gebruiker_id: string
+  van: string
+  tot: string
+  reden?: string | null
+}): Promise<AfwezigheidDto> {
+  return apiPostJson(`/uren/kantoor/afwezigheid?administratie_id=${payload.administratie_id}`, payload)
+}
+
+/** Beëindigen = `tot` vervroegen; nooit verwijderen (audit oud→nieuw). */
+export function beeindigAfwezigheid(payload: { administratie_id: string; id: string; tot: string }): Promise<AfwezigheidDto> {
+  return apiPostJson(`/uren/kantoor/afwezigheid/beeindigen?administratie_id=${payload.administratie_id}`, payload)
 }
 
 /* --- werkopdrachten per project × periode (31-08, migratie 0091) ------------------------------ */
