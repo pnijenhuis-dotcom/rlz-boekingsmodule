@@ -150,6 +150,22 @@
   `TestHerberekenCli`, vitest `verbruikPresentatie.test.ts`, `OfferteMatchMelding.test.tsx`, `GoedkeurenFlow.verplichting.test.tsx`,
   `VerplichtingenScreen.test.tsx`, `VerplichtingReviewScreen.test.tsx`, `ProjectDetailVerrijking.test.tsx`.
 
+<!-- toegevoegd 18-09-2026 avond, opdracht "facturen-zonder-project-universal-rapport-en-inbox-hygiene" -->
+- **Facturen zonder project — lees-only rapport (18-09 avond, TODO Peter 23-08 "eerst rapport, dan beslissen"; geen migratie;
+  BESLISSINGEN "FACTUREN ZONDER PROJECT — LEES-ONLY RAPPORT + INBOX-HYGIËNE (18-09 avond)"):** CLI `facturen-zonder-project
+  (--administratie X | --alle-projectverplicht) [--jaar] [--rlz]` (`app/projecten/zonder_project.py`, nameting-allowlist) toont per
+  project-verplichte administratie de in de module geboekte inkoopfacturen mét een regel zonder `project_id`. Een regel is GEDEKT als
+  het document een bevroren projectverdeling van dezelfde `boek_cyclus` draagt (de RLZ-adapter splitst dan per project — in RLZ staat
+  het project wél); alleen niet-gedekte regels zijn een bevinding. Per rij: boekstuk, referentie, leverancier, factuur-/boekdatum,
+  geboekt op/door (jongste GEBOEKT-overgang; `automatisch_geboekt` = "automatisch"), regel, grootboek, netto/btw, aangifte-stand
+  (`AangiftePoort`) en herstelroute als VOORSTEL: (a) open periode → storno 19 → project → her-PUT (zelfde client-GUID's) → 17,
+  (b) ingediend → tegenboek-pad, geen credential → "toets nodig" zichtbaar. Projectvoorstel uitsluitend deterministisch (één
+  bevestigde werknummer-mapping van de leverancier óf één project in ≥ 3 eigen geboekte facturen; meerduidig = "mens nodig", nooit
+  raden). `--rlz` = dezelfde toets RLZ-kant, uitsluitend GET (Status 2/3, `Lines?$expand=Account,Project`, regel zonder Project op
+  4xxx/7xxx); module-documenten herkend op client-GUID, het verschil = facturen van vóór/buiten de module. Meting 18-09 (leesreplica):
+  Universal 59 geboekt, 5 mét lege projectkolom, alle 5 gedekt (pro rato juli 2026, 8 projecten) → 0 bevindingen; Q3 2026 open. De CLI
+  schrijft niets; herstellen in bulk = nieuwe opdracht ná besluit Peter. Guard `tests/projecten/test_zonder_project.py`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)

@@ -53,3 +53,13 @@
   `tests/keten/fixtures/` (UBL geanonimiseerd, PDF nooit als echte bytes — kerntekst in `pdf_tekst.json`, AI-uitkomst als
   `ai_antwoord.json`, herkomst in `bron.json`); nooit BSN's — zie BESLISSINGEN "GOUDEN SET — KETENTEST OP ECHTE DOCUMENTEN
   (blok 0 herstelrun 08-09)".
+
+<!-- toegevoegd 18-09-2026 avond, opdracht "facturen-zonder-project-universal-rapport-en-inbox-hygiene" -->
+- **CC-inbox rij (i) — een lopend-kopie van afgerond werk is af, nooit "loopt" (18-09 avond; BESLISSINGEN "FACTUREN ZONDER PROJECT —
+  LEES-ONLY RAPPORT + INBOX-HYGIËNE (18-09 avond)"):** staat een .md in `opdrachten/lopend/` terwijl dezelfde opdracht al in `gedaan/`
+  staat mét kopregel "uitgevoerd …" (handmatige of parallelle run kopieerde naar gedaan/ zonder lopend/ op te ruimen), dan ruimt de tick
+  de lopend-kopie op (logregel, pogingen-teller weg) en start NIETS opnieuw — vóór deze fix zette `herstel_verweesd` zo'n bestand terug
+  in inbox/ en draaide afgerond werk tot drie keer opnieuw. `rlz inbox status` somt lopend/ op per bestand: "loopt" uitsluitend bij een
+  levende lock, "af (staat in gedaan/ — de volgende tick ruimt de kopie op)", anders "gestrand (geen levende lock — terug naar inbox/)";
+  leeg = "lopend/: leeg". Guards `tests/unit/test_cc_inbox_herstel.py::test_lopend_kopie_van_afgeronde_opdracht_*` (+ tegenproef zonder
+  kopregel) en `tests/unit/test_cc_inbox_parallel.py::test_rlz_inbox_status_toont_lopend_*`.

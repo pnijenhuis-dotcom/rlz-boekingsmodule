@@ -11568,3 +11568,32 @@ goedgekeurd € 1.192.922,50, boekstand 0; matchrijen binnen: 32948 € 20.000 (
 (18:04Z) — alle drie ter_accordering, `verbruik_voor` 0. Verwacht ná deploy + `verplichting-match-herberekenen`: 32949 → € 150.000,00
 van € 1.192.922,50, waarvan € 100.000,00 nog niet geboekt (2 facturen ter accordering); zonder 33122 was dat Peters € 70.000.
 
+## FACTUREN ZONDER PROJECT — LEES-ONLY RAPPORT + INBOX-HYGIËNE (18-09 avond) — TODO Peter 23-08 "eerst rapport, dan beslissen": CLI `facturen-zonder-project` (module-kant + RLZ-kant alleen GET, herstelroute als voorstel), meting Universal = 0 échte bevindingen (5 gedekt door projectverdeling), inbox: gedaan-kopie in lopend/ = af, nooit herstart
+
+**Status: GEBOUWD + GETEST 18-09 (opdracht "facturen-zonder-project-universal-rapport-en-inbox-hygiene"); werkt in productie:
+n.v.t. (lees-only) — module-kant gemeten op de leesreplica, RLZ-kant NIET gemeten (CLI op de job-image ná deploy); rapport
+`docs/rapporten/2026-09-18-facturen-zonder-project.md`. Geen migratie, geen RLZ-write.**
+
+- **Wat is gemeten (leesreplica 18-09 ~23:05):** 5 project-verplichte administraties; alleen Universal Steigerbouw heeft in de module
+  geboekte inkoopfacturen mét een lege projectkolom: 5 van 59 (DCTE 3×, Floor Beheer 26008, Kader F212604921; alle geboekt 08-09 ná
+  klant-akkoord). Alle 5 dragen een BEVROREN pro-rato-projectverdeling (status `geboekt`, boek_cyclus 0, juli 2026, 8 projecten) en
+  staan in RLZ per project geboekt (`rlz_inkoop.regels_naar_rlz_lines` splitst) → **0 échte bevindingen, 0 achter de aangiftepoort**
+  (RLZ `TaxDeclarations` Universal: Q3 2026 status 1 open, Q2 status 3 + suppletie status 2). De harde check "project verplicht"
+  (aan sinds 21-08 19:51) heeft dus gewerkt via de B3-dekking van 04-09.
+- **CLI `facturen-zonder-project (--administratie X | --alle-projectverplicht) [--jaar] [--rlz]`** (`app/projecten/zonder_project.py`,
+  `cli_cmd.py`, nameting-allowlist): module-kant (regel zonder `project_id` op geboekte inkoopfacturen, gedekt/niet gedekt door een
+  bevroren verdeling van dezelfde boek_cyclus, geboekt-door uit de tijdlijn), aangifte-toets via `AangiftePoort` → route (a) storno 19
+  → project → her-PUT → 17 bij open periode / (b) tegenboek-pad bij ingediend / "toets nodig" zonder credential (zichtbaar, nooit
+  stil), projectvoorstel uitsluitend deterministisch (één bevestigde werknummer-mapping óf één project in ≥ 3 eigen facturen; anders
+  "mens nodig"); `--rlz` leest PurchaseInvoices Status 2/3 + `Lines?$expand=Account,Project` en telt regels zonder Project op 4xxx/7xxx,
+  module-documenten herkend op client-GUID (verschil = van vóór/buiten de module). Tests `tests/projecten/test_zonder_project.py` (7).
+- **Inbox-hygiëne (B):** `lopend/` was bij de start leeg; de vijf genoemde opdrachten staan alleen in `gedaan/` mét kopregel en zijn
+  nooit door `cc_inbox.sh` gelopen (geen `<slug>.log`, niet in het launchd-log) — afgewerkt door de handmatige `rlz cc`-sessie van
+  09:27–19:34. Het gat was echt: `herstel_verweesd` zette een lopend-bestand zonder levende lock terug in inbox/ (tot 3× herstart)
+  óók als het al in gedaan/ stond. Fix rij (i): gedaan-kopie mét kopregel "uitgevoerd " = af → lopend-kopie opgeruimd, teller weg,
+  logregel, geen herstart; `rlz inbox status` somt lopend/ op als loopt (levende lock) / af (in gedaan/) / gestrand. Guards
+  `test_cc_inbox_herstel.py::test_lopend_kopie_van_afgeronde_opdracht_*`, `test_cc_inbox_parallel.py::test_rlz_inbox_status_toont_lopend_*`.
+- **Beslispunten Peter (open):** (1) bulk-herstel of laten staan — pas ná de RLZ-kant-meting (`nameting.sh facturen-zonder-project
+  --administratie "Universal Steigerbouw" --jaar 2026 --rlz`); (2) reconciliatie-soort "regel zonder project op een project-verplichte
+  administratie" als RLZ-kant-toets in stand `meten` — alleen ná GO; (3) OVH-project voor Universal (overhead gaat nu via de
+  omzetsleutel óók naar projecten met naam "Afgesloten …") en of de pro-rato-sleutel afgesloten projecten mag overslaan.
