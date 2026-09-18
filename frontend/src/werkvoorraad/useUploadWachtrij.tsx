@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '../ui/basis'
 import {
   aantalHerkansbaar,
@@ -103,6 +104,7 @@ export function UploadBatchStatus({
   onStop,
   onOpnieuw,
   onWis,
+  administratieId,
 }: {
   items: UploadItem[]
   bezig: boolean
@@ -110,6 +112,8 @@ export function UploadBatchStatus({
   onStop: () => void
   onOpnieuw: () => void
   onWis: () => void
+  /** Administratie van de upload-plek (klantpagina) — terugval voor de link "→ bestaand document" als het 409-detail 'm niet draagt. */
+  administratieId?: string | null
 }) {
   const [uitgeklapt, setUitgeklapt] = useState(false)
   if (items.length === 0) return null
@@ -154,6 +158,16 @@ export function UploadBatchStatus({
               {i.bestand.name}
             </span>
             {i.melding && <span className="upload-batch-melding">— {i.melding}</span>}
+            {i.status === 'al_aanwezig' && i.bestaandDocumentId && (i.bestaandAdministratieId ?? administratieId) && (
+              // Besluit Peter 18-09: "al aanwezig" is geen doodlopende melding — direct naar het bestaande document.
+              <Link
+                className="linkbtn"
+                to={`/documenten/${i.bestaandAdministratieId ?? administratieId}/${i.bestaandDocumentId}`}
+                data-testid="upload-bestaand-document-link"
+              >
+                → bestaand document
+              </Link>
+            )}
           </li>
         ))}
       </ul>

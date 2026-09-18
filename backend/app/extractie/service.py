@@ -67,6 +67,13 @@ _KOP_KEYS: dict[str, str] = {
     # union.
     "betaalwijze": "betaalwijze_tekst",
     "incasso": "incasso_datum_tekst",
+    # Totaal van een meegefotografeerde PIN-/KASSABON (BUG 18-09, casus Zilver Horeca Fac-25-022711: de factuur zelf
+    # draagt
+    # geen totaal, de bon eronder wél "Totaal: 738,27 EUR"). Alleen voorlezen; óf het als factuurtotaal mag gelden
+    # beslist
+    # code (controle.py: bon-totaal = Σ regels binnen 5 ct → groen, anders oranje — nooit stil overnemen).
+    # Sentinel-string.
+    "pt": "totaal_pinbon",
 }
 
 # Sentinel i.p.v. union (bugfix 31-08): Anthropic's structured outputs staan maximaal 16
@@ -117,9 +124,15 @@ _REGEL_SCHEMA: dict[str, Any] = {
         # vermeld ("V", "VL", "verl.", "21%", "0%", "vrij") — VOORLEZEN; óf dat verlegd betekent beslist code
         # (controle.is_verlegd_kolomcode). Sentinel-string, geen union.
         "bc": _TEKST_MET_LEEG_SENTINEL,
+        # BUG 18-09 (Zilver Horeca: bedragen onder een op de factuur gelegde pinbon): ng = waarom het BEDRAG van deze
+        # regel niet
+        # gelezen kon worden ("afgedekt", "onleesbaar"; "" als het bedrag gewoon gelezen is). Chip "niet gelezen
+        # (afgedekt)"
+        # i.p.v. een kale lege cel. Sentinel-string, geen union.
+        "ng": _TEKST_MET_LEEG_SENTINEL,
         "z": {"type": "number"},
     },
-    "required": ["o", "n", "b", "h", "e", "p", "a", "proj", "bc", "z"],
+    "required": ["o", "n", "b", "h", "e", "p", "a", "proj", "bc", "ng", "z"],
     "additionalProperties": False,
 }
 
@@ -182,6 +195,10 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
   25 september af van uw rekening", "SEPA-incasso"); staat er zo'n zin niet, dan "" — een verzoek om zelf over te
   maken is géén betaalwijze. incasso=de genoemde incasso-/afschrijfdatum zoals vermeld (bijv. "25-09-2026",
   "rond 25 september"); niet genoemd, dan "".
+  pt=het TOTAALBEDRAG op een meegefotografeerde pin-/kassabon of betaalbewijs dat óp of naast de factuur ligt (bijv.
+  "Totaal: 738,27 EUR" op de pinbon), LETTERLIJK als bedrag; alleen als zo'n bon in beeld is en de factuur zelf dat
+  totaal
+  niet als factuurtotaal draagt (dan hoort het in incl); anders "" — nooit zelf optellen.
 - kz: per kopveld één zekerheidsscore tussen 0 en 1 (zelfde sleutels als kop).
 - regels: één item per factuurregel, in documentvolgorde. o=regelomschrijving (kort, alleen de
   omschrijvingstekst van de regel zelf), n=nettobedrag, b=btw-bedrag van de regel, h=hoeveelheid (alleen
@@ -193,7 +210,9 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
   een regelgroep-kop "Project 26140"; "" als de regel er geen heeft — het kopveld proj dekt dan het hele
   document), bc=de tekst in de btw-kolom van deze regel LETTERLIJK zoals vermeld (bijv. "V", "VL", "verl.",
   "21%", "9%", "0%", "vrij"; "" als de factuur geen btw-kolom of -code per regel heeft — nooit zelf
-  invullen of vertalen), z=één zekerheidsscore voor de hele regel.
+  invullen of vertalen), ng=waarom het BEDRAG van deze regel niet gelezen kon worden: "afgedekt" (een bon, hand of ander
+  object ligt over het bedrag), "onleesbaar" (vlek, vouw, wazig); "" als het bedrag gewoon gelezen is — laat n dan leeg
+  en gok nooit een bedrag, z=één zekerheidsscore voor de hele regel.
   Kortings- en andere NEGATIEVE regels zijn óók factuurregels: een kortingsregel, rabat, creditregel,
   retour of een verrekende aanbetaling die als eigen regel op de factuur staat, neem je op als eigen
   regel met een NEGATIEF nettobedrag (bijv. "Korting 10%" met n="-56.44") en, als de factuur er een
@@ -271,6 +290,8 @@ class AiRegel:
     project_tekst: str | None = None
     # Peter 15-09: de btw-kolomtekst van de regel zoals vermeld ("V", "21%", …) — ruw; controle.is_verlegd_kolomcode.
     btw_kolom: str | None = None
+    # BUG 18-09 (Zilver Horeca): reden waarom het regelbedrag niet gelezen is ("afgedekt"/"onleesbaar"); None = gelezen.
+    niet_gelezen: str | None = None
 
 
 @dataclass(frozen=True)
@@ -376,7 +397,7 @@ def _normaliseer_regels(ruwe_regels: Any, uit: _Genormaliseerd) -> None:
         if not isinstance(ruwe_regel, dict):
             continue
         waarden: dict[str, str | None] = {}
-        for key in ("o", "n", "b", "h", "e", "p", "a", "proj", "bc"):
+        for key in ("o", "n", "b", "h", "e", "p", "a", "proj", "bc", "ng"):
             waarde, bsn = _schoon_tekst(ruwe_regel.get(key), bsn_filter=key in _VRIJE_TEKST_REGEL_KEYS)
             uit.bsn_verwijderd += bsn
             waarden[key] = waarde
@@ -392,6 +413,7 @@ def _normaliseer_regels(ruwe_regels: Any, uit: _Genormaliseerd) -> None:
                 artikelcode=waarden["a"],
                 project_tekst=waarden["proj"],
                 btw_kolom=waarden["bc"],
+                niet_gelezen=waarden["ng"],
             )
         )
 

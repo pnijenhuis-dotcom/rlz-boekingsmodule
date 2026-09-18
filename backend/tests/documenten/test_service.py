@@ -118,6 +118,8 @@ def test_niet_ubl_xml_zet_parse_fout_in_detail(
 def test_duplicaat_detectie_binnen_dezelfde_administratie(
     gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
 ) -> None:
+    """Generieke registratie (intake/splitsing/CLI's): byte-identiek = mogelijk-duplicaat-vlag. De directe upload-ROUTES
+    weigeren sinds 18-09 met 409 (besluit Peter) — zie tests/documenten/test_upload_al_aanwezig.py."""
     eerste = service.upload_document(
         administratie_id=administratie_id,
         bestandsnaam="factuur.pdf",

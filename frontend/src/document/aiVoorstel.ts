@@ -14,6 +14,11 @@ export interface AiRegelVoorstel {
   project_tekst?: string | null
   /** Blok 4 08-09: tariefstaffel-regel (aantal 0, bedrag 0, btw 0) — bron ja, boekingsregel nee (nulregels.ts). */
   tariefstaffel?: boolean
+  /** BUG 18-09 (Zilver Horeca): btw-percentage uit de btw-kolom van de regel (fractie "0.0900"); btw_bron 'factuur_regel'. */
+  btw_kolom_percentage?: string | null
+  /** BUG 18-09 (regel 5): bedrag niet gelezen (afgedekt/onleesbaar) + reden. */
+  bedrag_niet_gelezen?: boolean
+  niet_gelezen_reden?: string | null
 }
 
 export interface AiControle {
@@ -85,6 +90,12 @@ export interface AiVoorstel {
   btw_nummer?: string | null
   btw_nummer_geverifieerd?: boolean | null
   kvk_nummer?: string | null
+  /** BUG 18-09 (regel 4): totaal van de meegefotografeerde pinbon + de deterministische toets (bon = Σ regels ± 5 ct). */
+  totaal_bron?: 'factuur' | 'pinbon' | null
+  totaal_pinbon?: string | null
+  totaal_pinbon_status?: 'groen' | 'afwijkend' | 'niet_toetsbaar' | null
+  totaal_pinbon_som?: string | null
+  totaal_pinbon_verschil?: string | null
   controle: AiControle
 }
 

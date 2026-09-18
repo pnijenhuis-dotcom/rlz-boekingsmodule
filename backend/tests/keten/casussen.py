@@ -52,6 +52,9 @@ Q_AUTOBOEK_LEREN = "q_autoboek_leren"
 W_TELEFONIE_BTW_TOTAAL = "w_telefonie_btw_totaal"
 #: Peter 15-09: verlegd herkennen op kolomcode "V" zonder het woord verlegd (Olieman-patroon, bouw-onderaannemer).
 Z_VERLEGD_KOLOMCODE = "z_verlegd_kolomcode_v"
+# BUG 18-09 (Zilver Horeca Fac-25-022711, BLOW): btw-KOLOM per regel ("9%"/"0%"), afgedekte bedragen, pinbon-totaal,
+# modus volgt de data.
+AE_ZILVER_REGELKOLOM = "ae_zilver_horeca_regelkolom"
 # Peter 16-09 (ProfX-opdracht): coffeeshop-kassarapport als PDF mét tekstlaag (pdf_tekst.json = journaal 4 pagina's,
 # marge_tekst.json = margerapport) — zie fixtures/ad_omzet_profx_journaal/bron.json.
 AD_OMZET_PROFX = "ad_omzet_profx_journaal"
@@ -60,6 +63,8 @@ AD_OMZET_PROFX = "ad_omzet_profx_journaal"
 #: Peter 16-09 (Zenvoices-casus Hello Kitchen / Kempen Facilities): UBL met referentie "2 4594 001722" terwijl RLZ het
 #: exemplaar al kent als "24594001722" — de bestaanscheck moet genormaliseerd vergelijken (blok B).
 AA_ZENVOICES_DUBBEL = "aa_zenvoices_dubbel"
+#: Peter 18-09 (casus Rituals 88-186308, BLOW): 0 % · NL, Nul mét € 20,24 btw op € 96,36 — "btw volgt het tarief" + BUA.
+AE_RITUALS_BUA = "ae_rituals_bua_0pct"
 AB_OMZET_ZONNESTUDIO = "ab_omzet_zonnestudio"
 AC_OMZET_PILATES = "ac_omzet_pilates"
 
@@ -154,6 +159,8 @@ BESTANDSNAMEN: dict[str, tuple[str, str]] = {
     W_TELEFONIE_BTW_TOTAAL: ("", "Factuur KTD-2026-09-0904.pdf"),
     AA_ZENVOICES_DUBBEL: ("Hello Kitchen Duiven B.V - 2 4594 001722 - 2026-08-10.xml", ""),
     Z_VERLEGD_KOLOMCODE: ("", "Factuur 32948.pdf"),
+    AE_ZILVER_REGELKOLOM: ("", "2025-12-17_Zilverhoreca Groothandel B.V._25-022711.pdf"),
+    AE_RITUALS_BUA: ("", "Rituals bon 88-186308.pdf"),
 }
 
 
@@ -174,6 +181,7 @@ def ai_uit_json(data: dict) -> AiFactuurExtractie:
             artikelcode=r.get("artikelcode"),
             project_tekst=r.get("project_tekst"),
             btw_kolom=r.get("btw_kolom"),
+            niet_gelezen=r.get("niet_gelezen"),
         )
         for r in data.get("regels", [])
     ]

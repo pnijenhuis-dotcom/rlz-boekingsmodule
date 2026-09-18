@@ -8,7 +8,7 @@ from fastapi.concurrency import run_in_threadpool
 from app.auth import service as auth_service
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_kantoorrol
 from app.documenten.models import DocumentSoort
-from app.documenten.service import DocumentNietGevonden
+from app.documenten.service import DocumentAlAanwezig, DocumentNietGevonden, directe_upload_poort
 from app.intake import nabundelen, schemas, splitsing, splitsing_uitsluiting, verwerking, verzamelbak
 
 # De lokale vereis_kantoorrol is bij de rollen-gate-fix (2026-08-21) verhuisd naar
@@ -84,15 +84,21 @@ async def los_bestand_verwerken(
         # Blokkerend werk (PDF/UBL lezen, sha, opslag, extractie) in de threadpool — nooit op de
         # event-loop (blok 1 spoedrun 08-09; Cloud Logging 07-09: POST /intake/bestand 21,5 s
         # verdrong triviale routes). Zie documenten/router.py::document_uploaden.
-        r = await run_in_threadpool(
-            verwerking.verwerk_los_bestand,
-            bestandsnaam=bestand.filename or "bestand",
-            inhoud=inhoud,
-            content_type=bestand.content_type,
-            actor_id=actor.id,
-        )
+        def _verwerk() -> verwerking.BijlageResultaat:
+            with directe_upload_poort():  # besluit Peter 18-09: byte-identiek in de gerouteerde administratie = 409
+                return verwerking.verwerk_los_bestand(
+                    bestandsnaam=bestand.filename or "bestand",
+                    inhoud=inhoud,
+                    content_type=bestand.content_type,
+                    actor_id=actor.id,
+                )
+
+        r = await run_in_threadpool(_verwerk)
     except verwerking.BestandstypeNietOndersteund as exc:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)) from exc
+    except DocumentAlAanwezig as exc:
+        # Besluit Peter 18-09: byte-identieke directe upload = 409 mét verwijzing naar het bestaande document.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.als_detail()) from exc
     return schemas.IntakeBijlageResultaatDto(
         bestandsnaam=r.bestandsnaam, uitkomst=r.uitkomst, document_id=r.document_id, detail=r.detail
     )

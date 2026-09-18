@@ -633,9 +633,13 @@ export function KlantUpload({ administratieId, onGeupload }: { administratieId: 
         body: formData,
       })
       if (resultaat.mogelijk_duplicaat_van) {
+        // Sinds 18-09 alleen nog als het bestaande exemplaar door een mens VERWIJDERD was (anders geeft de server 409 en
+        // komt er geen nieuw document) — het nieuwe document draagt de mogelijk-duplicaat-vlag, ter controle.
         return {
           status: 'al_aanwezig',
           melding: `al aanwezig als "${resultaat.mogelijk_duplicaat_van.bestandsnaam}" — gemarkeerd als mogelijk duplicaat, ter controle`,
+          bestaandDocumentId: resultaat.mogelijk_duplicaat_van.document_id,
+          bestaandAdministratieId: administratieId,
         }
       }
       return {
@@ -693,6 +697,7 @@ export function KlantUpload({ administratieId, onGeupload }: { administratieId: 
         onStop={wachtrij.stop}
         onOpnieuw={wachtrij.opnieuw}
         onWis={wachtrij.wis}
+        administratieId={administratieId}
       />
     </>
   )

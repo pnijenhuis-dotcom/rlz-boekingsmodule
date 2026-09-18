@@ -7,7 +7,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from difflib import SequenceMatcher
 
-from app.documenten.regelsom import REDEN_GEEN_REGELS, toets_regelsom
+from app.documenten.regelsom import CENT_TOLERANTIE, REDEN_GEEN_REGELS, btw_uit_tarief, toets_regelsom
 from app.documenten.veldvoorstel_regels import VLAG_TARIEFSTAFFEL, is_nulregel, parse_hoeveelheid
 from app.extractie.btw_nummer import normaliseer_kvk_nummer, valideer_btw_nummer
 from app.extractie.iban import is_geldig_iban, normaliseer_iban
@@ -275,6 +275,98 @@ def leid_btw_af(
         return BtwAfleiding(taxrate_id=favorieten[0].id, percentage=percentage, bron="factuur")
     # Nul of meerdere favorieten met hetzelfde percentage: geen gok — de controleur kiest.
     return BtwAfleiding(taxrate_id=None, percentage=percentage, bron=None, reden="meerduidig")
+
+
+# ---- btw-percentage uit de btw-KOLOM van de regel (BUG 18-09, casus Zilver Horeca Fac-25-022711) ---------------------
+#
+# De factuur draagt per regel een btw-kolom "9%"/"0%" en géén btw-bedrag; `leid_btw_af` (netto × tarief ≈ btw) kan dan
+# niets en het leverancier-geheugen (9 %) won ook op de acht Emballage-regels (statiegeld, 0 %). Een factuurkolom "0%"
+# IS
+# de basis (besluit Peter 18-09): dat is géén ambigu 0 %-zonder-context — de leverancier zégt 0 %. Code parst het
+# percentage, matcht het exact op de gesyncte tarieven (verlegd/vrijgesteld/gemengd doen niet mee) en rekent het
+# regel-btw-
+# bedrag uit (netto × p) zodat bruto, regelsom en boekingsregel de FACTUUR volgen, nooit het geheugen-tarief.
+
+BTW_BRON_FACTUUR_REGEL = "factuur_regel"
+_KOLOM_PERCENTAGE = re.compile(r"^\s*(\d{1,2}(?:[.,]\d{1,2})?)\s*%\s*$")
+
+
+def parse_btw_kolom_percentage(tekst: str | None) -> Decimal | None:
+    """"9%", "0 %", "21,0%" → fractie (0.09, 0, 0.21). Zonder procentteken (kolomcode "V", "vrij", "1") → None: een kaal
+    cijfer kan een RLZ-code zijn — nooit als percentage lezen."""
+    if not tekst:
+        return None
+    m = _KOLOM_PERCENTAGE.match(tekst)
+    if m is None:
+        return None
+    try:
+        pct = Decimal(m.group(1).replace(",", "."))
+    except InvalidOperation:
+        return None
+    if pct > 100:
+        return None
+    return (pct / 100).quantize(Decimal("0.0001"))
+
+
+def leid_btw_af_uit_kolom(percentage: Decimal, kandidaten: list[TaxRateKandidaat]) -> BtwAfleiding:
+    """Het tarief dat exact het kolom-percentage draagt (fractie-gelijkheid, bv. 0.09 ↔ 0.0900). Verlegd/vrijgesteld/
+    gemengd doen niet mee — een kolom "0%" is het 0 %-tarief ("NL, Nul tarief"), nooit verlegd of vrijgesteld raden.
+    Meerdere tarieven met dat percentage: precies één RLZ-favoriet → die; anders meerduidig = leeg (de mens kiest)."""
+    passend = [
+        k
+        for k in kandidaten
+        if k.percentage is not None
+        and not (k.is_verlegd or k.is_vrijgesteld or k.is_gemengd)
+        and k.percentage.quantize(Decimal("0.0001")) == percentage.quantize(Decimal("0.0001"))
+    ]
+    if not passend:
+        return BtwAfleiding(taxrate_id=None, percentage=percentage, bron=None, reden="geen_match")
+    if len(passend) == 1:
+        return BtwAfleiding(taxrate_id=passend[0].id, percentage=percentage, bron=BTW_BRON_FACTUUR_REGEL)
+    favorieten = [k for k in passend if k.is_favoriet]
+    if len(favorieten) == 1:
+        return BtwAfleiding(taxrate_id=favorieten[0].id, percentage=percentage, bron=BTW_BRON_FACTUUR_REGEL)
+    return BtwAfleiding(taxrate_id=None, percentage=percentage, bron=None, reden="meerduidig")
+
+
+# ---- totaal uit de pinbon (BUG 18-09, regel 4) ----------------------------------------------------------------
+
+PINBON_GROEN = "groen"
+PINBON_AFWIJKEND = "afwijkend"
+PINBON_NIET_TOETSBAAR = "niet_toetsbaar"
+
+
+@dataclass(frozen=True)
+class PinbonToets:
+    """`status`: None (geen bon-totaal gelezen) | "groen" (bon-totaal = Σ(netto + btw) van álle regels binnen 5 ct → mag
+    als factuurtotaal voorgesteld worden, chip "uit pinbon") | "afwijkend" (alle regels bekend, som sluit niet — oranje,
+    de mens beslist) | "niet_toetsbaar" (regels zonder bedrag/btw — oranje, nooit stil overnemen)."""
+
+    totaal: Decimal | None
+    status: str | None
+    som: Decimal | None = None
+    verschil: Decimal | None = None
+
+    @property
+    def overnemen(self) -> bool:
+        return self.status == PINBON_GROEN and self.totaal is not None
+
+
+def toets_pinbon_totaal(
+    *, netto: list[Decimal | None], btw: list[Decimal | None], totaal_pinbon: Decimal | None
+) -> PinbonToets:
+    if totaal_pinbon is None:
+        return PinbonToets(totaal=None, status=None)
+    if not netto or any(n is None for n in netto) or any(b is None for b in btw):
+        return PinbonToets(totaal=totaal_pinbon, status=PINBON_NIET_TOETSBAAR)
+    som = sum((n + b for n, b in zip(netto, btw, strict=True) if n is not None and b is not None), Decimal(0))
+    verschil = abs(totaal_pinbon - som).quantize(Decimal("0.01"))
+    return PinbonToets(
+        totaal=totaal_pinbon,
+        status=PINBON_GROEN if verschil <= CENT_TOLERANTIE else PINBON_AFWIJKEND,
+        som=som,
+        verschil=verschil,
+    )
 
 
 def match_taxrate(netto: Decimal | None, btw: Decimal | None, kandidaten: list[TaxRateKandidaat]) -> uuid.UUID | None:
@@ -555,9 +647,23 @@ def bouw_veldvoorstel(
             onparseerbaar.append(f"netto_bedrag (regel {index})")
         if regel.btw_bedrag is not None and btw is None:
             onparseerbaar.append(f"btw_bedrag (regel {index})")
+        afleiding = leid_btw_af(netto, btw, taxrates)
+        # BUG 18-09 (Zilver Horeca): btw-KOLOM "9%"/"0%" als basis zodra netto × tarief ≈ btw niets oplevert (geen
+        # regel-btw gelezen). Het regel-btw-bedrag volgt dan deterministisch uit netto × kolom-percentage — de factuur
+        # zegt het tarief, dus bruto/regelsom/boekingsregel volgen de factuur en nooit het geheugen-tarief.
+        kolom_pct = parse_btw_kolom_percentage(regel.btw_kolom)
+        btw_berekend = False
+        afleiding_basis: str | None = "regel" if afleiding.taxrate_id else None
+        if afleiding.taxrate_id is None and kolom_pct is not None:
+            kolom_afleiding = leid_btw_af_uit_kolom(kolom_pct, taxrates)
+            if kolom_afleiding.taxrate_id is not None:
+                afleiding = kolom_afleiding
+                afleiding_basis = "kolom"
+                if btw is None and netto is not None:
+                    btw = btw_uit_tarief(netto, kolom_pct)
+                    btw_berekend = True
         netto_per_regel.append(netto)
         btw_per_regel.append(btw)
-        afleiding = leid_btw_af(netto, btw, taxrates)
         # Blok 4 (08-09, Spot Services): tariefstaffel-regel (aantal 0/ontbrekend, netto 0, btw 0) — blijft als
         # BRON in `regels` (tariefkaart/self-billing), wordt géén boekingsregel (documenten/veldvoorstel_regels.py).
         tariefstaffel = is_nulregel(netto=netto, btw=btw, hoeveelheid=parse_hoeveelheid(regel.hoeveelheid))
@@ -566,6 +672,13 @@ def bouw_veldvoorstel(
                 "omschrijving": regel.omschrijving,
                 "netto_bedrag": _bedrag_str(netto),
                 "btw_bedrag": _bedrag_str(btw),
+                # BUG 18-09: regel-btw deterministisch uit netto × kolom-percentage (geen gelezen bedrag).
+                "btw_bedrag_berekend": btw_berekend,
+                # BUG 18-09: het kolom-percentage als fractie ("0.0900"); None zonder (parsbaar) percentage in de kolom.
+                "btw_kolom_percentage": _bedrag_str(kolom_pct),
+                # BUG 18-09 (regel 5): bedrag niet gelezen omdat het afgedekt/onleesbaar is — chip i.p.v. lege cel.
+                "bedrag_niet_gelezen": bool(regel.niet_gelezen) and netto is None,
+                "niet_gelezen_reden": regel.niet_gelezen if netto is None else None,
                 "hoeveelheid": regel.hoeveelheid,
                 VLAG_TARIEFSTAFFEL: tariefstaffel,
                 # Blok D 28-08 (voorraad-aansluiting): eenheid + stuksprijs zoals vermeld — ruw.
@@ -583,9 +696,9 @@ def bouw_veldvoorstel(
                 # netto/btw afgeleid; None = leeg gelaten (0/onbepaalbaar/meerduidig — reden erbij).
                 "btw_bron": afleiding.bron,
                 "btw_afleiding_reden": afleiding.reden,
-                # 15-09: waarop de btw-code steunt — "regel" (netto × tarief ≈ regel-btw), "factuur_totaal" (hieronder)
-                # of None (leeg gelaten).
-                "btw_afleiding_basis": "regel" if afleiding.taxrate_id else None,
+                # 15-09: waarop de btw-code steunt — "regel" (netto × tarief ≈ regel-btw), "kolom" (btw-kolom "9%"/"0%",
+                # 18-09), "factuur_totaal" (hieronder) of None (leeg gelaten).
+                "btw_afleiding_basis": afleiding_basis,
             }
         )
         regel_zekerheid.append(regel.zekerheid)
@@ -617,6 +730,17 @@ def bouw_veldvoorstel(
                 }
             )
             btw_per_regel[index] = regel_btw
+
+    # Totaal uit de pinbon (BUG 18-09, regel 4): de factuur zelf draagt geen totaal, de meegefotografeerde bon wél.
+    # Code toetst: bon-totaal = Σ(netto + btw) van álle regels binnen 5 ct → groen en als factuurtotaal voorgesteld
+    # (chip "uit pinbon"); anders oranje (afwijkend / regels niet volledig gelezen) — de mens beslist, nooit stil
+    # overnemen.
+    totaal_pinbon = bedrag_van("totaal_pinbon")
+    pinbon = toets_pinbon_totaal(netto=netto_per_regel, btw=btw_per_regel, totaal_pinbon=totaal_pinbon)
+    totaal_bron: str | None = "factuur" if totaal_incl is not None else None
+    if totaal_incl is None and pinbon.overnemen:
+        totaal_incl = pinbon.totaal
+        totaal_bron = "pinbon"
 
     # Regelsom-toets (C3 26-08, casus AddGuests 1.328,14 + 278,91 = 1.607,05): EXACT dezelfde
     # netto+btw=incl-logica als de boekingsregels-toets onderin het controlescherm. Een scan
@@ -667,6 +791,12 @@ def bouw_veldvoorstel(
         "valuta": valuta,
         "totaal_excl": _bedrag_str(totaal_excl),
         "totaal_incl": _bedrag_str(totaal_incl),
+        # BUG 18-09 (regel 4): herkomst van het totaal ("factuur" | "pinbon" | None) + de bon-toets voor de chip.
+        "totaal_bron": totaal_bron,
+        "totaal_pinbon": _bedrag_str(pinbon.totaal),
+        "totaal_pinbon_status": pinbon.status,
+        "totaal_pinbon_som": _bedrag_str(pinbon.som),
+        "totaal_pinbon_verschil": _bedrag_str(pinbon.verschil),
         "btw_bedrag": _bedrag_str(btw_bedrag),
         "btw_verlegd_vermelding": btw_verlegd_vermelding,
         # Peter 15-09 (b): álle regels mét bedrag dragen een verlegd-kolomcode ("V") → de code; boekvoorstel toetst

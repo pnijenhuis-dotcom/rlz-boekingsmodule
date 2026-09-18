@@ -1,4 +1,5 @@
 import { ApiError, BackendOnbereikbaarError } from '../api/client'
+import type { UploadAlAanwezigDetailDto } from '../api/types'
 import { UPLOAD_ACCEPT } from '../intake/intakeApi'
 
 /* Bulk-upload (Peter 18-09: "180 documenten bij BLOW, gaat niet" — de zone las `files?.[0]`). Pure wachtrij-logica,
@@ -28,12 +29,40 @@ export interface UploadItem {
   melding: string | null
   /** Mag "Mislukte opnieuw" dit item opnieuw aanbieden? (netwerk/429/5xx = ja; 413/415/422 = nee — zelfde bestand faalt weer.) */
   opnieuw: boolean
+  /** Besluit Peter 18-09: bij 'al_aanwezig' het bestaande document (server-409 of mogelijk-duplicaat-vlag) — link "→ bestaand document". */
+  bestaandDocumentId?: string | null
+  bestaandAdministratieId?: string | null
 }
 
 /** Resultaat van één upload-aanroep — de aanroeper vertaalt zijn API-antwoord hiernaar. */
 export interface UploadUitkomst {
   status: 'klaar' | 'al_aanwezig'
   melding: string | null
+  bestaandDocumentId?: string | null
+  bestaandAdministratieId?: string | null
+}
+
+/** Besluit Peter 18-09: het 409-detail van een byte-identieke directe upload (server: `DocumentAlAanwezig.als_detail`). */
+export function alAanwezigDetail(detail: unknown): UploadAlAanwezigDetailDto | null {
+  if (!detail || typeof detail !== 'object') return null
+  const d = detail as Record<string, unknown>
+  if (d.code !== 'al_aanwezig' || typeof d.bestaand_document_id !== 'string') return null
+  return d as unknown as UploadAlAanwezigDetailDto
+}
+
+const STATUS_TEKST: Record<string, string> = {
+  geboekt: 'geboekt',
+  te_controleren: 'te controleren',
+  klaar_om_te_boeken: 'klaar om te boeken',
+  samengevoegd: 'samengevoegd',
+  afgevoerd_duplicaat: 'afgevoerd als duplicaat',
+  afgewezen: 'afgewezen',
+}
+
+export function alAanwezigMelding(d: UploadAlAanwezigDetailDto): string {
+  const status = STATUS_TEKST[d.bestaand_status] ?? d.bestaand_status.replaceAll('_', ' ')
+  const ref = d.bestaand_referentie ? `, ${d.bestaand_referentie}` : ''
+  return `al aanwezig als "${d.bestaand_bestandsnaam}" (${status}${ref}) — niet opnieuw aangemaakt`
 }
 
 export type Uploader = (bestand: File) => Promise<UploadUitkomst>
@@ -69,7 +98,9 @@ export function filterToegestaan(bestanden: File[]): { toegestaan: File[]; gewei
 }
 
 /** Vertaalt een gegooide fout naar status + leesbare reden + herkansbaarheid. */
-export function classificeerFout(err: unknown): Pick<UploadItem, 'status' | 'melding' | 'opnieuw'> {
+export function classificeerFout(
+  err: unknown,
+): Pick<UploadItem, 'status' | 'melding' | 'opnieuw' | 'bestaandDocumentId' | 'bestaandAdministratieId'> {
   if (err instanceof BackendOnbereikbaarError) {
     if (err.oorzaak === 'timeout') {
       return {
@@ -82,8 +113,19 @@ export function classificeerFout(err: unknown): Pick<UploadItem, 'status' | 'mel
   }
   if (err instanceof ApiError) {
     switch (err.status) {
-      case 409:
+      case 409: {
+        const d = alAanwezigDetail(err.detail)
+        if (d) {
+          return {
+            status: 'al_aanwezig',
+            melding: alAanwezigMelding(d),
+            opnieuw: false,
+            bestaandDocumentId: d.bestaand_document_id,
+            bestaandAdministratieId: d.bestaand_administratie_id ?? null,
+          }
+        }
         return { status: 'al_aanwezig', melding: `al aanwezig: ${err.message}`, opnieuw: false }
+      }
       case 413:
         return { status: 'fout', melding: 'te groot (maximaal 20 MB per bestand)', opnieuw: false }
       case 415:
@@ -202,7 +244,13 @@ export function voerWachtrijUit(
       zet(id, { status: 'bezig', melding: null })
       try {
         const uitkomst = await uploader(item.bestand)
-        zet(id, { status: uitkomst.status, melding: uitkomst.melding, opnieuw: false })
+        zet(id, {
+          status: uitkomst.status,
+          melding: uitkomst.melding,
+          opnieuw: false,
+          bestaandDocumentId: uitkomst.bestaandDocumentId ?? null,
+          bestaandAdministratieId: uitkomst.bestaandAdministratieId ?? null,
+        })
       } catch (err) {
         zet(id, classificeerFout(err))
       }

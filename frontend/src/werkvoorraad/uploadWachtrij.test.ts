@@ -81,6 +81,32 @@ describe('uploadWachtrij — wachtrij', () => {
     expect(herkansing.filter((i) => i.status === 'wachten')).toHaveLength(2)
   })
 
+  it('besluit 18-09: 409 mét al_aanwezig-detail → status al aanwezig, leesbare melding en het bestaande document voor de link', async () => {
+    const items = maakItems([f('dubbel.pdf')])
+    const uploader = vi.fn(async () => {
+      throw new ApiError(409, 'Al aanwezig', {
+        code: 'al_aanwezig',
+        melding: 'Al aanwezig als "2025-12-17_Zilver Horeca B.V._25-022711.pdf" (te_controleren)',
+        bestaand_document_id: 'c73e7590-5fa1-4305-ba14-29a307210c1e',
+        bestaand_administratie_id: '5419878c-ca11-4f02-98d7-b14325ff8206',
+        bestaand_status: 'te_controleren',
+        bestaand_bestandsnaam: '2025-12-17_Zilver Horeca B.V._25-022711.pdf',
+        bestaand_referentie: 'Fac-25-022711',
+      })
+    })
+    const eind = await voerWachtrijUit(items, uploader, () => {}).klaar
+    expect(eind[0]).toMatchObject({
+      status: 'al_aanwezig',
+      opnieuw: false,
+      bestaandDocumentId: 'c73e7590-5fa1-4305-ba14-29a307210c1e',
+      bestaandAdministratieId: '5419878c-ca11-4f02-98d7-b14325ff8206',
+    })
+    expect(eind[0].melding).toBe(
+      'al aanwezig als "2025-12-17_Zilver Horeca B.V._25-022711.pdf" (te controleren, Fac-25-022711) — niet opnieuw aangemaakt',
+    )
+    expect(samenvatting(eind)).toBe('1 aangeboden · 1 al aanwezig')
+  })
+
   it('fouten per bestand: 409 = al aanwezig (geen fout), 413 = te groot, netwerk = opnieuw; alleen herkansbare gaan opnieuw', async () => {
     const items = maakItems([f('ok.pdf'), f('dubbel.pdf'), f('groot.pdf'), f('offline.pdf'), f('kapot.pdf')])
     const uploader = vi.fn(async (bestand: File) => {

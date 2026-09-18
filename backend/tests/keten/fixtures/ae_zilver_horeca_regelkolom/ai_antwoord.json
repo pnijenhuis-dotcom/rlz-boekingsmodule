@@ -1,0 +1,160 @@
+{
+ "kop": {
+  "leverancier_naam": {
+   "waarde": "Zilverhoreca Groothandel B.V.",
+   "zekerheid": 0.97
+  },
+  "factuurnummer": {
+   "waarde": "Fac-25-022711",
+   "zekerheid": 0.97
+  },
+  "factuurdatum": {
+   "waarde": "2025-12-17",
+   "zekerheid": 0.95
+  },
+  "vervaldatum": {
+   "waarde": "2026-01-16",
+   "zekerheid": 0.9
+  },
+  "valuta": {
+   "waarde": "EUR",
+   "zekerheid": 0.9
+  },
+  "totaal_excl": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "totaal_incl": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "btw_bedrag": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "totaal_pinbon": {
+   "waarde": "738.27",
+   "zekerheid": 0.9
+  },
+  "iban": {
+   "waarde": "NL91KETN1000000081",
+   "zekerheid": 0.9
+  },
+  "btw_nummer": {
+   "waarde": "NL100081234B01",
+   "zekerheid": 0.9
+  },
+  "kvk_nummer": {
+   "waarde": "91000081",
+   "zekerheid": 0.9
+  },
+  "btw_verlegd_vermelding": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "betreft": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "project_tekst": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "periode": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "betalingskenmerk": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "betaalwijze_tekst": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "incasso_datum_tekst": {
+   "waarde": null,
+   "zekerheid": 0.0
+  }
+ },
+ "regels": [
+  {
+   "omschrijving": "Balisto Yobbery 20 x 37 Gr",
+   "netto_bedrag": null,
+   "btw_bedrag": null,
+   "hoeveelheid": "1",
+   "zekerheid": 0.6,
+   "eenheid": null,
+   "stuksprijs": null,
+   "artikelcode": null,
+   "project_tekst": null,
+   "btw_kolom": "9%",
+   "niet_gelezen": "afgedekt"
+  },
+  {
+   "omschrijving": "AA Drink High Energy 24 x 0,33 CL",
+   "netto_bedrag": null,
+   "btw_bedrag": null,
+   "hoeveelheid": "3",
+   "zekerheid": 0.6,
+   "eenheid": null,
+   "stuksprijs": null,
+   "artikelcode": null,
+   "project_tekst": null,
+   "btw_kolom": "9%",
+   "niet_gelezen": "afgedekt"
+  },
+  {
+   "omschrijving": "Emballage ( 24 Stuks )",
+   "netto_bedrag": "10.80",
+   "btw_bedrag": null,
+   "hoeveelheid": "3",
+   "zekerheid": 0.9,
+   "eenheid": null,
+   "stuksprijs": "3.60",
+   "artikelcode": null,
+   "project_tekst": null,
+   "btw_kolom": "0%",
+   "niet_gelezen": null
+  },
+  {
+   "omschrijving": "Twix 32 x 50 gram",
+   "netto_bedrag": "17.95",
+   "btw_bedrag": null,
+   "hoeveelheid": "1",
+   "zekerheid": 0.9,
+   "eenheid": null,
+   "stuksprijs": "17.95",
+   "artikelcode": null,
+   "project_tekst": null,
+   "btw_kolom": "9%",
+   "niet_gelezen": null
+  },
+  {
+   "omschrijving": "Snicker 32 x 50 Gram",
+   "netto_bedrag": "18.95",
+   "btw_bedrag": null,
+   "hoeveelheid": "1",
+   "zekerheid": 0.9,
+   "eenheid": null,
+   "stuksprijs": "18.95",
+   "artikelcode": null,
+   "project_tekst": null,
+   "btw_kolom": "9%",
+   "niet_gelezen": null
+  },
+  {
+   "omschrijving": "Emballage ( 24 Stuks )",
+   "netto_bedrag": "14.40",
+   "btw_bedrag": null,
+   "hoeveelheid": "4",
+   "zekerheid": 0.9,
+   "eenheid": null,
+   "stuksprijs": "3.60",
+   "artikelcode": null,
+   "project_tekst": null,
+   "btw_kolom": "0%",
+   "niet_gelezen": null
+  }
+ ]
+}
