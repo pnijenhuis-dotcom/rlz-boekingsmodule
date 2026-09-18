@@ -11527,6 +11527,14 @@ nameting.md`; rapport `docs/rapporten/2026-09-18-bug-offerte-verbruik-telt-onder
 achtergrond-suite en committe NIETS — deploy `375138d` had geen 0166. De nameting-run heeft het werk geverifieerd (tsc, ruff
 pre-existent, vitest 53, gouden set + verplichting + guards) en alsnog gecommit; nazorg-CLI en nameting (stappen 1–4) NIET
 uitgevoerd, opdracht terug in de inbox mét "lopende deploy = wachten" in stap 0. Werkt in productie: niet gemeten.**
+**Afronding 18-09 21:25 (inbox-run "offerte-verbruik-onderweg-nameting" tweede run, rapport
+`docs/rapporten/2026-09-18-offerte-verbruik-onderweg-nameting.md`): deploy `b6ae7fc` groen mét `Running upgrade 0165 -> 0166`
+(Cloud Logging `rlz-migratie-lv69k`), service `rlz-backend` én jobs op hetzelfde beeld; nazorg-CLI op de job-image: dry-run 3
+kandidaten exact (32948/32949/33122 `binnen`, verbruik_na = eigen bedrag), herberekening "3 herberekend, 3 gewijzigd" → élke rij
+verbruik_na 150.000,00 (32949: onderweg 100.000,00, 2 facturen), kantoorbreed 0 andere kandidaten en idempotent (3 × ongewijzigd);
+leesreplica bevestigt de drie getallen én `onderweg_ter_accordering` 2 = 2 (tekst "ter accordering"). **Werkt in productie: JA.**
+Kaarttekst in de app = klikpunt Peter mét deterministische afleiding (`onderweg_tekst` → "waarvan € 100.000,00 nog niet geboekt
+(2 facturen ter accordering)"; Inzicht-rij "geboekt € 0,00 · onderweg € 150.000,00 · restant € 1.042.922,50").**
 **Aanleiding (Peter 18-09 20:04, accordeur-app):** factuur 32949 (Bouwadvies, "2e termijn werkzaamheden", € 50.000 verlegd) zei
 "Binnen de goedgekeurde offerte zonder nummer · € 50.000,00 van € 1.192.922,50" terwijl Peter net € 20.000 van dezelfde partij op
 dezelfde offerte had geaccordeerd (laag 1, lagen 2–3 open): "dat moet nu 20.000 + 50.000 (70.000) zijn, hij moet wel doortellen."
