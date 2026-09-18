@@ -101,6 +101,55 @@
   frontend `projecten/ProjectStatus.test.tsx` (4). Uren-/planningcode is NIET geraakt (blok 4 bouwt daar): het filter loopt
   volledig via `is_actief`.
 
+<!-- toegevoegd 18-09-2026, opdracht "BUG-offerte-verbruik-telt-onderweg-facturen-niet" -->
+- **Offerte-verbruik = geboekt + onderweg (BUG Peter 18-09 20:04, accordeur-app, Bouwadvies Oost Nederland, offerte "zonder nummer"
+  € 1.192.922,50 — letterlijk: "ik heb net een factuur geaccordeerd van deze partij voor € 20.000, deze boeking zegt nu binnen
+  offerte (50.000 van bedrag), maar dat moet nu 20.000 + 50.000 (70.000) zijn, hij moet wel doortellen."; migratie 0166 = index
+  `ix_verplichting_match_administratie_verplichting`; BESLISSINGEN "OFFERTE-VERBRUIK = GEBOEKT + ONDERWEG (Peter 18-09)"; HERZIET
+  het CONTRACT_B-besluit 04-09 "verbruik = uitsluitend geboekt" en de voorwaarschuwing 0.1 "open facturen informatief, buiten het
+  verbruik"):** (1) **Verbruik = geboekt + onderweg.** Geboekt = `Verplichting.verbruikt_bedrag_excl` (de boekstand, bijgeschreven
+  ín de boek-transactie — auditspoor `verplichting_verbruik_bijgewerkt` ongewijzigd). Onderweg = Σ `VerplichtingMatch.bedrag_excl`
+  van de ándere documenten met uitkomst binnen/buiten op dezelfde verplichting waarvan de status niet terminaal en niet GEBOEKT is
+  (ter_accordering, klaar_om_te_boeken, wordt_geboekt, boeken_mislukt, te_controleren, vraag_open, …;
+  `match_pipeline.ONDERWEG_UITGESLOTEN_STATUSSEN` = terminale statussen + geboekt), `verrekend_op IS NULL`, het eigen document
+  uitgezonderd. Onderweg wordt per toets berekend (één groepsquery `onderweg_per_verplichting`, per administratie), nooit
+  opgeslagen; `details` op de matchrij draagt de splitsing `verbruik_geboekt` / `verbruik_onderweg` / `onderweg_aantal` /
+  `onderweg_ter_accordering`. Bij drie accorderingslagen zit een factuur dagen tot weken in de accordering — twee facturen tegelijk
+  "binnen offerte" terwijl de som erbuiten valt was de normale situatie, geen randgeval. (2) **Toets en tekst:** binnen/buiten op
+  (geboekt + onderweg + eigen bedrag) ≤ offertebedrag, zonder tolerantie. Melding/kaart: "€ 70.000,00 van € 1.192.922,50 · waarvan
+  € 20.000,00 nog niet geboekt (1 factuur ter accordering)" — "ter accordering" als álle onderweg-facturen ter accordering staan,
+  anders "in behandeling" (`match.onderweg_tekst`, frontend-spiegel `verplichting/verbruikPresentatie.ts::onderwegTekst`); één DTO
+  voor kantoor-controlescherm (`VerplichtingMatchDto`) en accordeur-app (`OfferteMatchKortDto`: `termijn`, `verbruik_geboekt`,
+  `verbruik_onderweg`, `onderweg_aantal`, `onderweg_ter_accordering`). Balk: geboekt vol, onderweg GEARCEERD, eigen factuur
+  gemarkeerd (`VerbruiksBalk` segmenten, `verbruikSegmenten` = verhoudingen van server-bedragen; de vette tekst toont het
+  cumulatief ná deze factuur). Termijnnummer telt geboekt én onderweg ("2e termijn"), een afgewezen/verwijderde factuur is geen
+  termijn meer. (3) **Volgorde-effect — herberekening bij statuswissel, nooit stil.** `documenten.service._schrijf_overgang`
+  (de ENIGE statusmutator) registreert via `match_pipeline.registreer_statuswissel` élke overgang waarbij het document anders gaat
+  meetellen (`telt_als_onderweg(van) != telt_als_onderweg(naar)`: afgewezen, verwijderd, geboekt, hersteld) én een binnen/buiten-
+  match heeft; ná de commit (`after_commit` op die sessie — eigen transacties, nooit blokkerend) herberekent
+  `herbereken_na_statuswissel` de andere open documenten op dezelfde verplichting; verandert uitkomst of verbruik-ná, dan komt op
+  dát document een tijdlijnregel "offerte-toets herberekend: buiten → binnen — verbruik ná deze factuur … (aanleiding: factuur
+  ‹ref› afgewezen (was te controleren))" + audit `verplichting_match_herberekend` (systeem-actor). Een overgang binnen onderweg
+  (te_controleren → klaar_om_te_boeken → ter_accordering) herberekent niets. Gevolg (bewust, per de regel): staan er twee open
+  facturen waarvan de som boven de offerte komt, dan zijn ná herberekening BEIDE "buiten" — de zin "waarvan € X nog niet geboekt"
+  zegt waarom; buiten offerte blijft niet-blokkerend (bestaande bevestiging bij boeken). (4) **Dezelfde drie getallen overal:**
+  `VerbruikStand`/`VerbruikDto` en `KantoorRijDto` dragen `verbruikt_excl` (geboekt), `onderweg_excl`/`onderweg_aantal`/
+  `onderweg_ter_accordering`, `restant_excl` (= totaal − geboekt − onderweg, negatief = overschreden), `percentage` (geboekt +
+  onderweg) en `percentage_geboekt`; `open_facturen_*` = de oude naam van onderweg, gelijk gehouden; status "overschreden" op
+  Inzicht › Verplichtingen = geboekt + onderweg > totaal (`bereken_verbruik_stand`, puur, één bron voor reviewscherm en
+  kantoorbreed). (5) **Nazorg productie:** matchrijen van vóór de deploy dragen onderweg = 0 tot een trigger komt → CLI
+  `verplichting-match-herberekenen [--administratie] [--dry-run]` (`app/verplichting/cli_cmd.py`, SCHRIJVEND, niet in de
+  nameting-allowlist) herberekent álle open gematchte inkoopdocumenten; uitvoeren als `gcloud run jobs execute` op de gedeployde
+  image, vervolg-opdracht in de inbox. Nulmeting leesreplica 18-09 20:50: Bouwadvies verplichting 34aaf45b (zonder nummer,
+  € 1.192.922,50, boekstand 0) heeft drie facturen ter accordering — 32948 € 20.000, 32949 € 50.000, 33122 € 80.000 — élk met
+  `verbruik_voor` 0; ná deploy + herberekening hoort 32949 € 150.000,00 van € 1.192.922,50 te tonen mét "waarvan € 100.000,00 nog
+  niet geboekt (2 facturen ter accordering)" (Peters "70.000" gold vóór 33122 een minuut later binnenkwam). Guards:
+  `tests/verplichting/test_match.py::TestOnderwegTeltMee` (puur), `tests/verplichting/test_verbruik.py::TestOnderweg` (20k
+  onderweg + 30k op 48.500 → buiten; afwijzen 20k → herberekening → 30k binnen mét tijdlijnregel + audit; statuswissel binnen
+  onderweg herberekent niet; ter accordering = label; eigen document nooit dubbel; geboekt + onderweg 0 = bestaand gedrag),
+  `TestHerberekenCli`, vitest `verbruikPresentatie.test.ts`, `OfferteMatchMelding.test.tsx`, `GoedkeurenFlow.verplichting.test.tsx`,
+  `VerplichtingenScreen.test.tsx`, `VerplichtingReviewScreen.test.tsx`, `ProjectDetailVerrijking.test.tsx`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)

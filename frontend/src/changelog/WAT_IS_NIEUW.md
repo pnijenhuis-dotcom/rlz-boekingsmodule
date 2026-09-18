@@ -8,6 +8,10 @@
 
 ## 2026-09-18 — Boeken: geen daglimiet meer voor handmatig boeken; btw volgt het tarief; boeken gaat direct door
 
+<!-- offerte-verbruik-onderweg-18-09 -->
+
+- **Offertes tellen nu ook facturen mee die nog in de goedkeuring zitten.** Tot vandaag telde de offerte-toets alleen geboekte facturen; een factuur die bij de klant ter accordering stond, telde niet mee, zodat twee facturen tegelijk "binnen offerte" konden zijn terwijl ze samen erboven kwamen. Nu staat er bijvoorbeeld "€ 70.000,00 van € 1.192.922,50 · waarvan € 20.000,00 nog niet geboekt (1 factuur ter accordering)", in de accordeur-app én op het controlescherm. De balk laat geboekt, nog-niet-geboekt (gearceerd) en deze factuur apart zien; Inzicht › Verplichtingen toont per offerte geboekt, onderweg en restant. Wordt zo'n onderweg-factuur afgewezen, dan wordt de toets van de andere facturen op die offerte opnieuw gedaan, met een regel in de tijdlijn.
+
 <!-- toegang-is-geen-laag-18-09 -->
 
 - **Toegang geven aan een accordeur verandert de goedkeuringsroute niet meer.** Bij Gebruikers & toegang › Klant-accordeurs › "Administraties toevoegen…" kreeg een accordeur tot vandaag meteen laag 1, en de bestaande lagen van die administratie werden stil vervangen. Nu kies je per administratie: alleen toegang (standaard), ook als extra laag vóór laag 1 of ná de laatste laag (de bestaande lagen blijven staan), of alleen voor een leveranciersroute. Je ziet vooraf wat er nu staat ("3 lagen: Peter N. → Sophia → Kempen") en wat het wordt.

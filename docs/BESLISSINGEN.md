@@ -11517,3 +11517,46 @@ accordeur in de lagen staat dwingt "uit de lagen" af (een laag zonder toegang ka
 laten weigeren); (d) de vier keuzes staan in één `Select` per administratie (schaalt naar tientallen administraties in één stap;
 `KeuzeKaarten` zou per rij drie kaarten geven). Beslispunt 1 van blok 5 (afdelingsroutes bij verwijderen) blijft open.
 
+## OFFERTE-VERBRUIK = GEBOEKT + ONDERWEG (Peter 18-09) — casus Bouwadvies Oost Nederland "hij moet wel doortellen": facturen in de accordering tellen mee in de offerte-toets, herberekening bij statuswissel mét tijdlijnregel, drie getallen geboekt/onderweg/restant overal; migratie 0166
+
+**Status: GEBOUWD + GETEST 18-09 (inbox-run, opdracht "BUG-offerte-verbruik-telt-onderweg-facturen-niet"); werkt in productie:
+niet gemeten (deploy ná de run) — nazorg + nameting = vervolg-opdracht `opdrachten/inbox/2026-09-18-offerte-verbruik-onderweg-
+nameting.md`; rapport `docs/rapporten/2026-09-18-bug-offerte-verbruik-telt-onderweg-facturen.md`.**
+**Aanvulling 18-09 21:05 (inbox-run "offerte-verbruik-onderweg-nameting", rapport
+`docs/rapporten/2026-09-18-offerte-verbruik-onderweg-nameting-uitgesteld.md`): de bugrun eindigde zijn beurt wachtend op de
+achtergrond-suite en committe NIETS — deploy `375138d` had geen 0166. De nameting-run heeft het werk geverifieerd (tsc, ruff
+pre-existent, vitest 53, gouden set + verplichting + guards) en alsnog gecommit; nazorg-CLI en nameting (stappen 1–4) NIET
+uitgevoerd, opdracht terug in de inbox mét "lopende deploy = wachten" in stap 0. Werkt in productie: niet gemeten.**
+**Aanleiding (Peter 18-09 20:04, accordeur-app):** factuur 32949 (Bouwadvies, "2e termijn werkzaamheden", € 50.000 verlegd) zei
+"Binnen de goedgekeurde offerte zonder nummer · € 50.000,00 van € 1.192.922,50" terwijl Peter net € 20.000 van dezelfde partij op
+dezelfde offerte had geaccordeerd (laag 1, lagen 2–3 open): "dat moet nu 20.000 + 50.000 (70.000) zijn, hij moet wel doortellen."
+Oorzaak: `verreken_in_sessie` schreef het verbruik pas bij GEBOEKT en `Kandidaat.verbruikt_bedrag_excl` telde alleen geboekt
+(CONTRACT_B-besluit 04-09, bewust — "anders maakt een open factuur een tweede ten onrechte buiten"); bij drie lagen is dagen-tot-
+weken onderweg de normale situatie. **Herziet** dat besluit én de voorwaarschuwing 0.1 (04-09, "open facturen informatief").
+
+**Regels (volledige tekst: `docs/regels/verplichtingen-projecten-voorraad.md` alinea "Offerte-verbruik = geboekt + onderweg"):**
+1. Verbruik = GEBOEKT (boekstand, ongewijzigd auditspoor) + ONDERWEG (Σ bedrag van de andere binnen/buiten-gematchte facturen op
+   dezelfde verplichting, status niet terminaal en niet geboekt, eigen document uitgezonderd; per toets berekend, nooit opgeslagen).
+2. Toets = (geboekt + onderweg + eigen) ≤ offertebedrag; kaart en melding: "€ 70.000,00 van € 1.192.922,50 · waarvan € 20.000,00 nog
+   niet geboekt (1 factuur ter accordering)"; balk geboekt vol / onderweg gearceerd / eigen gemarkeerd; termijnnummer telt onderweg
+   mee; één DTO voor controlescherm en accordeur-app.
+3. Statuswissel van een gematchte factuur (afgewezen, verwijderd, geboekt, hersteld) → herberekening van de andere open documenten op
+   dezelfde verplichting ná de commit, mét tijdlijnregel + audit `verplichting_match_herberekend` als uitkomst of verbruik-ná
+   verandert; nooit stil, nooit blokkerend. Twee open facturen boven de offerte = beide buiten (bewust; niet-blokkerend).
+4. Kantoorbreed `/verplichtingen`, reviewscherm en projectdetail tonen dezelfde drie getallen geboekt / onderweg / restant;
+   "overschreden" = geboekt + onderweg > totaal.
+5. Nazorg: CLI `verplichting-match-herberekenen [--administratie] [--dry-run]` (schrijvend, job-image) voor de stale matchrijen van
+   vóór de deploy.
+
+**Keuzes zonder Peter:** (a) beide open facturen "buiten" zodra de som erbuiten valt — de regel zegt letterlijk "op (geboekt +
+onderweg + eigen bedrag) ≤ offertebedrag"; het alternatief (alleen de laatste vlaggen) zou de stand van de volgorde laten afhangen.
+(b) Termijntelling sluit afgewezen/verwijderde facturen uit (was: alle matchrijen) — een afgewezen factuur is geen termijn.
+(c) Index 0166 op (administratie, verplichting) i.p.v. alleen (administratie, uitkomst): onderweg-query en herberekening zoeken per
+verplichting. (d) De tijdlijnregel komt alleen bij een échte verandering van uitkomst of verbruik-ná (geen ruis bij te_controleren →
+klaar_om_te_boeken). (e) "ter accordering" in de zin alleen als álle onderweg-facturen die status hebben, anders "in behandeling".
+
+**Nulmeting leesreplica (18-09 20:50, lees-only `db_lezen.sh`):** Bouwadvies (a265c010) verplichting 34aaf45b zonder nummer,
+goedgekeurd € 1.192.922,50, boekstand 0; matchrijen binnen: 32948 € 20.000 (11:20Z), 32949 € 50.000 (18:03Z), 33122 € 80.000
+(18:04Z) — alle drie ter_accordering, `verbruik_voor` 0. Verwacht ná deploy + `verplichting-match-herberekenen`: 32949 → € 150.000,00
+van € 1.192.922,50, waarvan € 100.000,00 nog niet geboekt (2 facturen ter accordering); zonder 33122 was dat Peters € 70.000.
+
