@@ -42,6 +42,12 @@
   rijen en meldde het aansluitingsblok drie dagen "geen administratie met een actieve doorbelasting-whitelist". Verwachting ná
   deploy: 174 → 0 `ic_spiegel_rood`, spiegelparen 174/174 groen, aansluiting KF: 8 doelen gelezen (Kempen Chalets/Rubicon zonder
   boekingen in het venster = 0 sluit, geen bevinding).
+  **Gemeten 19-09 (rapport `2026-09-19-nameting-ic-spiegel-rood-na-deploy.md`): 174 → 0, alle vijf doelen N/N groen, Mantelzorgwoningen 51/51/51;
+  aansluiting KF 8 doelen, 1652 van 1758 verkopen sluiten — werkt in productie JA.** De verwachting "0 afwijkingen" was ongegrond: 108 afwijkingen,
+  waarvan 99 × Kempen Facilities → Molenhof Beheer `da_ontbreekt_in_doel` (KF-verkopen zonder inkoop bij Molenhof Beheer op enig KF-crediteurrecord —
+  klikpunt Peter: worden die daar anders geboekt?), 3 × verkocht aan Oirschot Recreatie / ingeboekt bij Veldhoven Recreatie (24712615/24712648/
+  24712802), 2 × nummer-verwisseling 24712869/24712873 € 69,82, 1 × kliktest-spiegel 24713191 (16-08). De verkoopkant via `Receipts` maakt óók
+  KF-verkopen zichtbaar die vóór de fix voor het IC-blok onzichtbaar waren (+2 `ic_ontbreekt_bij_ontvanger` Molenhof Beheer 24712908/24712909).
 
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 

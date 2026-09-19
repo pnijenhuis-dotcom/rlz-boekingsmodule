@@ -94,6 +94,13 @@
   `scoped_session(None)` lezen. Meetlat ná deploy: `reconciliatie-alles --alleen intercompany --lees-only` → 0 × `ic_spiegel_rood`,
   `--alleen doorbelasting_aansluiting` → 1 bron-administratie (Kempen Facilities, 8 doelen). Tellers: uitkomst `gebundeld` van de
   extractie-wachtrij-trigger telt als zachte overslaan-reden `trigger_gebundeld` (nooit LET-OP) — zie `docs/regels/intake-extractie.md`.
+  **Gemeten 19-09 17:30 op `a731dd4` (executies whzvz/txspn): `ic_spiegel_rood` 0, spiegelparen 174/174 groen, aansluitingsblok 1 bron /
+  8 doelen / 1652 sluiten / 108 afwijkingen — werkt in productie JA** (rapport `2026-09-19-nameting-ic-spiegel-rood-na-deploy.md`). De
+  `--alleen`-keuzelijst van `reconciliatie-alles` is sinds 19-09 letterlijk `run.BLOKKEN` (guard `tests/unit/test_reconciliatie_alleen_keuzelijst.py`):
+  een blok dat in de run zit maar niet los meetbaar is, is een meetlat die op de job-image met argparse-exit 2 strandt (zo ging het met
+  `doorbelasting_aansluiting` op 19-09). Eén feit in twee blokken (99 × KF → Molenhof Beheer als `ic_ontbreekt_bij_ontvanger` én als
+  `da_ontbreekt_in_doel`) is bekend en bewust: de standen per soort regelen de melding (IC-soort in `meten`, `da_*` code-default `actie` → de
+  explosie-rem doet bij > 50 zijn werk).
 
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 

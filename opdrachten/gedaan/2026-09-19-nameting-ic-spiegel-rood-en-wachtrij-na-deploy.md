@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-19, rapport: docs/rapporten/2026-09-19-nameting-ic-spiegel-rood-na-deploy.md
+
 Domeinen: reconciliatie, doorbelasting-intercompany, werkloop-productie
 
 # OPDRACHT 19-09 — Nameting ná deploy: 174 × ic_spiegel_rood → 0, aansluitingsblok leeft, wachtrij-trigger gebundeld — vervolg op

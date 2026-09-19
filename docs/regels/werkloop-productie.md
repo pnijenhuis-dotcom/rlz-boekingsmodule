@@ -140,3 +140,15 @@
      aan voor beide repo's — skip als het bestand ontbreekt). Bestaande guards aangepast: levende inbox-lock is niet meer stil
      (`test_cc_inbox_parallel.py`, `_pull.py`, `_herstel.py`), vuile werkboom bij start = stop i.p.v. LET-OP, stubs committen een
      rapport, `index.lock`-scenario eindigt in WIP + LET-OP. Rapport `docs/rapporten/2026-09-19-cc-inbox-lock-per-opdracht-en-poort.md`.
+
+<!-- toegevoegd 19-09-2026, opdracht "nameting-ic-spiegel-rood-en-wachtrij-na-deploy" -->
+- **Meetlat = bestaande CLI-keuze; een script wordt nooit bewerkt terwijl het draait (19-09; rapport `2026-09-19-nameting-ic-spiegel-rood-na-deploy.md`):**
+  (1) een meetrecept noemt alleen CLI-vormen die op de gedeployde image bestaan — de `--alleen`-keuzelijst van `reconciliatie-alles` is sinds
+  19-09 `run.BLOKKEN` (guard `tests/unit/test_reconciliatie_alleen_keuzelijst.py`); strandt een meetlat op argparse-exit 2, dan is de
+  terugval de volledige `reconciliatie-alles --lees-only` (alle blokken, ~15 min) en de sectie uit Cloud Logging op de executienaam.
+  (2) `scripts/gcp/nameting.sh` (en élk bash-script) NIET bewerken terwijl een run ervan loopt: bash leest incrementeel, een toegevoegde
+  regel verschuift de offsets en het script strandt ná de job-executie mét "syntaxfout nabij ')'" (19-09 herhaling van 17-09); de
+  job-uitkomst is dan alsnog te lezen met `gcloud logging read … labels."run.googleapis.com/execution_name"="<executie>"`. Script-edits
+  wachten tot de achtergrondrun klaar is, of gaan in een kopie. (3) Een lees-only nameting legt niets vast: auto-sluiting van bevindingen,
+  aandacht-tellers en dagtellers zijn pas meetbaar ná de eerstvolgende ÉCHTE run (scheduler 06:30) — een échte run forceren = actiemail
+  buiten het dagritme, dus een vervolg-opdracht in de inbox met de datum van die run.

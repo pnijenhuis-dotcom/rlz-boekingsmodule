@@ -11781,8 +11781,9 @@ alinea "Patroon vaststaande actie = het systeem doet het".**
   de 5 `kassarapport_in_werkvoorraad` verdwijnen (profx_journaal), 1 blijft (omzetrekeningen); de 8 `omzet_in_inkoopstroom`
   blijven mens-werk. Schermwinst zonder automatisering: `rc_zonder_tegenrekening` (84) bundelen tot één LET-OP per administratie.
 - **Systeemfout ic_spiegel_rood 174× + wachtrij-trigger 429 + tellers BLOW — GEDIAGNOSTICEERD + GEFIXT 19-09 (opdracht
-  `2026-09-19-ic-spiegel-rood-174-…`; rapport `docs/rapporten/2026-09-19-ic-spiegel-rood-174-wachtrij-trigger-en-tellers.md`; geen migratie, geen RLZ-write; werkt in productie: niet gemeten,
-  nameting-opdracht in de inbox).** (1) **IC-verkoopkant blind voor API-facturen:** `lees_verkoop_rlz` las de
+  `2026-09-19-ic-spiegel-rood-174-…`; rapport `docs/rapporten/2026-09-19-ic-spiegel-rood-174-wachtrij-trigger-en-tellers.md`; geen migratie, geen RLZ-write; werkt in productie: JA voor IC-blok + aansluitingsblok,
+  gemeten 19-09 17:30 op image `a731dd4` — rapport `docs/rapporten/2026-09-19-nameting-ic-spiegel-rood-na-deploy.md`; auto-sluiting/aandacht/
+  wachtrij-teller pas meetbaar ná de échte run van 20-09, vervolg-opdracht in de inbox).** (1) **IC-verkoopkant blind voor API-facturen:** `lees_verkoop_rlz` las de
   `SalesInvoices`-COLLECTIE, die via de API aangemaakte verkoopfacturen niet toont (gedocumenteerd RLZ-feit, live herbevestigd:
   `InvoiceNumber eq 24713275` → count 0, record-GET 200) — álle 174 geboekte doorbelastingsparen van Kempen Facilities → Veldhoven
   94 / Oirschot Recreatie 34 / Molenhof Verhuur 28 / Molenhof Beheer 11 / Mantelzorgwoningen 7 waren daardoor rood én hun spiegels
@@ -11803,6 +11804,17 @@ alinea "Patroon vaststaande actie = het systeem doet het".**
   OngeldigeStatusovergang) — de late schrijver schrijft niets. Gouden set: `tests/keten/test_x_bulk_upload_bundelvenster_en_cas.py`
   (bulk op de cloud-wachtrij → één executie, één verwerker per document, cache = telling, late schrijver geweigerd). Regelteksten: `docs/regels/reconciliatie.md`,
   `docs/regels/doorbelasting-intercompany.md`, `docs/regels/intake-extractie.md` (alinea's 19-09 "Systeemfout ic_spiegel_rood …").
+  **Nameting ná deploy 19-09 (lees-only, job-image `a731dd4`, executies whzvz/txspn):** `ic_spiegel_rood` 174 → 0; KF → Veldhoven 826/829 gelezen,
+  spiegelparen 94/94 · Oirschot 377/374, 34/34 · Molenhof Verhuur 298/299, 28/28 · Molenhof Beheer 110/11, 11/11 · Mantelzorgwoningen 51/51/51, 7/7
+  (was 44/51/44, 0/7); `ic_ontbreekt_bij_verkoper` 6 → 5, `ic_ontbreekt_bij_ontvanger` 205 → 207 (+2 KF → Molenhof Beheer, verkopen die vóór de
+  fix onzichtbaar waren). Aansluitingsblok: 1 bron mét whitelist (was 0), KF 8 doelen, 1758 verkoop / 1660 inkoop, 1652 sluiten, 108 afwijkingen
+  (99 × `da_ontbreekt_in_doel` Molenhof Beheer = hetzelfde feit als het IC-blok; 3 × Oirschot verkocht/Veldhoven ingeboekt; 2 × nummer-
+  verwisseling € 69,82; 1 kliktest-spiegel 24713191) — de opdracht-verwachting "0" had geen basis (het blok had nooit getoetst). `da_*`
+  staat op code-default `actie` → 102 > 50 = explosie-rem bij de run van 20-09 (ontworpen gedrag). Bijvangst: `--alleen
+  doorbelasting_aansluiting` was géén CLI-keuze (argparse-exit 2) → keuzelijst = `run.BLOKKEN`, guard `test_reconciliatie_alleen_keuzelijst.py`.
+  BLOW c9ba6d8d: `duplicaten-backfill --dry-run` = exact 1 af te voeren, de schrijvende job is door de auto-mode-classifier geweigerd → klikpunt Peter.
+  Niet gemeten (échte run nodig): `reconciliatie_auto_gesloten` × 174, aandacht 340 → ≤ 166, `trigger_gebundeld` (geen bulk sinds de deploy) —
+  vervolg-opdracht `2026-09-20-nameting-ic-spiegel-rood-echte-run-en-aansluiting-alleen.md`.
 
 
 - **Nameting kassarapport-autotype poging 1 (19-09 ~16:00) — NIET GEMETEN, deploy geblokkeerd door een stille push-fout.** Stap 0 faalde:
