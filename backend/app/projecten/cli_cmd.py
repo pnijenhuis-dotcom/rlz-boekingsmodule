@@ -1,15 +1,17 @@
 """LEES-ONLY CLI's projecten (blok 3 18-09, Peter's opruimpunten) — in de nameting-allowlist
 (`scripts/gcp/nameting.sh`):
 
-- `projecten-afsluit-kandidaten [--administratie X] [--dagen 90]`: per lopend project de kandidaat-stand (stil ≥ N
-dagen én
-  contract-m² bereikt) mét bron (laatste activiteit, gebouwd/contract-m²) — welke van de actieve VGG/Universal-projecten
-  voldoen. Geen actie: afsluiten blijft een klik van de mens.
+- `projecten-afsluit-kandidaten [--administratie X] [--maanden N] [--alles]` (herzien 19-09): dezelfde motor als de tab
+  "Afsluiten? (N)" — kandidaat = stil N maanden (per administratie) / eindfactuur geboekt / naam zegt afgesloten / looptijd
+  verstreken; per rij laatste activiteit + open posten, uitgestelde ("Niet afsluiten") apart. Geen actie: afsluiten
+  blijft een
+  klik van de mens (ook in bulk).
 - `projecten-dubbele-nummers [--administratie X]`: alle dubbele projectnummers per administratie mét beide id's en de
   tellers facturen/weekstaten/planning per kant + voorstel "blijft" (klikpunt samenvoegen, nooit automatisch).
 - `facturen-zonder-project (--administratie X | --alle-projectverplicht) [--jaar 2026] [--rlz]` (18-09 avond, TODO Peter
   23-08 "eerst rapport, dan beslissen"): in de module geboekte inkoopfacturen met een regel zonder project in
-  project-verplichte administraties, gedekt/niet gedekt door een bevroren projectverdeling, aangifte-stand + herstelroute
+  project-verplichte administraties, gedekt/niet gedekt door een bevroren projectverdeling, aangifte-stand +
+  herstelroute
   (voorstel, nooit uitgevoerd) + deterministisch projectvoorstel; `--rlz` = dezelfde toets op de RLZ-kant, uitsluitend GET
   (`app/projecten/zonder_project.py`).
 Geen writes; RLZ alleen lezen (aangifte-status, en de regels bij `--rlz`)."""
@@ -28,12 +30,14 @@ PROJECTEN_COMMANDOS = ("projecten-afsluit-kandidaten", "projecten-dubbele-nummer
 def register_projecten(subparsers) -> None:  # noqa: ANN001
     kand = subparsers.add_parser(
         "projecten-afsluit-kandidaten",
-        help="Blok 3 18-09: LEES-ONLY — lopende projecten die aan het afsluit-criterium voldoen (geen uren/planning/"
-        "verplichting/factuur in N dagen én contract-m² bereikt) mét bron; nooit automatisch afsluiten.",
+        help="19-09: LEES-ONLY — afsluit-kandidaten uit dezelfde motor als de tab Afsluiten? (stil N mnd / eindfactuur / "
+        "naam zegt afgesloten / looptijd verstreken) mét laatste activiteit en open posten; nooit automatisch afsluiten.",
     )
     kand.add_argument("--administratie", default=None, metavar="UUID|NAAMDEEL", help="Beperk tot één administratie.")
-    kand.add_argument("--dagen", type=int, default=None, help="Stil-venster in dagen (default 90).")
-    kand.add_argument("--alles", action="store_true", help="Toon óók de niet-kandidaten mét reden.")
+    kand.add_argument(
+        "--maanden", type=int, default=None, help="Stil-venster in maanden (default: instelling per administratie, 6)."
+    )
+    kand.add_argument("--alles", action="store_true", help="Toon óók de niet-kandidaten.")
     dub = subparsers.add_parser(
         "projecten-dubbele-nummers",
         help="Blok 3 18-09: LEES-ONLY — dubbele projectnummers per administratie (beide id's, facturen/weekstaten/"
@@ -73,78 +77,51 @@ def _administraties(tekst: str | None) -> list[tuple[uuid.UUID, str]] | None:
 
 
 def _afsluit_kandidaten(args: argparse.Namespace) -> int:
-    from decimal import Decimal
-
+    """Opdracht 19-09: dezelfde motor als de tab "Afsluiten? (N)" (`app/projecten/afsluiten.py`) — aantal per reden,
+    "Afgesloten …"-namen bovenaan, laatste activiteit + open posten per rij, uitgestelde rijen apart. LEES-ONLY."""
     from app.db.session import scoped_session
-    from app.projecten import status as status_service
-    from app.sync.models import PROJECT_STATUS_AFGESLOTEN, ProjectCache
-    from app.uren.models import ProjectSpecificatie
-    from app.uren.overzichten import _gebouwd_m2
+    from app.projecten import afsluiten
 
     administraties = _administraties(args.administratie)
     if administraties is None:
         return 2
-    dagen = args.dagen or status_service.KANDIDAAT_DAGEN
-    totaal = kandidaten_totaal = 0
+    totaal = kandidaten_totaal = uitgesteld_totaal = 0
+    per_reden: dict[str, int] = {r: 0 for r in afsluiten.REDENEN}
     print(
-        f"Afsluit-kandidaten — {len(administraties)} administratie(s), stil-venster {dagen} dagen. "
-        "LEES-ONLY, geen actie."
+        f"Afsluit-kandidaten — {len(administraties)} administratie(s), stil-venster "
+        f"{args.maanden or 'per administratie (default 6)'} mnd. LEES-ONLY, geen actie; "
+        "afsluiten = Projecten › Afsluiten? (N)."
     )
     for aid, naam in administraties:
         with scoped_session(aid) as session:
-            projecten = list(
-                session.scalars(
-                    select(ProjectCache)
-                    .where(
-                        ProjectCache.administratie_id == aid,
-                        ProjectCache.verdwenen_uit_bron_op.is_(None),
-                        ProjectCache.is_actief.is_(True),
-                        ProjectCache.status != PROJECT_STATUS_AFGESLOTEN,
-                    )
-                    .order_by(ProjectCache.naam)
-                )
+            rijen = afsluiten.kandidaten_voor_administratie(
+                session, administratie_id=aid, administratie_naam=naam, stil_maanden=args.maanden
             )
-            if not projecten:
-                continue
-            ids = {p.id for p in projecten}
-            specs = {
-                sp.project_id: sp
-                for sp in session.scalars(
-                    select(ProjectSpecificatie).where(
-                        ProjectSpecificatie.administratie_id == aid, ProjectSpecificatie.project_id.in_(ids)
-                    )
-                )
-            }
-            gebouwd = {pid: _gebouwd_m2(session, aid, pid) for pid in ids}
-            standen = status_service.kandidaat_afsluiten_per_project(
-                session,
-                administratie_id=aid,
-                project_ids=ids,
-                gebouwd_m2=gebouwd,
-                contract_m2={pid: (specs[pid].contract_m2 if pid in specs else None) for pid in ids},
-                dagen=dagen,
-            )
-        regels = []
-        for p in projecten:
-            st = standen.get(p.id)
-            if st is None:
-                continue
-            totaal += 1
-            if st.kandidaat:
-                kandidaten_totaal += 1
-            if st.kandidaat or args.alles:
-                c = specs[p.id].contract_m2 if p.id in specs else None
-                regels.append(
-                    f"  {'KANDIDAAT' if st.kandidaat else 'nee      '} {p.id}  {p.naam!r}  "
-                    f"gebouwd={gebouwd.get(p.id, Decimal('0'))} "
-                    f"contract={c if c is not None else '—'} m²  {st.reden}"
-                )
+        if not rijen:
+            continue
+        totaal += len(rijen)
+        kandidaten = [r for r in rijen if r.kandidaat]
+        uitgesteld = [r for r in rijen if r.uitgesteld]
+        kandidaten_totaal += len(kandidaten)
+        uitgesteld_totaal += len(uitgesteld)
+        for r in kandidaten:
+            for rd in r.redenen:
+                per_reden[rd] += 1
+        regels = afsluiten.rapportregels(rijen, alles=args.alles)
         if regels:
-            print(f"\n{naam} ({aid}) — {len(projecten)} lopende projecten")
+            print(
+                f"\n{naam} ({aid}) — {len(rijen)} lopende projecten, {len(kandidaten)} kandidaat, "
+                f"{len(uitgesteld)} uitgesteld; per reden: "
+                + ", ".join(
+                    f"{afsluiten.REDEN_LABEL[rd]} {sum(1 for k in kandidaten if rd in k.redenen)}" for rd in afsluiten.REDENEN
+                )
+            )
             print("\n".join(regels))
     print(
-        f"\nTotaal: {totaal} lopende projecten beoordeeld, {kandidaten_totaal} kandidaat afsluiten. "
-        "Afsluiten = klik in Inzicht › Projecten."
+        f"\nTotaal: {totaal} lopende projecten beoordeeld, {kandidaten_totaal} kandidaat afsluiten "
+        f"({', '.join(f'{afsluiten.REDEN_LABEL[r]} {n}' for r, n in per_reden.items())}), "
+        f"{uitgesteld_totaal} uitgesteld. "
+        "Afsluiten = vinkjes + 'Afsluiten (N)' in Projecten › Afsluiten? — nooit automatisch."
     )
     return 0
 

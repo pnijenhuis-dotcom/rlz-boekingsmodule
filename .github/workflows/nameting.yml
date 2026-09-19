@@ -188,6 +188,8 @@ jobs:
               scripts/gcp/nameting.sh facturen-zonder-project --alle-projectverplicht --jaar 2026 --rlz 2>> nameting-pa.stderr || rc_pa=$?
               echo "== projectverdeling-afgesloten-rapport --alle-projectverplicht =="
               scripts/gcp/nameting.sh projectverdeling-afgesloten-rapport --alle-projectverplicht 2>> nameting-pa.stderr || rc_pa=$?
+              echo "== projecten-afsluit-kandidaten Universal Steigerbouw (tab Afsluiten? — opdracht 19-09) =="
+              scripts/gcp/nameting.sh projecten-afsluit-kandidaten --administratie "Universal Steigerbouw" 2>> nameting-pa.stderr || rc_pa=$?
             } > "$UIT"
             cat nameting-pa.stderr >&2
             if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-pa.stderr; then
@@ -196,7 +198,8 @@ jobs:
             fi
             [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_pa)" >> "$UIT"
             TOT="$(grep -m1 -o "Totaal: [0-9]* actief project(en) mét 'Afgesloten'-naam, [0-9]* geboekt(e) verdelingsdeel(en)" "$UIT" || true)"
-            echo "Oordeel: ${TOT:-geen totaalregel} — job-exit $rc_pa" >> "$UIT"
+            KAND="$(grep -m1 -o "Totaal: [0-9]* lopende projecten beoordeeld, [0-9]* kandidaat afsluiten" "$UIT" || true)"
+            echo "Oordeel: ${TOT:-geen totaalregel} · ${KAND:-geen kandidatenregel} — job-exit $rc_pa" >> "$UIT"
             echo "STATUS projecten-afgesloten: rapport in $UIT (job-exit $rc_pa = uitkomst)"
           fi
           if [[ "$ONDERDEEL" == "query" ]]; then

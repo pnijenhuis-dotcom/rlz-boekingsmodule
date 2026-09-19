@@ -262,3 +262,37 @@ class LeverancierWerknummer(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
     bevestigd_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class ProjectAfsluitUitstel(Base):
+    """"Niet afsluiten" per project (opdracht 19-09, migratie 0167): de mens zegt mét verplichte reden dat een
+    afsluit-kandidaat
+    NIET dicht mag — de rij verdwijnt uit "Afsluiten? (N)" tot er activiteit ná `laatste_activiteit` (snapshot op het
+    moment van
+    het besluit) bijkomt; dan is het opnieuw een kandidaat. Eén rij per project (upsert), nooit verwijderd — het
+    audit_event
+    (`project_afsluiten_uitgesteld`) houdt de historie. RLS op administratie."""
+
+    __tablename__ = "project_afsluit_uitstel"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "administratie_id"],
+            ["boekhouding.project_cache.id", "boekhouding.project_cache.administratie_id"],
+            name="fk_project_afsluit_uitstel_project",
+        ),
+        Index("ix_project_afsluit_uitstel_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("platform.administratie.id", name="fk_project_afsluit_uitstel_administratie"),
+        primary_key=True,
+    )
+    reden: Mapped[str] = mapped_column()
+    door: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id", name="fk_project_afsluit_uitstel_door")
+    )
+    op: Mapped[datetime] = mapped_column(server_default=func.now())
+    laatste_activiteit: Mapped[date | None] = mapped_column(default=None)

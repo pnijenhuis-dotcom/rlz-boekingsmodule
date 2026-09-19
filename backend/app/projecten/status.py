@@ -12,28 +12,22 @@ client
 Boekhouding+Projecten (`_vereis_schrijfrol`). Gevolg: alle keuzelijsten filteren al op `is_actief` (planning, weekstaat,
 verplichting, combobox onderaan mét chip) — één mechanisme, geen tweede waarheid.
 
-Kandidaat afsluiten (automatisering-first, nooit automatisch): geen uren, planning, verplichting of factuurregel in
-`KANDIDAAT_DAGEN` én de m²-voortgang heeft het contract bereikt (gebouwd ≥ contract-m²) — een contractsom kent het
-model niet
-(beslispunt: m² is de deterministische maat; zonder contract-m² geen kandidaat, wel "stil sinds")."""
+Kandidaat afsluiten (automatisering-first, nooit automatisch): zie `app/projecten/afsluiten.py` (opdracht 19-09 —
+redenen stil /
+eindfactuur / naam zegt afgesloten / looptijd verstreken; herziet het 18-09-criterium op contract-m²)."""
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.sync.models import PROJECT_STATUS_AFGESLOTEN, PROJECT_STATUS_LOPEND, ProjectCache
-from app.tijd import vandaag_nl
-
-KANDIDAAT_DAGEN = 90
 
 
 class ProjectStatusFout(Exception):
@@ -228,8 +222,10 @@ def _wissel(
             administratie_id=administratie_id,
         )
         nieuw_stand = nieuw
-    # Opdracht 19-09: de omzetsleutel van de projectverdeling volgt de status — nog niet geboekte verdelingen die dit project
-    # raken worden herrekend (snapshot + tijdlijn "verdeling herberekend: ‹project› afgesloten"), geboekte blijven staan.
+    # Opdracht 19-09: de omzetsleutel van de projectverdeling volgt de status — nog niet geboekte verdelingen die dit
+    # project
+    # raken worden herrekend (snapshot + tijdlijn "verdeling herberekend: ‹project› afgesloten"), geboekte blijven
+    # staan.
     # Eigen transactie, nooit blokkerend (fout = logregel; de volgende lezing rekent tóch live).
     from app.projectverdeling.afgesloten import herbereken_na_projectstatus_veilig
 
@@ -281,108 +277,10 @@ def heropen_project(
     )
 
 
-# --- kandidaat afsluiten
-# ------------------------------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class KandidaatStand:
-    kandidaat: bool
-    #: Dagen sinds de laatste activiteit (uren/planning/verplichting/factuurregel); None = nooit activiteit gezien.
-    stil_dagen: int | None
-    laatste_activiteit: date | None
-    contract_bereikt: bool | None  # None = geen contract-m² bekend
-    reden: str
-
-
-def kandidaat_afsluiten_per_project(
-    session: Session,
-    *,
-    administratie_id: uuid.UUID,
-    project_ids: set[uuid.UUID],
-    gebouwd_m2: dict[uuid.UUID, Decimal],
-    contract_m2: dict[uuid.UUID, Decimal | None],
-    vandaag: date | None = None,
-    dagen: int = KANDIDAAT_DAGEN,
-) -> dict[uuid.UUID, KandidaatStand]:
-    """Set-based (vier statements voor álle projecten): laatste activiteitsdatum per project uit weekstaten (ISO-week →
-    maandag), planning (datum), verplichtingen (datum/aangemaakt_op) en factuurregels (datum). Kandidaat = stil ≥ 90
-    dagen
-    (of nooit activiteit maar wél ouder dan 90 dagen contract) ÉN gebouwd ≥ contract-m²."""
-    from app.projecten.models import ProjectRegelCache
-    from app.uren.models import PlanningToewijzing, Weekstaat
-    from app.verplichting.models import Verplichting
-
-    vandaag = vandaag or vandaag_nl()
-    if not project_ids:
-        return {}
-    ids = list(project_ids)
-    laatste: dict[uuid.UUID, date] = {}
-
-    def neem(pid: uuid.UUID, d: date | None) -> None:
-        if d is None:
-            return
-        if pid not in laatste or d > laatste[pid]:
-            laatste[pid] = d
-
-    for pid, jaar, week in session.execute(
-        select(Weekstaat.project_id, func.max(Weekstaat.jaar), func.max(Weekstaat.weeknummer))
-        .where(Weekstaat.administratie_id == administratie_id, Weekstaat.project_id.in_(ids))
-        .group_by(Weekstaat.project_id)
-    ):
-        # max(jaar)+max(week) is een benadering per project; voor "stil ≥ 90 dagen" volstaat de recentste week.
-        try:
-            neem(pid, date.fromisocalendar(int(jaar), min(int(week), 52), 1))
-        except ValueError:
-            neem(pid, date(int(jaar), 12, 28))
-    for pid, d in session.execute(
-        select(PlanningToewijzing.project_id, func.max(PlanningToewijzing.datum))
-        .where(PlanningToewijzing.administratie_id == administratie_id, PlanningToewijzing.project_id.in_(ids))
-        .group_by(PlanningToewijzing.project_id)
-    ):
-        neem(pid, d)
-    for pid, d, aangemaakt in session.execute(
-        select(Verplichting.project_id, func.max(Verplichting.datum), func.max(Verplichting.aangemaakt_op))
-        .where(Verplichting.administratie_id == administratie_id, Verplichting.project_id.in_(ids))
-        .group_by(Verplichting.project_id)
-    ):
-        neem(pid, d or (aangemaakt.date() if aangemaakt else None))
-    for pid, d in session.execute(
-        select(ProjectRegelCache.project_id, func.max(ProjectRegelCache.datum))
-        .where(
-            ProjectRegelCache.administratie_id == administratie_id,
-            ProjectRegelCache.project_id.in_(ids),
-            ProjectRegelCache.verdwenen_uit_bron_op.is_(None),
-        )
-        .group_by(ProjectRegelCache.project_id)
-    ):
-        neem(pid, d)
-
-    uit: dict[uuid.UUID, KandidaatStand] = {}
-    grens = vandaag - timedelta(days=dagen)
-    for pid in ids:
-        la = laatste.get(pid)
-        stil = (vandaag - la).days if la else None
-        c = contract_m2.get(pid)
-        bereikt: bool | None = None if not c or c <= 0 else gebouwd_m2.get(pid, Decimal("0")) >= c
-        stil_genoeg = la is None or la <= grens
-        if la is None:
-            reden = "geen uren, planning, verplichting of factuur bekend"
-        elif stil_genoeg:
-            reden = f"geen activiteit sinds {la.isoformat()} ({stil} dagen)"
-        else:
-            reden = f"nog actief (laatste activiteit {la.isoformat()})"
-        if bereikt is None:
-            reden += " · geen contract-m² bekend"
-        elif bereikt:
-            reden += " · contract-m² bereikt"
-        else:
-            reden += " · contract-m² nog niet bereikt"
-        uit[pid] = KandidaatStand(
-            kandidaat=bool(stil_genoeg and bereikt),
-            stil_dagen=stil,
-            laatste_activiteit=la,
-            contract_bereikt=bereikt,
-            reden=reden,
-        )
-    return uit
+# --- kandidaat afsluiten ----------------------------------------------------------------------------------------------
+# Opdracht 19-09: de kandidatenmotor leeft in `app/projecten/afsluiten.py` (één motor voor tab "Afsluiten? (N)", de chip
+# op
+# Inzicht › Projecten en de CLI). Het 18-09-criterium "stil ≥ 90 dagen ÉN contract-m² bereikt" is HERZIEN: kandidaat = één of meer
+# redenen (stil N maanden per administratie, eindfactuur geboekt, naam zegt afgesloten, looptijd verstreken); "Niet
+# afsluiten" mét
+# reden onthoudt het besluit tot er nieuwe activiteit is. Afsluiten blijft altijd een klik van een mens (ook in bulk).

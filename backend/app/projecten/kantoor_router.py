@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_kantoorrol
 from app.db.session import scoped_session
-from app.projecten import cijfers, cijfers_run, kantoor, kantoorbreed, ontleding
+from app.projecten import afsluiten, cijfers, cijfers_run, kantoor, kantoorbreed, ontleding
 from app.projecten import schemas_kantoor as schemas
 from app.projecten import status as status_service
 from app.projecten.motor import ProjectAanmakenMislukt, ProjectNaamConflict
@@ -132,6 +132,157 @@ def projecten_kantoorbreed(
             ],
         },
     )
+
+
+# --- Afsluiten? (N) — opdracht Peter 19-09 (routes bewust VÓÓR `/{administratie_id}`: geen UUID) ----------------------
+
+
+def _activiteit_dto(a: afsluiten.Activiteit | None) -> schemas.AfsluitActiviteitDto | None:
+    if a is None:
+        return None
+    return schemas.AfsluitActiviteitDto(soort=a.soort, datum=a.datum, bedrag=a.bedrag, boekstuk=a.boekstuk)
+
+
+def _kandidaat_dto(k: afsluiten.Kandidaat) -> schemas.AfsluitKandidaatDto:
+    op = k.open_posten
+    return schemas.AfsluitKandidaatDto(
+        administratie_id=k.administratie_id,
+        administratie_naam=k.administratie_naam,
+        project_id=k.project_id,
+        naam=k.naam,
+        redenen=list(k.redenen),
+        reden_tekst=k.reden_tekst,
+        laatste_activiteit=_activiteit_dto(k.laatste_activiteit),
+        stil_dagen=k.stil_dagen,
+        stil_maanden=k.stil_maanden,
+        open_posten=schemas.AfsluitOpenPostenDto(
+            inkoop_niet_geboekt=op.inkoop_niet_geboekt,
+            inkoop_niet_geboekt_bedrag=op.inkoop_niet_geboekt_bedrag,
+            verplichting_open=op.verplichting_open,
+            uren_niet_gekeurd=op.uren_niet_gekeurd,
+            let_op=op.let_op,
+        ),
+        looptijd_tot=k.looptijd_tot,
+        uitstel=None
+        if k.uitstel is None
+        else schemas.AfsluitUitstelDto(
+            reden=k.uitstel.reden, door=k.uitstel.door, op=k.uitstel.op, laatste_activiteit=k.uitstel.laatste_activiteit
+        ),
+    )
+
+
+def _vertaal_afsluiten(exc: afsluiten.AfsluitenFout) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.get("/afsluit-kandidaten", response_model=schemas.AfsluitKandidatenResponse)
+def afsluit_kandidaten(
+    administratie_id: uuid.UUID | None = Query(None),
+    q: str = Query(""),
+    reden: str | None = Query(None),
+    toon_uitgesteld: bool = Query(False),
+    pagina: int = Query(1, ge=1),
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.AfsluitKandidatenResponse:
+    """Tab "Afsluiten? (N)" — kantoorbreed over de scope of één administratie (filter, nooit poort). Kandidaat = één of meer
+    redenen (stil N mnd / eindfactuur / naam zegt afgesloten / looptijd verstreken), "Afgesloten …"-namen bovenaan, per
+    rij
+    laatste activiteit + open posten (chip let op, geen blokkade); `toon_uitgesteld` = de "Niet afsluiten"-rijen."""
+    try:
+        lijst = afsluiten.lijst(
+            actor_id=actor.id,
+            rol=actor.rol,
+            administratie_id=administratie_id,
+            q=q,
+            reden=reden,
+            toon_uitgesteld=toon_uitgesteld,
+            pagina=pagina,
+        )
+    except afsluiten.AfsluitenFout as exc:
+        raise _vertaal_afsluiten(exc) from exc
+    return schemas.AfsluitKandidatenResponse(
+        rijen=[_kandidaat_dto(k) for k in lijst.rijen],
+        totaal=lijst.totaal,
+        pagina=lijst.pagina,
+        per_pagina=lijst.per_pagina,
+        tellers=schemas.AfsluitTellersDto(**lijst.tellers.__dict__),
+        redenen=list(afsluiten.REDENEN),
+        reden_labels=dict(afsluiten.REDEN_LABEL),
+        stil_maanden=lijst.stil_maanden,
+    )
+
+
+@router.post("/afsluiten-bulk", response_model=schemas.AfsluitBulkResponse)
+def afsluiten_bulk(
+    invoer: schemas.AfsluitBulkInput,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.AfsluitBulkResponse:
+    """Vinkjes + "Afsluiten (N)": per project de bestaande 0160-flow (bron eerst inactief, terugleesverificatie, RLZ
+    wint;
+    audit + herberekening projectverdeling), uitkomst per rij — nooit automatisch. Rol Beheerder + B+P (403 als
+    geheel)."""
+    try:
+        uitkomsten = afsluiten.sluit_kandidaten_af(
+            actor_id=actor.id,
+            rol=actor.rol,
+            items=[(i.administratie_id, i.project_id) for i in invoer.items],
+            reden=invoer.reden,
+            datum=invoer.datum,
+        )
+    except kantoor.ProjectenFout as exc:
+        raise _vertaal(exc) from exc
+    dto = [schemas.AfsluitBulkUitkomstDto(**u.__dict__) for u in uitkomsten]
+    return schemas.AfsluitBulkResponse(
+        uitkomsten=dto,
+        gelukt=sum(1 for u in dto if u.uitkomst == "gelukt"),
+        mislukt=sum(1 for u in dto if u.uitkomst != "gelukt"),
+    )
+
+
+@router.get("/{administratie_id}/afsluit-instelling", response_model=schemas.AfsluitInstellingDto)
+def afsluit_instelling(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.AfsluitInstellingDto:
+    return schemas.AfsluitInstellingDto(stil_maanden=afsluiten.haal_stil_maanden(administratie_id=administratie_id))
+
+
+@router.put("/{administratie_id}/afsluit-instelling", response_model=schemas.AfsluitInstellingDto)
+def afsluit_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.AfsluitInstellingDto,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AfsluitInstellingDto:
+    """Stil-venster (maanden) per administratie — Beheerder + Boekhouding+Projecten, audit oud→nieuw."""
+    try:
+        maanden = afsluiten.zet_stil_maanden(
+            administratie_id=administratie_id, actor_id=actor.id, maanden=invoer.stil_maanden
+        )
+    except kantoor.ProjectenFout as exc:
+        raise _vertaal(exc) from exc
+    except afsluiten.AfsluitenFout as exc:
+        raise _vertaal_afsluiten(exc) from exc
+    return schemas.AfsluitInstellingDto(stil_maanden=maanden)
+
+
+@router.post("/{administratie_id}/{project_id}/niet-afsluiten", response_model=schemas.AfsluitUitstelDto)
+def project_niet_afsluiten(
+    administratie_id: uuid.UUID,
+    project_id: uuid.UUID,
+    invoer: schemas.NietAfsluitenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AfsluitUitstelDto:
+    """"Niet afsluiten" mét verplichte reden: de rij verdwijnt uit de kandidaten tot er nieuwe activiteit is (onthouden
+    per
+    project, audit `project_afsluiten_uitgesteld`); zichtbaar onder "Toon uitgesteld (N)". Rol Beheerder + B+P."""
+    try:
+        u = afsluiten.stel_afsluiten_uit(
+            administratie_id=administratie_id, project_id=project_id, actor_id=actor.id, reden=invoer.reden
+        )
+    except kantoor.ProjectenFout as exc:
+        raise _vertaal(exc) from exc
+    except afsluiten.AfsluitenFout as exc:
+        raise _vertaal_afsluiten(exc) from exc
+    return schemas.AfsluitUitstelDto(reden=u.reden, door=u.door, op=u.op, laatste_activiteit=u.laatste_activiteit)
 
 
 @router.get("/{administratie_id}", response_model=schemas.ProjectenLijstResponse)

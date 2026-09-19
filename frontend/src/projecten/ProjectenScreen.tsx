@@ -4,6 +4,7 @@ import { Badge, Button, SkeletonRegels } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
+import { AfsluitKandidatenTab } from './AfsluitKandidatenTab'
 import { NieuwProjectModal } from './NieuwProjectModal'
 import { haalProjecten, type ProjectenLijstDto, type ProjectLijstRijDto } from './projectenApi'
 
@@ -44,8 +45,17 @@ function voortgang(rij: ProjectLijstRijDto) {
 
 export function ProjectenScreen() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const administratieId = searchParams.get('administratie')
+  // Opdracht 19-09: tab "Afsluiten? (N)" (`?tab=afsluiten`, deeplink-doel vanuit de kantoorbrede tab en de reconciliatie).
+  const tab: 'projecten' | 'afsluiten' = searchParams.get('tab') === 'afsluiten' ? 'afsluiten' : 'projecten'
+  const [afsluitAantal, setAfsluitAantal] = useState<number | null>(null)
+  const kiesTab = (t: 'projecten' | 'afsluiten') => {
+    const p = new URLSearchParams(searchParams)
+    if (t === 'afsluiten') p.set('tab', 'afsluiten')
+    else p.delete('tab')
+    setSearchParams(p, { replace: true })
+  }
   const { administraties } = useAdministraties()
   const [data, setData] = useState<ProjectenLijstDto | null>(null)
   const [zoek, setZoek] = useState('')
@@ -111,7 +121,22 @@ export function ProjectenScreen() {
 
       {fout && <FoutMelding melding="De projecten konden niet geladen worden." detail={fout} onOpnieuw={() => setHerlaad((h) => h + 1)} />}
 
-      <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="segment" role="tablist" aria-label="Projecten" style={{ marginBottom: 12 }}>
+        <button role="tab" aria-selected={tab === 'projecten'} className={tab === 'projecten' ? 'actief' : undefined} onClick={() => kiesTab('projecten')} data-testid="tab-projecten">
+          Projecten{data ? ` (${data.projecten.length})` : ''}
+        </button>
+        <button role="tab" aria-selected={tab === 'afsluiten'} className={tab === 'afsluiten' ? 'actief' : undefined} onClick={() => kiesTab('afsluiten')} data-testid="tab-afsluiten">
+          Afsluiten?{afsluitAantal !== null ? ` (${afsluitAantal})` : ''}
+        </button>
+      </div>
+
+      {tab === 'afsluiten' && (
+        <div className="panel" role="tabpanel" data-testid="afsluit-paneel" style={{ padding: 0, overflow: 'hidden' }}>
+          <AfsluitKandidatenTab administratieId={administratieId} onAantal={setAfsluitAantal} />
+        </div>
+      )}
+
+      <div className="panel" role="tabpanel" hidden={tab !== 'projecten'} style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ alignItems: 'center', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: 10, padding: '12px 14px' }}>
           <input
             type="search"

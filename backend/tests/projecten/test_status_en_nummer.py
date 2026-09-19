@@ -13,7 +13,7 @@ Oranje signaal op een factuurregel naar een afgesloten project: `check_project_a
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -224,41 +224,8 @@ class TestAfsluitenHeropenen:
         assert detail["status"] == "lopend" and detail["is_actief"] is True
 
 
-class TestKandidaatAfsluiten:
-    def test_stil_en_contract_bereikt_is_kandidaat_recent_gepland_niet(
-        self, admin_engine: Engine, administratie_id, beheerder_id
-    ) -> None:
-        stil = maak_project(admin_engine, administratie_id, "26010 Stil (A)")
-        druk = maak_project(admin_engine, administratie_id, "26011 Druk (B)")
-        zonder_contract = maak_project(admin_engine, administratie_id, "26012 Geen contract (C)")
-        zzper = maak_gebruiker(admin_engine, "zzper", "Irfan O.")
-        with admin_engine.begin() as conn:
-            conn.execute(
-                text(
-                    "INSERT INTO boekhouding.planning_toewijzing (administratie_id, gebruiker_id, project_id, datum, dagdeel, "
-                    "toegevoegd_door) VALUES (:aid, :gid, :pid, :d, 'heel', :gid)"
-                ),
-                {"aid": administratie_id, "gid": zzper, "pid": druk, "d": VANDAAG - timedelta(days=3)},
-            )
-            conn.execute(
-                text(
-                    "INSERT INTO boekhouding.planning_toewijzing (administratie_id, gebruiker_id, project_id, datum, dagdeel, "
-                    "toegevoegd_door) VALUES (:aid, :gid, :pid, :d, 'heel', :gid)"
-                ),
-                {"aid": administratie_id, "gid": zzper, "pid": stil, "d": VANDAAG - timedelta(days=120)},
-            )
-        with scoped_session(administratie_id) as session:
-            standen = status_service.kandidaat_afsluiten_per_project(
-                session,
-                administratie_id=administratie_id,
-                project_ids={stil, druk, zonder_contract},
-                gebouwd_m2={stil: Decimal("400"), druk: Decimal("400"), zonder_contract: Decimal("0")},
-                contract_m2={stil: Decimal("400"), druk: Decimal("400"), zonder_contract: None},
-                vandaag=VANDAAG,
-            )
-        assert standen[stil].kandidaat is True and standen[stil].stil_dagen == 120 and "contract-m² bereikt" in standen[stil].reden
-        assert standen[druk].kandidaat is False and "nog actief" in standen[druk].reden
-        assert standen[zonder_contract].kandidaat is False and "geen contract-m² bekend" in standen[zonder_contract].reden
+# Kandidaat afsluiten: sinds 19-09 in `tests/projecten/test_afsluiten.py` (motor `app/projecten/afsluiten.py` — herziet het
+# 18-09-criterium op contract-m²).
 
 
 class TestProjectnummerUniek:

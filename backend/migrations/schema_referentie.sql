@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0166
+-- Migratie-head bij deze dump: 0167
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2414,6 +2414,22 @@ ALTER TABLE ONLY boekhouding.planning_wijziging_melding FORCE ROW LEVEL SECURITY
 
 
 --
+-- Name: project_afsluit_uitstel; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.project_afsluit_uitstel (
+    project_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    reden text NOT NULL,
+    door uuid NOT NULL,
+    op timestamp with time zone DEFAULT now() NOT NULL,
+    laatste_activiteit date
+);
+
+ALTER TABLE ONLY boekhouding.project_afsluit_uitstel FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: project_cache; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -3835,6 +3851,7 @@ CREATE TABLE platform.administratie (
     kassa_profiel boolean,
     uren_omschrijving_chips jsonb,
     uren_herinnering_tijd time without time zone,
+    project_afsluit_stil_maanden smallint DEFAULT '6'::smallint NOT NULL,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_boekhoud_backend CHECK (((boekhoud_backend)::text = ANY ((ARRAY['rlz'::character varying, 'odoo'::character varying])::text[]))),
     CONSTRAINT ck_administratie_naam_bron CHECK ((naam_bron = ANY (ARRAY['odoo'::text, 'rlz'::text, 'mens'::text]))),
@@ -5062,6 +5079,14 @@ ALTER TABLE ONLY boekhouding.payment_account_cache
 
 ALTER TABLE ONLY boekhouding.payment_item_cache
     ADD CONSTRAINT payment_item_cache_pkey PRIMARY KEY (id, administratie_id);
+
+
+--
+-- Name: project_afsluit_uitstel pk_project_afsluit_uitstel; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_afsluit_uitstel
+    ADD CONSTRAINT pk_project_afsluit_uitstel PRIMARY KEY (project_id, administratie_id);
 
 
 --
@@ -6864,6 +6889,13 @@ CREATE INDEX ix_planning_toewijzing_gebruiker ON boekhouding.planning_toewijzing
 --
 
 CREATE INDEX ix_planning_wijziging_melding_open ON boekhouding.planning_wijziging_melding USING btree (administratie_id, gebruiker_id, jaar, weeknummer);
+
+
+--
+-- Name: ix_project_afsluit_uitstel_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_afsluit_uitstel_administratie_id ON boekhouding.project_afsluit_uitstel USING btree (administratie_id);
 
 
 --
@@ -8838,6 +8870,30 @@ ALTER TABLE ONLY boekhouding.planning_signaal_afhandeling
 
 ALTER TABLE ONLY boekhouding.planning_toewijzing
     ADD CONSTRAINT fk_planning_toewijzing_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
+-- Name: project_afsluit_uitstel fk_project_afsluit_uitstel_administratie; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_afsluit_uitstel
+    ADD CONSTRAINT fk_project_afsluit_uitstel_administratie FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: project_afsluit_uitstel fk_project_afsluit_uitstel_door; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_afsluit_uitstel
+    ADD CONSTRAINT fk_project_afsluit_uitstel_door FOREIGN KEY (door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: project_afsluit_uitstel fk_project_afsluit_uitstel_project; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_afsluit_uitstel
+    ADD CONSTRAINT fk_project_afsluit_uitstel_project FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
 
 
 --
@@ -12368,6 +12424,19 @@ ALTER TABLE boekhouding.planning_wijziging_melding ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY planning_wijziging_melding_scope ON boekhouding.planning_wijziging_melding USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: project_afsluit_uitstel; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.project_afsluit_uitstel ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: project_afsluit_uitstel project_afsluit_uitstel_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY project_afsluit_uitstel_scope ON boekhouding.project_afsluit_uitstel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

@@ -615,3 +615,139 @@ export interface WeekstatenStandDto {
   oudste_ontbrekende_jaar: number | null
   oudste_ontbrekende_week: number | null
 }
+
+// --- Afsluiten? (N) — opdracht Peter 19-09 -------------------------------------------------------------------------------
+// Eén motor (server) voor de tab per administratie én kantoorbreed, de chip op Inzicht › Projecten en de CLI. Kandidaat =
+// één of meer redenen; "Niet afsluiten" mét verplichte reden onthoudt het besluit tot er nieuwe activiteit is; bulk-afsluiten
+// = per project de bestaande afsluit-flow mét uitkomst per rij. De client formatteert alleen.
+
+export type AfsluitReden = 'stil' | 'eindfactuur' | 'naam_afgesloten' | 'looptijd_verstreken'
+export type AfsluitUitkomst = 'gelukt' | 'bron_weigert' | 'al_afgesloten' | 'niet_gevonden' | 'geen_toegang'
+
+export interface AfsluitActiviteitDto {
+  soort: 'inkoop' | 'verkoop' | 'uren' | 'planning' | 'verplichting' | string
+  datum: string
+  bedrag: string | null
+  boekstuk: string | null
+}
+
+export interface AfsluitOpenPostenDto {
+  inkoop_niet_geboekt: number
+  inkoop_niet_geboekt_bedrag: string
+  verplichting_open: number
+  uren_niet_gekeurd: number
+  let_op: boolean
+}
+
+export interface AfsluitUitstelDto {
+  reden: string
+  door: string
+  op: string
+  laatste_activiteit: string | null
+}
+
+export interface AfsluitKandidaatDto {
+  administratie_id: string
+  administratie_naam: string
+  project_id: string
+  naam: string | null
+  redenen: AfsluitReden[]
+  reden_tekst: string
+  laatste_activiteit: AfsluitActiviteitDto | null
+  stil_dagen: number | null
+  stil_maanden: number
+  open_posten: AfsluitOpenPostenDto
+  looptijd_tot: string | null
+  uitstel: AfsluitUitstelDto | null
+}
+
+export interface AfsluitTellersDto {
+  kandidaten: number
+  uitgesteld: number
+  administraties: number
+  per_reden: Record<string, number>
+  let_op: number
+}
+
+export interface AfsluitKandidatenDto {
+  rijen: AfsluitKandidaatDto[]
+  totaal: number
+  pagina: number
+  per_pagina: number
+  tellers: AfsluitTellersDto
+  redenen: AfsluitReden[]
+  reden_labels: Record<string, string>
+  stil_maanden: number | null
+}
+
+export interface AfsluitBulkUitkomstDto {
+  administratie_id: string
+  project_id: string
+  naam: string | null
+  uitkomst: AfsluitUitkomst
+  detail: string | null
+}
+
+export interface AfsluitBulkDto {
+  uitkomsten: AfsluitBulkUitkomstDto[]
+  gelukt: number
+  mislukt: number
+}
+
+export const AFSLUIT_REDEN_LABEL: Record<AfsluitReden, string> = {
+  stil: 'geen activiteit',
+  eindfactuur: 'eindfactuur geboekt',
+  naam_afgesloten: 'naam zegt afgesloten',
+  looptijd_verstreken: 'looptijd verstreken',
+}
+
+export const AFSLUIT_UITKOMST_LABEL: Record<AfsluitUitkomst, string> = {
+  gelukt: 'afgesloten',
+  bron_weigert: 'bron weigerde',
+  al_afgesloten: 'was al afgesloten',
+  niet_gevonden: 'niet gevonden',
+  geen_toegang: 'geen toegang',
+}
+
+export function haalAfsluitKandidaten(params: {
+  administratieId?: string | null
+  q?: string
+  reden?: AfsluitReden | null
+  toonUitgesteld?: boolean
+  pagina?: number
+}): Promise<AfsluitKandidatenDto> {
+  const p = new URLSearchParams()
+  if (params.administratieId) p.set('administratie_id', params.administratieId)
+  if (params.q) p.set('q', params.q)
+  if (params.reden) p.set('reden', params.reden)
+  if (params.toonUitgesteld) p.set('toon_uitgesteld', 'true')
+  if (params.pagina && params.pagina > 1) p.set('pagina', String(params.pagina))
+  const qs = p.toString()
+  return apiJson(`/projecten/afsluit-kandidaten${qs ? `?${qs}` : ''}`)
+}
+
+export function sluitProjectenBulkAf(
+  items: { administratie_id: string; project_id: string }[],
+  payload: { reden?: string | null; datum?: string | null } = {},
+): Promise<AfsluitBulkDto> {
+  return apiPostJson('/projecten/afsluiten-bulk', { items, ...payload })
+}
+
+export function projectNietAfsluiten(administratieId: string, projectId: string, reden: string): Promise<AfsluitUitstelDto> {
+  return apiPostJson(`/projecten/${administratieId}/${projectId}/niet-afsluiten`, { reden })
+}
+
+export function zetAfsluitStilMaanden(administratieId: string, stilMaanden: number): Promise<{ stil_maanden: number }> {
+  return apiJson(`/projecten/${administratieId}/afsluit-instelling`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stil_maanden: stilMaanden }),
+  })
+}
+
+/** Rollen die mogen afsluiten / "niet afsluiten" / het stil-venster zetten (server-side afgedwongen: Beheerder + B+P).
+ * Zonder auth-context (visueel harnas, losse test) tonen we de knoppen — de server blijft de waarheid. */
+export function magAfsluitenBedienen(rol: string | null | undefined): boolean {
+  if (rol === undefined || rol === null) return true
+  return rol === 'beheerder' || rol === 'boekhouding_projecten'
+}

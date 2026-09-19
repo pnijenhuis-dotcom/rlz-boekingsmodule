@@ -193,6 +193,46 @@
   leesfouten, 0 documenten mét kostenregel zonder Project (alle vijf project-verplichte administraties: 1.628 gelezen, 0) → bulk-herstel
   niet nodig. Tests `tests/projectverdeling/test_afgesloten.py`.
 
+<!-- toegevoegd 19-09-2026, opdracht "projecten-afsluit-kandidaten-scherm-bulk-afsluiten" -->
+- **Projecten — tab "Afsluiten? (N)" mét bulk-afsluiten en "Niet afsluiten" (Peter 19-09: "welk project is afgesloten? dat onderscheid
+  maken wij nu nog niet"; voorwaarde voor de verdeelsleutel-opdracht van dezelfde ochtend; migratie 0167 =
+  `platform.administratie.project_afsluit_stil_maanden` (smallint, default 6) + `boekhouding.project_afsluit_uitstel` (PK project +
+  administratie, reden NOT NULL, door, op, snapshot `laatste_activiteit`; RLS op administratie, geen DELETE-grant); BESLISSINGEN
+  "PROJECTEN — TAB AFSLUITEN? MÉT BULK-AFSLUITEN EN NIET-AFSLUITEN (Peter 19-09)"; HERZIET het 18-09-kandidaatcriterium "stil ≥ 90 dagen ÉN
+  contract-m² bereikt"):** (1) **Eén motor** `app/projecten/afsluiten.py` voor de tab per administratie, de kantoorbrede tab op Inzicht ›
+  Projecten, de chip "N kandidaat afsluiten →" en de lees-only CLI `projecten-afsluit-kandidaten [--administratie] [--maanden] [--alles]`.
+  Kandidaat = lopend + actief project mét één of meer REDENEN, deterministisch: `stil` (geen inkoop-/verkoopregel, weekstaat, planning of
+  verplichting in de laatste N maanden; N = `project_afsluit_stil_maanden`, 1..36, instelbaar per administratie op de tab zelf door
+  Beheerder + Boekhouding+Projecten, audit `project_afsluit_stil_maanden_gewijzigd`), `eindfactuur` (jongste VERKOOPregel draagt
+  eindfactuur/eindafrekening/slotfactuur in omschrijving of referentie), `naam_afgesloten` (`omzet.naam_zegt_afgesloten`, status actief —
+  nooit stil uitsluiten op naam, wél aanbieden), `looptijd_verstreken` (`project_specificatie.looptijd_tot` < vandaag). **Een project
+  zonder énige activiteit telt NIET als stil** (de cache kent geen aanmaakdatum; een gisteren aangemaakt project mag nooit "afsluiten?"
+  heten) — de redentekst zegt dat wel. Per rij: laatste activiteit (soort inkoop/verkoop/uren/planning/offerte, datum, bedrag, boekstuk)
+  en open posten als chip "let op" — inkoop nog niet geboekt (boekvoorstelregels op het project van documenten buiten
+  `ONDERWEG_UITGESLOTEN_STATUSSEN`), verplichting open (GEACCORDEERD, niet vervallen, verbruik < bedrag), uren niet gekeurd (weekstaat ≠
+  goedgekeurd) — informatie, nooit een blokkade. Sortering: "Afgesloten …"-namen bovenaan, dan meeste redenen, dan langst stil. (2)
+  **Bulk "Afsluiten (N)"** (`POST /projecten/afsluiten-bulk`, max 200 items, optionele reden/datum voor álle) loopt per project door de
+  bestaande 0160-flow `status.sluit_project_af` (bron eerst inactief mét terugleesverificatie, RLZ wint; Odoo archived; audit
+  `project_afgesloten`; herberekening projectverdeling) mét uitkomst per rij `gelukt` / `bron_weigert` (mét de reden, o.a. geen
+  credential) / `al_afgesloten` / `niet_gevonden` / `geen_toegang` (administratie buiten scope); één bron-client per administratie; de
+  rolpoort (Beheerder + B+P, `kantoor._SCHRIJF_ROLLEN`) staat fail-closed VÓÓR de eerste bron-call en geeft 403 als geheel. NOOIT
+  automatisch — de knop blijft van een mens. (3) **"Niet afsluiten"** (`POST /projecten/{aid}/{pid}/niet-afsluiten`, reden VERPLICHT →
+  422 leeg) upsert `project_afsluit_uitstel` mét snapshot van de laatste activiteit + audit `project_afsluiten_uitgesteld` oud→nieuw;
+  de rij verdwijnt uit de kandidaten tot er activiteit ná het snapshot is (dan opnieuw kandidaat) en blijft zichtbaar onder "Toon
+  uitgesteld (N)" mét reden/sinds — niets verdwijnt stil. (4) **Rechten:** lezen = élke kantoorrol binnen scope (`vereis_kantoorrol` +
+  `mijn_administraties`), handelen = Beheerder + Boekhouding+Projecten (Haci/Iris-patroon), Boekhouding leest alleen (knoppen weg via
+  `magAfsluitenBedienen`, server beslist), klant-accordeur/veld-app 403. (5) **UI:** `frontend/src/projecten/AfsluitKandidatenTab.tsx`
+  in beide lijsten als `segment`-tab "Afsluiten? (N)" (`?tab=afsluiten`, teller uit dezelfde bron als de tabel), zoekveld + `Select`
+  op reden mét tellers per reden, chip "N met open posten", vinkjes + kolomkop alles-kiezen, uitkomst-badge per rij + overzicht
+  "Laatste bulk-actie" (blijft staan ná herladen), "Openen →" naar het detail, administratie-link = deeplink `?administratie=…&tab=afsluiten`;
+  lege stand is een zin. Tabel in `.tabel-scroll`; harnas `harness-werkvoorraad.html?projecten=1&tab=afsluiten` in de overflow-sweep.
+  (6) **Meting Universal Steigerbouw 19-09 (leesreplica, venster 6 mnd, vandaag 19-09):** 83 lopende actieve projecten, **8 kandidaten —
+  álle 8 op `naam_afgesloten`** (25017 óók `eindfactuur`: verkoopregel "Eindfactuur", laatste activiteit 03-06), **0 op `stil`** (het
+  jongste "Afgesloten"-project 26091 had 15-09 nog een verkoopregel; 25157 Harderwijk is 173 dagen stil — net binnen 6 mnd), 0 op
+  looptijd (geen `looptijd_tot` gevuld), 11 projecten zonder énige activiteit (o.a. 26149 tweemaal en 26064 Harskamp náást "Afgesloten
+  26064 Apeldoorn" = dubbele nummers → CLI `projecten-dubbele-nummers`). Rapport `docs/rapporten/2026-09-19-projecten-afsluiten-tab-bulk.md`.
+  Tests `tests/projecten/test_afsluiten.py` (10), vitest `AfsluitKandidatenTab.test.tsx` (7).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)

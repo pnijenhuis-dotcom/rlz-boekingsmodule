@@ -39,7 +39,7 @@ from app.auth import service as auth_service
 from app.db.models import Administratie, GebruikerRol
 from app.db.session import scoped_session
 from app.documenten.models import Document, DocumentStatus
-from app.projecten import status as status_service
+from app.projecten import afsluiten
 from app.projecten.cijfers import _tarief_voor
 from app.projecten.models import ProjectRegelCache, ProjectRegelSoort
 from app.sync.models import PROJECT_STATUS_AFGESLOTEN, ProjectCache, VendorCache
@@ -542,15 +542,19 @@ def _rijen_voor_administratie(
         planning = (
             _planning_per_project(session, aid, project_ids, tot_en_met=vandaag + timedelta(days=7)) if uren_aan else {}
         )
-        # Blok 3 18-09: kandidaat afsluiten (set-based, alleen voor lopende projecten) — nooit automatisch afsluiten.
-        kandidaten = status_service.kandidaat_afsluiten_per_project(
-            session,
-            administratie_id=aid,
-            project_ids={p.id for p in projecten if p.status != PROJECT_STATUS_AFGESLOTEN},
-            gebouwd_m2=gebouwd,
-            contract_m2={p.id: (specs[p.id].contract_m2 if p.id in specs else None) for p in projecten},
-            vandaag=vandaag,
-        )
+        # Blok 3 18-09 / herzien 19-09: kandidaat afsluiten uit de ene motor `afsluiten.py` (redenen
+        # stil/eindfactuur/naam/
+        # looptijd, uitstel gerespecteerd) — set-based, alleen voor lopende projecten; nooit automatisch afsluiten.
+        kandidaten = {
+            k.project_id: k
+            for k in afsluiten.kandidaten_voor_administratie(
+                session,
+                administratie_id=aid,
+                administratie_naam=naam,
+                vandaag=vandaag,
+                project_ids={p.id for p in projecten if p.status != PROJECT_STATUS_AFGESLOTEN},
+            )
+        }
         uit: list[Rij] = []
         for p in projecten:
             spec = specs.get(p.id)
@@ -590,7 +594,7 @@ def _rijen_voor_administratie(
                     status=p.status,
                     afgesloten_op=p.afgesloten_op,
                     kandidaat_afsluiten=bool(kandidaat and kandidaat.kandidaat),
-                    kandidaat_reden=kandidaat.reden if kandidaat else None,
+                    kandidaat_reden=(kandidaat.reden_tekst or None) if kandidaat else None,
                 )
             )
         return uit

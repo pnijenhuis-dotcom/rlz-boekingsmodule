@@ -156,6 +156,9 @@ class Administratie(Base):
         Numeric(5, 2), default=Decimal("10.00"), server_default="10.00"
     )
     project_verplicht: Mapped[bool] = mapped_column(default=False)
+    # Afsluit-kandidaten (opdracht 19-09, migratie 0167): stil-venster in maanden (geen inkoop/verkoop/uren/planning) —
+    # instelbaar per administratie via Projecten › Afsluiten? (Beheerder + Boekhouding+Projecten), default 6.
+    project_afsluit_stil_maanden: Mapped[int] = mapped_column(SmallInteger, default=6, server_default="6")
     ai_extractie_ingeschakeld: Mapped[bool] = mapped_column(default=True)
     is_vastgoed: Mapped[bool] = mapped_column(default=False)
     # Profiel "Winkel / kassa" (blok G ProfX, Peter 16-09; migratie 0150): NULL = afgeleid (≥ 1 herkend kassarapport),

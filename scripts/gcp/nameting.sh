@@ -80,7 +80,7 @@ fi
 via_gh_onderdeel() {
   case "$1" in
     doorbelasting-aansluiting) echo doorbelasting-aansluiting ;;
-    facturen-zonder-project|projectverdeling-afgesloten-rapport) echo projecten-afgesloten ;;
+    facturen-zonder-project|projectverdeling-afgesloten-rapport|projecten-afsluit-kandidaten) echo projecten-afgesloten ;;
     app-bundels) echo app-bundels ;;
     reconciliatie-alles) echo reconciliatie ;;
     btw-default-rapport) echo btw-default ;;

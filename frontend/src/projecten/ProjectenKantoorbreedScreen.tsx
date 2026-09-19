@@ -11,6 +11,7 @@ import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Badge, Button, SkeletonRegels } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
+import { AfsluitKandidatenTab } from './AfsluitKandidatenTab'
 import {
   euro,
   haalProjectenKantoorbreed,
@@ -135,6 +136,9 @@ export function ProjectenKantoorbreedScreen() {
   const [versie, setVersie] = useState(0)
   // Blok 3 18-09: toggle "Toon afgesloten (N)" in de URL (`?afgesloten=1`); het facet 'afgesloten' impliceert 'm.
   const toonAfgesloten = zoekParams.get('afgesloten') === '1' || status === 'afgesloten'
+  // Opdracht 19-09: tab "Afsluiten? (N)" (`?tab=afsluiten`) — kandidaten uit dezelfde motor als de chip hieronder.
+  const tab: 'projecten' | 'afsluiten' = zoekParams.get('tab') === 'afsluiten' ? 'afsluiten' : 'projecten'
+  const [afsluitAantal, setAfsluitAantal] = useState<number | null>(null)
 
   useEffect(() => {
     let actueel = true
@@ -184,7 +188,22 @@ export function ProjectenKantoorbreedScreen() {
         </div>
       </div>
 
-      <div className="panel" data-testid="projecten-paneel" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="segment" role="tablist" aria-label="Projecten" style={{ marginBottom: 12 }}>
+        <button role="tab" aria-selected={tab === 'projecten'} className={tab === 'projecten' ? 'actief' : undefined} onClick={() => zetParam('tab', null)} data-testid="tab-projecten">
+          Projecten{data ? ` (${data.tellers.projecten})` : ''}
+        </button>
+        <button role="tab" aria-selected={tab === 'afsluiten'} className={tab === 'afsluiten' ? 'actief' : undefined} onClick={() => zetParam('tab', 'afsluiten')} data-testid="tab-afsluiten">
+          Afsluiten?{(afsluitAantal ?? data?.tellers.kandidaat_afsluiten) !== undefined && (afsluitAantal ?? data?.tellers.kandidaat_afsluiten) !== null ? ` (${afsluitAantal ?? data?.tellers.kandidaat_afsluiten})` : ''}
+        </button>
+      </div>
+
+      {tab === 'afsluiten' && (
+        <div className="panel" role="tabpanel" data-testid="afsluit-paneel" style={{ padding: 0, overflow: 'hidden' }}>
+          <AfsluitKandidatenTab administratieId={administratieId || null} onAantal={setAfsluitAantal} />
+        </div>
+      )}
+
+      <div className="panel" role="tabpanel" data-testid="projecten-paneel" hidden={tab !== 'projecten'} style={{ padding: 0, overflow: 'hidden' }}>
         <div
           className="p-kop"
           style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}
@@ -202,9 +221,9 @@ export function ProjectenKantoorbreedScreen() {
                 {data.tellers.weekstaat_ontbreekt} weekstaat ontbreekt
               </Badge>
               {(data.tellers.kandidaat_afsluiten ?? 0) > 0 && (
-                <Badge variant="info" data-testid="chip-kandidaat" title="Geen uren, planning, verplichting of factuur in 90 dagen én contract-m² bereikt — afsluiten blijft een klik van jou">
-                  {data.tellers.kandidaat_afsluiten} kandidaat afsluiten
-                </Badge>
+                <button type="button" className="linkbtn" data-testid="chip-kandidaat" title="Geen activiteit in het stil-venster, eindfactuur geboekt, naam zegt afgesloten of looptijd verstreken — afsluiten blijft een klik van jou" onClick={() => zetParam('tab', 'afsluiten')}>
+                  {data.tellers.kandidaat_afsluiten} kandidaat afsluiten →
+                </button>
               )}
               {(data.tellers.afgesloten ?? 0) > 0 && (
                 <button

@@ -8,7 +8,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas_basis import StrikteInvoer
 
@@ -459,3 +459,96 @@ class WeekstatenStandDto(BaseModel):
     te_keuren_totaal: int = 0
     oudste_ontbrekende_jaar: int | None = None
     oudste_ontbrekende_week: int | None = None
+
+
+# --- Afsluiten? (N) — opdracht 19-09 ----------------------------------------------------------------------------------
+
+
+class AfsluitActiviteitDto(BaseModel):
+    soort: str  # inkoop | verkoop | uren | planning | verplichting
+    datum: date
+    bedrag: Decimal | None = None
+    boekstuk: str | None = None
+
+
+class AfsluitOpenPostenDto(BaseModel):
+    inkoop_niet_geboekt: int = 0
+    inkoop_niet_geboekt_bedrag: Decimal = Decimal("0")
+    verplichting_open: int = 0
+    uren_niet_gekeurd: int = 0
+    let_op: bool = False
+
+
+class AfsluitUitstelDto(BaseModel):
+    reden: str
+    door: uuid.UUID
+    op: datetime
+    laatste_activiteit: date | None = None
+
+
+class AfsluitKandidaatDto(BaseModel):
+    administratie_id: uuid.UUID
+    administratie_naam: str
+    project_id: uuid.UUID
+    naam: str | None = None
+    redenen: list[str]
+    reden_tekst: str
+    laatste_activiteit: AfsluitActiviteitDto | None = None
+    stil_dagen: int | None = None
+    stil_maanden: int
+    open_posten: AfsluitOpenPostenDto
+    looptijd_tot: date | None = None
+    uitstel: AfsluitUitstelDto | None = None
+
+
+class AfsluitTellersDto(BaseModel):
+    kandidaten: int
+    uitgesteld: int
+    administraties: int
+    per_reden: dict[str, int]
+    let_op: int
+
+
+class AfsluitKandidatenResponse(BaseModel):
+    rijen: list[AfsluitKandidaatDto]
+    totaal: int
+    pagina: int
+    per_pagina: int
+    tellers: AfsluitTellersDto
+    redenen: list[str]
+    reden_labels: dict[str, str]
+    #: Alleen gevuld bij één administratie (deeplink) — het stil-venster van díe administratie.
+    stil_maanden: int | None = None
+
+
+class AfsluitBulkItemInput(StrikteInvoer):
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+
+
+class AfsluitBulkInput(StrikteInvoer):
+    items: list[AfsluitBulkItemInput] = Field(min_length=1, max_length=200)
+    reden: str | None = None
+    datum: date | None = None
+
+
+class AfsluitBulkUitkomstDto(BaseModel):
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+    naam: str | None = None
+    uitkomst: str  # gelukt | bron_weigert | al_afgesloten | niet_gevonden | geen_toegang
+    detail: str | None = None
+
+
+class AfsluitBulkResponse(BaseModel):
+    uitkomsten: list[AfsluitBulkUitkomstDto]
+    gelukt: int
+    mislukt: int
+
+
+class NietAfsluitenInput(StrikteInvoer):
+    reden: str = Field(min_length=1, max_length=500)
+
+
+class AfsluitInstellingDto(BaseModel):
+    stil_maanden: int = Field(ge=1, le=36)

@@ -43,6 +43,16 @@
   óók `/instellingen/duplicaat-autoafvoer`, `/groepen` en `/uren/kantoor/mijn-toegang` (vóór 18-09 liep élke sectie mét
   administraties in het harnas stil op "backend niet bereikbaar" — de sweep meette dan een leeg paneel).
 
+<!-- toegevoegd 19-09-2026, opdracht "projecten-afsluit-kandidaten-scherm-bulk-afsluiten" -->
+- **Tabs op een lijstpagina (19-09, Projecten › "Afsluiten? (N)"):** een tweede werkstand op een bestaande lijst is een `segment`-tablist
+  (`role="tablist"`/`role="tab"`/`aria-selected`, klasse `actief`) mét `?tab=` in de URL als deeplink-doel — geen tweede route, geen tegel;
+  de teller in de tabkop komt uit dezelfde server-bron als de tabel (`onAantal`-callback, patroon `beoordelenChip.ts` 18-09). Een
+  bulk-actie op vinkjes = één knop `Afsluiten (N)` (teal/warn-omlijnd, uitgeschakeld bij 0) + bevestigingsdialoog + uitkomst-badge PER RIJ
+  én een overzicht dat blijft staan ná herladen (niets verdwijnt stil); een besluit "niet doen" is een `linkbtn` mét dialoog en verplichte
+  reden. Brede tabellen in `.tabel-scroll`, elke nieuwe tab krijgt een harnas-variant in `overflow_sweep.sh`
+  (`harness-werkvoorraad.html?projecten=1&tab=afsluiten`) — zie BESLISSINGEN "PROJECTEN — TAB AFSLUITEN? MÉT BULK-AFSLUITEN EN
+  NIET-AFSLUITEN (Peter 19-09)".
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-frontend-modernisering (IA klant-centrisch, Instellingen v3, gebruikersbeheer, blokkeren/archiveren, nazorg controls-review) (CLAUDE.md `ed6d176` r. 295–353)

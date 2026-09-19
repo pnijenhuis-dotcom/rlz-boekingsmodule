@@ -254,6 +254,48 @@ function jsonResponse(body: unknown): Response {
 // C5 (07-09): Inzicht › Projecten kantoorbreed (?projecten=1) — breedste realistische rij: lange projectnaam +
 // werknummer, alle vier chips gevuld (negatieve marge mét onbepaalbare uren, overschreden offerte, ontbrekende
 // én te-keuren weekstaten, m²-voortgang) naast een lege rij (geen cijfers / n.v.t.).
+// Opdracht 19-09: tab "Afsluiten? (N)" (?projecten=1&tab=afsluiten) — breedste realistische rij: lange projectnaam, vier
+// reden-chips, laatste activiteit mét bedrag + boekstuk, open posten mét drie delen, "Niet afsluiten…" + "Openen →".
+const AFSLUIT_KANDIDATEN = {
+  rijen: [
+    {
+      administratie_id: ADMIN_1,
+      administratie_naam: 'Universal Steigerbouw B.V.',
+      project_id: '44444444-0000-0000-0000-000000000001',
+      naam: 'Afgesloten 25017 Kudo Arnhem-Kronenburg fase 2 (Kudo Bouw & Ontwikkeling)',
+      redenen: ['stil', 'eindfactuur', 'naam_afgesloten', 'looptijd_verstreken'],
+      reden_tekst: 'geen activiteit sinds 2026-03-01 (202 dagen, venster 6 mnd) · eindfactuur geboekt (VF-2026-0412) · naam zegt afgesloten, status actief · looptijd tot 2026-06-30 verstreken',
+      laatste_activiteit: { soort: 'verkoop', datum: '2026-03-01', bedrag: '48250.00', boekstuk: 'VF-2026-0412 Eindfactuur fase 2' },
+      stil_dagen: 202,
+      stil_maanden: 6,
+      open_posten: { inkoop_niet_geboekt: 2, inkoop_niet_geboekt_bedrag: '1834.50', verplichting_open: 1, uren_niet_gekeurd: 3, let_op: true },
+      looptijd_tot: '2026-06-30',
+      uitstel: null,
+    },
+    {
+      administratie_id: ADMIN_1,
+      administratie_naam: 'Universal Steigerbouw B.V.',
+      project_id: '44444444-0000-0000-0000-000000000002',
+      naam: '25157 Harderwijk (Wessels)',
+      redenen: ['stil'],
+      reden_tekst: 'geen activiteit sinds 2026-03-30 (173 dagen, venster 6 mnd)',
+      laatste_activiteit: { soort: 'verkoop', datum: '2026-03-30', bedrag: '3120.00', boekstuk: 'VF-2026-0301' },
+      stil_dagen: 173,
+      stil_maanden: 6,
+      open_posten: { inkoop_niet_geboekt: 0, inkoop_niet_geboekt_bedrag: '0', verplichting_open: 0, uren_niet_gekeurd: 0, let_op: false },
+      looptijd_tot: null,
+      uitstel: null,
+    },
+  ],
+  totaal: 2,
+  pagina: 1,
+  per_pagina: 50,
+  tellers: { kandidaten: 2, uitgesteld: 1, administraties: 1, per_reden: { stil: 2, eindfactuur: 1, naam_afgesloten: 1, looptijd_verstreken: 1 }, let_op: 1 },
+  redenen: ['stil', 'eindfactuur', 'naam_afgesloten', 'looptijd_verstreken'],
+  reden_labels: { stil: 'geen activiteit', eindfactuur: 'eindfactuur geboekt', naam_afgesloten: 'naam zegt afgesloten', looptijd_verstreken: 'looptijd verstreken' },
+  stil_maanden: null,
+}
+
 const PROJECTEN_KANTOORBREED = {
   rijen: [
     {
@@ -355,6 +397,7 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
   if (url.includes('/uren/kantoor/stand')) return Promise.resolve(jsonResponse(BEOORDELEN_STAND))
   if (url.endsWith('/auth/administraties')) return Promise.resolve(jsonResponse({ administraties: ADMINISTRATIES }))
   if (url.includes('/projecten/kantoorbreed')) return Promise.resolve(jsonResponse(PROJECTEN_KANTOORBREED))
+  if (url.includes('/projecten/afsluit-kandidaten')) return Promise.resolve(jsonResponse(AFSLUIT_KANDIDATEN))
   if (url.endsWith('/werkvoorraad/overzicht')) return Promise.resolve(jsonResponse(WERKVOORRAAD_OVERZICHT))
   if (url.endsWith('/bank/overzicht')) return Promise.resolve(jsonResponse(BANK_OVERZICHT))
   if (url.includes('/doorbelasting/') && url.endsWith('/spiegel-taken')) {
@@ -415,7 +458,7 @@ const PARAMS = new URLSearchParams(window.location.search)
 const START_URL = PARAMS.has('beoordelen')
   ? `/meerwerk?administratie=${ADMIN_1}&tab=urenstaten`
   : PARAMS.has('projecten')
-  ? '/projecten'
+  ? (PARAMS.get('tab') === 'afsluiten' ? '/projecten?tab=afsluiten' : '/projecten')
   : PARAMS.has('docs')
     ? `/?administratie=${ADMIN_1}&sectie=documenten`
     : PARAMS.has('klant')
