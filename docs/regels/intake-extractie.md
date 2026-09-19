@@ -81,6 +81,25 @@
   180 uploads is NIET gemeten (nameting). Guards `uploadWachtrij.test.ts` + `useUploadWachtrij.test.tsx`. Open beslispunt: server-side
   sha256-kortsluiting (409 `al_aanwezig` op de directe upload-route) — apart besluit, raakt de gouden set.
 
+<!-- toegevoegd 19-09-2026, opdracht "ic-spiegel-rood-174-doorbelastingsparen-verkoop-niet-gevonden" -->
+- **Extractie-wachtrij-trigger gebundeld + één verwerker per document (BLOW-bulk 18-09; 19-09; geen migratie; BESLISSINGEN
+  "KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING ZONDER HANDELING SWEEP (Peter 19-09)", rij "Systeemfout ic_spiegel_rood 174×"):** de bulk-upload van 180 BLOW-documenten (18-09 11:00 UTC) triggerde per
+  upload één job-executie: 118 executies in één uur, 180 × `429 Too Many Requests` op de Cloud Run Jobs-API (LET-OP
+  `extractie_wachtrij: 180 overgeslagen [vangnet_scheduler]`), parallelle executies die hetzelfde document tot 8× verwerkten (tijdlijn
+  58b588e8: 8 × bezig → te_controleren; AI-kosten), en opschalende service-instances die lopende bezig-runs terugzetten ("opnieuw
+  ingepland na een herstart van de verwerking" 11:05:13 en 11:05:17 op c9ba6d8d). Sinds 19-09: (a) **bundelvenster 30 s** per
+  job-resource in `CloudRunJobExtractieWachtrij` — ná een geslaagde trigger geen tweede executie binnen het venster, audit
+  `extractie_wachtrij_trigger` mét `uitkomst: gebundeld` (+ `gebundeld_na_s`), teller-categorie `trigger_gebundeld` (zacht, geen
+  LET-OP); een mislukte trigger opent géén venster; (b) de job `verwerk_extractie_wachtrij` herhaalt de pas zolang er werk was
+  (≤ `WACHTRIJ_MAX_PASSEN` 5) zodat uploads binnen het venster door de lopende executie worden meegenomen — anders het
+  10-minuten-scheduler-vangnet, zichtbaar op 'in wachtrij'; (c) het startup-vangnet `herstel_achtergebleven_extracties` laat mét de
+  cloud-wachtrij een bezig-run mét een gebeurtenis jonger dan 15 min staan (zelfde regel als de job; de in-process wachtrij zet
+  zoals altijd alles terug); (d) **compare-and-set op élke statusovergang** (`_schrijf_overgang` → `_claim_status`: `UPDATE … WHERE
+  status = van`, rijlock): de trage verwerker die om 11:05:20 een al afgevoerd duplicaat (c9ba6d8d) stil terugzette op
+  te_controleren — zonder tijdlijnregel, tellers-cache 151 ↔ 152 — krijgt nu `StatusIntussenGewijzigd` en schrijft niets. De
+  tellers-afwijking was dus géén ontbrekende cache-hook maar een dubbele schrijver; de nachtelijke herberekening had 'm 19-09 05:44
+  al gelijkgetrokken. Bulk-upload-regel 18-09 "élke AI-upload triggert een executie (geen trigger-dedupe)" is hiermee HERZIEN.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verzamelbak "Niet toegewezen" (preview, optimistisch toewijzen, verplaatsen, documentenlijst) (CLAUDE.md `ed6d176` r. 494–528)

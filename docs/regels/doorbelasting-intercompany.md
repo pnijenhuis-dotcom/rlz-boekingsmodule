@@ -30,6 +30,19 @@
 <!-- uit CLAUDE.md § Domeinbeslissingen -->
 - **Intercompany-leveranciers instelbaar (nachtrun 08/09-09, besluit Peter op beslispunt 1; geen migratie):** Beheerder-blok "Intercompany — accordering overslaan" op Instellingen › Administraties › ‹BV› › Klant-accordering (crediteur-combobox, herkomst-chip `handmatig`/`doorbelasting`, verwijderen = `actief=False`, audit + historie), routes `…/intercompany-leveranciers`, CLI `intercompany-leverancier-markeren`; eenmalige rij Universal Nederland → Universal Steigerbouw ná deploy via Cloud Run-job — zie BESLISSINGEN "INTERCOMPANY-LEVERANCIERS INSTELBAAR + EENMALIGE RIJ UNIVERSAL".
 
+<!-- toegevoegd 19-09-2026, opdracht "ic-spiegel-rood-174-doorbelastingsparen-verkoop-niet-gevonden" -->
+- **Doorbelastingsparen in de IC-toets en de aansluiting — verkoopkant via `Receipts`, whitelist per scope (19-09; geen migratie;
+  BESLISSINGEN "KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING ZONDER HANDELING SWEEP (Peter 19-09)", rij "Systeemfout ic_spiegel_rood 174×"):** de doorbelastings-verkoopfactuur (PUT `SalesInvoices/{uuid5}`,
+  Entity = `doel_customer_guid`, Date/BookDate = factuurdatum bron) staat in RLZ wél als record maar NIET in de
+  `SalesInvoices`-collectie; alleen de `Receipts`-collectie toont 'm (STAP-0 19-09: Kempen Facilities → Mantelzorgwoningen, count 8 op
+  Entity + datum, `DocumentType` 10). Het IC-blok én het aansluitingsblok lezen de verkoopkant daarom als `SalesInvoices` ∪ `Receipts`.
+  De GUID-afleiding (`rlz_doorbelasting_verkoop_id`) en de IC-relaties (basis `doorbelasting`, entity = `doel_customer_guid`) waren
+  correct — de hypothese "verkeerd GUID/boek_cyclus" uit de opdracht is weerlegd. `bronnen_met_whitelist` leest de whitelist sinds
+  19-09 per administratie in eigen scope (patroon `relaties._doorbelasting_kandidaten`); zonder scope gaf FORCE RLS in productie 0
+  rijen en meldde het aansluitingsblok drie dagen "geen administratie met een actieve doorbelasting-whitelist". Verwachting ná
+  deploy: 174 → 0 `ic_spiegel_rood`, spiegelparen 174/174 groen, aansluiting KF: 8 doelen gelezen (Kempen Chalets/Rubicon zonder
+  boekingen in het venster = 0 sluit, geen bevinding).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kempen-doorbelasting (motor, spiegel, storno-blokkade, tegenboek-pad, factuur-PDF, projecten) (CLAUDE.md `ed6d176` r. 829–936)

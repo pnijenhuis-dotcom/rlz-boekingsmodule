@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-19 — 174 valse "systeemfouten" op Inzicht › Reconciliatie verdwijnen; grote uploads verwerken rustiger
+
+<!-- ic-spiegel-rood-wachtrij-19-09 -->
+
+- **De 174 rode regels "doorbelastingspaar niet sluitend … verkoopfactuur niet gevonden" waren een fout van de module, niet van de boekhouding.** Reeleezee toont via de API aangemaakte verkoopfacturen niet in de gewone verkoopfacturenlijst; de dagelijkse controle keek alleen daar. Ze leest nu ook de boekingenlijst, waardoor de doorbelastingen van Kempen Facilities gewoon als sluitend worden herkend. Na de volgende nachtelijke controle zijn deze regels weg.
+- **De dagelijkse aansluiting Kempen Facilities ↔ doelentiteiten draait nu echt.** Die meldde sinds 16-09 stil "niets te toetsen" terwijl er wel een doorbelastingslijst is; dat is hersteld.
+- **Veel bestanden tegelijk uploaden (zoals de 180 bij BLOW) start nu één verwerking per batch in plaats van één per bestand.** Daardoor geen foutmeldingen meer door te veel gelijktijdige starts, en geen dubbele verwerking van hetzelfde document. Een document dat al door een collega-proces is afgehandeld, kan niet meer stil worden teruggezet in de werkvoorraad.
+
 ## 2026-09-19 — Projectnummers achter het woord "Afgesloten" tellen nu ook mee
 
 <!-- projectnummer-afgesloten-19-09 -->

@@ -2535,3 +2535,27 @@ nummerlezer, leest door het afsluitwoord heen). `contains` niet gekozen: meer ru
 initialen ("2.H.(.B.") maar laat `Description` staan — de volledige projectnaam (mét opdrachtgever-naam) komt zo tóch in de
 uitvoer. Voor projectnamen aanvaardbaar (geen financiële data, wél een klantnaam); als de anonimisering bedoeld is als PII-vangnet,
 hoort `Description` op Projects in dezelfde lijst — genoteerd als vervolgpunt, niet in deze run gewijzigd.
+
+## SalesInvoices-collectie ziet API-facturen niet, Receipts wél — verkoopkant IC-blok (STAP-0 19-09, opdracht "ic_spiegel_rood 174×") — LEES-ONLY via `nameting.sh rlz-lezen`, administratie Kempen Facilities B.V.
+
+Aanleiding: 174 × `ic_spiegel_rood` "verkoopfactuur niet gevonden bij de bron-administratie" op álle geboekte doorbelastingsparen van
+Kempen Facilities → 5 IC-doelen sinds de eerste run van het intercompany-blok (18-09). Casus nummer 24713275 (verkoop-GUID
+`83f3487e-…`, doel Mantelzorgwoningen Midden Nederland, Entity `90dbadcb-…`, Date 2026-08-22, € 924,92, Status 2, ReceiptNumber
+RLZ-01-00002689).
+
+| Call (KF) | Uitkomst |
+|---|---|
+| `GET SalesInvoices/83f3487e-…?$expand=Entity` (record) | **200** — Entity `90dbadcb-…`, `Date`/`BookDate` 2026-08-22, `InvoiceNumber` 24713275, `Reference` "24713275", `DocumentType` 10, `Origin` 1, `Type` 1 |
+| `GET SalesInvoices?$filter=InvoiceNumber eq 24713275&$count=true` (collectie) | 200, **`@odata.count` 0** — de collectie kent het document niet |
+| `GET Receipts?$filter=Reference eq '24713275'&$count=true` | 200, **count 1** — zelfde id, zelfde velden (+ `DocumentType` 10, `ReceiptNumber`, `InvoiceReference`, `Description`) |
+| `GET Receipts?$filter=Entity/id eq 90dbadcb-… and Date ge 2026-08-01T00:00:00Z and Date le 2026-09-19T23:59:59Z&$expand=Entity&$orderby=Date asc,id asc&$top=50&$count=true` | 200, **count 8** = de 7 doorbelastingsverkopen + 1 UI-factuur (24713205, Status 3): Entity-filter, datumfilter mét `Z`, `$expand=Entity` en `$orderby` werken op Receipts precies als op SalesInvoices |
+| `GET Receipts?$filter=DocumentType eq Reeleezee.DTO.DocumentType'10' and Date ge 2026-08-01T00:00:00Z&$count=true` | 200, count 177 — het enum-literal werkt als filter; type 10 = verkoopfactuur, UI én API |
+
+Conclusies (bevestigt Omzetmodule STAP 0 §2 / Receipts-verkenning §1 / kliktest-nazorg 16-08 punt 5, nu als productiefeit op de
+IC-toets): **de `SalesInvoices`-COLLECTIE toont uitsluitend UI-/import-facturen; élke via `PUT SalesInvoices/{id}` aangemaakte
+factuur (doorbelasting, Vastly-verkoop, omzet-Receipts) is er onzichtbaar — het record zelf is gewoon leesbaar.** De
+`Receipts`-collectie ziet alles, mét dezelfde filter-/expand-/orderby-syntaxis; op sommige administraties (VGG 12-09) is ze een
+unie van álle documenttypen → altijd client-side `DocumentType` 10 toetsen. Motor sinds 19-09: `factuurmatch.lees_verkoop_rlz`
+leest `SalesInvoices` ∪ `Receipts` (constante `VERKOOP_COLLECTIES`), ontdubbeld op id — dezelfde lezer dient het IC-blok én het
+aansluitingsblok. Instrument: `rlz-lezen --top` is begrensd op 50 (nameting = steekproef); `--count` geeft het totaal.
+

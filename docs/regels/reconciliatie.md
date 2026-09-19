@@ -79,6 +79,21 @@
   vervolg-opdracht. Volledige tekst: `docs/regels/verplichtingen-projecten-voorraad.md` alinea "Projectnummer óók lezen uit
   'Afgesloten NNNNN …'-namen".
 
+<!-- toegevoegd 19-09-2026, opdracht "ic-spiegel-rood-174-doorbelastingsparen-verkoop-niet-gevonden" -->
+- **Systeemfout ic_spiegel_rood 174× — IC-verkoopkant leest `SalesInvoices` ∪ `Receipts`; aansluitingsblok per scope (19-09; geen
+  migratie; BESLISSINGEN "KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING ZONDER HANDELING SWEEP (Peter 19-09)", rij "Systeemfout ic_spiegel_rood 174×"):** de `SalesInvoices`-COLLECTIE van RLZ toont via
+  de API aangemaakte verkoopfacturen niet (record-GET wél; STAP-0 19-09) — élke module-verkoop (doorbelasting, Vastly, omzet) was
+  daardoor onzichtbaar voor het intercompany-blok: 174 rode spiegelparen "verkoopfactuur niet gevonden bij de bron-administratie" en
+  hun spiegels als `ic_ontbreekt_bij_verkoper`. De verkoopkant is sinds 19-09 de unie `SalesInvoices` ∪ `Receipts` (zelfde
+  Entity-/datumfilter, Receipts alleen `DocumentType` 10, ontdubbeld op id — `factuurmatch.VERKOOP_COLLECTIES`); dezelfde lezer dient
+  het aansluitingsblok. Het aansluitingsblok `doorbelasting_aansluiting` gaf sinds 16-09 een VALSE nul ("0 bron-administraties mét
+  whitelist"): `doorbelasting_mapping` heeft alleen een scope-policy (FORCE RLS), lezen zonder scope = 0 rijen in productie —
+  sinds 19-09 per administratie in eigen scope (test onder de app-rol). Les voor élk reconciliatieblok: een blok dat "niets te
+  toetsen" meldt terwijl de configuratie bestaat is een systeemfout, geen OK; tabellen zonder NULL-/Beheerder-clausule nooit in
+  `scoped_session(None)` lezen. Meetlat ná deploy: `reconciliatie-alles --alleen intercompany --lees-only` → 0 × `ic_spiegel_rood`,
+  `--alleen doorbelasting_aansluiting` → 1 bron-administratie (Kempen Facilities, 8 doelen). Tellers: uitkomst `gebundeld` van de
+  extractie-wachtrij-trigger telt als zachte overslaan-reden `trigger_gebundeld` (nooit LET-OP) — zie `docs/regels/intake-extractie.md`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Synthetische bewaking + alerting (CLAUDE.md `ed6d176` r. 632–644)

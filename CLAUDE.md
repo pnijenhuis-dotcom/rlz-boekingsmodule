@@ -222,6 +222,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   2. AI alleen voor extractie/segmentatie, altijd met deterministische checks eroverheen; kostengrens € 100/maand is een harde poort, boven de grens nooit stil; schema's ≤ 16 unions, nieuwe velden sentinel-gebaseerd.
   3. UBL is deterministisch (kop, crediteur, regels, datums uit de XML); template-terugval per bekende leverancier: één rood = volledig verworpen; élke extractie loopt via de wachtrij (201 < 2 s).
   4. Bulk-upload (Peter 18-09): élke upload-plek neemt honderden bestanden/een map als één batch (wachtrij max 4, uitkomst per bestand, "al aanwezig" = duplicaat-vlag, geen fout); server ongewijzigd — zie BESLISSINGEN "BULK-UPLOAD — MEERDERE BESTANDEN TEGELIJK (Peter 18-09)".
+  5. Wachtrij-trigger gebundeld (30 s per job, audit `gebundeld`, job herhaalt de pas ≤ 5), startup-vangnet laat verse bezig-runs staan, élke statusovergang compare-and-set (`StatusIntussenGewijzigd`) — BLOW-bulk 18-09: 118 executies, 429, 8× dubbel verwerkt, stil teruggezet duplicaat — zie BESLISSINGEN "KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING ZONDER HANDELING SWEEP (Peter 19-09)".
   **LEESPLICHT: lees `docs/regels/intake-extractie.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Automatisch boeken, autoboek-kandidaten en de AI-plausibiliteitstoets** — Opt-in per leverancier en per administratie (leren ná drie identieke mens-boekingen), harde checks blijven blokkerend, volumerem, AI-toets als extra poort mét uitval = doorlopen zichtbaar, autonomie-toekomstlijn.
@@ -236,6 +237,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   1. Signalering zonder handeling is niet af: élke bevinding draagt een actie; kantoor krijgt alleen een ACTIEMAIL bij bevindingen mét handeling; systeemmail alleen bij LET-OP/systeemfout; regressies = "systeemfout — automatisch gemeld" + audit.
   2. Élke nieuwe bevindingssoort start in `meten` (facet "in meting", nooit actiemail/KPI) tot Beheerder-promotie; explosie-rem > 50/run → terug naar meten; verdwenen bevindingen sluiten mét audit.
   3. Verdwenen extern document = `ontbreekt_in_rlz/odoo` mét "Opnieuw boeken" achter de aangiftepoort (suppletie-pad, Beheerder); bedragverschil ≤ € 0,05 = automatisch geaccepteerd mét audit.
+  4. IC-verkoopkant = `SalesInvoices` ∪ `Receipts` (de collectie ziet API-facturen niet), aansluitingsblok leest de whitelist per scope, een blok dat "niets te toetsen" meldt terwijl de configuratie bestaat = systeemfout (19-09) — zie BESLISSINGEN "KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING ZONDER HANDELING SWEEP (Peter 19-09)".
   **LEESPLICHT: lees `docs/regels/reconciliatie.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Verplichtingen/offertes, projecten, projectverdeling, contract-ontleding en voorraad** — Documenttype `verplichting` + factuur↔offerte-match (nooit blokkerend), projectenmodule en projectcode-generatie, Inzicht › Projecten/Projectverdeling, pro rato, contract-ontleding auto-first, mini-voorraad en voorraad-aansluiting (mi-schema, nooit RLZ-writes).
@@ -278,6 +280,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   1. Storno-blokkade ná een ingediende aangifte (`app/rlz/aangifte.py`) → TEGENBOEK-PAD; `DoorbelastingInstelling.standaard()` is de ENIGE bron voor de niet-opgeslagen standaardstand.
   2. Herkoppeling van whitelist-rijen zonder doel alleen op exacte genormaliseerde naam; bijna-match/meerdere = LET-OP, nooit raden; doorbelastingspaar rood in de reconciliatie = systeemfout.
   3. IC-leverancier (actieve rij in `intercompany_tegenpartij` van de administratie van het document) in een administratie mét klant-accordering → géén ronde, direct de boekstap, tijdlijn + audit.
+  4. Doorbelastingsverkopen staan alleen in de `Receipts`-collectie (record-GET wél); IC-toets + aansluiting lezen de unie, whitelist per administratie-scope (19-09, 174 × ic_spiegel_rood opgelost) — zie BESLISSINGEN "KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING ZONDER HANDELING SWEEP (Peter 19-09)".
   **LEESPLICHT: lees `docs/regels/doorbelasting-intercompany.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Klant-accordering, accordeur-/veldwerker-app, native store-apps en OTA** — Sequentiële lagen mét drempels (administratie-, afdelings- en leveranciersroute), herberekening bij configuratiewijziging, staande goedkeuring alleen bij een periodiek patroon, wachtrij set-based, PWA + iOS/Android-schil, OTA self-hosted per runtime, 426-poort, store-draaiboeken.

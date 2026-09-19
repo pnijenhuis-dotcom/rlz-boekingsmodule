@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-19, rapport: docs/rapporten/2026-09-19-ic-spiegel-rood-174-wachtrij-trigger-en-tellers.md
+
 Domeinen: reconciliatie, doorbelasting-intercompany, intake-extractie
 
 # SYSTEEMFOUT — 174 × `ic_spiegel_rood` "verkoopfactuur niet gevonden bij de bron-administratie" (sweep 19-09) + extractie-wachtrij 180× vangnet + tellers BLOW

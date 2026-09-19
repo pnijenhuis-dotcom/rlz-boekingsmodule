@@ -11780,3 +11780,27 @@ alinea "Patroon vaststaande actie = het systeem doet het".**
   overige acties vragen een oordeel (accepteren mét reden, herboeken achter de aangiftepoort, IC-/RC-beoordeling). Van Boxtel: 4 van
   de 5 `kassarapport_in_werkvoorraad` verdwijnen (profx_journaal), 1 blijft (omzetrekeningen); de 8 `omzet_in_inkoopstroom`
   blijven mens-werk. Schermwinst zonder automatisering: `rc_zonder_tegenrekening` (84) bundelen tot één LET-OP per administratie.
+- **Systeemfout ic_spiegel_rood 174× + wachtrij-trigger 429 + tellers BLOW — GEDIAGNOSTICEERD + GEFIXT 19-09 (opdracht
+  `2026-09-19-ic-spiegel-rood-174-…`; rapport `docs/rapporten/2026-09-19-ic-spiegel-rood-174-wachtrij-trigger-en-tellers.md`; geen migratie, geen RLZ-write; werkt in productie: niet gemeten,
+  nameting-opdracht in de inbox).** (1) **IC-verkoopkant blind voor API-facturen:** `lees_verkoop_rlz` las de
+  `SalesInvoices`-COLLECTIE, die via de API aangemaakte verkoopfacturen niet toont (gedocumenteerd RLZ-feit, live herbevestigd:
+  `InvoiceNumber eq 24713275` → count 0, record-GET 200) — álle 174 geboekte doorbelastingsparen van Kempen Facilities → Veldhoven
+  94 / Oirschot Recreatie 34 / Molenhof Verhuur 28 / Molenhof Beheer 11 / Mantelzorgwoningen 7 waren daardoor rood én hun spiegels
+  telden als `ic_ontbreekt_bij_verkoper` (in meting). Fix: verkoop = `SalesInvoices` ∪ `Receipts` (Entity-/datumfilter identiek,
+  Receipts alleen `DocumentType` 10, ontdubbeld op id; `VERKOOP_COLLECTIES`), api-verkenning "SalesInvoices-collectie ziet
+  API-facturen niet, Receipts wél (STAP-0 19-09)". (2) **Aansluitingsblok was een stille no-op:** `bronnen_met_whitelist` las
+  `doorbelasting_mapping` in `scoped_session(None)`; de tabel heeft alleen een scope-policy (FORCE RLS) → productie 0 bronnen
+  ("niets te toetsen") sinds 16-09, lokaal gemaskeerd door de superuser — nu per administratie in eigen scope, test onder de
+  app-rol. (3) **BLOW-bulk 18-09:** 180 uploads = 180 losse job-triggers → 118 executies in één uur, 180 × `429 Too Many
+  Requests` (LET-OP `vangnet_scheduler`), parallelle executies verwerkten dezelfde documenten tot 8× (extra AI-kosten) en een
+  opschalende service-instance zette lopende bezig-runs terug ("opnieuw ingepland na een herstart"). Fix: bundelvenster 30 s per
+  job-resource (`CloudRunJobExtractieWachtrij`, audit-uitkomst `gebundeld` = zachte teller-categorie `trigger_gebundeld`, nooit
+  LET-OP), de job herhaalt de pas zolang er werk was (≤ 5), het startup-vangnet laat mét de cloud-wachtrij verse bezig-runs staan
+  (zelfde 15-min-regel als de job). (4) **Tellers BLOW 151 ↔ 152 = geen ontbrekende hook maar een stale overschrijving:**
+  document c9ba6d8d werd om 11:05:20 als duplicaat afgevoerd (cache −1) en daarna door een nog open, tragere afrondingstransactie
+  bij haar commit stil teruggezet op te_controleren zonder tijdlijnregel. Fix: `_schrijf_overgang` doet een compare-and-set
+  (`UPDATE … WHERE status = van`, rijlock); een verouderde `van` = `StatusIntussenGewijzigd` (subklasse
+  OngeldigeStatusovergang) — de late schrijver schrijft niets. Gouden set: `tests/keten/test_x_bulk_upload_bundelvenster_en_cas.py`
+  (bulk op de cloud-wachtrij → één executie, één verwerker per document, cache = telling, late schrijver geweigerd). Regelteksten: `docs/regels/reconciliatie.md`,
+  `docs/regels/doorbelasting-intercompany.md`, `docs/regels/intake-extractie.md` (alinea's 19-09 "Systeemfout ic_spiegel_rood …").
+
