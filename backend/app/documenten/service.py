@@ -10,7 +10,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.aikosten.service import AiKostenLimietBereikt, AiVerbruikReferentie
@@ -212,6 +212,34 @@ def _borg_systeem_reden(
     return {**(detail or {}), "reden": SYSTEEM_REDEN_ONTBREEKT}
 
 
+class StatusIntussenGewijzigd(OngeldigeStatusovergang):
+    """De rij in de database staat niet (meer) op de status die deze sessie in het geheugen had: een andere
+    transactie was eerder. De overgang gaat NIET door — anders zou de latere commit de eerdere stil overschrijven."""
+
+
+def _claim_status(session: Session, *, document: Document, van: DocumentStatus, naar: DocumentStatus) -> None:
+    """Compare-and-set op de statuskolom (systeemfout BLOW 18-09, opdracht ic_spiegel_rood/tellers): 118 parallelle
+    job-executies verwerkten dezelfde documenten; één trage afrondingstransactie zette ná de commit van een collega
+    (te_controleren → afgevoerd_duplicaat, 11:05:20) haar in het geheugen gehouden `bezig → te_controleren` alsnog
+    weg — een afgevoerd duplicaat stond stil weer in de werkvoorraad zonder tijdlijnregel, en de tellers-cache liep
+    1 achter (151 ↔ 152). De ORM-flush schrijft `status` pas bij de commit en toetst niets; deze UPDATE toetst
+    `status = van` mét rijlock op het moment van de overgang: een concurrent wacht op onze commit en ziet daarna een
+    andere `van` → `StatusIntussenGewijzigd` (subklasse van OngeldigeStatusovergang, dus bestaande vangnetten werken).
+    Een nog niet gepersisteerd document wordt eerst geflusht (INSERT mét `van`), zodat de CAS ook dan klopt."""
+    session.flush()
+    resultaat = session.execute(
+        update(Document)
+        .where(Document.id == document.id, Document.status == van)
+        .values(status=naar)
+        .execution_options(synchronize_session=False)
+    )
+    if resultaat.rowcount != 1:
+        raise StatusIntussenGewijzigd(
+            f"document {document.id}: status is intussen niet meer '{van.value}' (overgang naar '{naar.value}' "
+            "niet uitgevoerd — een andere verwerker was eerder)"
+        )
+
+
 def _schrijf_overgang(
     session: Session,
     *,
@@ -229,6 +257,7 @@ def _schrijf_overgang(
     van = document.status
     valideer_overgang(van, naar)
     detail = _borg_systeem_reden(actor_id=actor_id, document_id=document.id, van=van, naar=naar, detail=detail)
+    _claim_status(session, document=document, van=van, naar=naar)
     document.status = naar
     # Werkvoorraad-tellers-cache (blok 6 run 11-09): incrementeel in dezelfde transactie — oude bucket −1, nieuwe +1.
     werkvoorraad_tellers.verwerk_statusovergang(session, document.administratie_id, van, naar)
@@ -554,17 +583,29 @@ def verwerk_extractie_taak(
                 )
 
 
-def herstel_achtergebleven_extracties(*, wachtrij: ExtractieWachtrij | None = None) -> int:
+def herstel_achtergebleven_extracties(
+    *, wachtrij: ExtractieWachtrij | None = None, stale_na: timedelta = timedelta(minutes=15)
+) -> int:
     """Startup-vangnet ("niets verdwijnt stil"): de in-process wachtrij overleeft een
     proces-herstart niet. Documenten die in extractie_wachtrij achterbleven worden opnieuw
     ge-enqueued; documenten die midden in een worker-run op extractie_bezig strandden gaan eerst
     terug naar de wachtrij (systeem-actor + herkenbaar detail in de tijdlijn). Retourneert het
     aantal opnieuw ingeplande documenten. Synchrone extracties kunnen hier nooit tussen zitten:
     die committen hun bezig- en eindovergang in één transactie — een crash rolt de hele upload
-    terug."""
+    terug.
+
+    Cloud-variant (systeemfout BLOW 18-09): mét de job-wachtrij is een document op `extractie_bezig` meestal in
+    handen van een LOPENDE job-executie — een nieuwe service-instance (opschalen tijdens een bulk-upload) mag die
+    niet terugzetten. Tijdlijn c9ba6d8d: "opnieuw ingepland na een herstart van de verwerking" om 11:05:13 en
+    11:05:17 terwijl de job er al aan werkte → driedubbele verwerking. Daarom geldt voor de cloud-wachtrij dezelfde
+    `stale_na`-regel als in `verwerk_extractie_wachtrij` (verse bezig-run = laten staan); de in-process wachtrij
+    (thread ís weg ná een herstart) zet zoals altijd álles terug."""
     with scoped_session(None) as session:
         administratie_ids = [rij.id for rij in session.scalars(select(Administratie))]
 
+    gekozen = wachtrij or _standaard_wachtrij()
+    alleen_gestrand = isinstance(gekozen, CloudRunJobExtractieWachtrij)
+    grens = datetime.now(UTC) - stale_na
     hersteld = 0
     for administratie_id in administratie_ids:
         te_enqueuen: list[uuid.UUID] = []
@@ -577,6 +618,14 @@ def herstel_achtergebleven_extracties(*, wachtrij: ExtractieWachtrij | None = No
             )
             for document in achtergebleven:
                 if document.status == DocumentStatus.EXTRACTIE_BEZIG:
+                    if alleen_gestrand:
+                        laatste = session.scalar(
+                            select(func.max(DocumentGebeurtenis.tijdstip)).where(
+                                DocumentGebeurtenis.document_id == document.id
+                            )
+                        )
+                        if laatste is not None and laatste > grens:
+                            continue  # verse bezig-run van een lopende job-executie — laten staan
                     _schrijf_overgang(
                         session,
                         document=document,
@@ -589,7 +638,7 @@ def herstel_achtergebleven_extracties(*, wachtrij: ExtractieWachtrij | None = No
                     )
                 te_enqueuen.append(document.id)
         for document_id in te_enqueuen:
-            (wachtrij or _standaard_wachtrij()).enqueue(administratie_id=administratie_id, document_id=document_id)
+            gekozen.enqueue(administratie_id=administratie_id, document_id=document_id)
         hersteld += len(te_enqueuen)
 
     if hersteld:
@@ -597,13 +646,32 @@ def herstel_achtergebleven_extracties(*, wachtrij: ExtractieWachtrij | None = No
     return hersteld
 
 
-def verwerk_extractie_wachtrij(*, stale_na: timedelta = timedelta(minutes=15)) -> int:
+#: Maximaal aantal passen per job-executie (bundelvenster 19-09): ná een pas mét werk kijkt de job nog één keer of er
+#: intussen documenten bijgekomen zijn (uploads binnen het 30 s-venster worden niet apart getriggerd) — tot een pas
+#: niets meer vindt of dit plafond bereikt is (dan het scheduler-vangnet, nooit een oneindige lus).
+WACHTRIJ_MAX_PASSEN = 5
+
+
+def verwerk_extractie_wachtrij(
+    *, stale_na: timedelta = timedelta(minutes=15), max_passen: int = WACHTRIJ_MAX_PASSEN
+) -> int:
     """Job-/CLI-entrypoint (punt 4, 26-08): werk álle documenten op `extractie_wachtrij` synchroon
     af, plus documenten die langer dan `stale_na` op `extractie_bezig` staan (gestrande worker —
     een lopende synchrone extractie is nooit zichtbaar op bezig: die commit bezig én eind in één
     transactie). Bewust NIET elke bezig-rij (zoals het startup-vangnet): twee job-uitvoeringen
     kunnen elkaar overlappen (on-demand trigger + scheduler-vangnet) en mogen elkaars werk niet
-    terugzetten. Idempotent via de statusmachine; retourneert het aantal verwerkte documenten."""
+    terugzetten. Idempotent via de statusmachine + CAS (`_claim_status`); herhaalt de pas zolang er werk was
+    (≤ `max_passen`, bundelvenster 19-09); retourneert het aantal verwerkte documenten."""
+    totaal = 0
+    for _ in range(max(1, max_passen)):
+        aantal = _verwerk_extractie_wachtrij_pas(stale_na=stale_na)
+        totaal += aantal
+        if aantal == 0:
+            break
+    return totaal
+
+
+def _verwerk_extractie_wachtrij_pas(*, stale_na: timedelta) -> int:
     grens = datetime.now(UTC) - stale_na
     with scoped_session(None) as session:
         administratie_ids = [rij.id for rij in session.scalars(select(Administratie))]

@@ -64,6 +64,9 @@ VANGNET_SCHEDULER = "vangnet_scheduler"
 #: Extractie-wachtrij: document in de wachtrij gezet zonder trigger-spoor — geen job-resource geconfigureerd
 #: (lokale dev: in-process thread) of een overgang van vóór het spoor (08-09).
 LOKAAL_THREAD = "lokaal_thread"
+#: Bundelvenster job-trigger (19-09): de trigger is bewust niet gedaan omdat er < 30 s eerder al één slaagde — de lopende
+#: executie pakt het document mee. Zacht (géén harde voorwaarde, géén LET-OP); telt als "gedekt door de batch".
+TRIGGER_GEBUNDELD = "trigger_gebundeld"
 #: Bank-sync (blok 1 bundel 08-09): Odoo-administratie — bank loopt niet via Reeleezee (zichtbaar, geen LET-OP).
 ODOO_ADMINISTRATIE = "odoo_administratie"
 #: Bank-sync: geen webservice-login geregistreerd (store noch .env) = niet onboarded — zichtbaar overgeslagen, geen
@@ -192,6 +195,7 @@ REDEN_LABEL: dict[str, str] = {
     STIL_7_DAGEN: "zeven dagen stil",
     VANGNET_SCHEDULER: "job-trigger mislukt — scheduler-vangnet (≤ 10 min)",
     LOKAAL_THREAD: "geen job-trigger (lokaal/thread)",
+    TRIGGER_GEBUNDELD: "gebundeld met een trigger < 30 s eerder (één job-executie per batch)",
     ODOO_ADMINISTRATIE: "Odoo-administratie (bank niet via Reeleezee)",
     GEEN_CREDENTIAL_GEREGISTREERD: "geen webservice-login geregistreerd (niet onboarded)",
     GEEN_SYNC_RUN: "geen bank-sync-run in het venster (sync-alles niet gedraaid?)",
@@ -1053,6 +1057,9 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
             if nw.get("uitkomst") == "geslaagd":
                 for v in vensters(extractie, f.tijdstip):
                     v.tel_gedaan()
+            elif nw.get("uitkomst") == "gebundeld":
+                # Bundelvenster (19-09): bewust geen tweede executie — zacht, zichtbaar in de teller, geen LET-OP.
+                tel_over(extractie, f.tijdstip, TRIGGER_GEBUNDELD, f.administratie_id, None, hard_registreren=False)
             else:
                 # Platformbrede voorwaarde (IAM/job) → administratie-loos in de LET-OP; de administratie staat
                 # in het voorbeeld zodat de rij wél naar het document leidt.

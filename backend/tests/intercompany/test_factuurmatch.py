@@ -320,11 +320,15 @@ class TestSpiegelparen:
 
 
 class FakeRlzClient:
-    """Speelt SalesInvoices/PurchaseInvoices met server-side filter na: honoreert $filter op Entity-id's,
-    $top/$skip-paginering en telt élke call."""
+    """Speelt SalesInvoices/Receipts/PurchaseInvoices met server-side filter na: honoreert $filter op Entity-id's,
+    $top/$skip-paginering en telt élke call. `receipts` = wat de Receipts-collectie teruggeeft (STAP-0 19-09: die ziet
+    óók API-aangemaakte verkoopfacturen, de SalesInvoices-collectie niet); default leeg."""
 
-    def __init__(self, sales: list[dict], purchases: list[dict], *, webfilter: bool = False) -> None:
+    def __init__(
+        self, sales: list[dict], purchases: list[dict], *, webfilter: bool = False, receipts: list[dict] | None = None
+    ) -> None:
         self.sales, self.purchases, self.webfilter = sales, purchases, webfilter
+        self.receipts = receipts or []
         self.calls: list[tuple[str, dict]] = []
         self.gesloten = False
 
@@ -339,7 +343,7 @@ class FakeRlzClient:
             raise RlzWebfilterError(403, "GET", path, "<html>Access Denied</html>")
         assert "Date ge " in params["$filter"] and "T00:00:00Z" in params["$filter"], params["$filter"]
         assert params["$expand"] == "Entity"
-        bron = self.sales if path == "SalesInvoices" else self.purchases
+        bron = {"SalesInvoices": self.sales, "Receipts": self.receipts, "PurchaseInvoices": self.purchases}[path]
         rijen = self._filter(bron, params["$filter"])
         top, skip = int(params["$top"]), int(params["$skip"])
         return {"value": rijen[skip : skip + top]}
@@ -374,6 +378,17 @@ def _sales_rij(
         "Status": status,
         "IsCreditInvoice": credit,
         "Entity": {"id": str(entity), "Name": "Universal Nederland"},
+    }
+
+
+def _receipt_rij(nummer: int, bedrag: float, datum: str = "2026-08-22", *, entity=ENT_B_IN_A, rid=None, document_type=10):
+    """Rij zoals de Receipts-collectie 'm geeft (STAP-0 19-09 Kempen Facilities): mét `DocumentType` en `ReceiptNumber`,
+    verder dezelfde velden als SalesInvoices."""
+    return {
+        **_sales_rij(nummer, bedrag, datum, entity=entity, rid=rid),
+        "DocumentType": document_type,
+        "ReceiptNumber": f"RLZ-01-{nummer}",
+        "InvoiceReference": str(nummer),
     }
 
 
@@ -494,9 +509,41 @@ class TestLezers:
         client = FakeRlzClient([_sales_rij(1, 1.0), _sales_rij(2, 2.0, entity=uuid.uuid4())], [])
         uit = fm.lees_verkoop_rlz(client, [ENT_B_IN_A], date(2026, 1, 1), NU, administratie_id=A)
         assert [f.nummer for f in uit] == ["1"]
-        ((pad, params),) = client.calls
-        assert pad == "SalesInvoices" and f"Entity/id eq {ENT_B_IN_A}" in params["$filter"]
-        assert "Date ge 2026-01-01T00:00:00Z and Date le 2026-09-16T23:59:59Z" in params["$filter"]
+        # Sinds 19-09 twee collecties mét hetzelfde server-side filter: SalesInvoices én Receipts.
+        assert [pad for pad, _ in client.calls] == ["SalesInvoices", "Receipts"]
+        for _pad, params in client.calls:
+            assert f"Entity/id eq {ENT_B_IN_A}" in params["$filter"]
+            assert "Date ge 2026-01-01T00:00:00Z and Date le 2026-09-16T23:59:59Z" in params["$filter"]
+            assert params["$expand"] == "Entity" and params["$orderby"] == "Date asc,id asc"
+
+    def test_rlz_verkoop_is_unie_van_salesinvoices_en_receipts(self) -> None:
+        """Systeemfout 19-09 (174 × ic_spiegel_rood): de SalesInvoices-COLLECTIE ziet API-aangemaakte verkoopfacturen
+        niet (live: `InvoiceNumber eq 24713275` → count 0, record-GET 200); de Receipts-collectie wél. De verkoopkant is
+        daarom de unie: ontdubbeld op id (UI-factuur in beide), Receipts-rij alleen als DocumentType 10 (op VGG is
+        Receipts een unie van álle documenten, incl. PurchaseInvoices type 1)."""
+        ui_id, api_id, inkoop_id = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        client = FakeRlzClient(
+            [_sales_rij(24713205, 1111.69, rid=ui_id)],
+            [],
+            receipts=[
+                _receipt_rij(24713205, 1111.69, rid=ui_id),  # dezelfde UI-factuur, óók in Receipts
+                _receipt_rij(24713275, 924.92, rid=api_id),  # door de module (doorbelasting) aangemaakt
+                _receipt_rij(99, 5.0, rid=inkoop_id, document_type=1),  # PurchaseInvoice in de unie-collectie
+            ],
+        )
+        uit = fm.lees_verkoop_rlz(client, [ENT_B_IN_A], date(2026, 1, 1), NU, administratie_id=A)
+        assert sorted((f.id, f.nummer, str(f.bedrag)) for f in uit) == sorted(
+            [(ui_id, "24713205", "1111.69"), (api_id, "24713275", "924.92")]
+        )
+        assert fm.VERKOOP_COLLECTIES == ("SalesInvoices", "Receipts") and fm.RECEIPTS_DOCUMENTTYPE_VERKOOP == 10
+
+    def test_rlz_verkoop_receipts_zonder_documenttype_telt_als_verkoop(self) -> None:
+        rij = _receipt_rij(1, 1.0)
+        del rij["DocumentType"]
+        client = FakeRlzClient([], [], receipts=[rij])
+        assert [f.nummer for f in fm.lees_verkoop_rlz(client, [ENT_B_IN_A], date(2026, 1, 1), NU, administratie_id=A)] == [
+            "1"
+        ]
 
     def test_rlz_inkoop_via_kandidaten_route(self) -> None:
         client = FakeRlzClient(
@@ -648,8 +695,10 @@ class TestBlokfunctie:
             assert code == 0
             return len(rlz_a.calls) + len(rlz_b.calls)
 
-        assert calls_voor(5) == calls_voor(150) == 2  # één verkoop-call bij A, één inkoop-call bij B
-        assert calls_voor(500) == 6  # alleen paginering (3 pagina's van 200 per kant), geen call per factuur
+        # Twee verkoop-calls bij A (SalesInvoices + Receipts, sinds 19-09), één inkoop-call bij B — onafhankelijk van n.
+        assert calls_voor(5) == calls_voor(150) == 3
+        # Alleen paginering: 3 pagina's SalesInvoices + 1 lege Receipts-pagina bij A, 3 pagina's inkoop bij B.
+        assert calls_voor(500) == 7
 
     def test_webfilter_is_meting_ongeldig_geen_bevindingen(self, twee_administraties) -> None:
         a, b = twee_administraties
@@ -753,6 +802,32 @@ class TestBlokfunctie:
         rlz_b = FakeRlzClient([], [_purchase_rij("24713188", 1210.0, rid=s_id)])
         code, uit, _ = _run({a: fm.RlzBron(a, rlz_a), b: fm.RlzBron(b, rlz_b)}, [self._paar_db(a, b)])
         assert code == 0 and any("spiegelparen 1 groen / 0 rood" in x for x in uit), uit
+
+    def test_spiegelpaar_groen_als_verkoop_alleen_in_receipts_staat(self, twee_administraties, monkeypatch) -> None:
+        """De productiecasus 19-09 (KF → Mantelzorgwoningen, nummer 24713275): de doorbelastings-verkoop staat NIET in de
+        SalesInvoices-collectie, wél in Receipts (DocumentType 10) — vóór 19-09 "verkoopfactuur niet gevonden bij de
+        bron-administratie" (systeemfout), nu groen. Én: de spiegel-inkoop telt niet meer als `ic_ontbreekt_bij_verkoper`."""
+        a, b = twee_administraties
+        v_id, s_id = str(uuid.uuid4()), str(uuid.uuid4())
+        paar = fm.Spiegelpaar(
+            boeking_id=uuid.uuid4(),
+            bron_administratie_id=a,
+            doel_administratie_id=b,
+            verkoop_rlz_id=v_id,
+            spiegel_rlz_id=s_id,
+            verkoop_invoice_number="24713275",
+        )
+        monkeypatch.setattr(fm, "lees_spiegelparen", lambda aid, *, vanaf: [paar])
+        rlz_a = FakeRlzClient([], [], receipts=[_receipt_rij(24713275, 924.92, rid=v_id)])
+        rlz_b = FakeRlzClient([], [_purchase_rij("24713275", 924.92, datum="2026-08-22", rid=s_id)])
+        verzamelaar = run_service.Verzamelaar()
+        verzamelaar.start_blok(fm.BLOK)
+        code, uit, _ = _run(
+            {a: fm.RlzBron(a, rlz_a), b: fm.RlzBron(b, rlz_b)}, [self._paar_db(a, b)], verzamelaar=verzamelaar
+        )
+        assert code == 0 and any("spiegelparen 1 groen / 0 rood" in x for x in uit), uit
+        assert any("1 verkoop / 1 inkoop gelezen, 1 gematcht" in x for x in uit), uit
+        assert not [x for x in verzamelaar.bevindingen if x.soort in ("fout", "afwijking")]
 
     def test_module_onderweg_leest_alleen_open_documenten_van_b(self, twee_administraties) -> None:
         a, b = twee_administraties

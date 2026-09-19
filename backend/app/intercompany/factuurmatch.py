@@ -11,7 +11,9 @@ Wat dit blok doet — en bewust níét:
   (crediteur-dubbelen) reizen als set mee in het server-side `$filter`.
 - Lezen is LEES-ONLY en server-side gefilterd op Entity-id's + datumvenster (default `VENSTER_DAGEN`), gepagineerd
   met een harde bovengrens — het aantal calls per administratie hangt af van het aantal handelsrelaties en pagina's,
-  nooit van het aantal facturen. Backend-agnostisch: RLZ (`SalesInvoices`/`PurchaseInvoices`) én Odoo
+  nooit van het aantal facturen. Backend-agnostisch: RLZ (verkoop = `SalesInvoices` ∪ `Receipts` — de
+  SalesInvoices-collectie ziet API-aangemaakte facturen niet, zie `VERKOOP_COLLECTIES`; inkoop = `PurchaseInvoices`)
+  én Odoo
   (`account.move` out_/in_invoice + refunds) via de bestaande clients/ports; een RLZ↔Odoo-paar werkt gewoon.
 - De match zelf is PUUR (`match_paar`): verrekenparen (factuur + creditnota, zelfde nummer-stam of som 0 binnen 7 d)
   eerst samenvouwen; daarna verkoop ↔ inkoop op (1) factuurnummer als heel token / gelijk (zelfde normalisatie als
@@ -616,16 +618,22 @@ def _entity_filter(entity_ids: Iterable[uuid.UUID | str]) -> str:
     return f"({filter_})" if len(ids) > 1 else filter_
 
 
-def lees_verkoop_rlz(
-    client: RlzClient, entity_ids: Iterable[uuid.UUID | str], van: date, tot: date, *, administratie_id: uuid.UUID
-) -> list[IcFactuur]:
-    """SalesInvoices van de verkoper aan de IC-entity's (STAP-0 16-09: `InvoiceNumber` int, `Reference`, `Entity{id,
-    Name}` alleen mét `$expand`, `BaseInvoiceAmount`, `Date`, `Status`, `IsCreditInvoice`; datumfilter `Date ge
-    …T00:00:00Z`). Gepagineerd ≤ MAX_PAGINAS."""
-    ids = [e for e in entity_ids if e]
-    if not ids:
-        return []
-    filter_ = f"{_entity_filter(ids)} and Date ge {van.isoformat()}T00:00:00Z and Date le {tot.isoformat()}T23:59:59Z"
+#: RLZ `DocumentType` van een verkoopfactuur (Receipts-verkenning 07-08: "een Receipt ís een SalesInvoice", type 10;
+#: STAP-0 19-09 op Kempen Facilities: álle SalesInvoices-records — UI én API — dragen `DocumentType: 10`). De
+#: Receipts-collectie is op sommige administraties een UNIE van álle documenten (VGG 12-09: ook PurchaseInvoices type 1
+#: en bank-directe boekingen type 19), dus een Receipts-rij telt hier alleen als verkoop met dit type.
+RECEIPTS_DOCUMENTTYPE_VERKOOP = 10
+#: De twee collecties die samen de verkoopkant dekken (STAP-0 19-09, opdracht ic_spiegel_rood 174×): de
+#: `SalesInvoices`-COLLECTIE ziet API-aangemaakte verkoopfacturen NIET (gedocumenteerd sinds Omzetmodule STAP 0 §2 en
+#: de kliktest-nazorg 16-08 punt 5; live herbevestigd 19-09: `SalesInvoices?$filter=InvoiceNumber eq 24713275` →
+#: count 0 terwijl `SalesInvoices/{id}` 200 geeft), de `Receipts`-collectie ziet ze WÉL mét dezelfde
+#: `Entity/id`-/`Date`-filters, `$expand=Entity` en `$orderby` (count 8 op KF → Mantelzorgwoningen sinds 01-08).
+#: Vóór 19-09 las dit blok alleen SalesInvoices: élke doorbelastings-, Vastly- of omzet-verkoop van de module was
+#: onzichtbaar → 174 × `ic_spiegel_rood` "verkoopfactuur niet gevonden bij de bron-administratie" (systeemfout).
+VERKOOP_COLLECTIES: tuple[str, ...] = ("SalesInvoices", "Receipts")
+
+
+def _lees_verkoop_collectie(client: RlzClient, collectie: str, filter_: str) -> list[dict[str, Any]]:
     rijen: list[dict[str, Any]] = []
     for pagina in range(MAX_PAGINAS):
         params = {
@@ -635,11 +643,47 @@ def lees_verkoop_rlz(
             "$top": str(PER_PAGINA),
             "$skip": str(pagina * PER_PAGINA),
         }
-        deel = client.get("SalesInvoices", params=params).get("value", [])
+        deel = client.get(collectie, params=params).get("value", [])
         rijen.extend(deel)
         if len(deel) < PER_PAGINA:
             break
-    uit = [_rlz_naar_factuur(r, administratie_id=administratie_id, kant="verkoop") for r in rijen]
+    return rijen
+
+
+def _is_verkoop_rij(rij: dict[str, Any], *, collectie: str) -> bool:
+    """SalesInvoices-rijen zijn per definitie verkoop; een Receipts-rij alleen mét `DocumentType` 10 (of zonder het
+    veld — oudere responsvorm, dan beslist de Entity-filter)."""
+    if collectie != "Receipts":
+        return True
+    soort = rij.get("DocumentType")
+    if soort in (None, ""):
+        return True
+    try:
+        return int(soort) == RECEIPTS_DOCUMENTTYPE_VERKOOP
+    except (TypeError, ValueError):
+        return False
+
+
+def lees_verkoop_rlz(
+    client: RlzClient, entity_ids: Iterable[uuid.UUID | str], van: date, tot: date, *, administratie_id: uuid.UUID
+) -> list[IcFactuur]:
+    """Verkoopfacturen van de verkoper aan de IC-entity's = de UNIE van de `SalesInvoices`- en de `Receipts`-collectie
+    (zie `VERKOOP_COLLECTIES`), ontdubbeld op `id` (SalesInvoices-rij wint), Receipts alleen `DocumentType` 10. Zelfde
+    server-side filter op beide (STAP-0 16-09 + 19-09: `InvoiceNumber` int, `Reference`, `Entity{id, Name}` alleen mét
+    `$expand`, `BaseInvoiceAmount`, `Date`, `Status`, `IsCreditInvoice`; datumfilter `Date ge …T00:00:00Z`).
+    Gepagineerd ≤ MAX_PAGINAS per collectie."""
+    ids = [e for e in entity_ids if e]
+    if not ids:
+        return []
+    filter_ = f"{_entity_filter(ids)} and Date ge {van.isoformat()}T00:00:00Z and Date le {tot.isoformat()}T23:59:59Z"
+    per_id: dict[str, dict[str, Any]] = {}
+    for collectie in VERKOOP_COLLECTIES:
+        for rij in _lees_verkoop_collectie(client, collectie, filter_):
+            rid = str(rij.get("id") or "").lower()
+            if not rid or rid in per_id or not _is_verkoop_rij(rij, collectie=collectie):
+                continue
+            per_id[rid] = rij
+    uit = [_rlz_naar_factuur(r, administratie_id=administratie_id, kant="verkoop") for r in per_id.values()]
     return [f for f in uit if f is not None]
 
 

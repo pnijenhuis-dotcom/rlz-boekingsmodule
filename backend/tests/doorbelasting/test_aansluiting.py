@@ -19,6 +19,7 @@ from app.intercompany.factuurmatch import Bron, BronOvergeslagen, IcFactuur, maa
 from app.reconciliatie import run as run_service
 from app.rlz.client import RlzWebfilterError
 from tests.auth.conftest import administratie_id, beheerder_id  # noqa: F401
+from tests.doorbelasting.conftest import maak_mapping
 
 BRON = uuid.UUID("aaaaaaaa-0000-4000-8000-00000000000a")
 DOEL = uuid.UUID("bbbbbbbb-0000-4000-8000-00000000000b")
@@ -221,3 +222,26 @@ class TestCli:
 
         assert "doorbelasting_aansluiting" in BLOKKEN
         assert BLOKKEN.index("doorbelasting_aansluiting") == BLOKKEN.index("doorbelasting") + 1
+
+
+class TestBronnenMetWhitelist:
+    def test_leest_de_whitelist_per_administratie_scope(self, administratie_id, beheerder_id) -> None:
+        """Systeemfout 19-09: `doorbelasting_mapping` draagt alleen een scope-policy (FORCE RLS, geen NULL-/Beheerder-
+        clausule). De oude lezing in `scoped_session(None)` gaf in productie stil 0 bron-administraties ("niets te
+        toetsen" sinds 16-09, terwijl Kempen Facilities 8 rijen heeft); lokaal maskeerde de superuser dat. De suite draait
+        de servicelaag als de niet-superuser app-rol, dus deze test is rood op de oude lezing en groen op de lezing per
+        administratie-scope."""
+        assert administratie_id not in da.bronnen_met_whitelist()
+        maak_mapping(administratie_id=administratie_id, actor_id=beheerder_id, naam="Veldhoven Recreatie B.V.")
+        assert administratie_id in da.bronnen_met_whitelist()
+
+    def test_inactieve_rij_telt_niet(self, administratie_id, beheerder_id) -> None:
+        from app.db.session import scoped_session
+        from app.doorbelasting.models import DoorbelastingMapping
+
+        m = maak_mapping(administratie_id=administratie_id, actor_id=beheerder_id, naam="Oirschot Recreatie B.V.")
+        with scoped_session(administratie_id, actor_id=beheerder_id) as session:
+            rij = session.get(DoorbelastingMapping, m.id)
+            assert rij is not None
+            rij.actief = False
+        assert administratie_id not in da.bronnen_met_whitelist()

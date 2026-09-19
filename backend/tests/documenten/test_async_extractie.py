@@ -396,6 +396,158 @@ class TestHerstelNaHerstart:
         assert service.herstel_achtergebleven_extracties(wachtrij=wachtrij) == 0
         assert wachtrij.enqueued == []
 
+    def test_cloud_variant_laat_een_verse_bezig_run_van_de_job_staan(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        ai_gate_aan: None,
+        fake_extraheer: list[bytes],
+    ) -> None:
+        """Systeemfout BLOW 18-09 (tijdlijn c9ba6d8d): een opschalende service-instance zette documenten die een LOPENDE
+        job-executie op bezig had terug naar de wachtrij ("opnieuw ingepland na een herstart") → driedubbele verwerking.
+        Mét de cloud-wachtrij geldt dezelfde staleness-regel als in de job: een verse bezig-run blijft staan, een
+        gestrande (ouder dan `stale_na`) gaat terug; wachtrij-documenten worden altijd (opnieuw) getriggerd."""
+        from datetime import timedelta
+
+        from app.documenten.wachtrij import CloudRunJobExtractieWachtrij
+
+        verloren = FakeWachtrij()
+        doc_wachtrij = _upload(administratie_id, gescoopte_gebruiker, opslag, inhoud=_PDF + b"w", wachtrij=verloren)
+        doc_bezig = _upload(administratie_id, gescoopte_gebruiker, opslag, inhoud=_PDF + b"b", wachtrij=verloren)
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            document = session.get(Document, doc_bezig.document_id)
+            assert document is not None
+            service._schrijf_overgang(
+                session,
+                document=document,
+                naar=DocumentStatus.EXTRACTIE_BEZIG,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail={"reden": "testopstelling: lopende job-executie nabootsen"},
+            )
+        triggers: list[str] = []
+        cloud = CloudRunJobExtractieWachtrij(job_resource="x", trigger=triggers.append, spoor=lambda **kw: None)
+        assert service.herstel_achtergebleven_extracties(wachtrij=cloud) == 1  # alleen het wachtrij-document
+        assert triggers == ["x"]
+        detail = service.haal_document_op(administratie_id=administratie_id, document_id=doc_bezig.document_id)
+        assert detail.document.status == DocumentStatus.EXTRACTIE_BEZIG
+        # Wél gestrand (ouder dan de drempel): terug de wachtrij in — zelfde regel als in de job.
+        assert service.herstel_achtergebleven_extracties(wachtrij=cloud, stale_na=timedelta(seconds=0)) == 2
+        detail = service.haal_document_op(administratie_id=administratie_id, document_id=doc_bezig.document_id)
+        assert detail.document.status == DocumentStatus.EXTRACTIE_WACHTRIJ
+        # Het wachtrij-document zelf: {doc_wachtrij} beide keren geteld.
+        assert doc_wachtrij.document_id is not None
+
+
+@pytest.fixture(autouse=True)
+def _bundelvenster_leeg() -> None:
+    """Het bundelvenster van de cloud-trigger is procesbreed (per job-resource): élke test begint schoon."""
+    from app.documenten.wachtrij import reset_bundelvenster
+
+    reset_bundelvenster()
+    yield
+    reset_bundelvenster()
+
+
+class TestBundelvenster:
+    """Trigger-bundeling (systeemfout BLOW-bulk 18-09: 180 uploads → 118 job-executies in één uur, 180 × 429 op de
+    Jobs-API, dubbele verwerking). Eén geslaagde trigger dekt 30 s; daarbinnen = `gebundeld` (spoor, geen call);
+    een mislukte trigger opent géén venster (de volgende upload probeert gewoon opnieuw)."""
+
+    JOB = "projects/p/locations/europe-west4/jobs/rlz-extractie-wachtrij"
+
+    def _wachtrij(self, klok: list[float], triggers: list[str], sporen: list[dict], *, trigger=None):  # noqa: ANN001, ANN202
+        from app.documenten.wachtrij import CloudRunJobExtractieWachtrij
+
+        return CloudRunJobExtractieWachtrij(
+            job_resource=self.JOB,
+            trigger=trigger or triggers.append,
+            spoor=lambda **kw: sporen.append(kw),
+            klok=lambda: klok[0],
+        )
+
+    def test_binnen_het_venster_geen_tweede_executie_wel_een_spoor(self) -> None:
+        from app.documenten import wachtrij as wq
+
+        klok, triggers, sporen = [1000.0], [], []
+        w = self._wachtrij(klok, triggers, sporen)
+        aid = uuid.uuid4()
+        w.enqueue(administratie_id=aid, document_id=uuid.uuid4())
+        klok[0] += 10
+        w.enqueue(administratie_id=aid, document_id=uuid.uuid4())
+        klok[0] += 19.9  # 29,9 s ná de trigger: nog binnen het venster
+        w.enqueue(administratie_id=aid, document_id=uuid.uuid4())
+        assert len(triggers) == 1
+        assert [sp["uitkomst"] for sp in sporen] == [wq.UITKOMST_GESLAAGD, wq.UITKOMST_GEBUNDELD, wq.UITKOMST_GEBUNDELD]
+        assert sporen[1]["gebundeld_na_s"] == 10.0 and sporen[2]["gebundeld_na_s"] == 29.9
+        assert all(sp["fout"] is None for sp in sporen)
+        # Ná het venster: opnieuw één executie.
+        klok[0] += 0.2
+        w.enqueue(administratie_id=aid, document_id=uuid.uuid4())
+        assert len(triggers) == 2 and sporen[-1]["uitkomst"] == wq.UITKOMST_GESLAAGD
+        assert wq.TRIGGER_BUNDEL_VENSTER_S == 30.0
+
+    def test_venster_is_procesbreed_per_job_resource(self) -> None:
+        """Twee uploads in hetzelfde proces (twee requests, twee wachtrij-objecten) delen één executie — precies de
+        bulk-upload-casus (4 parallelle uploads per browser)."""
+        klok, triggers, sporen = [50.0], [], []
+        w1, w2 = self._wachtrij(klok, triggers, sporen), self._wachtrij(klok, triggers, sporen)
+        w1.enqueue(administratie_id=uuid.uuid4(), document_id=uuid.uuid4())
+        w2.enqueue(administratie_id=uuid.uuid4(), document_id=uuid.uuid4())
+        assert len(triggers) == 1 and sporen[-1]["uitkomst"] == "gebundeld"
+
+    def test_mislukte_trigger_opent_geen_venster(self) -> None:
+        from app.documenten import wachtrij as wq
+
+        klok, triggers, sporen = [0.0], [], []
+
+        def faal(_: str) -> None:
+            raise RuntimeError("429 Too Many Requests")
+
+        kapot = self._wachtrij(klok, triggers, sporen, trigger=faal)
+        kapot.enqueue(administratie_id=uuid.uuid4(), document_id=uuid.uuid4())  # geen exception: vangnet = scheduler
+        assert sporen[-1]["uitkomst"] == wq.UITKOMST_MISLUKT and "429" in sporen[-1]["fout"]
+        klok[0] += 1
+        goed = self._wachtrij(klok, triggers, sporen)
+        goed.enqueue(administratie_id=uuid.uuid4(), document_id=uuid.uuid4())
+        assert triggers == [self.JOB] and sporen[-1]["uitkomst"] == wq.UITKOMST_GESLAAGD
+
+    def test_gebundeld_spoor_landt_als_audit_event(self, administratie_id: uuid.UUID) -> None:
+        from sqlalchemy import select
+
+        from app.db.models import AuditEvent
+        from app.documenten.wachtrij import TRIGGER_AUDIT_ACTIE, CloudRunJobExtractieWachtrij
+
+        d1, d2 = uuid.uuid4(), uuid.uuid4()
+        w = CloudRunJobExtractieWachtrij(job_resource=self.JOB, trigger=lambda _: None)
+        w.enqueue(administratie_id=administratie_id, document_id=d1)
+        w.enqueue(administratie_id=administratie_id, document_id=d2)
+        with scoped_session(administratie_id) as session:
+            rijen = {
+                e.record_id: e.nieuwe_waarde
+                for e in session.scalars(select(AuditEvent).where(AuditEvent.actie == TRIGGER_AUDIT_ACTIE)).all()
+            }
+        assert rijen[d1]["uitkomst"] == "geslaagd"
+        assert rijen[d2]["uitkomst"] == "gebundeld" and rijen[d2]["fout"] is None and "gebundeld_na_s" in rijen[d2]
+
+    def test_job_herhaalt_de_pas_zolang_er_werk_was(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """De lopende executie dekt uploads die binnen het venster binnenkomen: ná een pas mét werk nog een pas, tot een
+        lege pas of het plafond (`WACHTRIJ_MAX_PASSEN`, dan het scheduler-vangnet)."""
+        passen = iter([2, 1, 0, 7])
+        aanroepen: list[int] = []
+
+        def nep_pas(*, stale_na):  # noqa: ANN001, ANN202
+            n = next(passen)
+            aanroepen.append(n)
+            return n
+
+        monkeypatch.setattr(service, "_verwerk_extractie_wachtrij_pas", nep_pas)
+        assert service.verwerk_extractie_wachtrij() == 3 and aanroepen == [2, 1, 0]
+        aanroepen.clear()
+        passen = iter([3, 3, 3, 3, 3, 3])
+        assert service.verwerk_extractie_wachtrij(max_passen=2) == 6 and aanroepen == [3, 3]
+        assert service.WACHTRIJ_MAX_PASSEN == 5
+
 
 class TestWachtrijJob:
     """Feedbackronde 26-08 punt 4: op Cloud Run valt een in-process worker-thread buiten een
@@ -510,6 +662,9 @@ def test_cloud_wachtrij_legt_trigger_uitkomst_vast_als_audit_spoor(administratie
     def faal(_: str) -> None:
         raise RuntimeError("403 run.jobs.run")
 
+    from app.documenten.wachtrij import reset_bundelvenster
+
+    reset_bundelvenster()  # buiten het 30 s-bundelvenster van de geslaagde trigger (anders: `gebundeld`)
     CloudRunJobExtractieWachtrij(job_resource=job, trigger=faal).enqueue(
         administratie_id=administratie_id, document_id=doc_fout
     )  # geen exception

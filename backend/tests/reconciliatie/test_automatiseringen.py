@@ -683,7 +683,37 @@ def _trigger(aid: uuid.UUID, uur: float, *, ok: bool) -> auto.AuditFeit:
     )
 
 
+def _gebundeld(aid: uuid.UUID, uur: float) -> auto.AuditFeit:
+    return auto.AuditFeit(
+        actie="extractie_wachtrij_trigger",
+        tijdstip=_uur(uur),
+        administratie_id=aid,
+        nieuwe_waarde={"uitkomst": "gebundeld", "job": "rlz-extractie-wachtrij", "fout": None, "gebundeld_na_s": 4.2},
+    )
+
+
 class TestExtractieWachtrij:
+    def test_gebundelde_trigger_is_zachte_overslaan_reden_zonder_let_op(self) -> None:
+        """Bundelvenster 19-09 (BLOW-bulk: 180 uploads → 118 executies + 180 × 429): een enqueue binnen 30 s ná een
+        geslaagde trigger doet bewust geen tweede executie en legt `uitkomst: gebundeld` vast — telbaar als zachte
+        overslaan-reden (de lopende executie dekt het document), nooit `vangnet_scheduler`, nooit een LET-OP."""
+        aid = uuid.uuid4()
+        f = _feiten(
+            aid,
+            extractie_job_resource=JOB,
+            extractie_wachtrij_overgangen=[(aid, _uur(1)), (aid, _uur(1.01)), (aid, _uur(1.02))],
+            audit=[_trigger(aid, 1, ok=True), _gebundeld(aid, 1.01), _gebundeld(aid, 1.02)],
+        )
+        tellers = auto.bereken(f, nu=NU)
+        t = _teller(tellers, auto.EXTRACTIE_WACHTRIJ)
+        assert (t.dag.verwacht, t.dag.gedaan) == (3, 1)
+        assert t.dag.overgeslagen == {auto.TRIGGER_GEBUNDELD: 2}
+        assert auto.TRIGGER_GEBUNDELD not in auto.HARDE_VOORWAARDEN
+        assert not [b for b in auto.bevindingen(tellers) if b["detail"]["automatisering"] == auto.EXTRACTIE_WACHTRIJ]
+        regel = next(r for r in auto.regels(tellers) if "Extractie-wachtrij" in r)
+        assert "verwacht 3, gedaan 1, overgeslagen 2" in regel and "gebundeld met een trigger < 30 s eerder" in regel
+        assert "LET-OP" not in regel
+
     def test_verwacht_gedaan_overgeslagen_en_let_op_bij_mislukte_trigger(self) -> None:
         """verwacht = documenten die in het venster op extractie_wachtrij gezet zijn; gedaan = trigger geslaagd;
         overgeslagen = trigger mislukt (vangnet scheduler, LET-OP) of geen trigger-spoor (lokaal/thread)."""
@@ -798,6 +828,9 @@ class TestExtractieWachtrij:
         def faal(_: str) -> None:
             raise RuntimeError("403 run.jobs.run")
 
+        from app.documenten.wachtrij import reset_bundelvenster
+
+        reset_bundelvenster()  # buiten het 30 s-bundelvenster van de geslaagde trigger (anders: `gebundeld`)
         CloudRunJobExtractieWachtrij(job_resource=JOB, trigger=faal).enqueue(
             administratie_id=administratie_id, document_id=doc
         )

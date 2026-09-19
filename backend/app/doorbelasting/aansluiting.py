@@ -152,17 +152,30 @@ def whitelist_voor(bron_administratie_id: uuid.UUID) -> list[WhitelistRij]:
 
 
 def bronnen_met_whitelist() -> list[uuid.UUID]:
-    """Alle actieve administraties mét ≥ 1 actieve whitelist-rij (de bron-kant van de doorbelasting)."""
+    """Alle actieve administraties mét ≥ 1 actieve whitelist-rij (de bron-kant van de doorbelasting).
+
+    Systeemfout 19-09 (opdracht ic_spiegel_rood): tot 19-09 las deze functie `doorbelasting_mapping` in
+    `scoped_session(None)`. De tabel draagt ALLEEN een scope-policy (`administratie_id = current_administratie_id()`,
+    FORCE RLS; geen Beheerder-/NULL-clausule) — lokaal maskeert de superuser-bypass dat, in productie (eigenaar zonder
+    BYPASSRLS) gaf de query stil 0 rijen: het dagelijkse blok `doorbelasting_aansluiting` meldde sinds 16-09 elke run
+    "0 bron-administratie(s) mét whitelist — niets te toetsen" terwijl Kempen Facilities 8 rijen heeft (stille no-op,
+    KP 6). Nu: administraties platformbreed lezen (dat mag zonder scope) en de mapping per administratie in haar eigen
+    scope — hetzelfde patroon als `app/intercompany/relaties.py::_doorbelasting_kandidaten`."""
     from app.db.models import Administratie
 
     with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
-        ids = session.scalars(
-            select(DoorbelastingMapping.administratie_id)
-            .join(Administratie, Administratie.id == DoorbelastingMapping.administratie_id)
-            .where(DoorbelastingMapping.actief.is_(True), Administratie.actief.is_(True))
-            .distinct()
-        ).all()
-    return sorted(set(ids), key=str)
+        administratie_ids = list(session.scalars(select(Administratie.id).where(Administratie.actief.is_(True))).all())
+    uit: set[uuid.UUID] = set()
+    for aid in administratie_ids:
+        with scoped_session(aid, actor_id=SYSTEEM_ACTOR_ID) as session:
+            heeft = session.scalar(
+                select(DoorbelastingMapping.id)
+                .where(DoorbelastingMapping.administratie_id == aid, DoorbelastingMapping.actief.is_(True))
+                .limit(1)
+            )
+        if heeft is not None:
+            uit.add(aid)
+    return sorted(uit, key=str)
 
 
 def crediteurrecords_van_bron_in_doel(
