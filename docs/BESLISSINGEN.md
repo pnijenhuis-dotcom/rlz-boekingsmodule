@@ -10649,7 +10649,7 @@ Niet gedaan (bewust): geen eigen kolom voor de code (sortering op naam = sorteri
 
 **Melding Peter 17-09 (actiemail ochtend):** tien regels "Mogelijk dubbel betaald" (T&J Hoveniers — Google Cloud, Insify € −40,59, T Hubers € −20, Helmink via Mollie; Abbegaa — Greenchoice, Alpina € −245,30, Administratiekantoor Nijenhuis, Ziton holding 3×) **"en 1204 andere" — "dit moet anders want hier doe ik niks mee."** Terecht: dat zijn maandelijkse/periodieke betalingen. Wortel (code gelezen): de regel van 16-09 ("twee gelijke bedragen aan dezelfde IBAN ≤ 60 d") liep over 400 dagen historie van álle administraties; de periodiek-uitsluiting steunde op `classificeer_reeks`, die twee gelijke facturen ≤ 30 d per definitie BATCH noemt (Lusso-regel) en pas bij ≥ 3 facturen mét maand-/kwartaalpatroon PERIODIEK zegt — de meeste periodieke reeksen kwamen daar nooit doorheen, en een soort van dag één stond direct in de actiemail. Kernprincipe 7(2): 1.214 signalen zonder handeling zijn erger dan geen.
 
-**Blok A — mail stil + bestaande bevindingen sluiten (zonder mens-klik).** `dubbele_betaling_vermoed` staat in stand `meten` (blok C) → nooit meer in de actiemail tot een expliciete promotie. Bevindingen zijn per run (append-only); "sluiten" = de eerste run ná deploy produceert ze niet meer (herdefinitie) en `run.py::_audit_verdwenen_dubbele_betaling` schrijft per administratie één audit `reconciliatie_auto_gesloten` (soort, aantal, vingerafdrukken ≤ 200, reden "herdefinitie 17-09 — valse positieven (periodiek / betaling mét factuur)"); de systeemmail toont ze onder "Hersteld". Lees-only vooraf (telling per administratie en per tegenpartij, top-20): via `gh workflow run nameting -f onderdeel=reconciliatie` — uitkomst in het rapport.
+**Blok A — mail stil + bestaande bevindingen sluiten (zonder mens-klik).** `dubbele_betaling_vermoed` staat in stand `meten` (blok C) → nooit meer in de actiemail tot een expliciete promotie. Bevindingen zijn per run (append-only); "sluiten" = de eerste run ná deploy produceert ze niet meer (herdefinitie) en `run.py::_audit_verdwenen_dubbele_betaling` (sinds 19-09 avond `_audit_verdwenen_bevindingen` — generiek voor élke verdwenen afwijking én fout, zie rij "Nameting ic_spiegel_rood échte run — POGING 1") schrijft per administratie één audit `reconciliatie_auto_gesloten` (soort, aantal, vingerafdrukken ≤ 200, reden "herdefinitie 17-09 — valse positieven (periodiek / betaling mét factuur)"); de systeemmail toont ze onder "Hersteld". Lees-only vooraf (telling per administratie en per tegenpartij, top-20): via `gh workflow run nameting -f onderdeel=reconciliatie` — uitkomst in het rapport.
 
 **Blok B — herdefinitie (`app/bank/dubbele_betaling.py`, pure motor, geen RLZ-call, geen AI):** dubbel betaald = méér betaald dan er aan facturen tegenover staat. Per tegenrekening-IBAN, venster 60 d: (1) kandidaat = ≥ 2 uitgaande, cent-exact gelijke mutaties ≤ 60 d; (2) **periodiek = nooit**: `is_periodieke_reeks` (≥ 3 betalingen, élke tussenpoos ±35 % van week/twee weken/maand/kwartaal/jaar) óf `classificeer_reeks` PERIODIEK óf bekende periodieke tegenpartij (`periodieke_ibans`: crediteuren mét `boekvoorstel.betaalstatus` "Wordt automatisch geïncasseerd" of een `terugkerend_signaal`, via `leverancier_iban` naar IBAN); (3) **factuurtoets (de kern)**: facturen van de crediteur mét hetzelfde bedrag ± 30 d uit drie eigen caches — module (`boekvoorstel` × `document` op álle crediteurrecords met die IBAN, niet-afgevoerd/verwijderd/afgewezen/gesplitst/samengevoegd), RLZ-open-postencache (`payment_item_cache` op de entity's uit `bank_relatie_iban`, óók verdwenen = betaald, alleen inkoop-DocumentType 1) en de RLZ-koppelingen van de mutaties zelf (hulzen type 19 tellen niet) — gededupliceerd op RLZ-document-id / genormaliseerde referentie / document-id (`dedupliceer_facturen`); **betalingen > facturen → bevinding, anders niets**; crediteur in géén enkele cache bekend = geen uitspraak (`zonder_factuurbron`, geteld, geen bevinding — beslispunt); (4) aflettering: élke betaling aan een eigen RLZ-document = nooit dubbel; één betaling zonder document naast een gekoppelde = `sterk`; (5) de bevinding draagt mutatie-ids, datums, gevonden facturen (bron/referentie/datum/boekstuk), `bank_toets: bevestigd` en de handeling "Factuur ontbreekt (verwijderd of nooit geboekt): controleer de betalingen in Reeleezee en vorder terug óf boek de factuur alsnog; bewust (deelbetaling, creditnota) = accepteer met reden". Zin: "Aan Hello Kitchen Duiven is € 12.600,00 twee keer betaald (18-08 en 14-09), terwijl er één factuur van dat bedrag tegenover staat — een van de betalingen hangt in Reeleezee aan geen factuur." Tellers in `DubbeleBetalingAnalyse`: `periodiek_uitgesloten`, `facturen_dekken`, `afgeletterd_verschillend`, `zonder_factuurbron`. Casussen in `tests/bank/test_dubbele_betaling.py`: Hello Kitchen (2 betalingen, 1 factuur → bevinding), Google Cloud (2/2 → niets), maandreeks Insify/Greenchoice (→ periodiek), week-/kwartaalpatroon, incasso-tegenpartij, onbekende crediteur, sterk-signaal, dedup uit drie bronnen; DB-variant via `reconcilieer_bank` zonder client. Gouden-set-casus aa blijft groen.
 
@@ -11824,6 +11824,24 @@ alinea "Patroon vaststaande actie = het systeem doet het".**
   Niet gemeten (échte run nodig): `reconciliatie_auto_gesloten` × 174, aandacht 340 → ≤ 166, `trigger_gebundeld` (geen bulk sinds de deploy) —
   vervolg-opdracht `2026-09-20-nameting-ic-spiegel-rood-echte-run-en-aansluiting-alleen.md`.
 
+- **Nameting ic_spiegel_rood échte run — POGING 1 (19-09 18:57–19:40, te vroeg: de inbox-runner claimt op mtime en las de datum "20-09"
+  niet; rapport `docs/rapporten/2026-09-19-nameting-ic-spiegel-rood-echte-run-poging-1.md`) — GEMETEN stap 0 + 4 + 6, NIET GEMETEN stap 1–3,
+  bijvangst GEFIXT.** Stap 0: `main..origin/main` 0, `aef301f` op service `rlz-backend` én job `rlz-reconciliatie` (deploy-run 35456298610).
+  Stap 4: `nameting.sh reconciliatie-alles --alleen doorbelasting_aansluiting --lees-only` op de job-image (executie `j6kgg`) — geen
+  argparse-fout meer, "1 bron-administratie(s) mét whitelist", KF 8 doelen, 1758/1660/1652, 108 afwijkingen (99/3/3/2/1, identiek aan 19-09
+  middag) → werkt in productie JA. Stap 6: BLOW c9ba6d8d nog `te_controleren` (18-09 11:05) → klikpunt blijft. Stap 5: 6 executies/uur,
+  geen bulk sinds de deploy → niet meetbaar. Stap 1–3: run 20-09 04:30 UTC nog niet gelopen; niet geforceerd (regel 19-09).
+  **Bijvangst (bron-vs-realiteit, kernprincipe 4):** de 174 fouten zouden ZONDER SPOOR verdwijnen — `bepaal_delta` kende alleen
+  `verdwenen_afwijkingen`, de systeemmail alleen "Hersteld — N afwijking(en)", en `_audit_verdwenen_dubbele_betaling` schreef
+  `reconciliatie_auto_gesloten` uitsluitend voor `dubbele_betaling_vermoed`; CLAUDE.md reconciliatie 2 ("verdwenen bevindingen sluiten mét
+  audit") en het meetrecept waren generieker dan de code. Gefixt: `Delta.verdwenen_fouten` + `Delta.verdwenen`, herstelregel fouten,
+  `_audit_verdwenen_bevindingen` per soort × bevindingssoort × administratie (soort = `detail.afwijking_soort` of `<blok>:<soort>`, reden
+  "niet meer geproduceerd door run <id> …", dubbele-betaling-reden ongewijzigd), `samenvatting["delta"]` op de run-rij (tellers nieuw/
+  verdwenen — de systeemmail staat in productie uit, dus anders nergens meetbaar). Verwachting run 20-09: één audit-rij `ic_spiegel_rood` /
+  `fout` / `intercompany` / NULL / 174 + `delta.verdwenen_fouten` 174. Tests: `test_run.py` (+2), `test_soort_stand.py` (+1 e2e),
+  `test_cc_inbox_claim_en_poort.py` (+4). **Procesfix:** "niet vóór"-poort in de inbox-runner — zie CC-INBOX-sectie rij (k); beide
+  20-09-opdrachten dragen `niet vóór: 2026-09-20 07:15`. Vervolg: `opdrachten/inbox/2026-09-20-nameting-ic-spiegel-rood-echte-run-poging-2.md`.
+
 
 - **Nameting kassarapport-autotype poging 1 (19-09 ~16:00) — NIET GEMETEN, deploy geblokkeerd door een stille push-fout.** Stap 0 faalde:
   `a5c0663` stond niet op origin — de nameting-bot committe `78aca7a` om 12:18 op origin/main terwijl een run liep, waarna élke
@@ -11893,3 +11911,16 @@ werkloop op de Mac; de eerste echte inbox-run ná deze commit is de nameting —
   main` → rejected/exit 1; `stop-push.sh` → merge --no-ff + push ok, geen rebase-spoor) = `test_stop_hook_push.py::
   test_reproductie_bot_commit_tijdens_run_voor_en_na` + settings-JSON-hookregels zonder git-woord. Werkt in productie: n.v.t.
   (lokale werkloop).
+
+- **Rij (k) — "niet vóór"-poort (19-09 avond, nameting ic_spiegel_rood poging 1; rapport
+  `docs/rapporten/2026-09-19-nameting-ic-spiegel-rood-echte-run-poging-1.md`):** de regel van 19-09 middag "een vervolg-opdracht in de inbox
+  met de datum van die run" werkte niet — de runner claimt het oudste bestand (mtime) en leest geen datum, dus de opdracht "ná de run van 20-09
+  06:30" startte op 19-09 18:57 (11,5 uur te vroeg) en de kassarapport-vervolgopdracht zou dezelfde avond volgen. Gebouwd: een opdracht mét een
+  regel `niet vóór: JJJJ-MM-DD[ UU:MM]` (eerste 20 regels; ook "niet voor:", vet/blockquote mag; lokale tijd, zonder tijd 00:00) wordt pas ná dat
+  moment geclaimd (`niet_voor_epoch()` in `claim_opdracht()`); tot dan logt de tick "wacht — X niet vóór … (nog N min); volgende kandidaat"
+  hoogstens elk uur (`log_hoogstens_per_uur()`, stand `opdrachten/log/.wacht-nietvoor-<slug>`, géén macOS-melding: verwacht wachten is geen
+  incident) en neemt de volgende kandidaat; `rlz inbox status` toont "inbox/: X — wacht tot … (niet vóór; nog N min)" (`_rlz_inbox_wacht_stand`).
+  Een run die zelf vaststelt dat het te vroeg is (run nog niet gelopen, deploy nog niet live) zet die regel bovenin en legt de opdracht terug in
+  inbox/ — één mechanisme. Bewust een kopregel in het bestand, geen bestandsnaam-conventie (de datum in de naam is de opdrachtdatum). Guards
+  `test_cc_inbox_claim_en_poort.py::test_niet_voor_*` (toekomst = geen claim + één logregel per uur + status-regel + geen melding; verstreken =
+  claim; oudste-mtime-maar-te-vroeg laat de volgende voorgaan; scripts documenteren rij (k)).

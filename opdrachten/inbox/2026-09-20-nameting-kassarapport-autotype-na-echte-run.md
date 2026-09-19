@@ -1,5 +1,8 @@
 Domeinen: omzet, reconciliatie, werkloop-productie
 
+> **niet vóór: 2026-09-20 07:15** — meet ná de scheduler-run van 20-09 04:30 UTC (06:30 NL). Toegevoegd 19-09 avond (poging 1 van de
+> ic_spiegel_rood-nameting werd om 18:57 al opgepakt; sinds rij (k) claimt de inbox-runner een opdracht pas ná dit moment).
+
 # OPDRACHT 20-09 — Nameting kassarapport automatisch typeren ná de ÉCHTE reconciliatie-run van 20-09 06:30 + kantoorbrede nazorg-CLI ná de fix
 # (vervolg op docs/rapporten/2026-09-19-nameting-kassarapport-autotype-poging-2.md — daar staan alle tellingen van 19-09 18:00)
 

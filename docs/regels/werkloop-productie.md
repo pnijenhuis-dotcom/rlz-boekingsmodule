@@ -172,3 +172,13 @@
   bouwt, laat de test élke argumentvorm uit het meetrecept letterlijk aanroepen (mét en zónder filter, dry-run én echt); een meetrecept dat een vorm noemt
   die de suite niet kent is niet af. Een NameError/ImportError op een job-executie is een systeemfout van de bouw, geen productie-incident: fix + guard in
   dezelfde run, en de meetlat opnieuw ná deploy (vervolg-opdracht).
+
+<!-- toegevoegd 19-09-2026 avond, opdracht "nameting-ic-spiegel-rood-echte-run-en-aansluiting-alleen" (poging 1) -->
+- **CC-inbox rij (k) — "niet vóór"-poort: een opdracht voor ná een moment start niet eerder (19-09 avond; BESLISSINGEN "CC-INBOX — LOCK PER
+  OPDRACHT, POORT VÓÓR EINDE, PUSH-RETRY (19-09)" rij (k)):** de regel "(3) … een vervolg-opdracht in de inbox met de datum van die run" hierboven
+  werkte niet — de runner claimt op mtime en leest geen datum; de opdracht "ná de échte run van 20-09 06:30" startte op 19-09 18:57. Een opdracht
+  mét een regel `niet vóór: JJJJ-MM-DD[ UU:MM]` (eerste 20 regels; ook "niet voor:", vet/blockquote mag; lokale tijd, zonder tijd = 00:00) wordt pas
+  ná dat moment geclaimd; tot dan "wacht — X niet vóór … (nog N min); volgende kandidaat" hoogstens elk uur in het log (geen macOS-melding),
+  `rlz inbox status` toont "inbox/: X — wacht tot …". Een run die zelf vaststelt dat het te vroeg is (run nog niet gelopen, deploy niet live)
+  zet die regel bovenin en legt de opdracht terug in inbox/ — geen tweede mechanisme. Bij een nameting ná een scheduler-run: run-tijd + duur +
+  marge voor de deploy van de eigen commit (06:30 NL + ~15 min → `niet vóór: … 07:15`). Guards `test_cc_inbox_claim_en_poort.py::test_niet_voor_*`.

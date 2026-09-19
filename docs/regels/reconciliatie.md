@@ -102,6 +102,26 @@
   `da_ontbreekt_in_doel`) is bekend en bewust: de standen per soort regelen de melding (IC-soort in `meten`, `da_*` code-default `actie` → de
   explosie-rem doet bij > 50 zijn werk).
 
+<!-- toegevoegd 19-09-2026 avond, opdracht "nameting-ic-spiegel-rood-echte-run-en-aansluiting-alleen" (poging 1) -->
+- **Verdwenen FOUTEN verdwijnen niet stil — delta, herstelregel en audit `reconciliatie_auto_gesloten` generiek (19-09 avond; geen migratie;
+  BESLISSINGEN "KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING ZONDER HANDELING SWEEP (Peter 19-09)" rij "Nameting ic_spiegel_rood échte run —
+  POGING 1"):** tot 19-09 kende `bepaal_delta` alleen `verdwenen_afwijkingen` (soort `afwijking`), toonde de systeemmail alleen "Hersteld — N
+  afwijking(en)" en schreef `_audit_verdwenen_dubbele_betaling` het audit uitsluitend voor `dubbele_betaling_vermoed` — een gefixte systeemfout
+  (174 × `ic_spiegel_rood`, soort `fout`) zou bij de eerstvolgende run zonder enig spoor verdwijnen, terwijl de regel hierboven ("verdwenen
+  bevindingen sluiten mét audit") generiek geformuleerd was: gedocumenteerd ≠ gebouwd, kernprincipe 4. Sinds 19-09 avond: `Delta.verdwenen_fouten`
+  (concept weg = verdwenen; concept terug als andere soort = verschoven), `Delta.verdwenen` = afwijkingen + fouten, `is_leeg` telt ze mee,
+  systeemmail "Hersteld — N fout(en) uit de vorige run niet meer gezien", `_audit_verdwenen_bevindingen` = per (soort × bevindingssoort ×
+  administratie) één `reconciliatie_auto_gesloten` mét `soort` (= `detail.afwijking_soort`, anders `<blok>:<soort>`), `bevinding_soort`, `blok`,
+  `administratie_id`, `aantal`, `vingerafdrukken` ≤ 200, `reden` ("niet meer geproduceerd door run <id> — fout uit de vorige run verdwenen (blok
+  …)"; `dubbele_betaling_vermoed` houdt zijn herdefinitie-reden); en `reconciliatie_run.samenvatting["delta"]` (nieuwe_afwijkingen/let_op/
+  geaccepteerd/fouten, verdwenen_afwijkingen/fouten, blokken_fout) omdat de systeemmail in productie `uitgeschakeld` is en de herstelregel anders
+  nergens meetbaar is. Verdwenen fouten alléén maken géén systeemmail nodig (`systeemmail_nodig` ongewijzigd: herstel is informatie, geen
+  handeling). Tests `tests/reconciliatie/test_run.py` (delta, `bouw_mail`) + `test_soort_stand.py::test_verdwenen_fout_en_afwijking_automatisch_
+  gesloten_met_audit`. **Niet gemeten** (échte run 20-09 04:30 UTC; verwachting: één audit-rij `ic_spiegel_rood`/`fout`/`intercompany`/
+  NULL/174 + `delta.verdwenen_fouten` 174) — vervolg-opdracht `2026-09-20-nameting-ic-spiegel-rood-echte-run-poging-2.md`. Les voor élk meetrecept:
+  een verwachting op een audit-/mail-spoor eerst in de code aanwijzen (welke functie schrijft het, voor welke soorten) vóór je 'm als "verwacht"
+  opschrijft — anders meet je een gegarandeerde 0.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Synthetische bewaking + alerting (CLAUDE.md `ed6d176` r. 632–644)

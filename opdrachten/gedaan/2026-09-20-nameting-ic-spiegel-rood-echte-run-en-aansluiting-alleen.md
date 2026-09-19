@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-19, rapport: docs/rapporten/2026-09-19-nameting-ic-spiegel-rood-echte-run-poging-1.md
+
 Domeinen: reconciliatie, doorbelasting-intercompany, werkloop-productie
 
 # OPDRACHT 20-09 — Nameting ná de ÉCHTE run van 20-09 06:30: 174 × ic_spiegel_rood auto-gesloten, aandacht ≤ 166, `--alleen

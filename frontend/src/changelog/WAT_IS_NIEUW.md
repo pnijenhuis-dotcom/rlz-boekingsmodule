@@ -10,6 +10,8 @@
 
 <!-- ic-spiegel-rood-wachtrij-19-09 -->
 
+- **Een fout die de reconciliatie niet meer ziet, verdwijnt niet meer stil.** Als een eerdere "fout"-melding (bijvoorbeeld de 174 rode doorbelastingsregels) bij de volgende dagelijkse controle niet meer voorkomt, legt de module dat nu vast als "automatisch gesloten" met aantal en reden, en de run-samenvatting toont hoeveel meldingen nieuw zijn en hoeveel er zijn verdwenen. Eerder gold dat alleen voor afwijkingen, niet voor fouten.
+
 - **De 174 rode regels "doorbelastingspaar niet sluitend … verkoopfactuur niet gevonden" waren een fout van de module, niet van de boekhouding.** Reeleezee toont via de API aangemaakte verkoopfacturen niet in de gewone verkoopfacturenlijst; de dagelijkse controle keek alleen daar. Ze leest nu ook de boekingenlijst, waardoor de doorbelastingen van Kempen Facilities gewoon als sluitend worden herkend. Na de volgende nachtelijke controle zijn deze regels weg.
 - **De dagelijkse aansluiting Kempen Facilities ↔ doelentiteiten draait nu echt.** Die meldde sinds 16-09 stil "niets te toetsen" terwijl er wel een doorbelastingslijst is; dat is hersteld.
 - **Veel bestanden tegelijk uploaden (zoals de 180 bij BLOW) start nu één verwerking per batch in plaats van één per bestand.** Daardoor geen foutmeldingen meer door te veel gelijktijdige starts, en geen dubbele verwerking van hetzelfde document. Een document dat al door een collega-proces is afgehandeld, kan niet meer stil worden teruggezet in de werkvoorraad.

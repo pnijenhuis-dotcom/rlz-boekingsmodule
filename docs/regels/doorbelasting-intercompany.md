@@ -48,6 +48,9 @@
   klikpunt Peter: worden die daar anders geboekt?), 3 × verkocht aan Oirschot Recreatie / ingeboekt bij Veldhoven Recreatie (24712615/24712648/
   24712802), 2 × nummer-verwisseling 24712869/24712873 € 69,82, 1 × kliktest-spiegel 24713191 (16-08). De verkoopkant via `Receipts` maakt óók
   KF-verkopen zichtbaar die vóór de fix voor het IC-blok onzichtbaar waren (+2 `ic_ontbreekt_bij_ontvanger` Molenhof Beheer 24712908/24712909).
+  **Gemeten 19-09 avond (poging 1, executie `j6kgg`, image `aef301f`): `reconciliatie-alles --alleen doorbelasting_aansluiting --lees-only` werkt op
+  de job-image (geen argparse-fout meer), 1 bron / 8 doelen / 1758-1660-1652 / 108 afwijkingen (99/3/3/2/1) identiek — werkt in productie JA**
+  (rapport `2026-09-19-nameting-ic-spiegel-rood-echte-run-poging-1.md`); de auto-sluiting van de 174 fouten volgt in poging 2 ná de run van 20-09.
 
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
