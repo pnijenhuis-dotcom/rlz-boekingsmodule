@@ -166,6 +166,33 @@
   Universal 59 geboekt, 5 mét lege projectkolom, alle 5 gedekt (pro rato juli 2026, 8 projecten) → 0 bevindingen; Q3 2026 open. De CLI
   schrijft niets; herstellen in bulk = nieuwe opdracht ná besluit Peter. Guard `tests/projecten/test_zonder_project.py`.
 
+<!-- toegevoegd 19-09-2026, opdracht "projectverdeling-sluit-afgesloten-projecten-uit-en-rlz-kant-meting" -->
+- **Projectverdeling sluit afgesloten projecten uit + naam-LET-OP + RLZ-kant-meting (19-09, nazorg rapport 2026-09-18-facturen-zonder-
+  project beslispunt 3; geen migratie; BESLISSINGEN "PROJECTVERDELING SLUIT AFGESLOTEN PROJECTEN UIT + RLZ-KANT-METING FACTUREN ZONDER PROJECT (19-09)"):** (A1) de omzet-gewogen
+  verdeelsleutel (`app/projectverdeling/omzet.py::omzet_per_project`) neemt uitsluitend projecten mét `is_actief` (bron-spiegel) ÉN
+  module-status ≠ `afgesloten` (0160) op het moment van berekenen/boeken; een project waarvan de NAAM met "Afgesloten" begint maar dat
+  actief staat, blijft in de sleutel — nooit stil uitsluiten op naam — en is een LET-OP `project_naam_afgesloten_status_actief` in het
+  reconciliatieblok `projecten` ("naam zegt afgesloten, status actief — afsluiten?", actie Projecten › Afsluiten…; registry `meten`,
+  vingerafdruk administratie + project; `omzet.naam_zegt_afgesloten` = eerste woord, hoofdletterongevoelig). (A2) Afsluiten/heropenen
+  (`status._wissel`) roept ná de statuswissel `projectverdeling/afgesloten.py::herbereken_na_projectstatus_veilig` aan: nog niet
+  geboekte verdelingen (status `voorstel`, document niet geboekt/verwijderd) waarvan het snapshot het project draagt worden live
+  herrekend, het snapshot (`verdeling`/`omzetstanden`/`pro_rato_bedrag`) teruggeschreven en per gewijzigd document één tijdlijnregel
+  "verdeling herberekend: ‹project› afgesloten" (heropenen: "… heropend", dan álle pro-rato-voorstellen van de administratie) + audit
+  `projectverdeling_herberekend` oud→nieuw; geboekte verdelingen blijven staan (boekstand; herverdelen = de bestaande tegenboek-route);
+  een fout in de herberekening maakt het afsluiten nooit ongedaan (logregel, de volgende lezing rekent tóch live). (A3) Lees-only CLI
+  `projectverdeling-afgesloten-rapport (--administratie X | --alle-projectverplicht)` (`app/projectverdeling/cli_cmd.py`, nameting-
+  allowlist, workflow-onderdeel `projecten-afgesloten` mét de RLZ-kant-meting): actieve projecten mét "Afgesloten"-naam, geboekte
+  verdelingsdelen op projecten die nú afgesloten/inactief zijn of "Afgesloten" heten (boekstuk, referentie, leverancier, project,
+  bedrag, datum) mét voorstel per rij (afgesloten/inactief → "storno 19 + herverdeling, aangiftepoort toetsen"; alleen naam → "laten
+  staan tot afgesloten") en de overhead die via de sleutel loopt (regels zonder project op 4xxx; Σ pro rato = wat een OVH-project zou
+  vangen) — niets uitvoeren, OVH-project nooit zelf aanmaken (beslispunt Peter). **Meting Universal 19-09 (leesreplica + job-image):**
+  170 projecten (83 actief), 94 mét "Afgesloten"-naam waarvan 8 in RLZ nog actief en 0 module-afgesloten; 5 geboekte verdelingen (pro
+  rato augustus 2026, 8 delen — het 18-09-rapport zei "juli", de kolom zegt 2026-08-01) leggen € 1.239,05 op "Afgesloten 26012 Tilburg
+  (van Kasteren)" (7,69 %) en "Afgesloten 26051 Opijnen" (2,44 %); álle 5 geboekte pro-rato-documenten zijn overhead (4499 ×3 € 599,32,
+  4003 € 11.000, 4606 € 630 = € 12.229,32; onderweg Exact 4410 € 31,50); RLZ-kant 2026: 1.296 geboekte PurchaseInvoices gelezen, 0
+  leesfouten, 0 documenten mét kostenregel zonder Project (alle vijf project-verplichte administraties: 1.628 gelezen, 0) → bulk-herstel
+  niet nodig. Tests `tests/projectverdeling/test_afgesloten.py`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)

@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-19 — Kosten worden niet meer over afgesloten projecten verdeeld
+
+<!-- projectverdeling-afgesloten-19-09 -->
+
+- **Kosten worden niet meer over afgesloten projecten verdeeld.** De automatische projectverdeling op omzet (bijvoorbeeld telecom of een management fee die over de lopende projecten wordt gespreid) neemt alleen nog projecten mee die in de module op "lopend" staan én in Reeleezee actief zijn. Sluit je een project af, dan worden verdelingen van facturen die nog niet geboekt zijn direct opnieuw berekend, met een regel in de tijdlijn van de factuur ("verdeling herberekend: … afgesloten"). Al geboekte verdelingen blijven zoals ze zijn.
+- **Heet een project "Afgesloten …" maar staat het nog actief?** Dan telt het nog gewoon mee, en zie je onder Inzicht › Reconciliatie een let-op-melding met de vraag het project af te sluiten via Projecten › Afsluiten…. De module beslist nooit op basis van de naam alleen.
+
 ## 2026-09-18 — Boeken: geen daglimiet meer voor handmatig boeken; btw volgt het tarief; boeken gaat direct door
 
 <!-- offerte-verbruik-onderweg-18-09 -->

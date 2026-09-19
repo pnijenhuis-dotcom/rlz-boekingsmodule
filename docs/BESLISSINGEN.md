@@ -11597,3 +11597,48 @@ n.v.t. (lees-only) — module-kant gemeten op de leesreplica, RLZ-kant NIET geme
   --administratie "Universal Steigerbouw" --jaar 2026 --rlz`); (2) reconciliatie-soort "regel zonder project op een project-verplichte
   administratie" als RLZ-kant-toets in stand `meten` — alleen ná GO; (3) OVH-project voor Universal (overhead gaat nu via de
   omzetsleutel óók naar projecten met naam "Afgesloten …") en of de pro-rato-sleutel afgesloten projecten mag overslaan.
+
+## PROJECTVERDELING SLUIT AFGESLOTEN PROJECTEN UIT + RLZ-KANT-METING FACTUREN ZONDER PROJECT (19-09) — omzetsleutel volgt de projectstatus (0160), herberekening bij afsluiten mét tijdlijnregel, LET-OP "naam zegt afgesloten" in blok projecten, lees-only rapport + CLI, Universal RLZ-kant 2026 = 0 zonder project; geen migratie
+
+**Status: GEBOUWD + GETEST 19-09 (opdracht "projectverdeling-sluit-afgesloten-projecten-uit-en-rlz-kant-meting", nazorg rapport
+2026-09-18-facturen-zonder-project beslispunt 3); werkt in productie: niet gemeten (deploy ná deze run — meetrecept in het rapport);
+RLZ-kant-meting facturen zonder project WEL gemeten (job-image `cfa6d42`/`e6c8ca3`, executie rlz-reconciliatie-5z68r). Rapport
+`docs/rapporten/2026-09-19-projectverdeling-afgesloten-projecten-en-rlz-kant-meting.md`. Geen migratie, geen RLZ-write.**
+
+- **A1 — sleutel alleen actieve projecten:** `omzet_per_project` filterde al op `is_actief` (bron-spiegel); sinds 19-09 óók op
+  `project_cache.status != 'afgesloten'` (0160) — afsluiten in de module telt ook als RLZ het project buiten de module om weer actief
+  zet. Een "Afgesloten …"-NAAM is géén filter (nooit stil uitsluiten op naam): het project blijft meetellen en wordt een LET-OP
+  `project_naam_afgesloten_status_actief` (blok `projecten`, registry `meten`, tekst in `teksten._let_op`, actie Projecten › Afsluiten…).
+  `OmzetSelectie.naam_afgesloten_actief` draagt dezelfde lijst voor de verdeling zelf.
+- **A2 — herberekening bij afsluiten/heropenen:** `app/projectverdeling/afgesloten.py::herbereken_na_projectstatus` (aangeroepen uit
+  `status._wissel` ná de bron-write + status, eigen transactie, nooit blokkerend): voorstel-verdelingen waarvan het snapshot het
+  project draagt (JSONB `@>` op `verdeling`/`omzetstanden`) worden live herrekend, snapshot teruggeschreven, tijdlijnregel
+  "verdeling herberekend: ‹project› afgesloten|heropend" + audit `projectverdeling_herberekend`; heropenen bekijkt álle pro-rato-
+  voorstellen. Geboekte verdelingen blijven (boekstand). Een document dat geboekt/verwijderd is wordt overgeslagen.
+- **A3 — lees-only rapport:** CLI `projectverdeling-afgesloten-rapport (--administratie X | --alle-projectverplicht)` — LET-OP-lijst,
+  geboekte delen op afgesloten/inactieve/"Afgesloten"-projecten mét voorstel per rij, overhead via de sleutel + OVH-aanwezigheid.
+  Nameting-allowlist + workflow-onderdeel `projecten-afgesloten` (draait ook `facturen-zonder-project --rlz` voor Universal en alle
+  project-verplichte administraties); `nameting.sh` kent beide commando's het onderdeel toe (`via_gh_onderdeel`).
+- **Meting Universal Steigerbouw 19-09** (leesreplica ~08:45 als nameting@, scope administratie 3ee6edf0): 170 projecten in de cache
+  (83 actief, 87 inactief), **94 mét "Afgesloten"-naam, 8 daarvan in RLZ nog actief** (25017, 25116, 25147, 25157, 26012, 26051, 26064,
+  26091), 0 module-afgesloten. 5 geboekte verdelingen (08-09, pro rato **augustus 2026** — het 18-09-rapport noemde "juli", de kolom
+  `pro_rato_periode` zegt 2026-08-01; 8 delen) leggen samen **€ 1.239,05** op "Afgesloten 26012 Tilburg (van Kasteren)" (7,69 %,
+  omzet € 4.418) en "Afgesloten 26051 Opijnen (van kessel bouw)" (2,44 %, omzet € 1.400): per document 24,04/7,62 · 48,47/15,36 ·
+  846,31/268,18 · 9,14/2,90 · 12,93/4,10. Twee voorstel-verdelingen: Exact RLZ-2026053923 € 31,50 (ter accordering, 4410) en Floor
+  Beheer 26009 € 11.000 (document verwijderd). **Overhead via de sleutel:** álle 5 geboekte pro-rato-documenten zijn 4xxx zonder
+  projectreferentie — DCTE 4499 ×3 € 599,32, Floor Beheer 4003 Management fee € 11.000, Kader 4606 € 630 = **€ 12.229,32 geboekt**,
+  € 31,50 onderweg; Universal heeft geen OVH-project (0 van 170 namen). **RLZ-kant facturen zonder project 2026 (B):** 1.296 geboekte
+  PurchaseInvoices gelezen, 0 leesfouten, **0 documenten mét kostenregel zonder Project**, 0 van vóór/buiten de module → module-kant
+  0 ↔ RLZ-kant 0 verklaard; alle vijf project-verplichte administraties samen (executie 45mb9): 1.628 gelezen (ARVUM 45, Meyer 77,
+  Van Rooijen/Schaalje 152, Elissen 58, Universal 1.296), 0 zonder project; bulk-herstel niet nodig.
+- **Beslispunten Peter (open, rapport "Één regel"):** (1) herverdeling van de € 1.239,05 op de twee "Afgesloten"-projecten — voorstel:
+  eerst de 8 actieve "Afgesloten"-projecten afsluiten via Projecten › Afsluiten… (dan valt het uit de sleutel), geboekte rijen laten
+  staan (immaterieel, Q3 open maar storno + her-PUT van 5 documenten voor € 1.239 is meer werk dan waarde); (2) OVH-project Universal
+  aanmaken via de Projecten-module (synct naar RLZ) zodat telecom/management fee/advies (€ 12.229 tot nu) bewust op overhead landen
+  i.p.v. omzet-gewogen over lopende projecten — de module maakt 'm nooit zelf; (3) bulk-herstel RLZ-kant: NIET nodig (0).
+- Tests `tests/projectverdeling/test_afgesloten.py` (8: naam-detectie, status-filter ook bij bron-actief, naam blijft in sleutel + LET-OP,
+  afsluiten herrekent voorstel mét tijdlijn/audit + heropenen spiegelt, geen regel zonder raakvlak, geboekt blijft + rapport-voorstel,
+  reconciliatieblok LET-OP zonder exit 1 + soort in meten + leesbare tekst, overhead-rapport + CLI). Les werkloop: een shell-script
+  nooit bewerken terwijl een achtergrondrun ervan loopt (bash leest het bestand incrementeel — `nameting.sh` strandde op "efail" ná
+  mijn allowlist-edit; de job-executie zelf was klaar, het log is via Cloud Logging gelezen).
+
