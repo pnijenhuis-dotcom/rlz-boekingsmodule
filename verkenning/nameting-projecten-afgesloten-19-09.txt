@@ -1,0 +1,133 @@
+== facturen-zonder-project Universal Steigerbouw 2026 --rlz (alleen GET) ==
+Facturen zonder project — 1 administratie(s), jaar 2026, mét RLZ-kant (alleen GET). LEES-ONLY: geen write, geen statuswissel; herstelroute = VOORSTEL.
+Universal Steigerbouw B.V. (3ee6edf0-5cb8-4f98-bba1-16fb97ae6873) — jaar 2026: 59 in de module geboekte inkoopfacturen; 0 zonder project (bevinding), 5 gedekt door projectverdeling.
+  GEDEKT    RLZ-04-00003215 ref '202611050' DCTE B.V. (Derks Computers, Telecom & Electronica) | factuur 2026-07-27 boekdatum 2026-07-27 geboekt 2026-09-08 door systeem (achtergrond) | regel 1/1 gb 4499 Diverse kantoorkosten netto 118,75 btw 24,94 | aangifte n.v.t. (gedekt door projectverdeling) | route geen_herstel_nodig | verdeling 8 delen | document b5a0805c-09a7-4979-aaee-8d1638d581de rlz 3f422dc6-71e6-557f-ba7a-f01c26d341ec
+  GEDEKT    RLZ-04-00003234 ref '202611101' DCTE B.V. (Derks Computers, Telecom & Electronica) | factuur 2026-08-01 boekdatum 2026-08-01 geboekt 2026-09-08 door systeem (achtergrond) | regel 1/1 gb 4499 Diverse kantoorkosten netto 168,06 btw 35,29 | aangifte n.v.t. (gedekt door projectverdeling) | route geen_herstel_nodig | verdeling 8 delen | document b6befce8-40f3-4157-ac52-ba68a8c58d3f rlz 48e1971e-b91f-5fa9-addc-7b56c104e0d0
+  GEDEKT    RLZ-04-00003236 ref '26008' Floor Beheer B.V. | factuur 2026-08-03 boekdatum 2026-08-03 geboekt 2026-09-08 door systeem (achtergrond) | regel 1/1 gb 4003 Management fee netto 11.000,00 btw 2.310,00 | aangifte n.v.t. (gedekt door projectverdeling) | route geen_herstel_nodig | verdeling 8 delen | document 647bc61d-2850-4371-8c53-e56928100072 rlz e03b7d2c-bfad-5f78-93e8-54b8318a32da
+  GEDEKT    RLZ-04-00003235 ref '202611203' DCTE B.V. (Derks Computers, Telecom & Electronica) | factuur 2026-08-26 boekdatum 2026-08-26 geboekt 2026-09-08 door systeem (achtergrond) | regel 1/1 gb 4499 Diverse kantoorkosten netto 312,51 btw 65,63 | aangifte n.v.t. (gedekt door projectverdeling) | route geen_herstel_nodig | verdeling 8 delen | document 167769c0-e0b2-4a76-8837-2d2e5ed90c95 rlz f8e82b87-1ce6-5358-b31e-58ed35f0ccff
+  GEDEKT    RLZ-04-00003213 ref 'F212604921' Kader Consultancy & Interim B.V. | factuur 2026-09-02 boekdatum 2026-09-02 geboekt 2026-09-08 door systeem (achtergrond) | regel 1/1 gb 4606 Diverse advieskosten netto 630,00 btw 132,30 | aangifte n.v.t. (gedekt door projectverdeling) | route geen_herstel_nodig | verdeling 8 delen | document 5485d087-b4fd-48c1-9b7d-c6cf7f7f9be8 rlz 83d87ba0-1c7f-52cd-8932-2e9560a52d2f
+  RLZ-kant: 1296 geboekte PurchaseInvoices gelezen (0 leesfouten), 0 documenten mét kostenregel zonder Project, waarvan 0 niet door de module geboekt (van vóór/buiten de module) — verschil module-kant 0 ↔ RLZ-kant verklaard.
+Totaal: 0 document(en) zonder project (bevinding), 5 gedekt door projectverdeling; routes: geen. Herstellen = nieuwe opdracht ná besluit Peter; deze CLI schrijft niets.
+Container called exit(0).
+
+== facturen-zonder-project --alle-projectverplicht 2026 --rlz (alleen GET) ==
+Facturen zonder project — 5 administratie(s), jaar 2026, mét RLZ-kant (alleen GET). LEES-ONLY: geen write, geen statuswissel; herstelroute = VOORSTEL.
+ARVUM B.V. (4e7732c5-8a2d-422b-823d-fd5b9a8a4999) — jaar 2026: 5 in de module geboekte inkoopfacturen; 0 zonder project (bevinding), 0 gedekt door projectverdeling.
+  RLZ-kant: 45 geboekte PurchaseInvoices gelezen (0 leesfouten), 0 documenten mét kostenregel zonder Project, waarvan 0 niet door de module geboekt (van vóór/buiten de module) — verschil module-kant 0 ↔ RLZ-kant verklaard.
+Beleggingsmaatschappij Meyer BV (876d5515-9f8a-42f8-a33a-0022981342d6) — jaar 2026: 0 in de module geboekte inkoopfacturen; 0 zonder project (bevinding), 0 gedekt door projectverdeling.
+  RLZ-kant: 77 geboekte PurchaseInvoices gelezen (0 leesfouten), 0 documenten mét kostenregel zonder Project, waarvan 0 niet door de module geboekt (van vóór/buiten de module) — verschil module-kant 0 ↔ RLZ-kant verklaard.
+B. van Rooijen / G. Schaalje (4974dc6e-d215-4106-a6f9-98e654af26c3) — jaar 2026: 0 in de module geboekte inkoopfacturen; 0 zonder project (bevinding), 0 gedekt door projectverdeling.
+  RLZ-kant: 152 geboekte PurchaseInvoices gelezen (0 leesfouten), 0 documenten mét kostenregel zonder Project, waarvan 0 niet door de module geboekt (van vóór/buiten de module) — verschil module-kant 0 ↔ RLZ-kant verklaard.
+J.G.M. Elissen Holding BV (131f9abe-8922-4bfd-8330-b18b56efd3dc) — jaar 2026: 0 in de module geboekte inkoopfacturen; 0 zonder project (bevinding), 0 gedekt door projectverdeling.
+  RLZ-kant: 58 geboekte PurchaseInvoices gelezen (0 leesfouten), 0 documenten mét kostenregel zonder Project, waarvan 0 niet door de module geboekt (van vóór/buiten de module) — verschil module-kant 0 ↔ RLZ-kant verklaard.
+Universal Steigerbouw B.V. (3ee6edf0-5cb8-4f98-bba1-16fb97ae6873) — jaar 2026: 59 in de module geboekte inkoopfacturen; 0 zonder project (bevinding), 5 gedekt door projectverdeling.
+  GEDEKT    RLZ-04-00003215 ref '202611050' DCTE B.V. (Derks Computers, Telecom & Electronica) | factuur 2026-07-27 boekdatum 2026-07-27 geboekt 2026-09-08 door systeem (achtergrond) | regel 1/1 gb 4499 Diverse kantoorkosten netto 118,75 btw 24,94 | aangifte n.v.t. (gedekt door projectverdeling) | route geen_herstel_nodig | verdeling 8 delen | document b5a0805c-09a7-4979-aaee-8d1638d581de rlz 3f422dc6-71e6-557f-ba7a-f01c26d341ec
+  GEDEKT    RLZ-04-00003234 ref '202611101' DCTE B.V. (Derks Computers, Telecom & Electronica) | factuur 2026-08-01 boekdatum 2026-08-01 geboekt 2026-09-08 door systeem (achtergrond) | regel 1/1 gb 4499 Diverse kantoorkosten netto 168,06 btw 35,29 | aangifte n.v.t. (gedekt door projectverdeling) | route geen_herstel_nodig | verdeling 8 delen | document b6befce8-40f3-4157-ac52-ba68a8c58d3f rlz 48e1971e-b91f-5fa9-addc-7b56c104e0d0
+  GEDEKT    RLZ-04-00003236 ref '26008' Floor Beheer B.V. | factuur 2026-08-03 boekdatum 2026-08-03 geboekt 2026-09-08 door systeem (achtergrond) | regel 1/1 gb 4003 Management fee netto 11.000,00 btw 2.310,00 | aangifte n.v.t. (gedekt door projectverdeling) | route geen_herstel_nodig | verdeling 8 delen | document 647bc61d-2850-4371-8c53-e56928100072 rlz e03b7d2c-bfad-5f78-93e8-54b8318a32da
+  GEDEKT    RLZ-04-00003235 ref '202611203' DCTE B.V. (Derks Computers, Telecom & Electronica) | factuur 2026-08-26 boekdatum 2026-08-26 geboekt 2026-09-08 door systeem (achtergrond) | regel 1/1 gb 4499 Diverse kantoorkosten netto 312,51 btw 65,63 | aangifte n.v.t. (gedekt door projectverdeling) | route geen_herstel_nodig | verdeling 8 delen | document 167769c0-e0b2-4a76-8837-2d2e5ed90c95 rlz f8e82b87-1ce6-5358-b31e-58ed35f0ccff
+  GEDEKT    RLZ-04-00003213 ref 'F212604921' Kader Consultancy & Interim B.V. | factuur 2026-09-02 boekdatum 2026-09-02 geboekt 2026-09-08 door systeem (achtergrond) | regel 1/1 gb 4606 Diverse advieskosten netto 630,00 btw 132,30 | aangifte n.v.t. (gedekt door projectverdeling) | route geen_herstel_nodig | verdeling 8 delen | document 5485d087-b4fd-48c1-9b7d-c6cf7f7f9be8 rlz 83d87ba0-1c7f-52cd-8932-2e9560a52d2f
+  RLZ-kant: 1296 geboekte PurchaseInvoices gelezen (0 leesfouten), 0 documenten mét kostenregel zonder Project, waarvan 0 niet door de module geboekt (van vóór/buiten de module) — verschil module-kant 0 ↔ RLZ-kant verklaard.
+Totaal: 0 document(en) zonder project (bevinding), 5 gedekt door projectverdeling; routes: geen. Herstellen = nieuwe opdracht ná besluit Peter; deze CLI schrijft niets.
+Container called exit(0).
+
+== projectverdeling-afgesloten-rapport --alle-projectverplicht ==
+Projectverdeling × afgesloten projecten — 5 administratie(s). LEES-ONLY: geen write, geen RLZ-call; voorstellen zijn tekst (klikpunt Peter).
+== ARVUM B.V. (4e7732c5-8a2d-422b-823d-fd5b9a8a4999) ==
+-- Actieve projecten mét een 'Afgesloten'-naam (LET-OP afsluiten?): 0
+-- Geboekte verdelingsdelen op afgesloten/inactieve/'Afgesloten'-projecten: 0 rij(en), € 0,00
+-- Overhead via de sleutel: 0 van 0 pro-rato-document(en) is overhead (regels zonder project op 4xxx); geboekt € 0,00, onderweg € 0,00 — dat zou een OVH-project vangen. OVH-project aanwezig: nee
+== Beleggingsmaatschappij Meyer BV (876d5515-9f8a-42f8-a33a-0022981342d6) ==
+-- Actieve projecten mét een 'Afgesloten'-naam (LET-OP afsluiten?): 0
+-- Geboekte verdelingsdelen op afgesloten/inactieve/'Afgesloten'-projecten: 0 rij(en), € 0,00
+-- Overhead via de sleutel: 0 van 0 pro-rato-document(en) is overhead (regels zonder project op 4xxx); geboekt € 0,00, onderweg € 0,00 — dat zou een OVH-project vangen. OVH-project aanwezig: nee
+== B. van Rooijen / G. Schaalje (4974dc6e-d215-4106-a6f9-98e654af26c3) ==
+-- Actieve projecten mét een 'Afgesloten'-naam (LET-OP afsluiten?): 0
+-- Geboekte verdelingsdelen op afgesloten/inactieve/'Afgesloten'-projecten: 0 rij(en), € 0,00
+-- Overhead via de sleutel: 0 van 0 pro-rato-document(en) is overhead (regels zonder project op 4xxx); geboekt € 0,00, onderweg € 0,00 — dat zou een OVH-project vangen. OVH-project aanwezig: nee
+== J.G.M. Elissen Holding BV (131f9abe-8922-4bfd-8330-b18b56efd3dc) ==
+-- Actieve projecten mét een 'Afgesloten'-naam (LET-OP afsluiten?): 0
+-- Geboekte verdelingsdelen op afgesloten/inactieve/'Afgesloten'-projecten: 0 rij(en), € 0,00
+-- Overhead via de sleutel: 0 van 0 pro-rato-document(en) is overhead (regels zonder project op 4xxx); geboekt € 0,00, onderweg € 0,00 — dat zou een OVH-project vangen. OVH-project aanwezig: nee
+== Universal Steigerbouw B.V. (3ee6edf0-5cb8-4f98-bba1-16fb97ae6873) ==
+-- Actieve projecten mét een 'Afgesloten'-naam (LET-OP afsluiten?): 8
+   2aa11d10-4093-4784-a609-1539ebf8d67b  Afgesloten 25017 Kudo Arnhem-Kronenburg fase 2  (is_actief=True, status=lopend)
+   f606e1ae-8abb-477c-9b2f-6d261543e12c  Afgesloten 25116 Oosterhout (Huvanco)  (is_actief=True, status=lopend)
+   f3996f6d-a100-4a81-824c-57f47875daec  Afgesloten 25147 Ommeren (van Kessel)  (is_actief=True, status=lopend)
+   ac3f8151-52b4-40dc-b698-58c2fc709a2d  Afgesloten 25157 Harderwijk (Wessels)  (is_actief=True, status=lopend)
+   e4fb25bc-1dd9-45ba-8f43-3f3e88446a89  Afgesloten 26012 Tilburg (van Kasteren)  (is_actief=True, status=lopend)
+   f4dfd35b-3d01-4bba-b770-ebeae7bfd9a0  Afgesloten 26051 Opijnen (van kessel bouw)  (is_actief=True, status=lopend)
+   36d04825-b4ff-43ba-a04f-4a2313a8eb31  Afgesloten 26064 Apeldoorn (Ben Kuijer)  (is_actief=True, status=lopend)
+   3414acdd-deba-4057-b60d-00abd60fdb8e  Afgesloten 26091 Amersfoort (Ben Kuijer)  (is_actief=True, status=lopend)
+-- Geboekte verdelingsdelen op afgesloten/inactieve/'Afgesloten'-projecten: 10 rij(en), € 1.239,05
+   RLZ-04-00003213  ref F212604921  Kader Consultancy & Interim B.V.  factuur 2026-09-02  geboekt 2026-09-08  → Afgesloten 26012 Tilburg (van Kasteren)  [naam zegt afgesloten, actief]  pro_rato € 48,47  voorstel: laten staan tot het project is afgesloten (Projecten › afsluiten); daarna storno 19 + herverdeling — klikpunt Peter
+   RLZ-04-00003213  ref F212604921  Kader Consultancy & Interim B.V.  factuur 2026-09-02  geboekt 2026-09-08  → Afgesloten 26051 Opijnen (van kessel bouw)  [naam zegt afgesloten, actief]  pro_rato € 15,36  voorstel: laten staan tot het project is afgesloten (Projecten › afsluiten); daarna storno 19 + herverdeling — klikpunt Peter
+   RLZ-04-00003215  ref 202611050  DCTE B.V. (Derks Computers, Telecom & Electronica)  factuur 2026-07-27  geboekt 2026-09-08  → Afgesloten 26012 Tilburg (van Kasteren)  [naam zegt afgesloten, actief]  pro_rato € 9,14  voorstel: laten staan tot het project is afgesloten (Projecten › afsluiten); daarna storno 19 + herverdeling — klikpunt Peter
+   RLZ-04-00003215  ref 202611050  DCTE B.V. (Derks Computers, Telecom & Electronica)  factuur 2026-07-27  geboekt 2026-09-08  → Afgesloten 26051 Opijnen (van kessel bouw)  [naam zegt afgesloten, actief]  pro_rato € 2,90  voorstel: laten staan tot het project is afgesloten (Projecten › afsluiten); daarna storno 19 + herverdeling — klikpunt Peter
+   RLZ-04-00003234  ref 202611101  DCTE B.V. (Derks Computers, Telecom & Electronica)  factuur 2026-08-01  geboekt 2026-09-08  → Afgesloten 26012 Tilburg (van Kasteren)  [naam zegt afgesloten, actief]  pro_rato € 12,93  voorstel: laten staan tot het project is afgesloten (Projecten › afsluiten); daarna storno 19 + herverdeling — klikpunt Peter
+   RLZ-04-00003234  ref 202611101  DCTE B.V. (Derks Computers, Telecom & Electronica)  factuur 2026-08-01  geboekt 2026-09-08  → Afgesloten 26051 Opijnen (van kessel bouw)  [naam zegt afgesloten, actief]  pro_rato € 4,10  voorstel: laten staan tot het project is afgesloten (Projecten › afsluiten); daarna storno 19 + herverdeling — klikpunt Peter
+   RLZ-04-00003235  ref 202611203  DCTE B.V. (Derks Computers, Telecom & Electronica)  factuur 2026-08-26  geboekt 2026-09-08  → Afgesloten 26012 Tilburg (van Kasteren)  [naam zegt afgesloten, actief]  pro_rato € 24,04  voorstel: laten staan tot het project is afgesloten (Projecten › afsluiten); daarna storno 19 + herverdeling — klikpunt Peter
+   RLZ-04-00003235  ref 202611203  DCTE B.V. (Derks Computers, Telecom & Electronica)  factuur 2026-08-26  geboekt 2026-09-08  → Afgesloten 26051 Opijnen (van kessel bouw)  [naam zegt afgesloten, actief]  pro_rato € 7,62  voorstel: laten staan tot het project is afgesloten (Projecten › afsluiten); daarna storno 19 + herverdeling — klikpunt Peter
+   RLZ-04-00003236  ref 26008  Floor Beheer B.V.  factuur 2026-08-03  geboekt 2026-09-08  → Afgesloten 26012 Tilburg (van Kasteren)  [naam zegt afgesloten, actief]  pro_rato € 846,31  voorstel: laten staan tot het project is afgesloten (Projecten › afsluiten); daarna storno 19 + herverdeling — klikpunt Peter
+   RLZ-04-00003236  ref 26008  Floor Beheer B.V.  factuur 2026-08-03  geboekt 2026-09-08  → Afgesloten 26051 Opijnen (van kessel bouw)  [naam zegt afgesloten, actief]  pro_rato € 268,18  voorstel: laten staan tot het project is afgesloten (Projecten › afsluiten); daarna storno 19 + herverdeling — klikpunt Peter
+-- Overhead via de sleutel: 6 van 6 pro-rato-document(en) is overhead (regels zonder project op 4xxx); geboekt € 12.229,32, onderweg € 31,50 — dat zou een OVH-project vangen. OVH-project aanwezig: nee
+   [geboekt/geboekt] RLZ-04-00003215  ref 202611050  DCTE B.V. (Derks Computers, Telecom & Electronica)  factuur 2026-07-27  pro rato € 118,75  gb 4499 Diverse kantoorkosten  OVERHEAD
+   [geboekt/geboekt] RLZ-04-00003234  ref 202611101  DCTE B.V. (Derks Computers, Telecom & Electronica)  factuur 2026-08-01  pro rato € 168,06  gb 4499 Diverse kantoorkosten  OVERHEAD
+   [geboekt/geboekt] RLZ-04-00003235  ref 202611203  DCTE B.V. (Derks Computers, Telecom & Electronica)  factuur 2026-08-26  pro rato € 312,51  gb 4499 Diverse kantoorkosten  OVERHEAD
+   [geboekt/geboekt] RLZ-04-00003213  ref F212604921  Kader Consultancy & Interim B.V.  factuur 2026-09-02  pro rato € 630,00  gb 4606 Diverse advieskosten  OVERHEAD
+   [geboekt/geboekt] RLZ-04-00003236  ref 26008  Floor Beheer B.V.  factuur 2026-08-03  pro rato € 11.000,00  gb 4003 Management fee  OVERHEAD
+   [voorstel/ter_accordering] -  ref RLZ-2026053923  Exact Software Nederland B.V.  factuur 2026-09-14  pro rato € 31,50  gb 4410 Contributies/abonnementen  OVERHEAD
+Totaal: 8 actief project(en) mét 'Afgesloten'-naam, 10 geboekt(e) verdelingsdeel(en) op afgesloten/'Afgesloten'-projecten. Herverdelen/afsluiten = klikpunt Peter; deze CLI schrijft niets.
+Container called exit(0).
+
+== projecten-afsluit-kandidaten Universal Steigerbouw (tab Afsluiten? — opdracht 19-09) ==
+Afsluit-kandidaten — 1 administratie(s), stil-venster per administratie (default 6) mnd. LEES-ONLY, geen actie; afsluiten = Projecten › Afsluiten? (N).
+Universal Steigerbouw B.V. (3ee6edf0-5cb8-4f98-bba1-16fb97ae6873) — 83 lopende projecten, 8 kandidaat, 0 uitgesteld; per reden: geen activiteit 0, eindfactuur geboekt 0, naam zegt afgesloten 8, looptijd verstreken 0
+  KANDIDAAT  ac3f8151-52b4-40dc-b698-58c2fc709a2d  'Afgesloten 25157 Harderwijk (Wessels)'  redenen=naam_afgesloten  laatste=verkoop 2026-03-30 € 800.00 [808010709]
+  KANDIDAAT  2aa11d10-4093-4784-a609-1539ebf8d67b  'Afgesloten 25017 Kudo Arnhem-Kronenburg fase 2'  redenen=naam_afgesloten  laatste=verkoop 2026-06-03 € 10000.00 [808010818]
+  KANDIDAAT  36d04825-b4ff-43ba-a04f-4a2313a8eb31  'Afgesloten 26064 Apeldoorn (Ben Kuijer)'  redenen=naam_afgesloten  laatste=inkoop 2026-06-11 € 688.00 [2026-424]
+  KANDIDAAT  f606e1ae-8abb-477c-9b2f-6d261543e12c  'Afgesloten 25116 Oosterhout (Huvanco)'  redenen=naam_afgesloten  laatste=inkoop 2026-07-23 € 688.00 [2026-554]
+  KANDIDAAT  f3996f6d-a100-4a81-824c-57f47875daec  'Afgesloten 25147 Ommeren (van Kessel)'  redenen=naam_afgesloten  laatste=inkoop 2026-07-23 € 2093.75 [2026-569]
+  KANDIDAAT  e4fb25bc-1dd9-45ba-8f43-3f3e88446a89  'Afgesloten 26012 Tilburg (van Kasteren)'  redenen=naam_afgesloten  laatste=inkoop 2026-09-02 € 48.47 [F212604921]
+  KANDIDAAT  f4dfd35b-3d01-4bba-b770-ebeae7bfd9a0  'Afgesloten 26051 Opijnen (van kessel bouw)'  redenen=naam_afgesloten  laatste=inkoop 2026-09-02 € 15.36 [F212604921]
+  KANDIDAAT  3414acdd-deba-4057-b60d-00abd60fdb8e  'Afgesloten 26091 Amersfoort (Ben Kuijer)'  redenen=naam_afgesloten  laatste=verkoop 2026-09-15 € 10454.75 [808010923]
+Totaal: 83 lopende projecten beoordeeld, 8 kandidaat afsluiten (geen activiteit 0, eindfactuur geboekt 0, naam zegt afgesloten 8, looptijd verstreken 0), 0 uitgesteld. Afsluiten = vinkjes + 'Afsluiten (N)' in Projecten › Afsluiten? — nooit automatisch.
+Container called exit(0).
+
+== reconciliatie-alles --alleen projecten --lees-only (project_nummer_dubbel incl. 'Afgesloten NNNNN' — opdracht 19-09) ==
+LEES-ONLY: geen run-rij, geen bevindingen, geen acceptatie-overdracht, geen mail.
+=== projecten-reconciliatie (lees-only) ===
+LET-OP  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_naam_afgesloten_status_actief project=2aa11d10-4093-4784-a609-1539ebf8d67b: naam zegt afgesloten, status actief — afsluiten? (Afgesloten 25017 Kudo Arnhem-Kronenburg fase 2)  [Universal Steigerbouw B.V.]
+LET-OP  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_naam_afgesloten_status_actief project=f606e1ae-8abb-477c-9b2f-6d261543e12c: naam zegt afgesloten, status actief — afsluiten? (Afgesloten 25116 Oosterhout (Huvanco))  [Universal Steigerbouw B.V.]
+LET-OP  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_naam_afgesloten_status_actief project=f3996f6d-a100-4a81-824c-57f47875daec: naam zegt afgesloten, status actief — afsluiten? (Afgesloten 25147 Ommeren (van Kessel))  [Universal Steigerbouw B.V.]
+LET-OP  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_naam_afgesloten_status_actief project=ac3f8151-52b4-40dc-b698-58c2fc709a2d: naam zegt afgesloten, status actief — afsluiten? (Afgesloten 25157 Harderwijk (Wessels))  [Universal Steigerbouw B.V.]
+LET-OP  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_naam_afgesloten_status_actief project=e4fb25bc-1dd9-45ba-8f43-3f3e88446a89: naam zegt afgesloten, status actief — afsluiten? (Afgesloten 26012 Tilburg (van Kasteren))  [Universal Steigerbouw B.V.]
+LET-OP  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_naam_afgesloten_status_actief project=f4dfd35b-3d01-4bba-b770-ebeae7bfd9a0: naam zegt afgesloten, status actief — afsluiten? (Afgesloten 26051 Opijnen (van kessel bouw))  [Universal Steigerbouw B.V.]
+LET-OP  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_naam_afgesloten_status_actief project=36d04825-b4ff-43ba-a04f-4a2313a8eb31: naam zegt afgesloten, status actief — afsluiten? (Afgesloten 26064 Apeldoorn (Ben Kuijer))  [Universal Steigerbouw B.V.]
+LET-OP  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_naam_afgesloten_status_actief project=3414acdd-deba-4057-b60d-00abd60fdb8e: naam zegt afgesloten, status actief — afsluiten? (Afgesloten 26091 Amersfoort (Ben Kuijer))  [Universal Steigerbouw B.V.]
+AFWIJKING  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_nummer_dubbel nummer=26053: 2 projecten — 26053 Den Haag (Vink en Veen) (lopend) | 26053 Den Haag, Monchyplein (Vink en Veenman) (lopend)  [Universal Steigerbouw B.V.]
+AFWIJKING  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_nummer_dubbel nummer=26064: 2 projecten — 26064 Harskamp (vd Brandhof) (lopend) | Afgesloten 26064 Apeldoorn (Ben Kuijer) (lopend)  [Universal Steigerbouw B.V.]
+AFWIJKING  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_nummer_dubbel nummer=26084: 2 projecten — 26084 (Harskamp) van den Brandhof (lopend) | 26084 Harskamp (vd Brandhof) (lopend)  [Universal Steigerbouw B.V.]
+AFWIJKING  administratie=3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 soort=project_nummer_dubbel nummer=26149: 2 projecten — 26149 (lopend) | 26149 Poeldijk, Anjerstraat 245 (Weboma) (lopend)  [Universal Steigerbouw B.V.]
+projecten-reconciliatie: 78 administraties, 4 dubbel(e) projectnummer(s), 8 actief project(en) mét 'Afgesloten'-naam (LET-OP)
+LEES-ONLY afgerond — niets vastgelegd.
+Container called exit(1).
+
+== projecten-dubbele-nummers Universal Steigerbouw ==
+Dubbele projectnummers — 1 administratie(s). LEES-ONLY; samenvoegen = klikpunt Peter.
+Universal Steigerbouw B.V. (3ee6edf0-5cb8-4f98-bba1-16fb97ae6873)
+  nummer 26053 — 2 projecten:
+    4f22cf4e-7ec3-40c4-a089-21904af96dc4  '26053 Den Haag (Vink en Veen)'  status=lopend actief=True  facturen=1 weekstaten=0 planning=0  ← voorstel: blijft
+    68b9bc7f-78bf-55cd-9359-18ce19429787  '26053 Den Haag, Monchyplein (Vink en Veenman)'  status=lopend actief=True  facturen=0 weekstaten=0 planning=0
+  nummer 26064 — 2 projecten:
+    4dfd2322-f2c5-445d-ad03-48149c59f4f7  '26064 Harskamp (vd Brandhof)'  status=lopend actief=True  facturen=0 weekstaten=0 planning=0
+    36d04825-b4ff-43ba-a04f-4a2313a8eb31  'Afgesloten 26064 Apeldoorn (Ben Kuijer)'  status=lopend actief=True  facturen=10 weekstaten=0 planning=0  ← voorstel: blijft
+  nummer 26084 — 2 projecten:
+    58242dd6-9a40-42fd-9e21-a2d0923bc9b0  '26084 (Harskamp) van den Brandhof'  status=lopend actief=True  facturen=0 weekstaten=0 planning=0
+    337176c6-02ca-49cf-a0e6-903d7f0bc422  '26084 Harskamp (vd Brandhof)'  status=lopend actief=True  facturen=2 weekstaten=0 planning=0  ← voorstel: blijft
+  nummer 26149 — 2 projecten:
+    0b394b0d-f0fc-4352-8e95-c1218f6b72eb  '26149'  status=lopend actief=True  facturen=0 weekstaten=0 planning=0  ← voorstel: blijft
+    42b27746-432f-58d4-915c-fb71dc0a7395  '26149 Poeldijk, Anjerstraat 245 (Weboma)'  status=lopend actief=True  facturen=0 weekstaten=0 planning=0
+Totaal: 4 dubbel(e) nummer(s). Verliezer ná verhuizing op afgesloten (IsActive uit) — nooit verwijderen.
+Container called exit(0).
+
+Oordeel: Totaal: 8 actief project(en) mét 'Afgesloten'-naam, 10 geboekt(e) verdelingsdeel(en) · Totaal: 83 lopende projecten beoordeeld, 8 kandidaat afsluiten — job-exit 0
