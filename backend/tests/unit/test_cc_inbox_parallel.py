@@ -38,6 +38,9 @@ GIT_ENV = {
 # claude-stub: schrijft de inbox-lock zoals hij 'm op dát moment ziet naar $LOCK_CAPTURE (bewijs dat de wrapper 'm zette)
 CLAUDE_STUB = r"""#!/bin/bash
 if [[ -n "${LOCK_CAPTURE:-}" ]]; then cat "${LOCK_PAD:-/nonexistent}" > "$LOCK_CAPTURE" 2>/dev/null || echo "GEEN LOCK" > "$LOCK_CAPTURE"; fi
+# een afgeronde run laat een rapport achter en commit (rij (j3) 19-09: ongecommit werk = WIP, geen rapport/commit = geen resultaat)
+f="docs/rapporten/$(date +%F)-stub-$$.md"; mkdir -p docs/rapporten; echo "rapport stub" > "$f"
+if git rev-parse --git-dir >/dev/null 2>&1; then git add -A -- docs >/dev/null 2>&1; git commit -qm "stub: rapport" >/dev/null 2>&1; fi
 echo "stub-klaar"; exit 0
 """
 OSASCRIPT_STUB = "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"$MELDINGEN\"\nexit 0\n"
@@ -126,13 +129,17 @@ def test_handmatige_lock_met_vreemde_levende_pid_geen_start_zichtbaar(werkplaats
     assert _meldingen(werkplaats) == ""
 
 
-def test_inbox_lock_met_vreemde_levende_pid_blijft_stil(werkplaats: dict[str, Path], vreemd_proces) -> None:
-    """Een levende `inbox`-lock = er loopt al een run: niets doen, geen regel (zoals vóór 16-09)."""
+def test_inbox_lock_met_vreemde_levende_pid_wacht_zichtbaar(werkplaats: dict[str, Path], vreemd_proces) -> None:
+    """Een levende `inbox`-lock = er loopt al een run: niets doen — sinds rij (j2) 19-09 mét één zichtbare wachtregel in het
+    launchd-log (vóór 19-09 stil); nooit een tweede run op dezelfde werkboom."""
     repo = werkplaats["repo"]
     _opdracht(werkplaats)
     (repo / "opdrachten" / ".lock").write_text(f"{vreemd_proces.pid}\ninbox\n2026-09-16T20:24:06\n", encoding="utf-8")
     uit = _tick(werkplaats)
-    assert uit.returncode == 0 and uit.stderr.strip() == "", uit.stderr
+    assert uit.returncode == 0, uit.stderr
+    assert f"wacht — inbox-run actief (pid {vreemd_proces.pid}, sinds 2026-09-16T20:24:06" in uit.stderr
+    assert "geen tweede run op dezelfde werkboom" in uit.stderr
+    assert (repo / "opdrachten" / "inbox" / "2026-09-16-test.md").is_file() and not (repo / "opdrachten" / "log" / "2026-09-16-test.log").exists()
     assert (repo / "opdrachten" / "inbox" / "2026-09-16-test.md").is_file()
 
 
@@ -163,26 +170,37 @@ def test_git_index_lock_laat_de_tick_wachten_en_verweesd_wordt_gemeld_maar_niet_
     assert "wacht — git bezig in deze werkboom (.git/index.lock" in uit.stderr
     assert (repo / "opdrachten" / "inbox" / "2026-09-16-test.md").is_file()
     assert not (repo / "opdrachten" / ".lock").exists()
-    # verweesd (ouder dan de grens): gemeld, genegeerd, NIET verwijderd — de run gaat door
+    # verweesd (ouder dan de grens): gemeld, genegeerd, NIET verwijderd — de run gaat door. De (stub-)run kan door de index.lock
+    # niet committen → rij (j3) 19-09: poort niet gehaald, het werk gaat via een eigen tijdelijke index veilig naar wip/<slug>
+    # (geen .git/index.lock nodig), de werkboom kan niet schoongemaakt worden (reset weigert) → LET OP, opdracht blijft in lopend/
     uit2 = _tick(werkplaats, CC_INBOX_INDEX_LOCK_MAX_S="0")
-    assert uit2.returncode == 0, uit2.stderr
+    assert uit2.returncode == 4, uit2.stderr
     assert "LET OP — .git/index.lock is" in uit2.stderr and "genegeerd (niet verwijderd" in uit2.stderr
-    assert (repo / ".git" / "index.lock").exists()
-    assert (repo / "opdrachten" / "gedaan" / "2026-09-16-test.md").is_file()
+    assert (repo / ".git" / "index.lock").exists(), "nooit verwijderd"
+    assert "poort niet gehaald — WIP op branch wip/2026-09-16-test" in uit2.stderr and "werkboom niet schoongemaakt (git reset weigert" in uit2.stderr
+    assert subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "wip/2026-09-16-test"], capture_output=True, env=GIT_ENV).returncode == 0
+    assert (repo / "opdrachten" / "lopend" / "2026-09-16-test.md").is_file()
 
 
 # ---- (g3) vuile werkboom = zichtbaar, geen blokkade ------------------------------------------------------------------------
 
 
-def test_vuile_werkboom_bij_start_geeft_let_op_regel_maar_start_wel(werkplaats: dict[str, Path]) -> None:
+def test_vuile_werkboom_bij_start_is_melding_plus_stop_niet_stil_overnemen(werkplaats: dict[str, Path]) -> None:
+    """(g3) 16-09 was een LET-OP-regel + starten; sinds rij (j3) 19-09: ongecommit werk bij de start = melding + stop, de
+    opdracht blijft in inbox/ tot een mens het werk commit of wegzet (een run laat sinds (j3) zelf nooit meer werk achter)."""
     repo = werkplaats["repo"]
     (repo / "README.md").write_text("gewijzigd door een gestopte run\n", encoding="utf-8")
     _opdracht(werkplaats)
     uit = _tick(werkplaats)
     assert uit.returncode == 0, uit.stderr
-    log = (repo / "opdrachten" / "log" / "2026-09-16-test.log").read_text(encoding="utf-8")
-    assert "LET OP — werkboom niet schoon bij start (1 tracked bestand(en) gewijzigd" in log
-    assert (repo / "opdrachten" / "gedaan" / "2026-09-16-test.md").is_file()
+    assert "STOP — werkboom niet schoon bij start (1 bestand(en):  M README.md" in uit.stderr
+    assert (repo / "opdrachten" / "inbox" / "2026-09-16-test.md").is_file(), "niet gestart"
+    assert not (repo / "opdrachten" / "log" / "2026-09-16-test.log").exists()
+    assert "CC-inbox gestopt: werkboom niet schoon" in _meldingen(werkplaats)
+    assert not (repo / "opdrachten" / ".lock").exists(), "runner-lock weer vrij"
+    # tweede tick binnen het uur: zelfde regel, geen tweede melding
+    uit2 = _tick(werkplaats)
+    assert "STOP — werkboom niet schoon" in uit2.stderr and _meldingen(werkplaats).count("werkboom niet schoon") == 1
 
 
 # ---- omgekeerd: rlz cc + rlz inbox stop -----------------------------------------------------------------------------------
@@ -253,7 +271,7 @@ def test_rlz_inbox_status_en_stop(werkplaats: dict[str, Path]) -> None:
 def test_scripts_documenteren_de_guard() -> None:
     code = SCRIPT.read_text(encoding="utf-8")
     # 17-09 (rij h): de wachtregel is samengesteld — "wacht — $omschr" mét omschrijving "handmatige CC (rlz cc) actief (pid …"
-    for verwacht in ("wacht — $omschr", "handmatige CC (rlz cc) actief (pid $pid, sinds", ".git/index.lock", "werkboom niet schoon bij start", "printf '%s\\ninbox\\n%s\\n'"):
+    for verwacht in ("wacht — $omschr", "handmatige CC (rlz cc) actief (pid $pid, sinds", ".git/index.lock", "werkboom niet schoon bij start", "set -o noclobber; printf '%s\\ninbox\\n%s\\n'"):
         assert verwacht in code, verwacht
     zsh = RLZ_ZSH.read_text(encoding="utf-8")
     for verwacht in ("inbox-run actief sinds", "rlz inbox stop", "handmatig", "RLZ_REPO"):

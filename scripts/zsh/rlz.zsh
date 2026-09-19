@@ -4,8 +4,9 @@
 #   rlz meting [onderdeel]  → nameting-workflow op GitHub starten (gh workflow run nameting.yml; default alles)
 #   rlz status   → git status + de laatste 5 rapporten uit docs/rapporten/INDEX.md + de stand van de inbox-lock
 #   rlz inbox    → scripts/cc_inbox.sh nu draaien (zonder op launchd te wachten)
-#   rlz inbox status | stop → lock + lopend/ tonen (loopt / af / gestrand — 18-09) / de lopende inbox-run netjes stoppen (TERM →
-#                             GESTOPT-regel, opdracht terug via (e))
+#   rlz inbox status | stop → lock + lopend/ tonen (loopt / af / gestrand — 18-09; sinds 19-09 per bestand de claim pid + starttijd,
+#                             "origin gedivergeerd (N lokaal / M remote)", "PUSH GEBLOKKEERD" uit opdrachten/.push-geblokkeerd en de
+#                             wip/-branches) / de lopende inbox-run netjes stoppen (TERM → GESTOPT-regel, opdracht terug via (e))
 #   rlz inbox vrijgeven [pid] → (17-09, rij (h3)) déze handmatige claude-sessie houdt de inbox niet meer tegen: schrijft
 #                             opdrachten/.vrijgave mét de pid (default: de claude met cwd in deze repo); bewust parallel = risico
 #                             van twee schrijvers in één werkboom aanvaard — alleen als de sessie stil staat of eigen paden raakt
@@ -27,7 +28,7 @@ rlz() {
     inbox)
       case "${2:-}" in
         "")     "$repo/scripts/cc_inbox.sh" ;;
-        status) _rlz_lock_stand "$lock"; _rlz_vrijgave_stand "$repo"; _rlz_lopend_stand "$repo" "$lock" ;;
+        status) _rlz_lock_stand "$lock"; _rlz_vrijgave_stand "$repo"; _rlz_lopend_stand "$repo" "$lock"; _rlz_push_stand "$repo" ;;
         stop)   _rlz_inbox_stop "$lock" ;;
         vrijgeven) _rlz_inbox_vrijgeven "$repo" "${3:-}" ;;
         *)      echo "gebruik: rlz inbox [status|stop|vrijgeven [pid]]" >&2; return 2 ;;
@@ -87,9 +88,15 @@ _rlz_cc() {
     fi
     return 1
   fi
-  [[ -f "$lock" ]] && rm -f "$lock"  # dode lock — zelfde opruiming als de tick
+  # (j2) 19-09: dode lock atomisch wegdraaien (mv — één winnaar), lock atomisch nemen (O_EXCL via noclobber); verliest deze
+  # start de race, dan stopt hij mét melding wie 'm heeft — nooit twee runs op één werkboom
+  [[ -f "$lock" ]] && { mv "$lock" "$lock.dood.$$" 2>/dev/null && rm -f "$lock.dood.$$"; }
   mkdir -p "$(dirname "$lock")"
-  printf '%s\nhandmatig\n%s\n' "$$" "$(date +%FT%T)" > "$lock"
+  if ! ( setopt noclobber; printf '%s\nhandmatig\n%s\n' "$$" "$(date +%FT%T)" > "$lock" ) 2>/dev/null; then
+    _rlz_lock_lees "$lock"
+    echo "runner-lock net gepakt door een andere start (pid ${RLZ_LOCK_PID:-?}, ${RLZ_LOCK_SOORT:-?}, sinds ${RLZ_LOCK_SINDS:-?}) — wacht tot die stopt; nooit twee runs op één werkboom" >&2
+    return 1
+  fi
   echo ">> rlz cc: inbox-lock gezet (pid $$, handmatig) — launchd-ticks wachten tot deze sessie stopt" >&2
   local rc=0
   {
@@ -109,15 +116,26 @@ _rlz_lopend_stand() {
   bestanden=("$repo"/opdrachten/lopend/*.md(N))
   if (( ${#bestanden} == 0 )); then echo "lopend/: leeg"; return 0; fi
   local levend=0; _rlz_lock_lees "$lock" && levend=1
+  local claim cpid csinds wip grens="${CC_INBOX_GESTRAND_S:-1800}" leeftijd
   for f in "${bestanden[@]}"; do
-    naam="$(basename "$f")"
+    naam="$(basename "$f")"; claim="$repo/opdrachten/log/${naam%.md}.claim"; wip="$repo/opdrachten/log/${naam%.md}.wip"
     if [[ -f "$repo/opdrachten/gedaan/$naam" ]] && head -1 "$repo/opdrachten/gedaan/$naam" | grep -q '^uitgevoerd '; then
       stand="af (staat in gedaan/ — de volgende tick ruimt de kopie in lopend/ op)"
+    elif [[ -f "$claim" ]]; then  # (j1) 19-09: claim per opdracht = pid + starttijd
+      cpid="$(sed -n 1p "$claim" 2>/dev/null)"; csinds="$(sed -n 2p "$claim" 2>/dev/null)"
+      if _rlz_leeft "$cpid"; then
+        stand="loopt (claim pid $cpid, sinds ${csinds:-?})"
+      else
+        leeftijd=$(( $(date +%s) - $(stat -f '%m' "$claim" 2>/dev/null || echo 0) ))
+        if (( leeftijd >= grens )); then stand="gestrand (claim pid ${cpid:-?} leeft niet, gestart ${csinds:-?}, $(( leeftijd / 60 )) min ≥ $(( grens / 60 )) — de volgende tick zet 'm terug in inbox/; nooit stil herstart)"
+        else stand="onzeker (claim pid ${cpid:-?} leeft niet, $(( leeftijd / 60 )) min < $(( grens / 60 )) — nog geen herstel)"; fi
+      fi
     elif (( levend )); then
-      stand="loopt ($RLZ_LOCK_SOORT, pid $RLZ_LOCK_PID, sinds ${RLZ_LOCK_SINDS:-?})"
+      stand="loopt ($RLZ_LOCK_SOORT, pid $RLZ_LOCK_PID, sinds ${RLZ_LOCK_SINDS:-?}; geen claim-bestand)"
     else
-      stand="gestrand (geen levende lock — de volgende tick zet 'm terug in inbox/)"
+      stand="gestrand (geen levende lock, geen claim — de volgende tick zet 'm terug in inbox/)"
     fi
+    [[ -f "$wip" ]] && stand="$stand; poort niet gehaald → WIP op $(sed -n 1p "$wip") ($(sed -n 2p "$wip"))"
     echo "lopend/: $naam — $stand"
   done
 }
@@ -144,4 +162,24 @@ _rlz_inbox_vrijgeven() {
   mkdir -p "$repo/opdrachten"
   printf '%s\n%s\n' "$pid" "$(date +%FT%T)" > "$repo/opdrachten/.vrijgave"
   echo ">> rlz inbox vrijgeven: pid $pid vrijgegeven — de eerstvolgende tick (≤ 5 min) start de oudste inbox-opdracht náást deze sessie; twee schrijvers in één werkboom = alleen eigen paden stagen, geen rebase/stash"
+}
+
+# (j4) 19-09: push-stand — divergentie t.o.v. origin/main (stand van de laatste fetch), blokkade uit de Stop-hook (scripts/git-hooks/
+# stop-push.sh schrijft opdrachten/.push-geblokkeerd) en de wip/-branches van niet-gehaalde poorten (j3).
+_rlz_push_stand() {
+  local repo="$1" lokaal remote b
+  lokaal="$(git -C "$repo" rev-list --count origin/main..main 2>/dev/null || echo '?')"
+  remote="$(git -C "$repo" rev-list --count main..origin/main 2>/dev/null || echo '?')"
+  if [[ "$remote" != "?" && "$remote" != 0 ]]; then
+    echo "origin gedivergeerd ($lokaal lokaal / $remote remote) — deploy staat stil tot merge + push (Stop-hook doet dat bij de volgende run-stop, of: git merge --no-ff origin/main && git push origin main)"
+  elif [[ "$lokaal" != "?" && "$lokaal" != 0 ]]; then
+    echo "push: $lokaal lokale commit(s) nog niet op origin (de Stop-hook pusht bij de volgende run-stop)"
+  fi
+  if [[ -f "$repo/opdrachten/.push-geblokkeerd" ]]; then
+    echo "PUSH GEBLOKKEERD ($(sed -n 1p "$repo/opdrachten/.push-geblokkeerd")): $(sed -n 2p "$repo/opdrachten/.push-geblokkeerd")"
+    echo "  herstel: $(sed -n 3p "$repo/opdrachten/.push-geblokkeerd")"
+  fi
+  for b in $(git -C "$repo" for-each-ref --format='%(refname:short)' 'refs/heads/wip/' 2>/dev/null); do
+    echo "wip-branch: $b — poort niet gehaald ($(git -C "$repo" log -1 --format=%cd --date=format:%FT%T "$b" 2>/dev/null)); opruimen ná controle: git branch -D $b"
+  done
 }

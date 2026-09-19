@@ -115,7 +115,9 @@ def test_pull_overgeslagen_bij_vuile_werkboom(werkplaats: dict[str, Path]) -> No
     uit = _draai_script(mac)
     assert uit.returncode == 0, uit.stderr
     assert _git(mac, "rev-parse", "HEAD") == voor != sha, "pull had overgeslagen moeten worden"
-    assert "pull overgeslagen — werkboom niet schoon (1 gewijzigd bestand(en))" in uit.stderr, uit.stderr
+    # sinds rij (j3) 19-09 stopt de tick al vóór de pull: ongecommit werk = melding + stop (geen pull, geen start)
+    assert "STOP — werkboom niet schoon bij start (1 bestand(en):  M verkenning/README.txt" in uit.stderr, uit.stderr
+    assert "pull ff-only" not in uit.stderr
     assert (mac / "verkenning" / "README.txt").read_text(encoding="utf-8").startswith("lokaal gewijzigd"), "nooit stash"
 
 
@@ -128,7 +130,10 @@ def test_untracked_opdracht_in_inbox_houdt_pull_niet_tegen(werkplaats: dict[str,
     (mac / "opdrachten" / "inbox" / "2026-09-14-test.md").write_text("OPDRACHT — test\n", encoding="utf-8")
     stubs = mac.parent / "stubs"
     stubs.mkdir()
-    (stubs / "claude").write_text("#!/bin/sh\necho stub-klaar\nexit 0\n", encoding="utf-8")
+    (stubs / "claude").write_text(  # afgeronde run = rapport + commit (rij (j3) 19-09)
+        "#!/bin/bash\n" + """f="docs/rapporten/$(date +%F)-stub-$$.md"; mkdir -p docs/rapporten; echo "rapport stub" > "$f"
+if git rev-parse --git-dir >/dev/null 2>&1; then git add -A -- docs >/dev/null 2>&1; git commit -qm "stub: rapport" >/dev/null 2>&1; fi\necho stub-klaar\nexit 0\n""", encoding="utf-8"
+    )
     (stubs / "osascript").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     for s in stubs.iterdir():
         s.chmod(0o755)
@@ -141,7 +146,7 @@ def test_untracked_opdracht_in_inbox_houdt_pull_niet_tegen(werkplaats: dict[str,
         timeout=60,
     )
     assert uit.returncode == 0, uit.stderr
-    assert _git(mac, "rev-parse", "HEAD") == sha, uit.stderr
+    assert _git(mac, "rev-parse", "HEAD~1") == sha, uit.stderr  # bot-commit binnen; daarbovenop de commit van de (stub-)run
     assert (mac / "opdrachten" / "gedaan" / "2026-09-14-test.md").is_file(), "de opdracht is ná de pull gewoon opgepakt"
 
 
@@ -178,7 +183,7 @@ def test_gestaged_tracked_bestand_telt_als_vuil(werkplaats: dict[str, Path]) -> 
     uit = _draai_script(mac)
     assert uit.returncode == 0, uit.stderr
     assert _git(mac, "rev-parse", "HEAD") == voor
-    assert "pull overgeslagen — werkboom niet schoon (1 gewijzigd bestand(en))" in uit.stderr, uit.stderr
+    assert "STOP — werkboom niet schoon bij start (1 bestand(en): M  verkenning/README.txt" in uit.stderr, uit.stderr  # rij (j3) 19-09
     assert _git(mac, "diff", "--cached", "--name-only") == "verkenning/README.txt", "index onaangeraakt"
 
 
@@ -202,12 +207,19 @@ def test_levende_lock_doet_niets_ook_geen_pull(werkplaats: dict[str, Path]) -> N
     uit = _draai_script(mac)
     assert uit.returncode == 0, uit.stderr
     assert _git(mac, "rev-parse", "HEAD") == voor
-    assert uit.stderr.strip() == ""
+    assert "wacht — inbox-run actief (pid" in uit.stderr and "pull" not in uit.stderr  # rij (j2) 19-09: zichtbaar, nooit een pull
 
 
 def test_script_gebruikt_ff_only_en_nooit_rebase_merge_stash() -> None:
+    """De pull is ff-only en het script rebaset/stasht/merget nooit. Sinds rij (j3) 19-09 zet het script ongecommit werk als
+    WIP-commit weg via plumbing (tijdelijke index, commit-tree, update-ref) en maakt de werkboom daarna schoon met
+    `reset --hard HEAD` — dat raakt alleen werk dat zojuist veilig op de wip/-branch is gezet, nooit main. 'git merge' komt
+    alleen voor als advies-tekst voor een mens (rlz.zsh), niet als commando in dit script."""
     code = "\n".join(r.split("#", 1)[0] for r in SCRIPT.read_text(encoding="utf-8").splitlines())
     assert "pull --ff-only origin main" in code
     assert "status --porcelain --untracked-files=no" in code, "schoon = alleen tracked bestanden (nazorg 15-09)"
-    for verboden in ("git stash", "git merge", "pull --rebase", "git rebase", "reset --hard", "checkout --"):
+    for verboden in ("git stash", "pull --rebase", "git rebase", "checkout --", "push --force", "push -f"):
         assert verboden not in code, verboden
+    import re as _re
+    assert not _re.search(r"git -C \"\$REPO\" merge\b", code), "geen merge-commando in het inbox-script (de Stop-hook merget, zichtbaar)"
+    assert code.count("reset -q --hard HEAD") == 1 and "update-ref \"refs/heads/$branch\"" in code, "reset alleen ná de WIP-commit"

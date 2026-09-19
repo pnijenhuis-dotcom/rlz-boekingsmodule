@@ -38,12 +38,14 @@ GIT_ENV = {
 CLAUDE_STUB = r"""#!/bin/bash
 # gedrag uit $CLAUDE_GEDRAG: "ok" | "limiet" | "fout" | "slaap <s>"
 gedrag="$(cat "$CLAUDE_GEDRAG" 2>/dev/null || echo ok)"
+# een afgeronde run laat een rapport achter en commit (sinds rij (j3) 19-09: exit 0 zonder rapport/commit = "geen resultaat")
+klaar() { f="docs/rapporten/$(date +%F)-stub-$$.md"; mkdir -p docs/rapporten; echo "rapport stub" > "$f"; if git rev-parse --git-dir >/dev/null 2>&1; then git add -A -- docs >/dev/null 2>&1; git commit -qm "stub: rapport" >/dev/null 2>&1; fi; }
 case "$gedrag" in
-  ok) echo "stub-klaar"; exit 0 ;;
+  ok) klaar; echo "stub-klaar"; exit 0 ;;
   limiet) echo "You've hit your monthly spend limit. Switch to another model, or manage usage credits" \
              "at claude.ai/admin-settings/usage, to continue."; exit 1 ;;
   fout) echo "stub-fout"; exit 2 ;;
-  slaap*) echo "stub-slaapt"; sleep "${gedrag#slaap }"; echo "stub-wakker"; exit 0 ;;
+  slaap*) echo "stub-slaapt"; sleep "${gedrag#slaap }"; klaar; echo "stub-wakker"; exit 0 ;;
 esac
 """
 
@@ -62,6 +64,10 @@ def werkplaats(tmp_path: Path) -> dict[str, Path]:
     for sub in ("inbox", "lopend", "gedaan", "mislukt", "log"):
         (repo / "opdrachten" / sub).mkdir(parents=True)
     (repo / "docs" / "rapporten").mkdir(parents=True)
+    (repo / "docs" / "rapporten" / "INDEX.md").write_text("# index\n", encoding="utf-8")
+    # schone, gecommitte werkboom — sinds rij (j3) 19-09 stopt een tick op ongecommit werk buiten opdrachten/
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, env=GIT_ENV)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "init"], check=True, env=GIT_ENV)
     stubs = tmp_path / "stubs"
     stubs.mkdir()
     (stubs / "claude").write_text(CLAUDE_STUB, encoding="utf-8")
@@ -253,7 +259,9 @@ def test_levende_lock_raakt_lopend_niet_aan(werkplaats: dict[str, Path]) -> None
     (repo / "opdrachten" / "lopend" / "2026-09-14-handmatig.md").write_text("OPDRACHT — handmatig\n", encoding="utf-8")
     (repo / "opdrachten" / ".lock").write_text(f"{os.getpid()}\n", encoding="utf-8")
     uit = _draai(werkplaats)
-    assert uit.returncode == 0 and uit.stderr.strip() == ""
+    assert uit.returncode == 0, uit.stderr
+    assert f"wacht — inbox-run actief (pid {os.getpid()}, sinds ?" in uit.stderr, uit.stderr  # rij (j2) 19-09: zichtbaar, één regel
+    assert "herstel" not in uit.stderr.replace("geen herstel", "") and "start " not in uit.stderr
     assert (repo / "opdrachten" / "lopend" / "2026-09-14-handmatig.md").is_file()
     assert _meldingen(werkplaats) == ""
 
@@ -454,6 +462,8 @@ def test_script_documenteert_rij_h() -> None:
 
 PROMPT_STUB = r"""#!/bin/bash
 printf '%s\n' "$@" > "$PROMPT_CAPTURE"
+f="docs/rapporten/$(date +%F)-stub-$$.md"; mkdir -p docs/rapporten; echo "rapport stub" > "$f"
+if git rev-parse --git-dir >/dev/null 2>&1; then git add -A -- docs >/dev/null 2>&1; git commit -qm "stub: rapport" >/dev/null 2>&1; fi
 echo "stub-klaar"; exit 0
 """
 
@@ -465,6 +475,8 @@ def _met_prompt_stub(w: dict[str, Path]) -> Path:
     (w["repo"] / "docs" / "regels" / "bank.md").write_text("# Regels — Bank\n", encoding="utf-8")
     (w["repo"] / "docs" / "regels" / "omzet.md").write_text("# Regels — Omzet\n", encoding="utf-8")
     (w["repo"] / "docs" / "regels" / "INDEX.md").write_text("# index\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(w["repo"]), "add", "-A"], check=True, env=GIT_ENV)  # schone werkboom bij start (rij j3)
+    subprocess.run(["git", "-C", str(w["repo"]), "commit", "-qm", "regels"], check=True, env=GIT_ENV)
     return w["repo"].parent / "prompt_capture.txt"
 
 

@@ -67,6 +67,7 @@
 #   (g3) is de werkboom bij het oppakken niet schoon (tracked wijzigingen zonder levende lock/claude), dan is dat werk van een
 #        gestopte run: logregel "LET OP — werkboom niet schoon bij start (N bestanden)" zodat het in het opdrachtenlog staat;
 #        de CC-run zelf beslist (committen als eigen commit, zoals 57ca852) — geen blokkade, anders staat de inbox voorgoed stil.
+#        VERVANGEN 19-09 door (j3): ongecommit werk bij de start = melding + stop (een run laat sinds (j3) nooit meer werk achter).
 #   Omgekeerd (mens start terwijl de inbox draait): `rlz cc` weigert bij een levende `inbox`-lock mét "inbox-run actief sinds …,
 #   wacht of `rlz inbox stop`"; `rlz inbox stop` stuurt TERM naar de inbox-run (trap → GESTOPT-regel, opdracht terug via (e)).
 #   Guard: backend/tests/unit/test_cc_inbox_parallel.py.
@@ -88,6 +89,35 @@
 #       de tick ruimt de lopend-kopie op (logregel, teller weg) en start NIETS opnieuw; `rlz inbox status` somt lopend/ op
 #       als loopt (levende lock) / af (kopie in gedaan/) / gestrand (geen levende lock). Guard: test_cc_inbox_herstel.py
 #       `test_lopend_kopie_van_afgeronde_opdracht_*`.
+# Rij (j) 19-09 (procesles inbox-run 19-09 12:46 — twee runs op één opdracht, een run die vóór zijn suite eindigde, een stil
+# geweigerde Stop-hook-push; BESLISSINGEN "CC-INBOX — LOCK PER OPDRACHT, POORT VÓÓR EINDE, PUSH-RETRY (19-09)"):
+#   (j1) LOCK PER OPDRACHT, ATOMISCH: oppakken = `mv inbox/X lopend/X` — rename(2) op één bestandssysteem, slaagt voor precies één
+#        proces; de verliezer logt "claim verloren — X is intussen door een andere run opgepakt" en probeert de volgende kandidaat.
+#        Geen tweede mechanisme. Per claim staat opdrachten/log/<slug>.claim = pid / starttijd; `rlz inbox status` toont die per
+#        lopend-bestand. Claim mét dode pid < CC_INBOX_GESTRAND_S (default 1800 s) = "onzeker — nog geen herstel"; ≥ die grens =
+#        gestrand → bestaand herstelpad (e) mét logregel + melding, nooit stil. Een lopend-bestand ZONDER claim = de run sloot zelf
+#        af zonder afronding (rc ≠ 0, signaal, poort niet gehaald) → direct herstelpad (e). Seam: CC_INBOX_CLAIM_ALLEEN=1 doet
+#        alleen de claim en stopt (guard-test: twee processen, één wint).
+#   (j2) ÉÉN INBOX-RUNNER PER REPO: opdrachten/.lock is dé gedeelde runner-lock van launchd én `rlz cc` (de opdracht noemt
+#        `.runner.lock`/flock — macOS heeft geen flock en de bestaande lock IS al het ene mechanisme; hij wordt nu ATOMISCH genomen:
+#        O_EXCL via noclobber, een dode lock wordt atomisch weggedraaid (mv) zodat maar één proces 'm opruimt). Een tweede starter
+#        stopt mét regel "runner-lock net gepakt door pid N"; een levende inbox-lock is niet meer stil: "wacht — inbox-run actief
+#        (pid N, sinds T, M min)" in het launchd-log.
+#   (j3) EEN RUN EINDIGT PAS NÁ ZIJN POORT: ná claude toetst het script de werkboom (tracked wijzigingen + untracked buiten
+#        opdrachten/ en .scratch/). Niet schoon = de poort (pytest + vitest + tsc + gouden set → commit) is niet gehaald, ongeacht
+#        de exitcode → het werk gaat als WIP-commit op branch `wip/<slug>` (plumbing: write-tree/commit-tree/update-ref — main en
+#        HEAD worden niet aangeraakt, nooit stash), de werkboom wordt schoon, opdrachten/log/<slug>.wip = branch/commit, logregel
+#        "poort niet gehaald — WIP op branch wip/<slug>" + melding, de opdracht blijft in lopend/ (→ herstel (e), volgende poging);
+#        de startprompt van die volgende poging zegt: begin met `git merge --squash wip/<slug>`. Zette claude het bestand zelf al in
+#        gedaan/ (untracked), dan gaat het terug naar lopend/ zonder kopregel — "af" zonder commit bestaat niet. Exit 0 zonder
+#        resultaat (geen rapport, geen commit, niet zelf naar gedaan/) = "geen resultaat" → lopend/ (herstel), nooit gedaan/
+#        (incident 19-09 16:12: run eindigde "ik wacht op de melding", script zette 'm mét "rapport: geen" in gedaan/).
+#        Ongecommit werk in de werkboom bij de START = melding + stop (niet stil overnemen; vóór 19-09 alleen een LET-OP-regel);
+#        herhaald hoogstens elk uur, tot een mens het werk commit of wegzet.
+#   (j4) PUSH-CONFLICT: zie scripts/git-hooks/stop-push.sh (Stop-hook: fetch + merge --no-ff + één retry; blokkade = melding +
+#        opdrachten/.push-geblokkeerd) — hier: "pull overgeslagen — ff-only mislukt" geeft óók een melding (hoogstens elk uur) en
+#        `rlz inbox status` toont "origin gedivergeerd (N lokaal / M remote)".
+#   Guards: backend/tests/unit/test_cc_inbox_claim_en_poort.py + test_stop_hook_push.py.
 # Geen TTY nodig (launchd). PATH wordt door de plist gezet; hier als vangnet ACHTERAAN aangevuld voor een handmatige start
 # (achteraan: een expliciet gezet PATH — plist, test-stubs — wint van het vangnet).
 set -uo pipefail
@@ -97,6 +127,7 @@ INBOX="$REPO/opdrachten/inbox"; LOPEND="$REPO/opdrachten/lopend"; GEDAAN="$REPO/
 MISLUKT="$REPO/opdrachten/mislukt"
 LOCK="$REPO/opdrachten/.lock"
 MAX_POGINGEN="${CC_INBOX_MAX_POGINGEN:-3}"
+GESTRAND_S="${CC_INBOX_GESTRAND_S:-1800}"  # (j1) claim mét dode pid ouder dan dit = gestrand
 HARTSLAG_S="${CC_INBOX_HARTSLAG_S:-300}"
 mkdir -p "$INBOX" "$LOPEND" "$GEDAAN" "$LOGMAP" "$MISLUKT"
 
@@ -143,7 +174,56 @@ wacht_op_handmatig() {  # wacht_op_handmatig <pid> <omschrijving> — logregel m
   printf '%s\n%s\n' "$eerste" "$laatste_melding" > "$stand"
   exit 0
 }
-ruim_wachtstand_op() { rm -f "$LOGMAP"/.wacht-* 2>/dev/null || true; }
+ruim_wachtstand_op() { rm -f "$LOGMAP"/.wacht-[0-9]* 2>/dev/null || true; }  # alleen pid-standen; werkboom/divergentie apart
+meld_hoogstens_per_uur() {  # meld_hoogstens_per_uur <sleutel> <titel> <tekst> — stand in opdrachten/log/.wacht-<sleutel>
+  local sleutel="$1" stand="$LOGMAP/.wacht-$1" laatste nu; nu=$(date +%s)
+  laatste="$(sed -n 1p "$stand" 2>/dev/null || true)"; [[ "$laatste" =~ ^[0-9]+$ ]] || laatste=0
+  if (( nu - laatste >= WACHT_HERHAAL_S )); then melding "$2" "$3"; echo "$nu" > "$stand"; fi
+}
+
+# ---- (j1) claim per opdracht + (j2) atomische runner-lock + (j3) werkboom-toets --------------------------------------------
+OPDRACHT=""; LOPEND_BESTAND=""
+claim_opdracht() {  # → zet OPDRACHT (inbox-pad) + LOPEND_BESTAND; rc 1 = niets (meer) te claimen. mv = rename(2) = atomisch: één winnaar
+  local kandidaat
+  while IFS= read -r kandidaat; do
+    [[ -n "$kandidaat" ]] || continue
+    LOPEND_BESTAND="$LOPEND/$(basename "$kandidaat")"
+    if [[ -e "$LOPEND_BESTAND" ]]; then
+      log ">> cc_inbox: claim overgeslagen — $(basename "$kandidaat") staat al in lopend/ (andere run of gestrand) ($(date +%FT%T))"; continue
+    fi
+    if mv "$kandidaat" "$LOPEND_BESTAND" 2>/dev/null && [[ ! -e "$kandidaat" ]]; then OPDRACHT="$kandidaat"; return 0; fi
+    log ">> cc_inbox: claim verloren — $(basename "$kandidaat") is intussen door een andere run opgepakt; volgende kandidaat ($(date +%FT%T))"
+  done < <(find "$INBOX" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null | xargs -0 stat -f '%m %N' 2>/dev/null | sort -n | cut -d' ' -f2-)
+  return 1
+}
+if [[ "${CC_INBOX_CLAIM_ALLEEN:-}" == "1" ]]; then  # seam guard-test (j1): alleen claimen, niets starten
+  if claim_opdracht; then echo "CLAIM $(basename "$OPDRACHT") pid $$"; exit 0; else echo "GEEN CLAIM pid $$"; exit 3; fi
+fi
+neem_runner_lock() {  # (j2) O_EXCL via noclobber; dode lock atomisch wegdraaien (mv) en opnieuw; rc 1 = een ander won
+  local poging pid soort
+  for poging in 1 2 3; do
+    if ( set -o noclobber; printf '%s\ninbox\n%s\n' "$$" "$(date +%FT%T)" > "$LOCK" ) 2>/dev/null; then return 0; fi
+    pid="$(sed -n 1p "$LOCK" 2>/dev/null || true)"; soort="$(sed -n 2p "$LOCK" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      log ">> cc_inbox: runner-lock net gepakt door pid $pid (soort ${soort:-inbox}) — deze tick stopt; nooit twee runs op één werkboom ($(date +%FT%T))"
+      return 1
+    fi
+    mv "$LOCK" "$LOCK.dood.$$" 2>/dev/null && rm -f "$LOCK.dood.$$"  # alleen de winnaar van de rename ruimt de dode lock op
+  done
+  return 1
+}
+eigen_git_werkboom() {  # rc 0 als $REPO zelf de top van een git-werkboom is (anders: geen werkboom-toets, geen WIP — bv. testfixture zonder git)
+  [[ "$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null)" == "$(cd "$REPO" && pwd -P)" ]]
+}
+werkboom_vuil() {  # → statusregels van tracked wijzigingen + untracked buiten opdrachten/, .scratch/ en .claude/ (leeg = schoon)
+  local r pad
+  eigen_git_werkboom || return 0
+  git -C "$REPO" status --porcelain 2>/dev/null | while IFS= read -r r; do
+    pad="${r:3}"
+    if [[ "${r:0:2}" == "??" ]]; then case "$pad" in opdrachten|opdrachten/|opdrachten/*|.scratch|.scratch/|.scratch/*|.claude|.claude/|.claude/*) continue ;; esac; fi
+    printf '%s\n' "$r"
+  done
+}
 
 # ---- lock --------------------------------------------------------------------------------------------------------
 if [[ -f "$LOCK" ]]; then
@@ -157,8 +237,10 @@ if [[ -f "$LOCK" ]]; then
       else
         wacht_op_handmatig "$pid" "handmatige CC (rlz cc) actief (pid $pid, sinds ${sinds:-?})"
       fi
-    else
-      exit 0  # er loopt al een inbox-run — stil niets doen (launchd probeert over ≤ 5 min opnieuw)
+    else  # (j2) er loopt al een inbox-run — zichtbaar wachten (één regel in het launchd-log), nooit een tweede run
+      sinds_s="$(date -j -f '%Y-%m-%dT%H:%M:%S' "${sinds:-}" +%s 2>/dev/null || echo "$(date +%s)")"
+      log ">> cc_inbox: wacht — inbox-run actief (pid $pid, sinds ${sinds:-?}, $(( ($(date +%s) - sinds_s) / 60 )) min) — geen tweede run op dezelfde werkboom; volgende tick opnieuw ($(date +%FT%T))"
+      exit 0
     fi
   else
     log ">> cc_inbox: verweesde lock (pid ${pid:-?}, soort $soort, leeft niet) opgeruimd"
@@ -209,6 +291,21 @@ if [[ -e "$GIT_INDEX_LOCK" ]]; then
   log ">> cc_inbox: LET OP — .git/index.lock is ${leeftijd}s oud (> ${INDEX_LOCK_MAX_S}s): verweesd van een gestopte git, genegeerd (niet verwijderd — dat doet een mens; git zelf weigert intussen elke commit)"
 fi
 
+# ---- (j2) runner-lock atomisch nemen — vanaf hier is deze tick de enige runner op deze werkboom -------------------------
+neem_runner_lock || exit 0
+LOCK_GENOMEN=1
+trap '[[ "${LOCK_GENOMEN:-0}" == 1 && "$(sed -n 1p "$LOCK" 2>/dev/null)" == "$$" ]] && rm -f "$LOCK"' EXIT
+
+# ---- (j3) ongecommit werk in de werkboom bij de start = melding + stop (niet stil overnemen) ------------------------------
+VUIL="$(werkboom_vuil)"
+if [[ -n "$VUIL" ]]; then
+  VUIL_N="$(printf '%s\n' "$VUIL" | wc -l | tr -d ' ')"
+  log ">> cc_inbox: STOP — werkboom niet schoon bij start ($VUIL_N bestand(en): $(printf '%s' "$VUIL" | head -3 | tr '\n' ';' | cut -c1-160)) — werk van een gestopte run; geen herstel, geen pull, geen start tot een mens het commit of wegzet (git status); volgende tick opnieuw ($(date +%FT%T))"
+  meld_hoogstens_per_uur werkboom "CC-inbox gestopt: werkboom niet schoon" "$VUIL_N ongecommit bestand(en) in de werkboom — commit of zet weg, dan start de inbox weer"
+  exit 0
+fi
+rm -f "$LOGMAP/.wacht-werkboom"
+
 # ---- verweesde lopend-opdrachten (e): geen levende lock → elke .md in lopend/ is gestrand ----------------------------
 laatste_logregel() {  # laatste_logregel <slug> → laatste inhoudelijke regel uit het opdrachtenlog (zonder >>-regels)
   local l="$LOGMAP/$1.log"
@@ -232,6 +329,20 @@ herstel_verweesd() {
       log ">> cc_inbox: $slug stond nog in lopend/ maar is al afgerond (opdrachten/gedaan/ mét kopregel 'uitgevoerd') → kopie in lopend/ opgeruimd, geen herstart ($(date +%FT%T))"
       LOG=""
       continue
+    fi
+    # (j1) claim-bestand: levende pid = loopt (laten staan); dode pid < GESTRAND_S = onzeker (nog geen herstel); ≥ = gestrand
+    claim="$LOGMAP/$slug.claim"
+    if [[ -f "$claim" ]]; then
+      cpid="$(sed -n 1p "$claim" 2>/dev/null || true)"; csinds="$(sed -n 2p "$claim" 2>/dev/null || true)"
+      if [[ -n "$cpid" ]] && kill -0 "$cpid" 2>/dev/null; then
+        log ">> cc_inbox: $slug loopt nog (claim pid $cpid, sinds ${csinds:-?}) — laten staan ($(date +%FT%T))"; LOG=""; continue
+      fi
+      cleeftijd=$(( $(date +%s) - $(stat -f '%m' "$claim" 2>/dev/null || echo 0) ))
+      if (( cleeftijd < GESTRAND_S )); then
+        log ">> cc_inbox: $slug onzeker — claim pid ${cpid:-?} leeft niet ($(( cleeftijd / 60 )) min, grens $(( GESTRAND_S / 60 )) min): nog geen herstel, volgende tick opnieuw ($(date +%FT%T))"; LOG=""; continue
+      fi
+      log ">> cc_inbox: $slug gestrand — claim pid ${cpid:-?} leeft niet sinds ≥ $(( GESTRAND_S / 60 )) min (gestart ${csinds:-?}) → herstelpad ($(date +%FT%T))"
+      rm -f "$claim"
     fi
     if (( teller >= MAX_POGINGEN )); then
       { echo "MISLUKT ná $teller pogingen ($(date +%FT%T)) — laatste: ${laatste:-geen uitvoer}"; echo; cat "$bestand"; } > "$MISLUKT/$(basename "$bestand")"
@@ -259,31 +370,33 @@ pull_ff_only() {
   local voor na uitvoer
   voor="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
   if ! uitvoer="$(git -C "$REPO" pull --ff-only origin main 2>&1)"; then
-    echo ">> cc_inbox: pull overgeslagen — ff-only mislukt (gedivergeerd of geen netwerk): $(printf '%s' "$uitvoer" | tail -1 | cut -c1-200)" >&2
+    local lokaal remote
+    lokaal="$(git -C "$REPO" rev-list --count origin/main..main 2>/dev/null || echo '?')"; remote="$(git -C "$REPO" rev-list --count main..origin/main 2>/dev/null || echo '?')"
+    echo ">> cc_inbox: pull overgeslagen — ff-only mislukt (gedivergeerd of geen netwerk; origin gedivergeerd: $lokaal lokaal / $remote remote): $(printf '%s' "$uitvoer" | tail -1 | cut -c1-200)" >&2
+    if [[ "$remote" != "?" && "$remote" != "0" && "$lokaal" != "0" ]]; then  # (j4) echte divergentie = deploy staat stil → melding, hoogstens elk uur
+      meld_hoogstens_per_uur divergentie "CC-inbox: origin gedivergeerd ($lokaal lokaal / $remote remote)" "deploy staat stil tot origin/main is samengevoegd (--no-ff) en gepusht — de Stop-hook doet dat bij de volgende run-stop; rlz inbox status toont het"
+    fi
     return 0
   fi
+  rm -f "$LOGMAP/.wacht-divergentie"
   na="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
   [[ "$voor" != "$na" ]] && echo ">> cc_inbox: pull ff-only $(git -C "$REPO" rev-list --count "$voor..$na" 2>/dev/null || echo '?') commit(s) binnen → ${na:0:7} ($(date +%FT%T))" >&2
   return 0
 }
 pull_ff_only
-# oudste bestand (mtime) — niets in de inbox = niets doen
-OPDRACHT="$(find "$INBOX" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null | xargs -0 stat -f '%m %N' 2>/dev/null | sort -n | head -1 | cut -d' ' -f2-)"
-[[ -n "$OPDRACHT" ]] || exit 0
-printf '%s\ninbox\n%s\n' "$$" "$(date +%FT%T)" > "$LOCK"  # (g1) pid, soort, sinds
+# (j1) oudste bestand (mtime) atomisch claimen (mv inbox/X lopend/X) — niets te claimen = niets doen; de runner-lock (g1: pid,
+# soort, sinds — sinds 19-09 al atomisch genomen vóór de werkboom-toets) staat al.
+claim_opdracht || exit 0
 
 SLUG="$(basename "$OPDRACHT" .md)"
 DATUM="$(date +%Y-%m-%d)"
 LOG="$LOGMAP/$DATUM-$SLUG.log"; [[ "$SLUG" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}- ]] && LOG="$LOGMAP/$SLUG.log"  # slug mét datum: niet dubbel
 TELLER="$LOGMAP/$SLUG.pogingen"
-LOPEND_BESTAND="$LOPEND/$(basename "$OPDRACHT")"
+CLAIM="$LOGMAP/$SLUG.claim"; printf '%s\n%s\n' "$$" "$(date +%FT%T)" > "$CLAIM"  # (j1) pid + starttijd van deze claim
+WIPMARKER="$LOGMAP/$SLUG.wip"
 POGING=$(( $(cat "$TELLER" 2>/dev/null || echo 0) + 1 )); echo "$POGING" > "$TELLER"
-mv "$OPDRACHT" "$LOPEND_BESTAND"
-log ">> cc_inbox: start $SLUG ($(date +%FT%T), poging $POGING/$MAX_POGINGEN) — log $LOG"
-VUIL_N="$(git -C "$REPO" status --porcelain --untracked-files=no 2>/dev/null | wc -l | tr -d ' ')"
-if [[ "${VUIL_N:-0}" != "0" ]]; then  # (g3) werk van een gestopte run — zichtbaar, geen blokkade
-  log ">> cc_inbox: LET OP — werkboom niet schoon bij start ($VUIL_N tracked bestand(en) gewijzigd, geen levende lock/claude): werk van een gestopte run — de CC-run beslist (eigen commit of laten staan), zie opdracht-guard 16-09"
-fi
+log ">> cc_inbox: start $SLUG ($(date +%FT%T), poging $POGING/$MAX_POGINGEN, claim pid $$) — log $LOG"
+HEAD_VOOR="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
 
 # ---- elke stop = logregel + melding (b) --------------------------------------------------------------------------
 AFGEROND=0; CLAUDE_PID=""; HARTSLAG_PID=""
@@ -303,7 +416,7 @@ bij_signaal() {  # bij_signaal <naam>
   stop_kinderen
   log ">> cc_inbox: GESTOPT door signaal $1 ($(date +%FT%T)) — $SLUG blijft in opdrachten/lopend/, volgende tick zet 'm terug in inbox/ (poging $POGING/$MAX_POGINGEN gebruikt)"
   melding "CC GESTOPT: $SLUG (signaal $1)" "run afgebroken; volgende tick herstart (poging $POGING/$MAX_POGINGEN gebruikt)"
-  rm -f "$LOCK"
+  rm -f "$LOCK" "$CLAIM"  # (j1) claim weg = de run sloot zelf af → herstelpad (e) direct
   exit 143
 }
 bij_exit() {
@@ -313,7 +426,7 @@ bij_exit() {
     log ">> cc_inbox: GESTOPT onverwacht (exit $rc, $(date +%FT%T)) — $SLUG blijft in opdrachten/lopend/"
     melding "CC GESTOPT: $SLUG (onverwacht, exit $rc)" "zie $LOG"
   fi
-  rm -f "$LOCK"
+  rm -f "$LOCK" "$CLAIM"
 }
 trap 'bij_signaal TERM' TERM
 trap 'bij_signaal INT' INT
@@ -347,9 +460,16 @@ else
   LEESPLICHT_TEKST="LEESPLICHT (geen of onbekende Domeinen-kopregel): leid de domeinen af uit de paden die je gaat raken via docs/regels/INDEX.md, lees die docs/regels/<domein>.md volledig VÓÓR je begint en noem in het rapport expliciet dat je ze zo hebt afgeleid."
   log ">> cc_inbox: geen (geldige) Domeinen-kopregel in de opdracht — CC leidt de domeinen af via docs/regels/INDEX.md"
 fi
+WIP_TEKST=""
+if [[ -f "$WIPMARKER" ]]; then  # (j3) vorige poging haalde de poort niet → het werk staat op de WIP-branch
+  WIP_BRANCH="$(sed -n 1p "$WIPMARKER")"; WIP_COMMIT="$(sed -n 2p "$WIPMARKER")"
+  WIP_TEKST="VORIGE POGING HAALDE DE POORT NIET (rij j3): het toen ongecommitte werk staat als WIP-commit op branch \`$WIP_BRANCH\` ($WIP_COMMIT). Begin met \`git merge --squash $WIP_BRANCH\` (werk terug in de werkboom als ongecommitte wijzigingen; niet committen vóór de poort), maak het af, draai de volledige poort (pytest + vitest + tsc -b + gouden set) en commit pas dán op main. Eindig NOOIT terwijl een suite of achtergrondtaak nog loopt — wacht op de uitkomst. De branch blijft ter controle staan; het rapport noemt 'm.
+"
+  log ">> cc_inbox: vorige poging liet WIP op $WIP_BRANCH ($WIP_COMMIT) — de startprompt begint met git merge --squash"
+fi
 PROMPT="$(cat "$LOPEND_BESTAND")
 ---
-$LEESPLICHT_TEKST
+${WIP_TEKST}$LEESPLICHT_TEKST
 Werkloop automatisch (CLAUDE.md § Werkwijze \"Werkloop automatisch (14-09)\"): deze opdracht komt uit opdrachten/inbox/ en staat nu als opdrachten/lopend/$(basename "$OPDRACHT"). Sluit af met (1) het eindrapport als docs/rapporten/<jjjj-mm-dd>-<blok-slug>.md + regel bovenaan in docs/rapporten/INDEX.md (incl. \"werkt in productie: ja/nee/niet gemeten\" én een sectie \"## Gelezen regels\" mét élk gelezen docs/regels/<domein>.md en zijn regelaantal — verplicht, guard test_rapporten_gelezen_regels.py), (2) dit opdrachtbestand naar opdrachten/gedaan/ mét bovenin de kopregel \"uitgevoerd <datum>, rapport: docs/rapporten/<bestand>\", (3) committen zoals gebruikelijk (nooit pushen — de Stop-hook doet dat). Peter kijkt niet mee: vragen stellen kan niet, kies zelf en leg keuzes vast in het rapport."
 
 RAPPORTEN_VOOR="$(ls -1 "$REPO/docs/rapporten"/*.md 2>/dev/null | sort || true)"
@@ -387,15 +507,67 @@ fi
 RAPPORT="$(comm -13 <(printf '%s\n' "$RAPPORTEN_VOOR") <(ls -1 "$REPO/docs/rapporten"/*.md 2>/dev/null | sort) | grep -v INDEX.md | tail -1 || true)"
 [[ -n "$RAPPORT" ]] && RAPPORT="docs/rapporten/$(basename "$RAPPORT")" || RAPPORT="geen"
 
-if [[ $rc -eq 0 ]]; then
-  if [[ -f "$LOPEND_BESTAND" ]]; then  # CC verplaatste zelf niet (bv. Bash geweigerd in acceptEdits) → het script doet het
-    { echo "uitgevoerd $DATUM, rapport: $RAPPORT"; echo; cat "$LOPEND_BESTAND"; } > "$GEDAAN/$(basename "$OPDRACHT")"
-    rm -f "$LOPEND_BESTAND"
-    log ">> cc_inbox: $SLUG → opdrachten/gedaan/ (kopregel door het script, rapport: $RAPPORT)"
+# ---- (j3) poort vóór einde: ongecommit werk ná claude = poort niet gehaald → WIP-branch, opdracht blijft in lopend/ ----------
+GEDAAN_BESTAND="$GEDAAN/$(basename "$OPDRACHT")"
+wip_wegzetten() {  # → rc 0 als er WIP is weggezet (werkboom daarna schoon), rc 1 als de werkboom al schoon was
+  local vuil n branch tree ouders commit toegevoegd f
+  vuil="$(werkboom_vuil)"; [[ -n "$vuil" ]] || return 1
+  n="$(printf '%s\n' "$vuil" | wc -l | tr -d ' ')"
+  # "af" zonder commit bestaat niet: een untracked gedaan-kopie gaat terug naar lopend/ zonder kopregel
+  if [[ -f "$GEDAAN_BESTAND" && ! -f "$LOPEND_BESTAND" ]] && ! git -C "$REPO" ls-files --error-unmatch "opdrachten/gedaan/$(basename "$OPDRACHT")" >/dev/null 2>&1; then
+    if head -1 "$GEDAAN_BESTAND" | grep -q '^uitgevoerd '; then tail -n +3 "$GEDAAN_BESTAND" > "$LOPEND_BESTAND"; else cp "$GEDAAN_BESTAND" "$LOPEND_BESTAND"; fi
+    rm -f "$GEDAAN_BESTAND"
+    log ">> cc_inbox: $SLUG stond al in gedaan/ maar het werk is niet gecommit → terug naar lopend/ (af zonder commit bestaat niet)"
   fi
-  rm -f "$TELLER"
-  melding "CC klaar: $SLUG" "${LAATSTE:-klaar (geen uitvoer)}"
+  branch="wip/$SLUG"
+  # eigen tijdelijke index (GIT_INDEX_FILE): geen .git/index.lock nodig, de echte index blijft onaangeraakt; tracked wijzigingen
+  # overal (ook onder opdrachten/), untracked alleen buiten opdrachten/, .scratch/ en .claude/
+  local idx="$REPO/.git/wip-index.$$"; rm -f "$idx"
+  GIT_INDEX_FILE="$idx" git -C "$REPO" read-tree HEAD >/dev/null 2>&1
+  GIT_INDEX_FILE="$idx" git -C "$REPO" add -u -- . >/dev/null 2>&1
+  GIT_INDEX_FILE="$idx" git -C "$REPO" add -A -- . ':(exclude)opdrachten' ':(exclude).scratch' ':(exclude).claude' >/dev/null 2>&1
+  toegevoegd="$(GIT_INDEX_FILE="$idx" git -C "$REPO" diff --cached --name-only --diff-filter=A HEAD 2>/dev/null)"
+  tree="$(GIT_INDEX_FILE="$idx" git -C "$REPO" write-tree 2>/dev/null)" || { rm -f "$idx"; log ">> cc_inbox: WIP wegzetten mislukt (write-tree) — werk blijft in de werkboom, inbox stopt bij de volgende tick (werkboom niet schoon)"; return 0; }
+  rm -f "$idx"
+  ouders=(-p HEAD); git -C "$REPO" rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1 && ouders+=(-p "$branch")
+  commit="$(git -C "$REPO" commit-tree "$tree" "${ouders[@]}" -m "WIP($SLUG) — poort niet gehaald, poging $POGING/$MAX_POGINGEN, claude-code $rc, $(date +%FT%T): $n bestand(en) ongecommit ná de run; nooit op main — de volgende poging begint met git merge --squash $branch" 2>/dev/null)" || { log ">> cc_inbox: WIP wegzetten mislukt (commit-tree) — werk blijft in de werkboom"; return 0; }
+  git -C "$REPO" update-ref "refs/heads/$branch" "$commit"
+  if git -C "$REPO" reset -q --hard HEAD >/dev/null 2>&1; then
+    while IFS= read -r f; do [[ -n "$f" ]] && rm -f "$REPO/$f"; done <<< "$toegevoegd"
+  else
+    log ">> cc_inbox: LET OP — werkboom niet schoongemaakt (git reset weigert — .git/index.lock?); het werk staat wél veilig op $branch, de volgende tick stopt op 'werkboom niet schoon' tot een mens ingrijpt"
+  fi
+  printf '%s\n%s\n%s\n' "$branch" "${commit:0:12}" "$(date +%FT%T)" > "$WIPMARKER"
+  log ">> cc_inbox: poort niet gehaald — WIP op branch $branch (${commit:0:12}, $n bestand(en)) — main onaangeraakt, werkboom schoon; $SLUG blijft in lopend/, de volgende poging begint met git merge --squash $branch ($(date +%FT%T))"
+  melding "CC POORT NIET GEHAALD: $SLUG" "$n ongecommit bestand(en) → WIP op $branch; volgende poging ($POGING/$MAX_POGINGEN gebruikt) begint daarmee"
+  return 0
+}
+HEAD_NA="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
+if wip_wegzetten; then
+  rm -f "$CLAIM"  # bewust in lopend/ gelaten → herstelpad (e) direct
+  [[ $rc -eq 0 ]] && rc=4  # exit 0 van claude, maar de run is niet af
+elif [[ $rc -eq 0 ]]; then
+  if [[ -f "$LOPEND_BESTAND" ]]; then
+    if [[ "$RAPPORT" == "geen" && "$HEAD_NA" == "$HEAD_VOOR" ]]; then  # (j3) geen rapport, geen commit, niet zelf naar gedaan/ = geen resultaat
+      rc=4; rm -f "$CLAIM"
+      log ">> cc_inbox: GEEN RESULTAAT — claude eindigde met code 0 zonder rapport, zonder commit en zonder de opdracht af te melden (bv. 'ik wacht op de melding') → $SLUG blijft in lopend/, volgende tick: terug naar inbox/ als poging $POGING < $MAX_POGINGEN, anders opdrachten/mislukt/ ($(date +%FT%T))"
+      melding "CC ZONDER RESULTAAT: $SLUG" "${LAATSTE:-geen rapport, geen commit — herstart volgt (poging $POGING/$MAX_POGINGEN gebruikt)}"
+    else  # CC verplaatste zelf niet (bv. Bash geweigerd in acceptEdits) → het script doet het
+      { echo "uitgevoerd $DATUM, rapport: $RAPPORT"; echo; cat "$LOPEND_BESTAND"; } > "$GEDAAN_BESTAND"
+      rm -f "$LOPEND_BESTAND"
+      log ">> cc_inbox: $SLUG → opdrachten/gedaan/ (kopregel door het script, rapport: $RAPPORT)"
+    fi
+  fi
+  if [[ $rc -eq 0 ]]; then
+    rm -f "$TELLER" "$CLAIM"
+    if [[ -f "$WIPMARKER" ]]; then
+      log ">> cc_inbox: run af — branch $(sed -n 1p "$WIPMARKER") blijft ter controle staan (opruimen: git branch -D $(sed -n 1p "$WIPMARKER")); marker weg"
+      rm -f "$WIPMARKER"
+    fi
+    melding "CC klaar: $SLUG" "${LAATSTE:-klaar (geen uitvoer)}"
+  fi
 else
+  rm -f "$CLAIM"
   log ">> cc_inbox: $SLUG blijft in opdrachten/lopend/ — volgende tick: terug naar inbox/ als poging $POGING < $MAX_POGINGEN, anders opdrachten/mislukt/"
   melding "CC MISLUKT: $SLUG (code $rc${LIMIET:+, $LIMIET})" "${LIMIET:-${LAATSTE:-zie $LOG}}"
 fi
