@@ -185,7 +185,11 @@ def _maandag(jaar: int, week: int) -> date:
 def _laatste_regel_per_project(
     session: Session, *, aid: uuid.UUID, ids: list[uuid.UUID], soort: ProjectRegelSoort
 ) -> dict[uuid.UUID, ProjectRegelCache]:
-    """Jongste regel van de soort per project (datum desc; regels zonder datum tellen niet als activiteit)."""
+    """Jongste regel van de soort per project (datum desc; regels zonder datum tellen niet als activiteit).
+
+    Meerdere regels op dezelfde jongste datum (een factuur mét meerdere regels) = deterministische keuze: een regel die
+    de eindfactuur-tekst draagt wint (de reden `eindfactuur` mag niet afhangen van de rijvolgorde van de database —
+    nameting 19-09), anders de eerste op (rlz_document_id, id)."""
     sub = (
         select(
             ProjectRegelCache.project_id.label("pid"),
@@ -210,8 +214,10 @@ def _laatste_regel_per_project(
             ProjectRegelCache.soort == soort.value,
             ProjectRegelCache.verdwenen_uit_bron_op.is_(None),
         )
+        .order_by(ProjectRegelCache.rlz_document_id, ProjectRegelCache.id)
     ):
-        if regel.project_id not in uit:
+        huidig = uit.get(regel.project_id)
+        if huidig is None or (is_eindfactuur(regel) and not is_eindfactuur(huidig)):
             uit[regel.project_id] = regel
     return uit
 

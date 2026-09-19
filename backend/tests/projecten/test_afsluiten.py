@@ -269,6 +269,79 @@ class TestMotorOpDatabase:
         gesorteerd = afsluiten._sorteer([k for k in rijen.values() if k.redenen])
         assert [k.project_id for k in gesorteerd] == [naam_af, stil_eind, looptijd]
 
+    def test_eindfactuur_meerdere_regels_op_jongste_datum_is_deterministisch(
+        self, admin_engine: Engine, administratie_id
+    ) -> None:
+        """Nameting 19-09: een verkoopfactuur heeft meerdere regels op dezelfde datum — de reden `eindfactuur` mag niet
+        afhangen van de rijvolgorde van de database (replica ≠ primary). Eén regel mét de tekst = reden; een OUDERE
+        eindafrekening mét jongere termijnen erna (casus Universal 25017) = géén reden."""
+        meerregelig = maak_project(admin_engine, administratie_id, "25018 Arnhem (Kudo) meerregelig")
+        oud_eind = maak_project(admin_engine, administratie_id, "25017 Arnhem (Kudo) oude eindafrekening")
+        d = VANDAAG - timedelta(days=100)
+        # Meerregelig: de niet-eindfactuurregel wordt EERST ingevoegd (heap-volgorde zou 'm anders als eerste geven).
+        _regel(
+            admin_engine,
+            administratie_id,
+            meerregelig,
+            "verkoop",
+            "500.00",
+            d,
+            omschrijving="Transport",
+            referentie="VF-300",
+        )
+        _regel(
+            admin_engine,
+            administratie_id,
+            meerregelig,
+            "verkoop",
+            "9000.00",
+            d,
+            omschrijving="Eindfactuur fase 3",
+            referentie="VF-300",
+        )
+        _regel(
+            admin_engine,
+            administratie_id,
+            meerregelig,
+            "verkoop",
+            "10.00",
+            d,
+            omschrijving="Kraan",
+            referentie="VF-300",
+        )
+        # 25017-casus: eindafrekening 06-03, daarna twee termijnen — jongste regel is geen eindfactuur.
+        _regel(
+            admin_engine,
+            administratie_id,
+            oud_eind,
+            "verkoop",
+            "13670.00",
+            VANDAAG - timedelta(days=197),
+            omschrijving="Eindafrekening",
+            referentie="808010670",
+        )
+        _regel(
+            admin_engine,
+            administratie_id,
+            oud_eind,
+            "verkoop",
+            "10000.00",
+            VANDAAG - timedelta(days=108),
+            omschrijving="Hefsteiger compleet 2e van 2 termijnen)",
+            referentie="808010818",
+        )
+        with scoped_session(administratie_id) as session:
+            for _ in range(3):  # herhaling = zelfde uitkomst
+                rijen = {
+                    k.project_id: k
+                    for k in afsluiten.kandidaten_voor_administratie(
+                        session, administratie_id=administratie_id, administratie_naam="Universal", vandaag=VANDAAG
+                    )
+                }
+                assert rijen[meerregelig].redenen == ("eindfactuur",) and "VF-300" in rijen[meerregelig].reden_tekst
+                assert rijen[meerregelig].laatste_activiteit.datum == d
+                assert rijen[oud_eind].redenen == () and rijen[oud_eind].laatste_activiteit.boekstuk == "808010818"
+
     def test_kantoorbreed_chip_leest_dezelfde_motor(self, admin_engine: Engine, administratie_id, beheerder_id) -> None:
         pid = maak_project(admin_engine, administratie_id, "Afgesloten 26051 Opijnen (van Kessel)")
         _regel(admin_engine, administratie_id, pid, "inkoop", "10.00", VANDAAG - timedelta(days=2))
