@@ -190,6 +190,12 @@ jobs:
               scripts/gcp/nameting.sh projectverdeling-afgesloten-rapport --alle-projectverplicht 2>> nameting-pa.stderr || rc_pa=$?
               echo "== projecten-afsluit-kandidaten Universal Steigerbouw (tab Afsluiten? — opdracht 19-09) =="
               scripts/gcp/nameting.sh projecten-afsluit-kandidaten --administratie "Universal Steigerbouw" 2>> nameting-pa.stderr || rc_pa=$?
+              # Opdracht 19-09 "projectnummer uit Afgesloten-naam": dubbele nummers óók ná het afsluitwoord — verwacht bij Universal
+              # 4 × project_nummer_dubbel (26053, 26064, 26084, 26149) en 26064 mét beide kanten in het CLI-rapport. Lees-only.
+              echo "== reconciliatie-alles --alleen projecten --lees-only (project_nummer_dubbel incl. 'Afgesloten NNNNN' — opdracht 19-09) =="
+              scripts/gcp/nameting.sh reconciliatie-alles --alleen projecten --lees-only 2>> nameting-pa.stderr || rc_pa=$?
+              echo "== projecten-dubbele-nummers Universal Steigerbouw =="
+              scripts/gcp/nameting.sh projecten-dubbele-nummers --administratie "Universal Steigerbouw" 2>> nameting-pa.stderr || rc_pa=$?
             } > "$UIT"
             cat nameting-pa.stderr >&2
             if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-pa.stderr; then

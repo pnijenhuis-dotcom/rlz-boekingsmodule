@@ -23,6 +23,7 @@ class FakeProjectClient:
     def __init__(self) -> None:
         self.projects: dict[str, dict[str, Any]] = {}  # id → record
         self.put_project_aanroepen = 0
+        self.prefixes_aanroepen: list[tuple[str, ...]] = []
         self.faal_bij_put_project = False
         self.faal_bij_lookup = False
         self.negeer_is_active = False
@@ -40,6 +41,13 @@ class FakeProjectClient:
     def find_projects_by_name_prefix(self, *, prefix: str) -> list[dict[str, Any]]:
         """Blok 3 18-09: `startswith(Name,'26127 ')` — actief én inactief."""
         return [p for p in self.projects.values() if str(p.get("Name") or "").startswith(prefix)]
+
+    def find_projects_by_name_prefixes(self, *, prefixes) -> list[dict[str, Any]]:  # noqa: ANN001
+        """Opdracht 19-09: één `or`-GET over "26064 " én "Afgesloten 26064 " (STAP-0 19-09 groen)."""
+        self.prefixes_aanroepen.append(tuple(prefixes))
+        return [
+            p for p in self.projects.values() if any(str(p.get("Name") or "").startswith(pf) for pf in prefixes)
+        ]
 
     def for_administration(self, rlz_admin_id: str) -> FakeProjectClient:
         return self

@@ -2,7 +2,9 @@
 geblokkeerd worden"). Het nummer is de cijfer-prefix van de projectnaam (RLZ heeft géén codeveld — STAP-0 16-09); uniek
 BINNEN de
 administratie over álle projecten (lopend + afgesloten, actief + inactief), getoetst op de cache én live in RLZ
-(`startswith(Name,'26127 ')`). Bestaat het nummer → `ProjectnummerBestaatAl` (router: 409 mét het bestaande project),
+(`startswith(Name,'26127 ') or startswith(Name,'Afgesloten 26127 ')` — opdracht 19-09: het afsluitwoord van
+Universal vóór de naam telt niet als naam, het nummer erachter bezet het nummer óók). Bestaat het nummer →
+`ProjectnummerBestaatAl` (router: 409 mét het bestaande project),
 nooit
 stil een tweede aanmaken. Daarnaast: het lees-only rapport "dubbele nummers" (Peter's casus, klikpunt samenvoegen) en de
 reconciliatie-soort `project_nummer_dubbel` (stand `meten`) voor dubbelen die buiten de module om in RLZ ontstaan.
@@ -16,26 +18,52 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.projectverdeling.omzet import naam_zegt_afgesloten
 from app.sync.models import PROJECT_STATUS_AFGESLOTEN, ProjectCache
 
 #: Cijfer-prefix volgens de naamconventie "26127 Tilburg (Heijmans)" — drie tot zes cijfers, gevolgd door het einde óf
 #: een niet-cijfer (zodat "261270 …" geen treffer voor 26127 is).
 _NUMMER_PREFIX = re.compile(r"^\s*(\d{3,6})(?!\d)")
 
+#: Bijvangst nameting 19-09: Universal zet het woord "Afgesloten" VÓÓR de naam als afsluitmarkering ("Afgesloten 26064
+#: Apeldoorn (Ben Kuijer)", 94 van 170 projecten) — het nummer staat dan op de tweede positie. Eén afsluitwoord, alleen
+#: als eerste woord (`omzet.naam_zegt_afgesloten`, hoofdletterongevoelig); daarna wordt de rest als gewone naam gelezen.
+AFGESLOTEN_VOORVOEGSEL = "Afgesloten "
+
 #: Reconciliatie-blok + soort (registry in app/reconciliatie/soort_stand.py — start in `meten`).
 BLOK = "projecten"
 SOORT = "project_nummer_dubbel"
 
 
+def zonder_afgesloten_voorvoegsel(naam: str | None) -> str:
+    """ "Afgesloten 26064 Apeldoorn (Ben Kuijer)" → "26064 Apeldoorn (Ben Kuijer)"; een naam zonder het afsluitwoord als
+    eerste woord blijft ongewijzigd. Alleen het EERSTE woord telt (patroon `naam_zegt_afgesloten`): "Project afgesloten
+    26064" is géén afsluitmarkering en levert dus geen nummer."""
+    if not naam:
+        return ""
+    if not naam_zegt_afgesloten(naam):
+        return naam
+    delen = naam.strip().split(maxsplit=1)
+    return delen[1] if len(delen) == 2 else ""
+
+
 def cijfer_prefix(naam: str | None) -> str | None:
-    """ "26127 Tilburg (Heijmans)" → "26127"; geen cijfer-prefix → None (nooit raden)."""
+    """ "26127 Tilburg (Heijmans)" → "26127"; "Afgesloten 26064 Apeldoorn" → "26064" (opdracht 19-09: de
+    afsluitmarkering van Universal telt niet als naam); geen cijfer-prefix → None (nooit raden). Eén functie voor de
+    409-poort, `project_nummer_dubbel`, `projecten-dubbele-nummers` én `volgende_projectnummer`."""
     if not naam:
         return None
-    m = _NUMMER_PREFIX.match(naam)
+    m = _NUMMER_PREFIX.match(zonder_afgesloten_voorvoegsel(naam))
     return m.group(1) if m else None
+
+
+def rlz_prefixen(nummer: str) -> tuple[str, str]:
+    """De twee RLZ-`startswith`-vormen waarin een nummer als naam-prefix kan staan: "26064 " en "Afgesloten 26064 " (de
+    spatie erachter zorgt dat 261270 geen treffer voor 26127 is)."""
+    return (f"{nummer} ", f"{AFGESLOTEN_VOORVOEGSEL}{nummer} ")
 
 
 @dataclass(frozen=True)
@@ -72,11 +100,13 @@ class ProjectnummerBestaatAl(Exception):
 def treffers_in_cache(session: Session, *, administratie_id: uuid.UUID, nummer: str) -> list[NummerTreffer]:
     """Alle niet-verdwenen cache-projecten van de administratie mét exact dit nummer als cijfer-prefix (status maakt
     niet uit: een afgesloten of inactief project bezet het nummer óók)."""
+    # Voorselectie ruim (nummer aan het begin óf ná het afsluitwoord, hoofdletterongevoelig via ilike); de exacte toets
+    # is `cijfer_prefix` — dat is de ene bron van waarheid, ook voor "Afgesloten 26064 …" (opdracht 19-09).
     rijen = session.scalars(
         select(ProjectCache).where(
             ProjectCache.administratie_id == administratie_id,
             ProjectCache.verdwenen_uit_bron_op.is_(None),
-            ProjectCache.naam.like(f"{nummer}%"),
+            or_(ProjectCache.naam.like(f"{nummer}%"), ProjectCache.naam.ilike("afgesloten%")),
         )
     )
     return [
@@ -87,13 +117,23 @@ def treffers_in_cache(session: Session, *, administratie_id: uuid.UUID, nummer: 
 
 
 def treffers_in_rlz(client: Any, *, nummer: str) -> list[NummerTreffer]:
-    """Live RLZ-lookup `startswith(Name,'<nummer> ')` (klanten kunnen buiten de module om projecten maken). Een client
-    zonder de methode (oudere fakes) telt als "geen extra treffers"; een RLZ-fout laat de aanroeper beslissen."""
-    zoek = getattr(client, "find_projects_by_name_prefix", None)
-    if zoek is None:
-        return []
+    """Live RLZ-lookup (klanten kunnen buiten de module om projecten maken): één GET `startswith(Name,'<nummer> ') or
+    startswith(Name,'Afgesloten <nummer> ')` (STAP-0 19-09: de OData-`or` werkt op Projects) — zo telt ook een project
+    dat Universal al met het afsluitwoord heeft gemarkeerd als bezet. Een client mét alleen de oudere enkelvoudige
+    methode krijgt twee GET's; een client zonder beide (oudere fakes) telt als "geen extra treffers"; een RLZ-fout laat
+    de aanroeper beslissen."""
+    prefixen = rlz_prefixen(nummer)
+    zoek_meer = getattr(client, "find_projects_by_name_prefixes", None)
+    if zoek_meer is not None:
+        ruw = list(zoek_meer(prefixes=prefixen))
+    else:
+        zoek = getattr(client, "find_projects_by_name_prefix", None)
+        if zoek is None:
+            return []
+        ruw = [p for prefix in prefixen for p in zoek(prefix=prefix)]
     uit: list[NummerTreffer] = []
-    for p in zoek(prefix=f"{nummer} "):
+    gezien: set[uuid.UUID] = set()
+    for p in ruw:
         naam = str(p.get("Name") or "")
         if cijfer_prefix(naam) != nummer:
             continue
@@ -101,6 +141,9 @@ def treffers_in_rlz(client: Any, *, nummer: str) -> list[NummerTreffer]:
             pid = uuid.UUID(str(p.get("id")))
         except ValueError:
             continue
+        if pid in gezien:
+            continue
+        gezien.add(pid)
         uit.append(NummerTreffer(project_id=pid, naam=naam, status="lopend", is_actief=p.get("IsActive"), bron="rlz"))
     return uit
 

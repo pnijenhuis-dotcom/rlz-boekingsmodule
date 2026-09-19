@@ -2512,3 +2512,26 @@ klant-loze schrijfroute" punt 6).
 - `PaymentTransactions` kennen geen `Project`-veld.
 - Collectie-expand `PurchaseInvoices?$expand=Entity,DocumentLineList(…)` en `ManualJournals?$expand=DocumentLineList(…)` → 200 zónder regels (stil genegeerd — zelfde gedrag als STAP-0 13-09). Volledige dekking = één documentvorm-call per document = het werk van `vgg-replay` (token-bucket), niet van `rlz-lezen` (`--top` ≤ 50).
 
+
+
+## Projects — or-filter op Name (STAP-0 19-09, opdracht "projectnummer uit Afgesloten-naam") — LEES-ONLY via `nameting.sh rlz-lezen`
+
+**Vraag:** kan de 409-poort voor projectnummers (`RlzClient.find_projects_by_name_prefix`, `startswith(Name,'26064 ')`) in één GET
+óók de Universal-vorm "Afgesloten 26064 …" zien (het afsluitwoord staat vóór de naam, 94 van 170 projecten)? Drie calls op Universal
+Steigerbouw B.V. (`3ee6edf0…`), `GET {adminId}/Projects`, `$top=10&$count=true`, job `rlz-reconciliatie`, uitvoer geanonimiseerd:
+
+| # | `$filter` | Uitkomst |
+|---|---|---|
+| A | `startswith(Name,'26064 ') or startswith(Name,'Afgesloten 26064 ')` | **200, `@odata.count` 2** — `4dfd2322…` "26064 Harskamp (vd Brandhof)" (IsActive true, BeginDate 2026-05-05) én `36d04825…` "Afgesloten 26064 Apeldoorn (Ben Kuijer)" (IsActive true, BeginDate 2026-05-08). **De OData-`or` over twee `startswith`-functies werkt op Projects.** |
+| B | `contains(Name,'26064')` | 200, count 2 — dezelfde twee; `contains` werkt óók maar treft ook "…126064…"-varianten en vergt altijd een lokale toets |
+| C | `startswith(Name,'Afgesloten 26064 ')` | 200, count 1 — alleen `36d04825…` |
+| D | `contains(Name,'Harskamp') or contains(Name,'26084')` | zie rapport `docs/rapporten/2026-09-19-projectnummer-uit-afgesloten-naam.md` (klikpunt drievoudig Harskamp) |
+
+**Keuze (gebouwd):** `RlzClient.find_projects_by_name_prefixes(prefixes=[…])` = één GET mét ` or `-gekoppelde `startswith`-delen;
+`nummer.treffers_in_rlz` geeft "26064 " én "Afgesloten 26064 " mee en toetst het resultaat lokaal met `nummer.cijfer_prefix` (de ene
+nummerlezer, leest door het afsluitwoord heen). `contains` niet gekozen: meer ruis, geen winst.
+
+**Bijvangst instrument:** op `Projects` draagt `Description` dezelfde tekst als `Name`; `rlz-lezen` anonimiseert `Name` tot
+initialen ("2.H.(.B.") maar laat `Description` staan — de volledige projectnaam (mét opdrachtgever-naam) komt zo tóch in de
+uitvoer. Voor projectnamen aanvaardbaar (geen financiële data, wél een klantnaam); als de anonimisering bedoeld is als PII-vangnet,
+hoort `Description` op Projects in dezelfde lijst — genoteerd als vervolgpunt, niet in deze run gewijzigd.

@@ -287,12 +287,74 @@ class TestProjectnummerUniek:
         assert nummer_module.cijfer_prefix(None) is None
         assert nummer_module.cijfer_prefix("1234567 te lang") is None
 
+    def test_cijfer_prefix_leest_door_het_afsluitwoord_heen(self) -> None:
+        """Opdracht 19-09 (bijvangst nameting): Universal zet "Afgesloten" vóór de naam — het nummer erachter telt."""
+        assert nummer_module.cijfer_prefix("Afgesloten 26064 Apeldoorn (Ben Kuijer)") == "26064"
+        assert nummer_module.cijfer_prefix("AFGESLOTEN 26064 Apeldoorn") == "26064"
+        assert nummer_module.cijfer_prefix("  afgesloten: 26064 Apeldoorn") == "26064"
+        assert nummer_module.cijfer_prefix("Afgesloten 261270 Apeldoorn") == "261270"  # ≠ 26127: prefix blijft exact
+        assert nummer_module.cijfer_prefix("Afgesloten") is None
+        assert nummer_module.cijfer_prefix("Afgesloten ") is None
+        assert nummer_module.cijfer_prefix("Afgesloten zonder nummer") is None
+        # Alleen het EERSTE woord is de afsluitmarkering — elders in de naam blijft het gewone tekst (geen nummer).
+        assert nummer_module.cijfer_prefix("Project afgesloten 26064 Apeldoorn") is None
+        assert nummer_module.rlz_prefixen("26064") == ("26064 ", "Afgesloten 26064 ")
+
+    def test_afgesloten_naam_in_rlz_of_cache_bezet_het_nummer(
+        self, admin_engine: Engine, administratie_id, beheerder_id
+    ) -> None:
+        """"26064 X" aanmaken naast een bestaand "Afgesloten 26064 Y" = 409 mét het bestaande project — cache- én
+        RLZ-kant."""
+        fake = FakeProjectClient()
+        # RLZ-kant: buiten de module om, met het afsluitwoord ervoor (Universal-praktijk, 94 van 170 projecten).
+        extern = uuid.uuid4()
+        fake.projects["extern"] = {
+            "id": str(extern), "Name": "Afgesloten 26064 Apeldoorn (Ben Kuijer)", "IsActive": True
+        }
+        with pytest.raises(nummer_module.ProjectnummerBestaatAl) as exc:
+            _project_via_motor(administratie_id, beheerder_id, fake, "26064", "Harskamp", "vd Brandhof")
+        assert exc.value.treffer.project_id == extern and exc.value.treffer.bron == "rlz"
+        assert str(exc.value) == "26064 bestaat al: Afgesloten 26064 Apeldoorn (Ben Kuijer), lopend — openen?"
+        assert fake.put_project_aanroepen == 0
+        # De `or`-GET (STAP-0 19-09) is de gebruikte route: één aanroep met beide prefixen.
+        assert fake.prefixes_aanroepen == [("26064 ", "Afgesloten 26064 ")]
+        # Cache-kant: hetzelfde project in de cache (gesynct), RLZ leeg → óók 409 op de cache-treffer.
+        leeg = FakeProjectClient()
+        pid = maak_project(admin_engine, administratie_id, "Afgesloten 26065 Opijnen")
+        with pytest.raises(nummer_module.ProjectnummerBestaatAl) as exc2:
+            _project_via_motor(administratie_id, beheerder_id, leeg, "26065", "Tilburg", "Heijmans")
+        assert exc2.value.treffer.project_id == pid and exc2.value.treffer.bron == "cache"
+        # "Afgesloten 260650 …" is géén treffer voor 26065 en 26066 is vrij.
+        maak_project(admin_engine, administratie_id, "Afgesloten 260660 Lang")
+        res = _project_via_motor(administratie_id, beheerder_id, leeg, "26066", "Tilburg", "Heijmans")
+        assert res.bestond_al is False
+
+    def test_oudere_client_zonder_or_route_krijgt_twee_prefix_gets(self) -> None:
+        class Oud:
+            def __init__(self) -> None:
+                self.prefixen: list[str] = []
+
+            def find_projects_by_name_prefix(self, *, prefix: str):  # noqa: ANN202
+                self.prefixen.append(prefix)
+                if not prefix.startswith("Afg"):
+                    return []
+                return [{"id": str(uuid.uuid4()), "Name": f"{prefix}X", "IsActive": True}]
+
+        oud = Oud()
+        treffers = nummer_module.treffers_in_rlz(oud, nummer="26064")
+        assert oud.prefixen == ["26064 ", "Afgesloten 26064 "]
+        assert [t.naam for t in treffers] == ["Afgesloten 26064 X"]
+
 
 class TestDubbeleNummers:
     def test_rapport_en_reconciliatie_blok(self, admin_engine: Engine, administratie_id, beheerder_id) -> None:
         a = maak_project(admin_engine, administratie_id, "26127 Tilburg (Heijmans)")
         b = maak_project(admin_engine, administratie_id, "26127 Breda (Moeskops)")
         maak_project(admin_engine, administratie_id, "26128 Uniek (Z)")
+        # Opdracht 19-09: "Afgesloten 26064 Apeldoorn" + "26064 Harskamp" = dubbel (Universal-casus uit de nameting).
+        c = maak_project(admin_engine, administratie_id, "26064 Harskamp (vd Brandhof)")
+        d = maak_project(admin_engine, administratie_id, "Afgesloten 26064 Apeldoorn (Ben Kuijer)")
+        maak_project(admin_engine, administratie_id, "Afgesloten zonder nummer")
         zzper = maak_gebruiker(admin_engine, "zzper", "Irfan O.")
         with admin_engine.begin() as conn:
             conn.execute(
@@ -304,19 +366,34 @@ class TestDubbeleNummers:
             )
         with scoped_session(administratie_id) as session:
             dubbel = nummer_module.dubbele_nummers(session, administratie_id=administratie_id)
-        assert [d.nummer for d in dubbel] == ["26127"]
-        assert {t.project_id for t in dubbel[0].projecten} == {a, b}
-        assert dubbel[0].tellers[a]["planning"] == 1 and dubbel[0].tellers[b]["planning"] == 0
+        assert [x.nummer for x in dubbel] == ["26064", "26127"]
+        assert {t.project_id for t in dubbel[0].projecten} == {c, d}
+        assert {t.project_id for t in dubbel[1].projecten} == {a, b}
+        assert dubbel[1].tellers[a]["planning"] == 1 and dubbel[1].tellers[b]["planning"] == 0
         regels = nummer_module.rapportregels(dubbel)
         assert any("voorstel: blijft" in r and str(a) in r for r in regels)
+        assert any("Afgesloten 26064 Apeldoorn" in r for r in regels)
 
         verzamelaar = Verzamelaar()
         verzamelaar.start_blok(nummer_module.BLOK)
         uit: list[str] = []
         exit_code = nummer_module.cli_blok(None, verzamelaar=verzamelaar, stdout=uit.append)
         assert exit_code == 1
-        bev = [b for b in verzamelaar.bevindingen if b.blok == "projecten"]
-        assert len(bev) == 1 and bev[0].detail["afwijking_soort"] == "project_nummer_dubbel"
+        bev = sorted(
+            [
+                b
+                for b in verzamelaar.bevindingen
+                if b.blok == "projecten" and b.detail.get("afwijking_soort") == "project_nummer_dubbel"
+            ],
+            key=lambda b: b.detail["nummer"],
+        )
+        assert [b.detail["nummer"] for b in bev] == ["26064", "26127"]
+        assert bev[0].vingerafdruk == f"projecten:{administratie_id}:26064"
+        assert {p["naam"] for p in bev[0].detail["projecten"]} == {
+            "26064 Harskamp (vd Brandhof)",
+            "Afgesloten 26064 Apeldoorn (Ben Kuijer)",
+        }
+        bev = bev[1:]
         assert bev[0].vingerafdruk == f"projecten:{administratie_id}:26127"
         # Nieuwe soort start in `meten` (registry) — telt, geen actiemail.
         assert soort_stand.code_default("project_nummer_dubbel") == soort_stand.METEN

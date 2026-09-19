@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-19 — Projectnummers achter het woord "Afgesloten" tellen nu ook mee
+
+<!-- projectnummer-afgesloten-19-09 -->
+
+- **Een projectnummer dat achter het woord "Afgesloten" staat, telt nu ook mee.** Bij Universal krijgen afgeronde projecten het woord "Afgesloten" vóór hun naam. Tot nu toe zag de module het nummer daarachter niet: een nieuw project "26064 Harskamp" kon gewoon aangemaakt worden naast "Afgesloten 26064 Apeldoorn". Dat wordt nu geblokkeerd met de melding welk project het nummer al heeft, precies zoals bij gewone namen.
+- **Het overzicht "dubbele projectnummers" en de dagelijkse controle zien deze paren nu ook.** Samenvoegen blijft handwerk; de module verwijdert nooit een project.
+- **Het voorgestelde volgende projectnummer slaat deze nummers over**, zodat je nooit een nummer krijgt dat al op een afgesloten project staat.
+
 ## 2026-09-19 — Kassarapporten die als inkoopfactuur binnenkomen worden nu automatisch herkend en omgezet
 
 <!-- kassarapport-autotype-19-09 -->

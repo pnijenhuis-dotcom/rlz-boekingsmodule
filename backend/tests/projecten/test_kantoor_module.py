@@ -422,6 +422,11 @@ class TestNieuwProject:
         maak_project(admin_engine, administratie_id, "26126 Elders (X)")
         maak_project(admin_engine, administratie_id, "25099 Vorig jaar (Y)")  # telt niet mee
         assert kantoor.volgende_projectnummer(administratie_id=administratie_id, vandaag=VANDAAG) == "26127"
+        # Opdracht 19-09: een nummer dat alleen nog op een "Afgesloten …"-project staat is óók bezet — het voorstel telt
+        # door.
+        maak_project(admin_engine, administratie_id, "Afgesloten 26140 Apeldoorn (Ben Kuijer)")
+        maak_project(admin_engine, administratie_id, "261500 Zes cijfers (telt niet)")
+        assert kantoor.volgende_projectnummer(administratie_id=administratie_id, vandaag=VANDAAG) == "26141"
 
 
 class TestOntleding:

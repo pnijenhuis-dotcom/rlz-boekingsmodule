@@ -521,6 +521,17 @@ class RlzClient:
         veilig = prefix.replace("'", "''")
         return self.get("Projects", params={"$filter": f"startswith(Name,'{veilig}')"}).get("value", [])
 
+    def find_projects_by_name_prefixes(self, *, prefixes: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:
+        """Opdracht 19-09 (bijvangst nameting: "Afgesloten 26064 Apeldoorn" náást "26064 Harskamp"): één GET mét een
+        OData-`or` over meerdere `startswith`-vormen — STAP-0 19-09 op Universal Steigerbouw: `startswith(Name,'26064 ')
+        or startswith(Name,'Afgesloten 26064 ')` → 200, `@odata.count` 2, beide projecten (api-verkenning "Projects —
+        or-filter op Name, STAP-0 19-09"). Lees-only; de aanroeper toetst het nummer daarna lokaal
+        (`nummer.cijfer_prefix`)."""
+        delen = [f"startswith(Name,'{p.replace(chr(39), chr(39) * 2)}')" for p in prefixes if p]
+        if not delen:
+            return []
+        return self.get("Projects", params={"$filter": " or ".join(delen)}).get("value", [])
+
     def put_project(self, project_id: uuid.UUID, *, name: str, is_active: bool = True) -> httpx.Response:
         """Project aanmaken/bijwerken — klant-loze TOP-LEVEL route (hertest 2026-08-14 ná
         browsercapture Peter, poc_projects_toplevel.py): `PUT {adminId}/Projects/{id}` werkt

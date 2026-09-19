@@ -233,6 +233,29 @@
   26064 Apeldoorn" = dubbele nummers → CLI `projecten-dubbele-nummers`). Rapport `docs/rapporten/2026-09-19-projecten-afsluiten-tab-bulk.md`.
   Tests `tests/projecten/test_afsluiten.py` (10), vitest `AfsluitKandidatenTab.test.tsx` (7).
 
+<!-- toegevoegd 19-09-2026, opdracht "projectnummer-uit-afgesloten-naam" -->
+- **Projectnummer óók lezen uit "Afgesloten NNNNN …"-namen (19-09, bijvangst nameting rapport 2026-09-19-projectverdeling-afgesloten-
+  projecten-en-rlz-kant-meting sectie "Nameting ná deploy"; geen migratie, geen RLZ-write; BESLISSINGEN "PROJECTEN — STATUS AFGESLOTEN +
+  PROJECTNUMMER UNIEK (Peter 18-09)" rij B4):** Universal zet het woord "Afgesloten" VÓÓR de projectnaam als afsluitmarkering (94 van 170
+  projecten) — de nummer-extractie van 18-09 (`^\s*(\d{3,6})(?!\d)`) las het nummer alleen aan het begin en zag "Afgesloten 26064
+  Apeldoorn (Ben Kuijer)" náást "26064 Harskamp (vd Brandhof)" niet als dubbel; dezelfde blinde vlek zat in de 409-poort
+  (`startswith(Name,'26064 ')`). Sinds 19-09 is `nummer.cijfer_prefix` de ENIGE nummerlezer: cijfer-prefix ná een optioneel
+  afsluitwoord (`zonder_afgesloten_voorvoegsel`, hergebruik `omzet.naam_zegt_afgesloten` = eerste woord, hoofdletterongevoelig;
+  "Project afgesloten 26064" is géén markering, "Afgesloten" zonder nummer = None, "261270" blijft geen treffer voor 26127) — gebruikt
+  door `project_nummer_dubbel` (reconciliatieblok `projecten`), `vereis_nummer_vrij` (409-poort: nieuw "26064 X" naast een bestaand
+  "Afgesloten 26064 Y" = 409 mét het bestaande project, cache- én RLZ-kant), `projecten-dubbele-nummers` en `volgende_projectnummer`
+  (een nummer dat alleen nog op een afgesloten-gemarkeerd project staat is bezet; het oude `kantoor._NUMMER_PATROON` is verwijderd).
+  Cache-voorselectie `like '<nr>%' OR ilike 'afgesloten%'`, exacte toets lokaal. RLZ-kant: één GET `startswith(Name,'26064 ') or
+  startswith(Name,'Afgesloten 26064 ')` (`RlzClient.find_projects_by_name_prefixes`; STAP-0 19-09 op Universal: 200, `@odata.count` 2,
+  beide kanten — api-verkenning "Projects — or-filter op Name"); een client zonder die methode krijgt twee `startswith`-GET's; het
+  antwoord wordt altijd lokaal op `cijfer_prefix` getoetst en per project-id gededupliceerd. Samenvoegen van dubbelen blijft mens-werk
+  (klikpunt), nooit verwijderen. Nameting ná deploy = vervolg-opdracht (verwacht 4 × `project_nummer_dubbel` bij Universal: 26053, 26064,
+  26084, 26149; `projecten-dubbele-nummers --administratie "Universal Steigerbouw"` toont 26064 mét beide kanten + voorstel "blijft");
+  workflow-onderdeel `projecten-afgesloten` draait sinds 19-09 óók `reconciliatie-alles --alleen projecten --lees-only` en
+  `projecten-dubbele-nummers`. Tests `tests/projecten/test_status_en_nummer.py` (+3: prefix door het afsluitwoord, 409 cache + RLZ mét
+  or-GET, oudere client twee GET's; dubbelen-test mét de 26064-casus), `test_kantoor_module.py::test_volgende_projectnummer` (+ "Afgesloten
+  26140" telt door). Rapport `docs/rapporten/2026-09-19-projectnummer-uit-afgesloten-naam.md`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)

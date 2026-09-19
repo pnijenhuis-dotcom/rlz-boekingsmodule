@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-19, rapport: docs/rapporten/2026-09-19-projectnummer-uit-afgesloten-naam.md (nameting ná deploy = vervolg-opdracht opdrachten/inbox/2026-09-19-nameting-projectnummer-afgesloten-na-deploy.md)
+
 Domeinen: verplichtingen-projecten-voorraad, reconciliatie
 
 # Projectnummer óók lezen uit "Afgesloten NNNNN …"-namen (bijvangst nameting 19-09)

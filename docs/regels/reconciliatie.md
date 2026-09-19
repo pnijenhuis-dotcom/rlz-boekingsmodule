@@ -71,6 +71,14 @@
   agenda in het rapport `docs/rapporten/2026-09-19-kassarapport-autotype-en-signalering-sweep.md`; niets daarvan is gebouwd buiten
   de kassarapport-typering.
 
+<!-- toegevoegd 19-09-2026, opdracht "projectnummer-uit-afgesloten-naam" -->
+- **Blok `projecten` — `project_nummer_dubbel` telt óók "Afgesloten NNNNN …"-namen (19-09; geen migratie):** de bevindingssoort
+  gebruikt sinds 19-09 dezelfde nummerlezer `nummer.cijfer_prefix` die door het afsluitwoord van Universal heen leest, zodat "Afgesloten
+  26064 Apeldoorn" + "26064 Harskamp" één afwijking `project_nummer_dubbel` nummer 26064 geeft (vingerafdruk administratie + nummer,
+  ongewijzigd; stand `meten` blijft). Verwacht effect Universal ná deploy: 3 → 4 dubbelen (26053, 26064, 26084, 26149) — nameting als
+  vervolg-opdracht. Volledige tekst: `docs/regels/verplichtingen-projecten-voorraad.md` alinea "Projectnummer óók lezen uit
+  'Afgesloten NNNNN …'-namen".
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Synthetische bewaking + alerting (CLAUDE.md `ed6d176` r. 632–644)

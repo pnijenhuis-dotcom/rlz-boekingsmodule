@@ -11,7 +11,6 @@ vereis_kantoorrol) mét klantscope; WIJZIGEN = Beheerder of Boekhouding+Projecte
 
 from __future__ import annotations
 
-import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -55,7 +54,6 @@ _AANMAAK_ROLLEN = (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN, G
 _DOCUMENT_SOORTEN = ("contract", "offerte")
 _EENHEDEN = tuple(e.value for e in MeerwerkEenheid)
 
-_NUMMER_PATROON = re.compile(r"^(\d{3,5})\b")
 
 # Herkomst van spec-velden en staffelregels (blok D6 07-09, migratie 0118 — AUTO-FIRST): 'contract' = direct
 # ingevuld door de contract-ontleding (chip "uit contract"), 'mens' = door een mens ingevuld/gecorrigeerd.
@@ -952,11 +950,11 @@ def volgende_projectnummer(*, administratie_id: uuid.UUID, vandaag: date | None 
                 ProjectCache.verdwenen_uit_bron_op.is_(None),
             )
         ):
-            if not naam:
-                continue
-            match = _NUMMER_PATROON.match(naam.strip())
-            if match and match.group(1).startswith(prefix):
-                hoogste = max(hoogste, int(match.group(1)))
+            # Opdracht 19-09: één nummerlezer (`nummer.cijfer_prefix`) — leest ook "Afgesloten 26064 …", zodat het
+            # voorstel nooit een nummer hergebruikt dat alleen nog op een afgesloten-gemarkeerd project staat.
+            nr = nummer_module.cijfer_prefix(naam)
+            if nr is not None and len(nr) <= 5 and nr.startswith(prefix):
+                hoogste = max(hoogste, int(nr))
     if hoogste == 0:
         return f"{prefix}001"
     return str(hoogste + 1)
