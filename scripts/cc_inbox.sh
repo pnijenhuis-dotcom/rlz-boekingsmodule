@@ -118,6 +118,14 @@
 #        opdrachten/.push-geblokkeerd) — hier: "pull overgeslagen — ff-only mislukt" geeft óók een melding (hoogstens elk uur) en
 #        `rlz inbox status` toont "origin gedivergeerd (N lokaal / M remote)".
 #   Guards: backend/tests/unit/test_cc_inbox_claim_en_poort.py + test_stop_hook_push.py.
+# Rij (k) 19-09 avond (nameting ic_spiegel_rood 20-09: een vervolg-opdracht "ná de échte run van 20-09 06:30" werd om 18:57 op
+#   19-09 al opgepakt — de inbox is mtime-volgorde, een datum in de bestandsnaam betekent niets): NIET VÓÓR. Een opdracht mét
+#   een regel "niet vóór: JJJJ-MM-DD[ UU:MM]" (eerste 20 regels; ook "niet voor:", eventueel vet/blockquote; lokale tijd,
+#   zonder tijd = 00:00) wordt pas geclaimd ná dat moment; tot dan logt de tick "wacht — X niet vóór … (nog N min)" hoogstens
+#   elk uur (stand opdrachten/log/.wacht-nietvoor-<slug>, geen macOS-melding: verwacht wachten is geen incident) en neemt de
+#   volgende kandidaat. `rlz inbox status` toont "inbox/: X — wacht tot …". Een run die zelf vaststelt dat het te vroeg is,
+#   zet die regel bovenin en legt de opdracht terug in inbox/ — dat is het hele mechanisme, geen tweede.
+#   Guard: test_cc_inbox_claim_en_poort.py::test_niet_voor_*.
 # Geen TTY nodig (launchd). PATH wordt door de plist gezet; hier als vangnet ACHTERAAN aangevuld voor een handmatige start
 # (achteraan: een expliciet gezet PATH — plist, test-stubs — wint van het vangnet).
 set -uo pipefail
@@ -181,12 +189,34 @@ meld_hoogstens_per_uur() {  # meld_hoogstens_per_uur <sleutel> <titel> <tekst> �
   if (( nu - laatste >= WACHT_HERHAAL_S )); then melding "$2" "$3"; echo "$nu" > "$stand"; fi
 }
 
+# ---- (k) niet vóór: een opdracht mét "niet vóór: JJJJ-MM-DD[ UU:MM]" wordt pas ná dat moment geclaimd -----------------------
+niet_voor_epoch() {  # niet_voor_epoch <bestand> → epoch op stdout; leeg = geen (geldige) regel. macOS date -j (zoals stat -f elders).
+  local regel dt
+  regel="$(head -20 "$1" 2>/dev/null | grep -m1 -iE '^[[:space:]]*(>[[:space:]]*)?(\*\*)?niet v(o|ó)(o|ó)r:?(\*\*)?[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' || true)"
+  [[ -n "$regel" ]] || return 0
+  dt="$(printf '%s' "$regel" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}( [0-9]{2}:[0-9]{2})?' | head -1)"
+  [[ "$dt" == *:* ]] || dt="$dt 00:00"
+  date -j -f '%Y-%m-%d %H:%M' "$dt" +%s 2>/dev/null || true
+}
+log_hoogstens_per_uur() {  # log_hoogstens_per_uur <sleutel> <regel> — alleen een logregel, geen melding; stand in .wacht-<sleutel>
+  local stand="$LOGMAP/.wacht-$1" laatste nu; nu=$(date +%s)
+  laatste="$(sed -n 1p "$stand" 2>/dev/null || true)"; [[ "$laatste" =~ ^[0-9]+$ ]] || laatste=0
+  if (( nu - laatste >= WACHT_HERHAAL_S )); then log "$2"; echo "$nu" > "$stand"; fi
+}
+
 # ---- (j1) claim per opdracht + (j2) atomische runner-lock + (j3) werkboom-toets --------------------------------------------
 OPDRACHT=""; LOPEND_BESTAND=""
 claim_opdracht() {  # → zet OPDRACHT (inbox-pad) + LOPEND_BESTAND; rc 1 = niets (meer) te claimen. mv = rename(2) = atomisch: één winnaar
-  local kandidaat
+  local kandidaat nv nu slug
   while IFS= read -r kandidaat; do
     [[ -n "$kandidaat" ]] || continue
+    slug="$(basename "$kandidaat" .md)"
+    nv="$(niet_voor_epoch "$kandidaat")"; nu=$(date +%s)
+    if [[ -n "$nv" ]] && (( nv > nu )); then  # (k) te vroeg: wacht, volgende kandidaat
+      log_hoogstens_per_uur "nietvoor-$slug" ">> cc_inbox: wacht — $slug.md niet vóór $(date -r "$nv" '+%F %H:%M') (nog $(( (nv - nu + 59) / 60 )) min); volgende kandidaat ($(date +%FT%T))"
+      continue
+    fi
+    rm -f "$LOGMAP/.wacht-nietvoor-$slug"
     LOPEND_BESTAND="$LOPEND/$(basename "$kandidaat")"
     if [[ -e "$LOPEND_BESTAND" ]]; then
       log ">> cc_inbox: claim overgeslagen — $(basename "$kandidaat") staat al in lopend/ (andere run of gestrand) ($(date +%FT%T))"; continue

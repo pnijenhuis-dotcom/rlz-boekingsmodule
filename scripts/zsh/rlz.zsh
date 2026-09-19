@@ -28,7 +28,7 @@ rlz() {
     inbox)
       case "${2:-}" in
         "")     "$repo/scripts/cc_inbox.sh" ;;
-        status) _rlz_lock_stand "$lock"; _rlz_vrijgave_stand "$repo"; _rlz_lopend_stand "$repo" "$lock"; _rlz_push_stand "$repo" ;;
+        status) _rlz_lock_stand "$lock"; _rlz_vrijgave_stand "$repo"; _rlz_lopend_stand "$repo" "$lock"; _rlz_inbox_wacht_stand "$repo"; _rlz_push_stand "$repo" ;;
         stop)   _rlz_inbox_stop "$lock" ;;
         vrijgeven) _rlz_inbox_vrijgeven "$repo" "${3:-}" ;;
         *)      echo "gebruik: rlz inbox [status|stop|vrijgeven [pid]]" >&2; return 2 ;;
@@ -137,6 +137,23 @@ _rlz_lopend_stand() {
     fi
     [[ -f "$wip" ]] && stand="$stand; poort niet gehaald → WIP op $(sed -n 1p "$wip") ($(sed -n 2p "$wip"))"
     echo "lopend/: $naam — $stand"
+  done
+}
+
+# rij (k) 19-09 avond: inbox-opdrachten mét "niet vóór: JJJJ-MM-DD[ UU:MM]" in de toekomst — de tick claimt ze pas dan.
+_rlz_inbox_wacht_stand() {
+  local repo="$1" f regel dt nv nu
+  local -a bestanden
+  bestanden=("$repo"/opdrachten/inbox/*.md(N))
+  nu=$(date +%s)
+  for f in "${bestanden[@]}"; do
+    regel="$(head -20 "$f" 2>/dev/null | grep -m1 -iE '^[[:space:]]*(>[[:space:]]*)?(\*\*)?niet v(o|ó)(o|ó)r:?(\*\*)?[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' || true)"
+    [[ -n "$regel" ]] || continue
+    dt="$(printf '%s' "$regel" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}( [0-9]{2}:[0-9]{2})?' | head -1)"
+    [[ "$dt" == *:* ]] || dt="$dt 00:00"
+    nv="$(date -j -f '%Y-%m-%d %H:%M' "$dt" +%s 2>/dev/null || true)"
+    [[ -n "$nv" ]] && (( nv > nu )) || continue
+    echo "inbox/: $(basename "$f") — wacht tot $dt (niet vóór; nog $(( (nv - nu + 59) / 60 )) min)"
   done
 }
 

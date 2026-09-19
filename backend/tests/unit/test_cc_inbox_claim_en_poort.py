@@ -354,6 +354,54 @@ def test_untracked_buiten_opdrachten_bij_start_is_stop(werkplaats: dict[str, Pat
     assert (repo / "opdrachten" / "inbox" / "2026-09-19-test.md").is_file()
 
 
+# ---- (k) niet vóór -----------------------------------------------------------------------------------------------
+def test_niet_voor_in_de_toekomst_wordt_niet_geclaimd_en_status_toont_wacht(werkplaats: dict[str, Path]) -> None:
+    p = _opdracht(werkplaats, "2099-01-01-nameting-na-echte-run")
+    tekst = "Domeinen: reconciliatie\n\n> **niet vóór: 2099-01-01 07:00** — meet ná de scheduler-run.\n\n# OPDRACHT\n"
+    p.write_text(tekst, encoding="utf-8")
+    uit = _tick(werkplaats, CC_INBOX_CLAIM_ALLEEN="1")
+    assert uit.returncode == 3 and "GEEN CLAIM" in uit.stdout, uit.stdout + uit.stderr
+    assert p.exists() and not (werkplaats["repo"] / "opdrachten" / "lopend" / p.name).exists()
+    assert "wacht — 2099-01-01-nameting-na-echte-run.md niet vóór 2099-01-01 07:00" in uit.stderr
+    assert (werkplaats["repo"] / "opdrachten" / "log" / ".wacht-nietvoor-2099-01-01-nameting-na-echte-run").exists()
+    # Tweede tick binnen het uur: geen tweede logregel (hoogstens elk uur), nog steeds geen claim; geen macOS-melding.
+    uit2 = _tick(werkplaats, CC_INBOX_CLAIM_ALLEEN="1")
+    assert uit2.returncode == 3 and "wacht —" not in uit2.stderr
+    assert _meldingen(werkplaats) == ""
+    st = _rlz(werkplaats, "inbox", "status")
+    verwacht = "inbox/: 2099-01-01-nameting-na-echte-run.md — wacht tot 2099-01-01 07:00"
+    assert verwacht in st.stdout, st.stdout + st.stderr
+
+
+def test_niet_voor_verstreken_wordt_gewoon_geclaimd(werkplaats: dict[str, Path]) -> None:
+    p = _opdracht(werkplaats, "2026-09-19-verstreken")
+    p.write_text("niet voor: 2020-01-01\n\n# OPDRACHT\n", encoding="utf-8")
+    uit = _tick(werkplaats, CC_INBOX_CLAIM_ALLEEN="1")
+    assert uit.returncode == 0 and "CLAIM 2026-09-19-verstreken.md" in uit.stdout, uit.stdout + uit.stderr
+    assert (werkplaats["repo"] / "opdrachten" / "lopend" / p.name).exists()
+
+
+def test_niet_voor_laat_de_volgende_kandidaat_voorgaan(werkplaats: dict[str, Path]) -> None:
+    import os as _os
+    import time as _time
+
+    wacht = _opdracht(werkplaats, "2099-01-01-wacht")
+    wacht.write_text("niet vóór: 2099-06-01\n\n# OPDRACHT wacht\n", encoding="utf-8")
+    oud = _time.time() - 3600
+    _os.utime(wacht, (oud, oud))  # oudste mtime → zou zonder poort als eerste geclaimd worden
+    _opdracht(werkplaats, "2026-09-19-nu")
+    uit = _tick(werkplaats, CC_INBOX_CLAIM_ALLEEN="1")
+    assert "CLAIM 2026-09-19-nu.md" in uit.stdout, uit.stdout + uit.stderr
+    assert wacht.exists()
+
+
+def test_scripts_documenteren_rij_k() -> None:
+    tekst = SCRIPT.read_text(encoding="utf-8")
+    for woord in ("Rij (k)", "niet_voor_epoch()", "log_hoogstens_per_uur()", ".wacht-nietvoor-"):
+        assert woord in tekst, woord
+    assert "_rlz_inbox_wacht_stand" in RLZ_ZSH.read_text(encoding="utf-8")
+
+
 def test_scripts_documenteren_rij_j() -> None:
     code = SCRIPT.read_text(encoding="utf-8")
     for verwacht in ("(j1) LOCK PER OPDRACHT, ATOMISCH", "(j2) ÉÉN INBOX-RUNNER PER REPO", "(j3) EEN RUN EINDIGT PAS NÁ ZIJN POORT", "(j4) PUSH-CONFLICT",

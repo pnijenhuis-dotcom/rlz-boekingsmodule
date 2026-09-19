@@ -75,6 +75,30 @@ class TestDelta:
         assert d.nieuwe_afwijkingen == [] and not d.is_leeg
         assert d.aantal_nieuwe_aandachtspunten == 0
 
+    def test_verdwenen_fout_is_herstelmelding_en_audit_basis(self) -> None:
+        """Nameting 20-09 (ic_spiegel_rood 174×): een FOUT uit de vorige run die deze run niet meer produceert verdween
+        tot 19-09 stil — niet in de delta, niet in de mail, geen audit. Nu: `verdwenen_fouten` + `verdwenen`."""
+        aid = uuid.uuid4()
+        vorig = [
+            _b("fout", None, "s1", tekst="FOUT spiegelpaar", afwijking_soort="ic_spiegel_rood"),
+            _b("fout", aid, "s2"),
+            _b("afwijking", aid, "a1"),
+        ]
+        huidig = [_b("fout", aid, "s2")]
+        d = bepaal_delta(huidig=huidig, vorig=vorig, gezien=set(), samenvatting={})
+        assert [b.vingerafdruk for b in d.verdwenen_fouten] == ["s1"]
+        assert [b.vingerafdruk for b in d.verdwenen_afwijkingen] == ["a1"]
+        assert [b.vingerafdruk for b in d.verdwenen] == ["a1", "s1"]
+        assert not d.is_leeg and d.aantal_nieuwe_aandachtspunten == 0
+        # Alleen een verdwenen fout → óók niet leeg (de herstelregel is een melding).
+        d2 = bepaal_delta(huidig=[], vorig=[_b("fout", aid, "s2")], gezien=set(), samenvatting={})
+        assert [b.vingerafdruk for b in d2.verdwenen_fouten] == ["s2"] and not d2.is_leeg
+        # Zelfde concept dat als andere soort terugkomt (fout → afwijking) is niet verdwenen maar verschoven.
+        d3 = bepaal_delta(
+            huidig=[_b("afwijking", aid, "s2")], vorig=[_b("fout", aid, "s2")], gezien=set(), samenvatting={}
+        )
+        assert d3.verdwenen_fouten == [] and [b.vingerafdruk for b in d3.nieuwe_afwijkingen] == ["s2"]
+
     def test_afwijking_die_geaccepteerd_wordt_is_nieuw_geaccepteerd_geen_herstel(self) -> None:
         """Zelfde vingerafdruk, andere soort: de afwijking is niet 'verdwenen' maar beoordeeld."""
         aid = uuid.uuid4()
@@ -237,6 +261,40 @@ class TestBouwMail:
         assert "Omgevallen blok(ken): bank" in tekst
         assert "/reconciliatie" in tekst
 
+
+
+class TestBouwMailHerstelFouten:
+    def test_verdwenen_fouten_staan_als_hersteld_in_de_systeemmail(self) -> None:
+        aid = uuid.uuid4()
+        delta = Delta(
+            verdwenen_fouten=[
+                _b(
+                    "fout",
+                    None,
+                    "s1",
+                    tekst="FOUT  doorbelastingspaar niet sluitend: verkoopfactuur niet gevonden",
+                    afwijking_soort="ic_spiegel_rood",
+                ),
+                _b("fout", aid, "s2", tekst="FOUT  Kempen: credential ontbreekt"),
+            ]
+        )
+        _, tekst = bouw_mail(
+            run_id=uuid.uuid4(),
+            bron="scheduler",
+            afgerond_op=datetime(2026, 9, 20, 4, 44, tzinfo=UTC),
+            exit_code=0,
+            samenvatting={
+                "intercompany": {
+                    "status": "ok", "gecontroleerd": 27, "afwijkingen": 0, "geaccepteerd": 0, "let_op": 0, "fouten": 0
+                }
+            },
+            delta=delta,
+            open_afwijkingen=0,
+            namen={aid: "Kempen Facilities B.V."},
+        )
+        assert "Hersteld — 2 fout(en) uit de vorige run niet meer gezien:" in tekst
+        assert "vaf:s1" in tekst and "vaf:s2" in tekst and "Kempen Facilities B.V." in tekst
+        assert "afwijking(en) uit de vorige run" not in tekst
 
 
 class TestBouwMailAutomatiseringen:

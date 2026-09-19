@@ -180,6 +180,49 @@ class TestRunEndToEnd:
         assert mails == []
 
 
+    def test_verdwenen_fout_en_afwijking_automatisch_gesloten_met_audit(self, administratie_id, mails) -> None:
+        """Nameting 20-09 (174 × ic_spiegel_rood): tot 19-09 schreef alleen `dubbele_betaling_vermoed` een audit; een
+        verdwenen FOUT of andere afwijking verdween stil. Nu één `reconciliatie_auto_gesloten` per soort × administratie,
+        ook voor fouten."""
+        fout_kw = {
+            "soort": "fout",
+            "administratie_id": None,
+            "vingerafdruk": "spiegel-1",
+            "tekst": "FOUT       doorbelastingspaar niet sluitend: verkoopfactuur niet gevonden [vaf:spiegel-1]",
+            "detail": {"afwijking_soort": "ic_spiegel_rood", "fout": "verkoopfactuur niet gevonden"},
+        }
+        fout2_kw = {**fout_kw, "vingerafdruk": "spiegel-2", "tekst": fout_kw["tekst"].replace("spiegel-1", "spiegel-2")}
+        run1 = [("intercompany", _blok([fout_kw, fout2_kw, _afwijking_kw(administratie_id, "a1")], exit_code=1))]
+        run_service.voer_uit(blokken=run1, args=ARGS, bron="cli", stdout=lambda t: None)
+        eerste = _laatste_run()
+        leeg = [("intercompany", _blok([], exit_code=0))]
+        run_service.voer_uit(blokken=leeg, args=ARGS, bron="cli", stdout=lambda t: None)
+        with scoped_session(None) as session:
+            audit = session.scalars(select(AuditEvent).where(AuditEvent.actie == "reconciliatie_auto_gesloten")).all()
+        per_soort = {a.nieuwe_waarde["soort"]: a.nieuwe_waarde for a in audit}
+        assert set(per_soort) == {"ic_spiegel_rood", "bedrag_wijkt_af"}, per_soort
+        spiegel = per_soort["ic_spiegel_rood"]
+        assert spiegel["aantal"] == 2 and sorted(spiegel["vingerafdrukken"]) == ["spiegel-1", "spiegel-2"]
+        assert spiegel["bevinding_soort"] == "fout" and spiegel["blok"] == "intercompany"
+        assert spiegel["administratie_id"] is None
+        assert "niet meer geproduceerd door run" in spiegel["reden"] and str(eerste.id) not in spiegel["reden"]
+        assert per_soort["bedrag_wijkt_af"]["aantal"] == 1
+        assert per_soort["bedrag_wijkt_af"]["administratie_id"] == str(administratie_id)
+        # De delta-tellers staan op de run-rij (meetbaar op de leesreplica, ook als de systeemmail uit staat).
+        tweede = _laatste_run()
+        assert tweede.samenvatting["delta"] == {
+            "nieuwe_afwijkingen": 0, "nieuwe_let_op": 0, "nieuwe_geaccepteerd": 0, "nieuwe_fouten": 0,
+            "verdwenen_afwijkingen": 1, "verdwenen_fouten": 2, "blokken_fout": [],
+        }
+        assert eerste.samenvatting["delta"]["nieuwe_fouten"] == 2
+        assert eerste.samenvatting["delta"]["nieuwe_afwijkingen"] == 1
+        # Een derde run zonder wijziging schrijft niets bij (idempotent: alleen de delta t.o.v. de vorige afgeronde run)
+        run_service.voer_uit(blokken=leeg, args=ARGS, bron="cli", stdout=lambda t: None)
+        with scoped_session(None) as session:
+            q = select(AuditEvent).where(AuditEvent.actie == "reconciliatie_auto_gesloten")
+            assert len(session.scalars(q).all()) == 2
+
+
 class TestCli:
     def test_cli_overzicht_lees_only_en_zetten_met_reden(self, capsys, beheerder_id) -> None:
         from app import cli

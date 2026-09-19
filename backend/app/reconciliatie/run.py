@@ -230,6 +230,10 @@ class Delta:
     nieuwe_geaccepteerd: list[Bevinding] = field(default_factory=list)
     nieuwe_fouten: list[Bevinding] = field(default_factory=list)
     verdwenen_afwijkingen: list[Bevinding] = field(default_factory=list)
+    #: Nameting 20-09 (ic_spiegel_rood 174×): een FOUT uit de vorige run die deze run niet meer produceert (systeemfout
+    #: gefixt, credential hersteld) verdween tot 19-09 stil — geen herstelregel, geen audit. Nu gelijk aan een
+    #: afwijking.
+    verdwenen_fouten: list[Bevinding] = field(default_factory=list)
     blokken_fout: list[str] = field(default_factory=list)
 
     @property
@@ -240,8 +244,14 @@ class Delta:
             or self.nieuwe_geaccepteerd
             or self.nieuwe_fouten
             or self.verdwenen_afwijkingen
+            or self.verdwenen_fouten
             or self.blokken_fout
         )
+
+    @property
+    def verdwenen(self) -> list[Bevinding]:
+        """Alles wat de vorige run wél en deze run niet meer meldt (afwijkingen + fouten) — de audit-basis."""
+        return [*self.verdwenen_afwijkingen, *self.verdwenen_fouten]
 
     @property
     def aantal_nieuwe_aandachtspunten(self) -> int:
@@ -297,6 +307,14 @@ def bepaal_delta(
         )
     ]
     verdwenen = [b for sleutel, b in vorig_afwijkingen.items() if sleutel not in huidig_vafs]
+    # Nameting 20-09: verdwenen FOUTEN tellen mee (zelfde regel: concept weg = verdwenen; concept terug als andere
+    # soort = niet verdwenen maar beoordeeld/verschoven).
+    vorig_fouten = (
+        {(b.administratie_id, b.vingerafdruk): b for b in vorig if b.soort == BevindingSoort.FOUT}
+        if vorig is not None
+        else {}
+    )
+    verdwenen_fouten = [b for sleutel, b in vorig_fouten.items() if sleutel not in huidig_vafs]
     blokken_fout = [naam for naam, stand in samenvatting.items() if stand.get("status") == "fout"]
     return Delta(
         nieuwe_afwijkingen=nieuw(BevindingSoort.AFWIJKING),
@@ -304,6 +322,7 @@ def bepaal_delta(
         nieuwe_geaccepteerd=nieuw(BevindingSoort.GEACCEPTEERD),
         nieuwe_fouten=nieuw(BevindingSoort.FOUT),
         verdwenen_afwijkingen=verdwenen,
+        verdwenen_fouten=verdwenen_fouten,
         blokken_fout=blokken_fout,
     )
 
@@ -318,6 +337,9 @@ KANALEN = ("actie", "systeem")
 MAIL_STATUSSEN = ("niet_nodig", "verzonden", "mislukt", "niet_geconfigureerd", "uitgeschakeld")
 #: Sleutel in `reconciliatie_run.samenvatting` voor de mail-tellers per run (geen migratie, 0114-JSONB).
 MAIL_SLEUTEL = "mail"
+#: Nameting 20-09: de delta-tellers van de run (nieuw/verdwenen per soort) op de run-rij — de herstelregel "Hersteld — N …"
+#: staat anders alleen in een systeemmail die in productie uit staat (`uitgeschakeld`) en is dan nergens meetbaar.
+DELTA_SLEUTEL = "delta"
 #: Eén actiemail-regel blijft leesbaar op een telefoon: harde bovengrens, daarna afkappen met "…".
 MAX_ACTIE_REGEL = 140
 #: Meer bevindingen dan dit = "en N andere" mét dezelfde link (de lijst staat op /reconciliatie).
@@ -585,6 +607,12 @@ def bouw_mail(
             ["", f"Hersteld — {len(delta.verdwenen_afwijkingen)} afwijking(en) uit de vorige run niet meer gezien:"]
         )
         for b in delta.verdwenen_afwijkingen:
+            lees = teksten.leesbaar(b, administratie_naam=adm_naam(b))
+            regels.append(f"  - {naam(b)}{lees.titel} — {lees.wat}")
+            regels.append(f"    technisch: vaf:{b.vingerafdruk} · {b.tekst}")
+    if delta.verdwenen_fouten:  # nameting 20-09: een verdwenen fout is óók een herstel, nooit stil
+        regels.extend(["", f"Hersteld — {len(delta.verdwenen_fouten)} fout(en) uit de vorige run niet meer gezien:"])
+        for b in delta.verdwenen_fouten:
             lees = teksten.leesbaar(b, administratie_naam=adm_naam(b))
             regels.append(f"  - {naam(b)}{lees.titel} — {lees.wat}")
             regels.append(f"    technisch: vaf:{b.vingerafdruk} · {b.tekst}")
@@ -1019,22 +1047,35 @@ def _pas_soort_standen_toe(run_id: uuid.UUID, verzamelaar: Verzamelaar) -> dict[
     return overrides
 
 
-def _audit_verdwenen_dubbele_betaling(run_id: uuid.UUID, delta: Delta) -> None:
-    """SPOED 17-09 blok A: bevindingen `dubbele_betaling_vermoed` uit de vorige run die de herdefinitie (betaling zonder
-    factuur) niet meer produceert, worden automatisch gesloten — geen mens-klik; per administratie één audit
-    `reconciliatie_auto_gesloten` mét aantal + reden. Idempotent: alleen wat in de delta als verdwenen staat."""
-    weg = [
-        b
-        for b in delta.verdwenen_afwijkingen
-        if str((b.detail or {}).get("afwijking_soort") or "") == "dubbele_betaling_vermoed"
-    ]
-    if not weg:
+DUBBELE_BETALING_HERDEFINITIE_REDEN = "herdefinitie 17-09 — valse positieven (periodiek / betaling mét factuur)"
+
+
+def _audit_verdwenen_bevindingen(run_id: uuid.UUID, delta: Delta) -> None:
+    """Niets verdwijnt stil (kernprincipe 4; CLAUDE.md reconciliatie 2 "verdwenen bevindingen sluiten mét audit"). Élke
+    afwijking of FOUT uit de vorige afgeronde run die deze run niet meer produceert, is automatisch gesloten — geen
+    mens-klik; per (soort × administratie) één audit `reconciliatie_auto_gesloten` mét aantal, vingerafdrukken (≤ 200)
+    en reden. Tot 19-09 gold dit alleen voor `dubbele_betaling_vermoed` (SPOED 17-09 blok A); de 174 × `ic_spiegel_rood`
+    (fout, systeemfout gefixt 19-09) zouden anders zonder spoor verdwijnen (nameting 20-09). Idempotent: alleen wat in
+    de delta als verdwenen staat, en de delta vergelijkt uitsluitend met de vorige AFGERONDE run."""
+    from app.reconciliatie.soort_stand import afwijking_soort_van
+
+    if not delta.verdwenen:
         return
-    per_adm: dict[uuid.UUID | None, list[Bevinding]] = {}
-    for b in weg:
-        per_adm.setdefault(b.administratie_id, []).append(b)
+    groepen: dict[tuple[str, str, uuid.UUID | None], list[Bevinding]] = {}
+    for b in delta.verdwenen:
+        label = afwijking_soort_van(b.detail) or f"{b.blok}:{b.soort}"
+        groepen.setdefault((label, b.soort, b.administratie_id), []).append(b)
     with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
-        for aid, items in per_adm.items():
+        volgorde = sorted(groepen.items(), key=lambda kv: (kv[0][0], kv[0][1], str(kv[0][2])))
+        for (label, bevinding_soort, aid), items in volgorde:
+            reden = (
+                DUBBELE_BETALING_HERDEFINITIE_REDEN
+                if label == "dubbele_betaling_vermoed"
+                else (
+                    f"niet meer geproduceerd door run {run_id} — {bevinding_soort} uit de vorige run verdwenen "
+                    f"(blok {items[0].blok})"
+                )
+            )
             record_audit_event(
                 session,
                 actor_id=SYSTEEM_ACTOR_ID,
@@ -1044,11 +1085,13 @@ def _audit_verdwenen_dubbele_betaling(run_id: uuid.UUID, delta: Delta) -> None:
                 actie="reconciliatie_auto_gesloten",
                 correlatie_id=uuid.uuid4(),
                 nieuwe_waarde={
-                    "soort": "dubbele_betaling_vermoed",
+                    "soort": label,
+                    "bevinding_soort": bevinding_soort,
+                    "blok": items[0].blok,
                     "administratie_id": str(aid) if aid else None,
                     "aantal": len(items),
                     "vingerafdrukken": [b.vingerafdruk for b in items][:200],
-                    "reden": "herdefinitie 17-09 — valse positieven (periodiek / betaling mét factuur)",
+                    "reden": reden,
                 },
             )
 
@@ -1094,8 +1137,8 @@ def rond_af(*, run_id: uuid.UUID, bron: str, exit_code: int, verzamelaar: Verzam
     statussen: dict[str, str] = {k: "niet_nodig" for k in KANALEN}
     details: dict[str, str | None] = {k: None for k in KANALEN}
 
-    # SPOED 17-09 blok A: verdwenen dubbele-betaling-bevindingen automatisch gesloten mét audit.
-    _audit_verdwenen_dubbele_betaling(run_id, delta)
+    # SPOED 17-09 blok A + nameting 20-09: élke verdwenen afwijking/fout automatisch gesloten mét audit (per soort × administratie).
+    _audit_verdwenen_bevindingen(run_id, delta)
 
     # ACTIEMAIL (kantoor): alleen bevindingen mét handeling voor het kantoor; geen bevindingen = geen mail.
     actie = actie_bevindingen(delta, soort_overrides=soort_overrides)
@@ -1129,6 +1172,15 @@ def rond_af(*, run_id: uuid.UUID, bron: str, exit_code: int, verzamelaar: Verzam
             MAIL_SLEUTEL: {
                 **{k: statussen[k] for k in KANALEN},
                 "systeem_uitgeschakeld": int(statussen["systeem"] == "uitgeschakeld"),
+            },
+            DELTA_SLEUTEL: {
+                "nieuwe_afwijkingen": len(delta.nieuwe_afwijkingen),
+                "nieuwe_let_op": len(delta.nieuwe_let_op),
+                "nieuwe_geaccepteerd": len(delta.nieuwe_geaccepteerd),
+                "nieuwe_fouten": len(delta.nieuwe_fouten),
+                "verdwenen_afwijkingen": len(delta.verdwenen_afwijkingen),
+                "verdwenen_fouten": len(delta.verdwenen_fouten),
+                "blokken_fout": list(delta.blokken_fout),
             },
         }
         if "verzonden" in statussen.values():
