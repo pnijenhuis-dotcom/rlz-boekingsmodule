@@ -42,6 +42,40 @@
   achter `creditnota_381_ingeschakeld` (AAN sinds 2026-08-10); verkoop-autoboeken opt-in per is_vastgoed-administratie
   (migratie 0051). Zie BESLISSINGEN "Vastly-verkoopfactuur-boekpad" + "VERKOOP-AUTOBOEKEN OPT-IN".
 
+<!-- toegevoegd 19-09-2026, opdracht "kassarapport-automatisch-type-wijzigen-en-reconciliatie-acties-automatiseren" -->
+- **Kassarapport automatisch typeren — parser-eenduidig = het systeem doet het (Peter 19-09, screenshot Inzicht › Reconciliatie Van
+  Boxtel Journaal 1-9/2-9/3-9: "dit zijn meldingen waar ik dus niks mee doe. Als de module weet dat het verkoopboekingen zijn,
+  wijzig het dan automatisch"; geen migratie; HERZIET regel 3 "kassarapport in de inkoopstroom = dagelijkse bevinding mét knop";
+  BESLISSINGEN "KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING ZONDER HANDELING SWEEP (Peter 19-09)"):** een document dat als
+  INKOOPFACTUUR binnenkomt (upload-zone, klantpagina, bulk-upload, splitsing) of zo in de werkvoorraad staat, maar waarop een
+  bron-parser DETERMINISTISCH aanslaat (`app/omzet/autotype.py::herken` → ProfX Journaal/Margerapport op de PDF-tekstlaag,
+  zonnestudio-dagstaat/-kascheck en pilates-export op het raster; géén AI, geen AVG-gate — dezelfde drempel als de bevinding van
+  16-09) krijgt DIRECT soort `kassarapport`: bij upload ín `upload_document` (soort gewisseld vóór de extractie, tijdlijnregel
+  "type automatisch gewijzigd: inkoopfactuur → kassarapport (ProfX-journaal herkend)", audit `soort_automatisch_gewijzigd`), in de
+  dagelijkse reconciliatie (échte run: `autotype.verwerk_werkvoorraad` vóór de omzet-toets, via de bestaande soort-wissel
+  `documenten/soort.py` mét `automatisch=` → ONTVANGEN + extractie opnieuw via het omzetpad, één audit-rij
+  `kassarapport_autotype_run` per administratie mét verwacht/gedaan/overgeslagen) en eenmalig via de nazorg-CLI
+  `kassarapport-autotype-nazorg [--administratie] [--dry-run]` (dry-run = 0 writes; idempotent). Het omzet-controlescherm toont de
+  chip "automatisch getypeerd" (`OmzetVoorstelDto.automatisch_getypeerd(_bron)` uit de tijdlijn) mét de terugweg **"Tóch
+  inkoopfactuur…"** (`POST …/omzet/documenten/{id}/toch-inkoopfactuur`, reden ≥ 5 tekens verplicht): bestaande soort-wissel terug
+  naar de inkoopstroom + observatie `typering_correctie` (audit) op de sleutel administratie × bron × afzender (upload zonder
+  afzender = eigen sleutel). **Leren:** ná `CORRECTIE_DREMPEL` = 2 correcties binnen 180 dagen op dezelfde sleutel valt het
+  systeem voor die sleutel terug op MELDEN i.p.v. doen — bij upload (tijdlijnregel "niet automatisch getypeerd … 2× eerder
+  teruggezet", audit `kassarapport_autotype_overgeslagen`), bij de intake-herkenning (`soort_door_systeem=True`: de A1-typering van
+  16-09 valt dan terug op inkoopfactuur + dagelijkse melding; een mens-keuze "kassarapport" wordt NOOIT overruled) en in de
+  dagelijkse run (overgeslagen mét reden `correcties`). Nooit een LLM in deze beslissing. **De bevinding
+  `kassarapport_in_werkvoorraad` bestaat alleen nog voor het zachte signaal 'omzetrekeningen' (alle boekingsregels op een
+  omzetrekening, géén parser) en voor bewust overgeslagen parser-treffers (correcties / status laat de wissel niet toe / fout)** —
+  de tekst zegt waaróm de mens aan zet is en de knop "Type wijzigen → kassarapport" blijft; lees-only (`--lees-only`, losse CLI)
+  schrijft niets en labelt parser-treffers "automatisch bij de dagelijkse run". Dagteller `kassarapport_autotype` in de
+  reconciliatiemail/Instellingen › Boeken (gedaan per document bij intake/upload + de run-rij; overgeslagen per reden). Tests:
+  `tests/omzet/test_autotype.py` (upload → kassarapport + tijdlijn/audit; gewone factuur ongemoeid; mens-keuze nooit overruled;
+  ná 2 correcties melden bij upload/intake/run mét leesbare reden; motor idempotent; status-weigering = overgeslagen `status`;
+  nazorg-CLI dry-run 0 writes; route 422/409/403; dagteller), gouden set
+  `tests/keten/test_ad2_autotype_inkoopfactuur_wordt_kassarapport.py` (ProfX-upload als inkoopfactuur → kassarapport zonder AI;
+  tegenproef: géén inkoop-casus van de gouden set geeft een parser-treffer), vitest `OmzetReviewScreen.test.tsx` (chip + modal +
+  doel_pad).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Omzetboekingen (omzetmodule, Receipts, omzet-autoboeken) (CLAUDE.md `ed6d176` r. 700–737)

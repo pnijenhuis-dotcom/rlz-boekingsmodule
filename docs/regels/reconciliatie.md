@@ -58,6 +58,19 @@
 <!-- uit CLAUDE.md § Domeinbeslissingen -->
 - **Reconciliatie `rlz_dubbel` — clusters + referentie-classificatie (blok 1 vervolgrun 10-09 avond; herziet "RECONCILIATIE — PERIODIEKE TOETS" + blok 7; geen migratie):** één bevinding per crediteur + genormaliseerde referentie (álle boekstuknummers, vingerafdruk `cluster=<rlz_admin>|<entity>|<ref>`), referenties die een IBAN, een klant-/contractnummer (≥ 3× met ≥ 2 bedragen) of een placeholder zijn worden mét teller uitgesloten (`app/reconciliatie/referentie_classificatie.py`), rangorde "Waarschijnlijk dubbel in RLZ" (twee concepten, zelfde dag, zelfde bedrag) vs "Zelfde referentie, controleer", overgang oud → cluster zonder migratie (open paar-bevindingen vervangen onder eigen vingerafdruk, paar-acceptaties overgedragen), lees-only meetlat `reconciliatie-alles --alleen rlz_dubbel --lees-only [--administratie …]` — zie BESLISSINGEN "RECONCILIATIE RLZ_DUBBEL — CLUSTERS EN REFERENTIE-CLASSIFICATIE".
 
+<!-- toegevoegd 19-09-2026, opdracht "kassarapport-automatisch-type-wijzigen-en-reconciliatie-acties-automatiseren" -->
+- **Patroon "vaststaande actie = het systeem doet het" (Peter 19-09; BESLISSINGEN "KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING
+  ZONDER HANDELING SWEEP (Peter 19-09)"):** is de actie op een bevindingssoort deterministisch én altijd dezelfde (de knop doet
+  precies één ding, zonder mens-oordeel), dan is de melding een testfase-drempel die voorbij is (principe 7 (2)+(3)): het systeem
+  voert de actie zelf uit volgens het vaste patroon — doen + tijdlijnregel + audit per document + terugweg mét verplichte reden +
+  leren van de terugweg (ná 2 correcties op dezelfde sleutel weer melden) + dagteller verwacht/gedaan/overgeslagen in de
+  reconciliatiemail; opt-out per administratie alleen als testfase. Eerste afnemer: `kassarapport_in_werkvoorraad` bij een
+  parser-treffer (`app/omzet/autotype.py`, zie `docs/regels/omzet.md`). Een soort waarvan de actie een oordeel vraagt (accepteren
+  mét reden, herboeken achter de aangiftepoort, storno) blijft een melding. De sweep over álle bevindingssoorten in productie
+  (aantal open, actie, deterministisch ja/nee, voorstel per soort — incl. de 174 "fouten" en de 492 "in meting" van 19-09) staat als
+  agenda in het rapport `docs/rapporten/2026-09-19-kassarapport-autotype-en-signalering-sweep.md`; niets daarvan is gebouwd buiten
+  de kassarapport-typering.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Synthetische bewaking + alerting (CLAUDE.md `ed6d176` r. 632–644)

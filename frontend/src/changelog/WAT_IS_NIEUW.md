@@ -6,6 +6,22 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-19 — Kassarapporten die als inkoopfactuur binnenkomen worden nu automatisch herkend en omgezet
+
+<!-- kassarapport-autotype-19-09 -->
+
+- **Kassarapporten die als inkoopfactuur binnenkomen worden nu automatisch herkend en omgezet.** Een ProfX-journaal, dagstaat, kascheck of pilates-export die per ongeluk als inkoopfactuur wordt geüpload (of zo in de werkvoorraad staat), herkent de module op de inhoud en zet 'm meteen om naar kassarapport — het document staat dan direct in het omzet-controlescherm, met de regel "type automatisch gewijzigd" in de tijdlijn. Je hoeft niet meer op "Type wijzigen → kassarapport" te klikken; die melding onder Inzicht › Reconciliatie blijft alleen staan als de module het niet zeker weet (bijvoorbeeld alleen omdat de boekingsregels op omzetrekeningen staan).
+- **Tóch een inkoopfactuur?** Boven het omzet-controlescherm staat de chip "automatisch getypeerd" met de knop "Tóch inkoopfactuur…". Geef een reden en het document gaat terug de inkoopstroom in. Doe je dat twee keer voor dezelfde afzender, dan zet de module dit type voor die afzender niet meer automatisch om, maar meldt het weer.
+- De reconciliatiemail en Instellingen › Boeken tellen per dag hoeveel documenten zo zijn omgezet en hoeveel bewust niet (met de reden).
+
+## 2026-09-19 — Projecten die klaar lijken staan onder "Afsluiten?" — afvinken en klaar
+
+<!-- projecten-afsluiten-tab-19-09 -->
+
+- **Nieuwe tab "Afsluiten? (N)" bij Projecten** — zowel op Inzicht › Projecten (alle administraties) als op de projectenlijst van één administratie. Daar staan de projecten die klaar lijken: geen inkoop, verkoop, uren of planning in de laatste zes maanden (per administratie instelbaar), een eindfactuur of eindafrekening geboekt, een naam die met "Afgesloten" begint terwijl het project nog actief staat, of een verstreken looptijd. Per project zie je de reden(en), de laatste activiteit (soort, datum, bedrag, boekstuk) en een let-op als er nog iets open staat (inkoop nog niet geboekt, open offerte, ongekeurde uren) — dat blokkeert niets.
+- **Afvinken en "Afsluiten (N)"** sluit de gekozen projecten in één keer af via de bestaande route: eerst inactief in Reeleezee of Odoo, dan de status in de module, met per project de uitkomst (afgesloten, bron weigerde met reden, was al afgesloten). Niets gaat automatisch dicht — de knop blijft van jou. Heropenen kan altijd vanaf het projectdetail.
+- **"Niet afsluiten…"** met een verplichte reden haalt een project van de lijst tot er weer activiteit is; je vindt het terug onder "Toon uitgesteld" en de reden staat in het logboek. Zoeken en filteren op reden kan boven de tabel; de link "N kandidaat afsluiten →" op Inzicht › Projecten springt direct naar de tab.
+
 ## 2026-09-19 — Kosten worden niet meer over afgesloten projecten verdeeld
 
 <!-- projectverdeling-afgesloten-19-09 -->

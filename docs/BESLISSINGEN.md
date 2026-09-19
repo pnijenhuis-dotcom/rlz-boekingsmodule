@@ -11655,6 +11655,43 @@ alleen een nummer aan het begin van de naam, dus "Afgesloten 26064 Apeldoorn" na
   nooit bewerken terwijl een achtergrondrun ervan loopt (bash leest het bestand incrementeel — `nameting.sh` strandde op "efail" ná
   mijn allowlist-edit; de job-executie zelf was klaar, het log is via Cloud Logging gelezen).
 
+
+## PROJECTEN — TAB AFSLUITEN? MÉT BULK-AFSLUITEN EN NIET-AFSLUITEN (Peter 19-09) — één kandidatenmotor (stil N mnd per administratie / eindfactuur / naam zegt afgesloten / looptijd verstreken), vinkjes + "Afsluiten (N)" via de 0160-flow mét uitkomst per rij, "Niet afsluiten" mét verplichte reden, nooit automatisch; migratie 0167
+
+**Status: GEBOUWD + GETEST 19-09 (opdracht "projecten-afsluit-kandidaten-scherm-bulk-afsluiten", Peter 19-09: "welk project is
+afgesloten? dat onderscheid maken wij nu nog niet" — voorwaarde voor de verdeelsleutel-opdracht van dezelfde ochtend); werkt in
+productie: niet gemeten (deploy ná deze run — meetrecept in het rapport, vervolg-opdracht in de inbox). Rapport
+`docs/rapporten/2026-09-19-projecten-afsluiten-tab-bulk.md`. Migratie 0167 (dev + test gedraaid, `alembic check` schoon, dump
+ververst); geen RLZ-write in deze run. Canonieke regeltekst: `docs/regels/verplichtingen-projecten-voorraad.md` alinea "Projecten —
+tab "Afsluiten? (N)" mét bulk-afsluiten en "Niet afsluiten"" + `docs/regels/kantoor-frontend.md` alinea "Tabs op een lijstpagina".**
+
+- **Herziening 18-09-criterium:** "stil ≥ 90 dagen ÉN contract-m² bereikt" gaf bij Universal 0 kandidaten terwijl 8 projecten
+  "Afgesloten …" heten en actief staan (geen contract-m² gevuld → nooit kandidaat). Nieuw: kandidaat = één of meer redenen
+  (`app/projecten/afsluiten.py::bepaal_redenen`, puur): `stil` (N maanden per administratie, default 6, `project_afsluit_stil_maanden`),
+  `eindfactuur` (jongste verkoopregel eindfactuur/eindafrekening/slotfactuur), `naam_afgesloten`, `looptijd_verstreken`. Keuze: een
+  project ZONDER énige activiteit is niet stil (leeftijd onbekend) — zichtbaar in de redentekst.
+- **Eén motor, vier afnemers:** tab per administratie (`ProjectenScreen` `?tab=afsluiten`), kantoorbrede tab (`ProjectenKantoorbreedScreen`),
+  chip "N kandidaat afsluiten →" (`kantoorbreed._rijen_voor_administratie` leest `afsluiten.kandidaten_voor_administratie`) en CLI
+  `projecten-afsluit-kandidaten` (`--maanden`, `--alles`; nameting-allowlist + workflow-onderdeel `projecten-afgesloten`). De oude
+  `status.kandidaat_afsluiten_per_project` is verwijderd.
+- **Routes** (`kantoor_router.py`, vóór `/{administratie_id}`): `GET /projecten/afsluit-kandidaten?administratie_id&q&reden&toon_uitgesteld&pagina`
+  (kantoorrol + scope via `mijn_administraties`), `POST /projecten/afsluiten-bulk` (rolpoort fail-closed vóór de eerste bron-call; uitkomst
+  per rij gelukt/bron_weigert/al_afgesloten/niet_gevonden/geen_toegang; één bron-client per administratie; geen credential = leesbare
+  reden, geen 500), `POST /projecten/{aid}/{pid}/niet-afsluiten` (reden verplicht, upsert + snapshot + audit `project_afsluiten_uitgesteld`),
+  `GET/PUT /projecten/{aid}/afsluit-instelling` (1..36 mnd, audit `project_afsluit_stil_maanden_gewijzigd`).
+- **Meting Universal 19-09 (leesreplica):** 83 lopende actieve projecten → 8 kandidaten, alle op naam (25017 óók eindfactuur), 0 stil bij
+  6 mnd (25157 Harderwijk 173 dagen = net binnen), 0 looptijd (geen `looptijd_tot` gevuld); 11 projecten zonder activiteit; dubbele
+  nummers 26064 en 26149 gezien → `projecten-dubbele-nummers`. Peters "twee 'Afgesloten …'-projecten" zijn er in de cache acht (het
+  18-09-rapport zag alleen de twee mét geboekte verdelingen).
+- **Beslispunten (rapport):** (1) stil-venster Universal op 6 laten of naar 4 mnd (dan komen 25157 Harderwijk en 26064 Apeldoorn erbij op
+  stil); (2) de 8 morgen afvinken (Peter/Haci) — daarna valt de LET-OP "naam zegt afgesloten" uit blok `projecten` en de verdeelsleutel
+  klopt; (3) `looptijd_tot` vullen bij specificaties zodat de vierde reden gaat werken.
+- Tests `tests/projecten/test_afsluiten.py` (10: redenen puur incl. venstergrens + geen activiteit ≠ stil, eindfactuur/naam/looptijd,
+  motor op DB mét laatste activiteit/open posten/sortering, chip kantoorbreed, API lijst/filter/zoek + niet-afsluiten 422/onthouden/
+  nieuwe activiteit/audit oud→nieuw, rechten Boekhouding 403 + B+P 200 + accordeur 403, stil-venster PUT/GET/422/audit, bulk uitkomst
+  per rij + bron weigert + geen credential, bulk leeg 422 + Boekhouding 403, CLI), vitest `AfsluitKandidatenTab.test.tsx` (7) +
+  `magAfsluitenBedienen`; `test_kantoorbreed.py`/`test_status_en_nummer.py` aangepast (oude kandidaat-test verhuisd).
+
 ## VASTLY OP ODOO — ONTWERP TER AKKOORD (Peter 19-09) — verkoop, waarborg, bank/afletteren en webhooks voor een Vastly-administratie op Odoo; pilot = verhuurder, nooit VGG; geen bouw
 
 **Status: ONTWERP TER AKKOORD 19-09-2026** (vraag Peter 19-09 "voor Vastly kunnen wij ook een Odoo-boekhouding koppelen? Maakt dat veel uit?";
@@ -11696,3 +11733,49 @@ niets in het contract gewijzigd (v1.5-regel: akkoord beide projecten).
 (3) addendum v1.21 als OPEN_ITEM — gedaan als concept, akkoord Vastly nodig; (4) volgorde t.o.v. VGG (VGG SCHRIJF c eerst, STAP-0 bank parallel);
 (5) Vastly toont per klant de boekhouding-naam (label-map bestaat, vier plekken omzeilen die); (6) creditnota 381 op Odoo via reversal-wizard (advies)
 of losse `out_refund`.
+
+## KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING ZONDER HANDELING SWEEP (Peter 19-09) — parser-eenduidig = het systeem zet een inkoopfactuur direct om naar kassarapport (upload én dagelijkse run), terugweg "Tóch inkoopfactuur…" mét leren, dagteller; sweep over álle bevindingssoorten als agenda; geen migratie
+
+**Status: deel A GEBOUWD + GETEST 19-09 (opdracht "kassarapport-automatisch-type-wijzigen-en-reconciliatie-acties-automatiseren",
+Peter 19-09 op de screenshot Inzicht › Reconciliatie Van Boxtel Journaal 1-9/2-9/3-9: "dit zijn meldingen waar ik dus niks mee doe.
+Als de module weet dat het verkoopboekingen zijn, wijzig het dan automatisch. Mocht er een fout tussen zitten dan valt dat op
+tijdens het boeken en corrigeren we het dan weer, wordt het model steeds slimmer"); deel B = lees-only sweep (niets gebouwd);
+werkt in productie: niet gemeten (deploy ná deze run; meetrecept + nazorg-CLI in het rapport). Rapport
+`docs/rapporten/2026-09-19-kassarapport-autotype-en-signalering-sweep.md`. Geen migratie, geen RLZ-write. Canonieke regeltekst:
+`docs/regels/omzet.md` alinea "Kassarapport automatisch typeren" (herziet regel 3 van 16-09 avond) + `docs/regels/reconciliatie.md`
+alinea "Patroon vaststaande actie = het systeem doet het".**
+
+- **Wat er verandert:** `app/omzet/autotype.py` (één motor). Parser-treffer (`herken`: ProfX Journaal/Margerapport op de tekstlaag,
+  zonnestudio-dagstaat/-kascheck en pilates-export op het raster — dezelfde drempel als de bevinding van 16-09, géén AI) op een
+  INKOOPFACTUUR = het systeem zet de soort zelf: (1) bij `upload_document` (upload-zone, klantpagina, bulk, splitsing) vóór de
+  extractie — tijdlijnregel "type automatisch gewijzigd: inkoopfactuur → kassarapport (ProfX-journaal herkend)" + audit
+  `soort_automatisch_gewijzigd`; (2) in de échte dagelijkse reconciliatie (`autotype.verwerk_werkvoorraad` vóór de omzet-toets, via
+  `documenten/soort.py::wijzig_documentsoort(automatisch=…)` → ONTVANGEN + extractie opnieuw via het omzetpad; audit
+  `kassarapport_autotype_run` per administratie mét verwacht/gedaan/overgeslagen); (3) eenmalig via de nazorg-CLI
+  `kassarapport-autotype-nazorg [--administratie] [--dry-run]` (dry-run = 0 writes, idempotent). Het zachte signaal
+  'omzetrekeningen' (alle regels op een omzetrekening, géén parser) blijft de bevinding mét knop — dat is "niet eenduidig".
+- **Terugweg + leren:** chip "automatisch getypeerd" + `linkbtn` "Tóch inkoopfactuur…" op het omzet-controlescherm
+  (`TochInkoopfactuurModal`, reden ≥ 5 tekens) → `POST …/omzet/documenten/{id}/toch-inkoopfactuur`: bestaande soort-wissel terug +
+  observatie `typering_correctie` (audit) op administratie × bron × afzender; ná 2 correcties binnen 180 dagen meldt het systeem voor
+  die sleutel i.p.v. doen — bij upload (tijdlijn + audit `kassarapport_autotype_overgeslagen`), bij de intake-herkenning van 16-09
+  (`upload_document(soort_door_systeem=True)`: valt terug op inkoopfactuur; een mens-keuze wordt nooit overruled) en in de run
+  (overgeslagen `correcties`). Bevindingstekst zegt waaróm de mens aan zet is ("al eerder teruggezet", "status", "systeemfout");
+  lees-only labelt parser-treffers "automatisch bij de dagelijkse run". Dagteller `kassarapport_autotype` (`automatiseringen.py`).
+- **Bewust niet:** geen opt-in per administratie (Peter: "wijzig het automatisch"; terugweg + leren zijn de rem), geen AI, geen
+  wijziging aan `omzet_in_inkoopstroom` (geboekt = herboeken achter de aangiftepoort blijft mens-werk).
+- **Tests:** `tests/omzet/test_autotype.py` (12), gouden set `tests/keten/test_ad2_autotype_inkoopfactuur_wordt_kassarapport.py`
+  (ProfX-upload als inkoopfactuur → kassarapport zonder AI; tegenproef over álle inkoop-casussen: 0 parser-treffers),
+  `test_inkoopstroom_werkvoorraad.py`/`test_profx.py` aangepast (pre-19-09-stand gesimuleerd), vitest `OmzetReviewScreen.test.tsx`
+  (+2). Sweep-uitkomsten (deel B) en de nazorg-telling: zie het rapport en de alinea hieronder.
+- **Sweep signalering zonder handeling (deel B, lees-only leesreplica 19-09, per administratie onder RLS):** het scherm van Peter
+  klopt exact — aandacht 340 = 74 afwijkingen + 91 LET-OP + 174 fouten; in meting 492 = `ic_ontbreekt_bij_ontvanger` 205 (3 adm.) +
+  `dubbele_betaling_vermoed` 194 (18 adm.) + `rc_sluit_niet` 91 (38 adm.) + `project_nummer_dubbel` 2. **De 174 "fouten" zijn één
+  systeemfout:** `ic_spiegel_rood` "doorbelastingspaar niet sluitend Kempen Facilities → Veldhoven Recreatie 94 / Oirschot Recreatie
+  34 / Molenhof Verhuur 28 / Molenhof Beheer 11 / Mantelzorgwoningen MN 7: verkoopfactuur niet gevonden bij de bron-administratie"
+  sinds de eerste run van het intercompany-blok (18-09) — géén mens kan er iets mee → opdracht
+  `opdrachten/inbox/2026-09-19-ic-spiegel-rood-174-doorbelastingsparen-verkoop-niet-gevonden.md` (mét de automatiserings-LET-OP
+  `extractie_wachtrij` 180× vangnet_scheduler bij de BLOW-bulk-upload en de tellers-afwijking BLOW 151↔152). Per soort
+  "automatiseren / melding blijft / systeemfout" in de rapporttabel; uitkomst: **geen tweede kandidaat** voor het patroon — de
+  overige acties vragen een oordeel (accepteren mét reden, herboeken achter de aangiftepoort, IC-/RC-beoordeling). Van Boxtel: 4 van
+  de 5 `kassarapport_in_werkvoorraad` verdwijnen (profx_journaal), 1 blijft (omzetrekeningen); de 8 `omzet_in_inkoopstroom`
+  blijven mens-werk. Schermwinst zonder automatisering: `rc_zonder_tegenrekening` (84) bundelen tot één LET-OP per administratie.
