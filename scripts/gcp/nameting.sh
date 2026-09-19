@@ -6,6 +6,7 @@
 #   scripts/gcp/nameting.sh autoboek-leren-rapport --administratie <uuid>
 #   scripts/gcp/nameting.sh reconciliatie-alles --alleen intercompany --lees-only        # Peter 16-09: IC-factuurmatch (meetlat)
 #   scripts/gcp/nameting.sh reconciliatie-alles --alleen rekening_courant --lees-only   # Peter 16-09: RC-aansluiting (meetlat)
+#   scripts/gcp/nameting.sh reconciliatie-alles --alleen doorbelasting_aansluiting --lees-only   # 19-09: aansluitingsblok los (keuzelijst = run.BLOKKEN sinds 19-09)
 #   scripts/gcp/nameting.sh activa-nulmeting [--administratie <naamdeel>]                 # 16-09: STAP-0 activa, lees-only
 #   scripts/gcp/nameting.sh groep-saldi --groep "Kempen groep"                                    # 16-09: groepssaldi deb/cred (lees-only, live)
 #   scripts/gcp/nameting.sh rlz-lezen --administratie "Kempen Facilities" --pad AssetTypes --root   # 16-09: RLZ-brede enumeraties

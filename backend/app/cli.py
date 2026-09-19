@@ -2979,6 +2979,13 @@ def _seed_boekingsgeheugen(args: argparse.Namespace) -> int:
     return 0
 
 
+def _reconciliatie_run_blokken() -> tuple[str, ...]:
+    """`--alleen`-keuzelijst van `reconciliatie-alles` = `app.reconciliatie.run.BLOKKEN` (één bron; 19-09)."""
+    from app.reconciliatie import run as reconciliatie_run
+
+    return tuple(reconciliatie_run.BLOKKEN)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="RLZ Boekingsmodule beheer-CLI")
     subparsers = parser.add_subparsers(dest="commando", required=True)
@@ -3528,9 +3535,12 @@ def main(argv: list[str] | None = None) -> int:
         "--alleen",
         action="append",
         default=None,
-        choices=("bank", "documenten", "intercompany", "omzet", "doorbelasting", "rekening_courant", "rlz_dubbel", "projecten"),
-        help="Alleen dit blok (herhaalbaar). Vereist --lees-only: een deel-run mag nooit als 'laatste run' worden "
-        "vastgelegd (de kantoorbrede lijst en de delta-mail lezen die).",
+        # Nameting 19-09 (ic_spiegel_rood): de keuzelijst IS run.BLOKKEN — `doorbelasting_aansluiting` ontbrak, waardoor
+        # de meetlat "--alleen doorbelasting_aansluiting --lees-only" uit de regels op de job-image argparse-exit 2 gaf.
+        # Guard: tests/unit/test_reconciliatie_alleen_keuzelijst.py.
+        choices=_reconciliatie_run_blokken(),
+        help="Alleen dit blok (herhaalbaar; één van run.BLOKKEN). Vereist --lees-only: een deel-run mag nooit als "
+        "'laatste run' worden vastgelegd (de kantoorbrede lijst en de delta-mail lezen die).",
     )
     alles_parser.add_argument(
         "--administratie",
