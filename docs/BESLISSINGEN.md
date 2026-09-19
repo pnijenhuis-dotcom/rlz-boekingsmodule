@@ -11814,3 +11814,37 @@ alinea "Patroon vaststaande actie = het systeem doet het".**
   procesfix-opdracht (Stop-hook merge-bij-bot-only, `rlz inbox status` toont divergentie) in de inbox. Rapport
   `docs/rapporten/2026-09-19-nameting-kassarapport-autotype-poging-1-deploy-geblokkeerd.md`; regeltekst `docs/regels/werkloop-productie.md`
   alinea "Stop-hook-push non-fast-forward = stille deploy-blokkade (19-09)". Werkt in productie: niet gemeten.
+
+## CC-INBOX — LOCK PER OPDRACHT, POORT VÓÓR EINDE, PUSH-RETRY (19-09) — procesles inbox-run 19-09 12:46: atomische claim per opdracht + één runner per repo, ongecommit werk ná een run = WIP-branch (nooit gedaan/), exit 0 zonder resultaat = herstart, Stop-hook merge --no-ff + retry i.p.v. "push handmatig"; geen migratie
+
+**Status: GEBOUWD + GETEST 19-09 (opdracht "cc-inbox-lock-per-opdracht-en-wachten-op-suite"); werkt in productie: n.v.t. (lokale
+werkloop op de Mac; de eerste echte inbox-run ná deze commit is de nameting — meetrecept in het rapport). Rapport
+`docs/rapporten/2026-09-19-cc-inbox-lock-per-opdracht-en-poort.md`. Canonieke regeltekst: `docs/regels/werkloop-productie.md` alinea
+"CC-inbox rij (j)". Geen migratie, geen RLZ-write.**
+
+- **Feiten (rapport `2026-09-19-inbox-afgewerkt.md` + Stop-hook-melding 12:46 + incident 16:12 tijdens deze run):** (1) twee inbox-runs
+  pakten tegelijk `2026-09-19-ontwerp-vastly-odoo-toetsen-en-pilotmeting.md`; (2) twee runs eindigden vóór hun suite → werk ongecommit
+  in de werkboom, later door een andere run "door de poort gehaald"; (3) Stop-hook-push `! [rejected] main -> main (fetch first)` →
+  alleen "push handmatig", drie uur geen deploy; (4) nieuw 16:12: run "nameting-projecten-afsluiten-tab" eindigde met "ik wacht op de
+  melding" (code 0), het script zette 'm mét "rapport: geen" in gedaan/ — vals "af".
+- **Gebouwd (scripts/cc_inbox.sh rij (j), scripts/zsh/rlz.zsh, scripts/git-hooks/stop-push.sh — NIEUW, tracked):** (j1) claim =
+  atomische `mv inbox/X lopend/X` + `opdrachten/log/<slug>.claim` (pid/starttijd), verliezer logt en gaat door; dode claim < 30 min
+  "onzeker", ≥ 30 min "gestrand" → herstelpad (e) mét melding; (j2) `opdrachten/.lock` blijft dé runner-lock (opdracht noemde
+  `.runner.lock`/flock — macOS heeft geen flock, bestaande lock = het ene mechanisme), nu atomisch (noclobber; dode lock via `mv`
+  weggedraaid), tweede tick/`rlz cc` stopt zichtbaar; (j3) ongecommit werk ná claude → WIP-commit op `wip/<slug>` via plumbing mét
+  eigen index (main onaangeraakt, geen index.lock nodig, nooit stash), werkboom schoon, marker `.wip`, opdracht blijft in lopend/,
+  volgende poging krijgt "begin met `git merge --squash wip/<slug>` … eindig NOOIT terwijl een suite nog loopt" in de prompt;
+  gedaan-zonder-commit → terug naar lopend/; exit 0 zonder rapport/commit/afmelding = GEEN RESULTAAT → herstart; ongecommit werk bij
+  de START = melding + stop (was: LET-OP + starten); (j4) Stop-hook → `stop-push.sh`: fetch + `merge --no-ff` + één retry; conflict/
+  vuil/netwerk = luide blokkade (stderr mét commando's, melding, `push.log`, `opdrachten/.push-geblokkeerd`) → `rlz inbox status`
+  "PUSH GEBLOKKEERD" + "origin gedivergeerd (N lokaal / M remote)" + wip-branches; inbox-tick meldt divergentie hoogstens elk uur.
+- **Keuzes zonder Peter (vastgelegd):** (a) MERGE i.p.v. het gevraagde `pull --rebase` — de regel van 19-09 ochtend ("nooit rebase, hashes
+  staan in rapporten/BESLISSINGEN") weegt zwaarder; het doel (automatische retry, nooit stil) is gehaald; (b) lock-naam `.lock`
+  gehouden i.p.v. `.runner.lock` (één mechanisme, bestaande tests/docs/`rlz cc`); (c) de wip/-branch blijft ná een geslaagde poging
+  staan (zichtbaar in status) — verwijderen doet een mens; (d) "geen resultaat"-toets toegevoegd (niet letterlijk gevraagd, wel de
+  incident-oorzaak van 16:12); (e) de opdracht "stop-hook-push-non-fast-forward-stille-deploy-blokkade" (inbox) overlapt: punten 1, 2
+  en 4 zijn hier gebouwd (zonder bot-only-filter: élke conflictvrije divergentie wordt gemerged, een conflict blokkeert luid), punt 3
+  (nameting-workflow bot-commit uitstellen) blijft een beslissing voor die opdracht — kopregel-notitie in dat inbox-bestand.
+- **Guards:** `test_cc_inbox_claim_en_poort.py` (16), `test_stop_hook_push.py` (7); bestaande `test_cc_inbox_parallel/_herstel/_pull.py`
+  aangepast (64 inbox-guards groen). Nameting rij 5 (twee `rlz cc`-starts → één loopt, één stopt mét melding) = test
+  `test_twee_rlz_cc_starts_tegelijk_een_loopt_een_stopt_met_melding` tegen de échte zsh-functie.

@@ -1,3 +1,9 @@
+> **NB 19-09 (run "cc-inbox-lock-per-opdracht-en-wachten-op-suite", rapport `docs/rapporten/2026-09-19-cc-inbox-lock-per-opdracht-en-poort.md`):**
+> punten 1, 2 en 4 zijn dáár gebouwd — Stop-hook via `scripts/git-hooks/stop-push.sh` (fetch + merge --no-ff + retry, blokkade luid,
+> `opdrachten/.push-geblokkeerd`), inbox-tick meldt divergentie, `rlz inbox status` toont "origin gedivergeerd (N lokaal / M remote)",
+> guards `test_stop_hook_push.py` (echte bare origin + bot-kloon vóór/ná). Bewust ZONDER bot-only-filter (élke conflictvrije divergentie
+> merget, een conflict blokkeert luid) en zonder rebase. Toets eerst wat ontbreekt; bouw alleen punt 3 (nameting-workflow) als beslissing.
+
 Domeinen: werkloop-productie
 
 # OPDRACHT 19-09 — Procesfix: Stop-hook-push non-fast-forward = stille deploy-blokkade (bevinding poging 1 nameting kassarapport-autotype,

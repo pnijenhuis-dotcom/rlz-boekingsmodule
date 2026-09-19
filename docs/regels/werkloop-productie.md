@@ -85,3 +85,58 @@
   en pas daarna de deploy-check; (2) een deploy-check die "niet gedeployd" zegt terwijl de commit ouder is dan ~30 min is een signaal om de
   push-stand te lezen, niet om te wachten; (3) procesfix (vervolg-opdracht 19-09, niet gebouwd): Stop-hook merge-bij-bot-only + luide melding
   óók in `claude -p`, `rlz inbox status` toont "origin gedivergeerd (N lokaal / M remote)".
+
+<!-- toegevoegd 19-09-2026, opdracht "cc-inbox-lock-per-opdracht-en-wachten-op-suite" -->
+- **CC-inbox rij (j) — lock per opdracht, één runner per repo, poort vóór einde, push-retry (19-09; BESLISSINGEN "CC-INBOX — LOCK PER
+  OPDRACHT, POORT VÓÓR EINDE, PUSH-RETRY (19-09)"; procesles inbox-run 19-09 12:46: twee runs op één opdracht, twee runs die vóór hun
+  suite eindigden, een stil geweigerde Stop-hook-push):**
+  1. **Lock per opdracht, atomisch.** Oppakken = `mv inbox/X lopend/X` (rename(2), slaagt voor precies één proces); de verliezer logt
+     "claim verloren — X is intussen door een andere run opgepakt" en neemt de volgende kandidaat. Geen tweede mechanisme. Per claim
+     staat `opdrachten/log/<slug>.claim` = pid / starttijd; `rlz inbox status` toont per lopend-bestand "loopt (claim pid N, sinds T)".
+     Claim mét dode pid < `CC_INBOX_GESTRAND_S` (default 1800 s = 30 min) = "onzeker — nog geen herstel"; ≥ 30 min = "gestrand" →
+     bestaand herstelpad (e) mét logregel + melding "CC HERSTART" — nooit stil herstarten. Een lopend-bestand ZONDER claim = de run
+     sloot zelf af zonder afronding → herstelpad direct. Rij (i) (gedaan-kopie = af) blijft voorgaan.
+  2. **Eén inbox-runner tegelijk per repo.** `opdrachten/.lock` is dé gedeelde runner-lock van de launchd-agent én `rlz cc` (de opdracht
+     noemde `.runner.lock`/flock — macOS heeft geen flock en de bestaande lock IS al het ene mechanisme; keuze: bestaande naam houden,
+     nu ATOMISCH nemen via O_EXCL/noclobber, een dode lock atomisch wegdraaien met `mv` zodat maar één proces 'm opruimt). Een tweede
+     starter stopt zichtbaar: tick → "runner-lock net gepakt door pid N" of "wacht — inbox-run actief (pid N, sinds T, M min)" (vóór
+     19-09 stil); `rlz cc` → "inbox-run actief sinds …, wacht of `rlz inbox stop`" / "runner-lock net gepakt door een andere start".
+     Parallelle agenten BINNEN één run mogen, parallelle runs niet.
+  3. **Een run eindigt pas ná zijn poort.** Ná `claude -p` toetst het script de werkboom (tracked wijzigingen + untracked buiten
+     `opdrachten/`, `.scratch/`, `.claude/`). Niet schoon = de poort (pytest + vitest + tsc + gouden set → commit) is niet gehaald,
+     ongeacht de exitcode: het werk gaat als WIP-commit op branch `wip/<slug>` (plumbing mét eigen tijdelijke index: `read-tree`/
+     `add`/`write-tree`/`commit-tree`/`update-ref` — main en HEAD onaangeraakt, geen `.git/index.lock` nodig, nooit stash), de
+     werkboom wordt schoon (`reset --hard HEAD` — alleen werk dat zojuist veilig op de branch staat), `opdrachten/log/<slug>.wip` =
+     branch/commit, logregel "poort niet gehaald — WIP op branch wip/<slug>" + melding "CC POORT NIET GEHAALD", de opdracht blijft in
+     `lopend/` → herstelpad (e), volgende poging; de startprompt van die poging zegt: begin met `git merge --squash wip/<slug>`, commit
+     pas ná de poort, "eindig NOOIT terwijl een suite of achtergrondtaak nog loopt". Zette claude het bestand zelf al in `gedaan/`
+     (untracked) mét ongecommit werk, dan gaat het terug naar `lopend/` zonder kopregel — "af" zonder commit bestaat niet. De
+     wip/-branch blijft ná een geslaagde volgende poging ter controle staan (status toont 'm; opruimen `git branch -D`). **Exit 0
+     zonder resultaat** (geen nieuw rapport, geen nieuwe commit, niet zelf naar `gedaan/`) = "GEEN RESULTAAT" → `lopend/` (herstel),
+     nooit `gedaan/` — incident 19-09 16:12: de run "nameting-projecten-afsluiten-tab" eindigde met "ik wacht op de melding" (code 0)
+     en het script zette 'm mét "rapport: geen" in `gedaan/`; die opdracht is in deze run teruggezet in `inbox/`. **Ongecommit werk
+     in de werkboom bij de START = melding + stop** (vóór 19-09 alleen een LET-OP-regel (g3) en toch starten): logregel "STOP —
+     werkboom niet schoon bij start (N bestand(en): …)", macOS-melding hoogstens elk uur, geen herstel/pull/start tot een mens het
+     commit of wegzet. Voor de (stub-)tests betekent dit: een afgeronde run schrijft een rapport én commit.
+  4. **Push-conflict = merge + retry, nooit alleen "push handmatig".** De Stop-hook (`.claude/settings.local.json`, lokaal, niet in
+     git) roept nu voor beide repo's het TRACKED script `scripts/git-hooks/stop-push.sh <repo> <label>` aan: niets te pushen = stil;
+     push ok = regel in `opdrachten/log/push.log`; geweigerd → `git fetch origin main` → is origin vooruit én de werkboom schoon
+     (tracked), dan ÉÉN `git merge --no-ff --no-edit origin/main` (commitbericht noemt de binnengekomen commits) + ÉÉN retry-push, mét
+     regel op stderr "origin was gedivergeerd (N lokaal / M remote) → merge --no-ff + push geslaagd". **Afwijking van de opdrachttekst
+     ("pull --rebase"): bewust merge, geen rebase** — de regel van 19-09 ochtend hierboven zegt nooit rebase omdat de lokale hashes in
+     het zojuist geschreven rapport/BESLISSINGEN staan; een rebase zou die herschrijven. Blijft het falen (merge-conflict → `merge
+     --abort`, werkboom als vóór; vuile werkboom; geen divergentie = rechten/netwerk) → LUIDE blokkade: stderr mét de exacte
+     commando's ("Doe zelf (nooit force, nooit rebase): cd … && git merge --no-ff origin/main …"), macOS-melding, `push.log`-regel én
+     `opdrachten/.push-geblokkeerd` (tijd / oorzaak / herstel) → `rlz inbox status` toont "PUSH GEBLOKKEERD (…)" + "herstel: …"; een
+     latere geslaagde push ruimt het bestand op. `rlz inbox status` toont ook altijd "origin gedivergeerd (N lokaal / M remote) —
+     deploy staat stil …" zolang `main..origin/main` > 0 (stand van de laatste fetch) en de wip/-branches. De inbox-tick geeft bij
+     "pull overgeslagen — ff-only mislukt" nu óók de tellers + een melding (hoogstens elk uur). Force blijft verboden (deny-lijst +
+     guard op het script: geen rebase-/force-/stash-commando).
+  5. **Guards:** `tests/unit/test_cc_inbox_claim_en_poort.py` (claim: twee processen, één wint; claim-bestand; onzeker/gestrand; twee
+     ticks tegelijk; atomische runner-lock; twee `rlz cc`-starts → één loopt, één stopt mét melding = de nameting van de opdracht;
+     WIP-branch + prompt van de volgende poging; gedaan-zonder-commit terug naar lopend; geen resultaat; vuile start = stop) en
+     `tests/unit/test_stop_hook_push.py` (echte git: bare origin + bot-kloon; merge+retry, conflict-blokkade mét statusregel en
+     opruiming ná herstel, vuile werkboom merget niet, geen rebase/force/stash-commando, lokale settings.local.json roept het script
+     aan voor beide repo's — skip als het bestand ontbreekt). Bestaande guards aangepast: levende inbox-lock is niet meer stil
+     (`test_cc_inbox_parallel.py`, `_pull.py`, `_herstel.py`), vuile werkboom bij start = stop i.p.v. LET-OP, stubs committen een
+     rapport, `index.lock`-scenario eindigt in WIP + LET-OP. Rapport `docs/rapporten/2026-09-19-cc-inbox-lock-per-opdracht-en-poort.md`.
