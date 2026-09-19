@@ -253,6 +253,11 @@ OMZETBRON_HERKENNING = "omzetbron_herkenning"
 #: Blok C 16-09 avond: dagelijkse toets "kassarapport in de inkoopstroom" (geboekt = herboeken als omzet, ongeboekt =
 #: type wijzigen) — bron audit `kassarapport_inkoopstroom_run` (één rij per administratie per run mét tellers).
 KASSARAPPORT_INKOOPSTROOM = "kassarapport_inkoopstroom"
+#: Peter 19-09: kassarapport AUTOMATISCH typeren (parser-treffer op een inkoopfactuur = direct kassarapport, bij intake
+#: én in de dagelijkse run) — bron audit `soort_automatisch_gewijzigd` (gedaan per document, intake/upload),
+#: `kassarapport_autotype_overgeslagen` (per document mét reden: correcties/status/fout) en `kassarapport_autotype_run`
+#: (per administratie per run: verwacht/gedaan/overgeslagen). `app/omzet/autotype.py`.
+KASSARAPPORT_AUTOTYPE = "kassarapport_autotype"
 #: Blok 1 doorbelasting-herkoppeling (Peter 12-09/16-09): dagelijks (sync-alles) + ná onboarding — bron audit
 #: `doorbelasting_herkoppeling_run` (per bron-administratie: open/gekoppeld/bijna_match/meerdere/geen).
 DOORBELASTING_HERKOPPELING = "doorbelasting_herkoppeling"
@@ -289,6 +294,7 @@ VOLGORDE: tuple[str, ...] = (
     MINI_VOORRAAD,
     EXTRACTIE_WACHTRIJ,
     OMZETBRON_HERKENNING,
+    KASSARAPPORT_AUTOTYPE,
     KASSARAPPORT_INKOOPSTROOM,
     DOORBELASTING_HERKOPPELING,
     UREN_HERINNERING,
@@ -300,6 +306,7 @@ LABEL: dict[str, str] = {
     CHECKS_VOORVERWARMEN: "Externe checks voorverwarmen (volgend document)",
     OMZETBRON_HERKENNING: "Omzetbron-herkenning op inhoud (kassarapporten vóór de AI, store → administratie)",
     KASSARAPPORT_INKOOPSTROOM: "Kassarapporten in de inkoopstroom (dagelijkse toets)",
+    KASSARAPPORT_AUTOTYPE: "Kassarapport automatisch getypeerd (inkoopfactuur → kassarapport op parser-treffer)",
     DOORBELASTING_HERKOPPELING: "Doorbelasting — herkoppeling doelentiteiten (whitelist zonder doel)",
     UREN_HERINNERING: "Uren-herinnering einde werkdag (veld-app)",
     EXTRACTIE_WACHTRIJ: "Extractie-wachtrij (job-trigger)",
@@ -384,6 +391,10 @@ _ACTIES: tuple[str, ...] = (
     "omzetbron_herkend",
     "omzetbron_store_onbekend",
     "kassarapport_inkoopstroom_run",
+    # Peter 19-09: kassarapport automatisch typeren
+    "soort_automatisch_gewijzigd",
+    "kassarapport_autotype_overgeslagen",
+    "kassarapport_autotype_run",
     # blok 1 doorbelasting-herkoppeling (16-09 nacht)
     "doorbelasting_herkoppeling_run",
     # run B 18-09: dag-einde herinnering veld-app (één rij per job-run, administratie-loos)
@@ -821,6 +832,12 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "dagelijkse reconciliatie, alle administraties (lokaal, geen RLZ-call)",
         "audit kassarapport_inkoopstroom_run",
     )
+    kassa_autotype = maak(
+        KASSARAPPORT_AUTOTYPE,
+        "altijd",
+        "bij intake/upload én in de dagelijkse reconciliatie; parser-treffer = doen, ≥ 2 correcties/afzender = melden",
+        "audit soort_automatisch_gewijzigd / kassarapport_autotype_overgeslagen / kassarapport_autotype_run",
+    )
     uren_herinnering = maak(
         UREN_HERINNERING,
         "altijd",
@@ -871,6 +888,26 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         elif f.actie == "kassarapport_inkoopstroom_run":
             for v in vensters(kassa_inkoop, f.tijdstip):
                 v.tel_gedaan(int(nw.get("geboekt") or 0) + int(nw.get("ongeboekt") or 0))
+        elif f.actie == "soort_automatisch_gewijzigd":
+            # Per document (intake/upload/splitsing); de werkvoorraad-motor telt via de run-rij hieronder.
+            if nw.get("ingang") != "werkvoorraad":
+                for v in vensters(kassa_autotype, f.tijdstip):
+                    v.tel_gedaan()
+        elif f.actie == "kassarapport_autotype_overgeslagen":
+            if nw.get("ingang") != "werkvoorraad":
+                tel_over(
+                    kassa_autotype,
+                    f.tijdstip,
+                    f"autotype_{nw.get('reden') or 'onbekend'}",
+                    f.administratie_id,
+                    str(nw.get("bestandsnaam") or ""),
+                    hard_registreren=False,
+                )
+        elif f.actie == "kassarapport_autotype_run":
+            for v in vensters(kassa_autotype, f.tijdstip):
+                v.tel_gedaan(int(nw.get("gedaan") or 0))
+                for reden, n in (nw.get("overgeslagen") or {}).items():
+                    v.tel_overgeslagen(f"autotype_{reden}", int(n or 0))
         elif f.actie == "boek_wachtrij_ingediend":
             if f.tijdstip >= dag_vanaf:
                 boek_wachtrij.detail = boek_wachtrij.detail or {"ingediend_24u": 0}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson } from '../api/client'
 import type {
   CheckRapportDto,
@@ -22,6 +22,7 @@ import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
 import { haalOmzetVoorstelOp, slaOmzetVoorstelOp, voerOmzetChecksUit, zetVerkoopCategorie } from './omzetApi'
 import { BronBlok, bronNaam } from './BronBlok'
+import { TochInkoopfactuurModal } from './TochInkoopfactuurModal'
 import { SkeletonPaneel } from '../ui/basis'
 import { metViewerOpties } from '../document/pdfWeergaveUrl'
 
@@ -128,6 +129,9 @@ export function OmzetReviewScreen() {
   const [wijzigingsVersie, setWijzigingsVersie] = useState(0)
   const wijzigingsVersieRef = useRef(0)
   const [popupChecks, setPopupChecks] = useState<{ melding: string | null; checks: CheckRapportDto } | null>(null)
+  // Peter 19-09: terugweg voor een automatisch getypeerd kassarapport ("Tóch inkoopfactuur…", verplichte reden).
+  const [tochInkoopOpen, setTochInkoopOpen] = useState(false)
+  const navigate = useNavigate()
   // Blok E (Peter 16-09): kopje "Omzet netto/bruto" klikbaar — voorkeur per gebruiker, geen tegenwaarde onder de cel.
   const [bedragModus, wisselBedragModus] = useBedragModus()
 
@@ -402,6 +406,22 @@ export function OmzetReviewScreen() {
             <span className="chip geheugen" title="Profiel Winkel / kassa: afgeleid uit een herkend kassarapport">
               Winkel / kassa
             </span>
+          )}
+          {voorstel.automatisch_getypeerd && (
+            <>
+              <span
+                className="chip geheugen"
+                data-testid="chip-automatisch-getypeerd"
+                title={`Kwam binnen als inkoopfactuur; op inhoud herkend als ${bronNaam(voorstel.automatisch_getypeerd_bron ?? '')} en automatisch als kassarapport getypeerd (geen AI). Klopt dat niet: "Tóch inkoopfactuur…".`}
+              >
+                automatisch getypeerd
+              </span>
+              {isBoekbaar && (
+                <button type="button" className="linkbtn" onClick={() => setTochInkoopOpen(true)}>
+                  Tóch inkoopfactuur…
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1035,6 +1055,19 @@ export function OmzetReviewScreen() {
           melding={popupChecks.melding}
           checks={popupChecks.checks}
           onSluiten={() => setPopupChecks(null)}
+        />
+      )}
+      {tochInkoopOpen && administratieId && documentId && (
+        <TochInkoopfactuurModal
+          administratieId={administratieId}
+          documentId={documentId}
+          bronLabel={bronNaam(voorstel.automatisch_getypeerd_bron ?? '')}
+          onAnnuleren={() => setTochInkoopOpen(false)}
+          onTerug={(uitkomst) => {
+            setTochInkoopOpen(false)
+            // Het document is nu een inkoopfactuur (opnieuw ontvangen): door naar het inkoop-controlescherm.
+            navigate(uitkomst.doel_pad)
+          }}
         />
       )}
     </div>

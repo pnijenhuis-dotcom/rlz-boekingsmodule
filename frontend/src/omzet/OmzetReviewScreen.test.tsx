@@ -499,3 +499,61 @@ describe('OmzetReviewScreen — "Boekt in Reeleezee als" (Peter 16-09, casus Van
     expect(screen.getByTestId('omzet-categorie')).toHaveTextContent('verschijnt in RLZ onder Uitgaven')
   })
 })
+
+describe('OmzetReviewScreen — automatisch getypeerd + "Tóch inkoopfactuur…" (Peter 19-09)', () => {
+  it('toont de chip, vraagt een reden en navigeert ná terugzetten naar het doel_pad', async () => {
+    installFetchMock({
+      voorstelBody: voorstel({ bron: 'profx_journaal', automatisch_getypeerd: true, automatisch_getypeerd_bron: 'profx_journaal' }),
+    })
+    const basis = globalThis.fetch
+    const tochAanroepen: { url: string; body: unknown }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith('/toch-inkoopfactuur') && init?.method === 'POST') {
+          tochAanroepen.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
+          return Promise.resolve(
+            jsonResponse({
+              document_id: DOCUMENT_ID,
+              status: 'ontvangen',
+              correcties: 1,
+              bron: 'profx_journaal',
+              valt_terug_op_melden: false,
+              doel_pad: `/?administratie=${ADMINISTRATIE_ID}&document=${DOCUMENT_ID}`,
+            }),
+          )
+        }
+        return basis(url, init)
+      }),
+    )
+    render(
+      <MemoryRouter initialEntries={[`/omzet/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`]}>
+        <Routes>
+          <Route path="/omzet/:administratieId/:documentId" element={<OmzetReviewScreen />} />
+          <Route path="/" element={<div>WERKVOORRAAD-DOEL</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByTestId('chip-automatisch-getypeerd')).toHaveTextContent('automatisch getypeerd')
+    await userEvent.click(screen.getByRole('button', { name: 'Tóch inkoopfactuur…' }))
+    const dialoog = await screen.findByRole('dialog')
+    expect(dialoog).toHaveTextContent('ProfX Journaal')
+    const knop = screen.getByRole('button', { name: 'Terug naar inkoopfactuur' })
+    expect(knop).toBeDisabled()
+    await userEvent.type(screen.getByLabelText('Reden (verplicht)'), 'Factuur van de kassaleverancier')
+    expect(knop).toBeEnabled()
+    await userEvent.click(knop)
+    await waitFor(() => expect(tochAanroepen).toHaveLength(1))
+    expect(tochAanroepen[0].body).toEqual({ reden: 'Factuur van de kassaleverancier' })
+    expect(tochAanroepen[0].url).toContain(`/administraties/${ADMINISTRATIE_ID}/omzet/documenten/${DOCUMENT_ID}/toch-inkoopfactuur`)
+    expect(await screen.findByText('WERKVOORRAAD-DOEL')).toBeInTheDocument()
+  })
+
+  it('zonder automatische typering: geen chip en geen knop', async () => {
+    installFetchMock()
+    renderScherm()
+    expect(await screen.findByText(/omzetboeking · kassarapport/)).toBeInTheDocument()
+    expect(screen.queryByTestId('chip-automatisch-getypeerd')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tóch inkoopfactuur…' })).not.toBeInTheDocument()
+  })
+})

@@ -18,6 +18,7 @@ from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.documenten.models import Document, DocumentSoort, DocumentStatus
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, start_extractie_na_toewijzing
+from app.documenten.storage import DocumentOpslag
 from app.documenten.verplaatsen import VERPLAATSBARE_STATUSSEN, reden_niet_verplaatsbaar
 
 #: Alleen deze soorten kiest een mens (type wijzigen ↔): inkoopfactuur, kassarapport (omzet), verplichting (offerte).
@@ -38,8 +39,20 @@ class SoortWisselResultaat:
 
 
 def wijzig_documentsoort(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID, soort: DocumentSoort, actor_id: uuid.UUID
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    soort: DocumentSoort,
+    actor_id: uuid.UUID,
+    opslag: DocumentOpslag | None = None,
+    reden: str | None = None,
+    automatisch=None,  # noqa: ANN001 — app.omzet.autotype.Besluit (lokaal getypeerd: houdt de importgraaf klein)
+    ingang: str = "werkvoorraad",
 ) -> SoortWisselResultaat:
+    """`reden` = mens-tekst bij de wissel (tijdlijn; "Tóch inkoopfactuur" 19-09). `automatisch` = een
+    `autotype.Besluit` (parser-treffer): dan heet de tijdlijnregel "type automatisch gewijzigd: … (ProfX-journaal
+    herkend)", draagt de detail-sleutel `soort_automatisch_gewijzigd` (chip "automatisch getypeerd") en is de
+    audit-actie `soort_automatisch_gewijzigd` i.p.v. `documentsoort_gewijzigd` (dagteller `kassarapport_autotype`)."""
     if soort not in WISSELBARE_SOORTEN:
         raise SoortWisselNietToegestaan(
             f"Documentsoort {soort.value} is niet kiesbaar — kies inkoopfactuur, kassarapport of verplichting."
@@ -56,29 +69,49 @@ def wijzig_documentsoort(
             raise SoortWisselNietToegestaan(f"Type wijzigen kan niet vanuit deze stand — {uitleg}")
         van = document.soort
         document.soort = soort.value
-        _schrijf_overgang(
-            session,
-            document=document,
-            naar=DocumentStatus.ONTVANGEN,
-            actor_id=actor_id,
-            detail={
+        if automatisch is not None and soort == DocumentSoort.KASSARAPPORT:
+            from app.omzet import autotype
+
+            detail = {
+                **autotype.tijdlijn_detail(automatisch, van=van),
+                "documentsoort_gewijzigd": f"{van} -> {soort.value}",
+            }
+        else:
+            detail = {
                 "reden": (
                     f"documentsoort gewijzigd: {van} -> {soort.value} — extractie opnieuw via het {soort.value}-pad"
+                    + (f" — reden: {reden.strip()}" if reden and reden.strip() else "")
                 ),
                 "documentsoort_gewijzigd": f"{van} -> {soort.value}",
-            },
-        )
-        record_audit_event(
-            session,
-            actor_id=actor_id,
-            module="boekhouding",
-            tabel="document",
-            record_id=document_id,
-            actie="documentsoort_gewijzigd",
-            correlatie_id=uuid.uuid4(),
-            oude_waarde={"soort": van},
-            nieuwe_waarde={"soort": soort.value},
-            administratie_id=administratie_id,
-        )
-    eind = start_extractie_na_toewijzing(administratie_id=administratie_id, document_id=document_id, actor_id=actor_id)
+                **({"documentsoort_reden": reden.strip()} if reden and reden.strip() else {}),
+            }
+        _schrijf_overgang(session, document=document, naar=DocumentStatus.ONTVANGEN, actor_id=actor_id, detail=detail)
+        if automatisch is not None and soort == DocumentSoort.KASSARAPPORT:
+            autotype.audit_gewijzigd(
+                session,
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=actor_id,
+                besluit=automatisch,
+                bestandsnaam=document.bestandsnaam,
+                afzender=document.afzender_hint,
+                ingang=ingang,
+                van=van,
+            )
+        else:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="boekhouding",
+                tabel="document",
+                record_id=document_id,
+                actie="documentsoort_gewijzigd",
+                correlatie_id=uuid.uuid4(),
+                oude_waarde={"soort": van},
+                nieuwe_waarde={"soort": soort.value, **({"reden": reden.strip()} if reden and reden.strip() else {})},
+                administratie_id=administratie_id,
+            )
+    eind = start_extractie_na_toewijzing(
+        administratie_id=administratie_id, document_id=document_id, actor_id=actor_id, opslag=opslag
+    )
     return SoortWisselResultaat(document_id, eind, van, soort.value)

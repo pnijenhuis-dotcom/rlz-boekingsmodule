@@ -155,6 +155,7 @@ def _wijs_toe_of_verzamelbak(
             opslag=opslag,
             bron=kanaal,
             soort=soort,
+            soort_door_systeem=True,  # intake bepaalt de soort (herkenning op inhoud/AI) — nooit een mens-keuze
             intake_bericht_id=intake_bericht_id,
             afzender_hint=afzender,
             tenaamstelling=tenaamstelling,
@@ -1011,6 +1012,7 @@ def _verwerk_spreadsheet(
             opslag=opslag,
             bron=kanaal,
             soort=DocumentSoort.KASSARAPPORT,
+            soort_door_systeem=True,
             intake_bericht_id=intake_bericht_id,
             afzender_hint=afzender,
             tenaamstelling=store,

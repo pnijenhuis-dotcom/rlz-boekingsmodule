@@ -548,16 +548,33 @@ def _omzet(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
         )
         bestand = m.group("bestand") if m else "het document"
         signaal = m.group("signaal") if m else ""
+        auto = re.search(r"automatisch (?P<auto>[^,)]+)", d.get("detail") or tekst)
+        auto_tekst = auto.group("auto").strip() if auto else ""
         if signaal == "omzetrekeningen":
             signaal_tekst = "alle boekingsregels staan op omzetrekeningen"
         elif signaal:
             signaal_tekst = f"de inhoud is een herkend kassarapport ({signaal.replace('_', ' ')})"
         else:
             signaal_tekst = "de inhoud is een kassarapport"
+        # Peter 19-09: een parser-treffer zet het systeem zelf om; deze melding bestaat alleen nog voor het zachte
+        # signaal (omzetrekeningen) en voor bewust overgeslagen treffers — zeg waaróm de mens nu aan zet is.
+        if auto_tekst.startswith("overgeslagen: correcties"):
+            waarom = (
+                " Dit type is voor deze afzender al eerder teruggezet naar inkoopfactuur, daarom zet de module het "
+                "niet meer automatisch om."
+            )
+        elif auto_tekst.startswith("overgeslagen: status"):
+            waarom = " De huidige status van het document liet automatisch omzetten niet toe."
+        elif auto_tekst.startswith("overgeslagen"):
+            waarom = " Automatisch omzetten is niet gelukt (systeemfout — automatisch gemeld)."
+        elif auto_tekst.startswith("bij de dagelijkse run"):
+            waarom = " De dagelijkse run zet dit document automatisch om; deze regel is een lees-only meting."
+        else:
+            waarom = ""
         return (
             _titel("Kassarapport in de werkvoorraad", [bestand], " · "),
             f"{bestand} is als inkoopfactuur binnengekomen, maar {signaal_tekst}. Zo geboekt zou het in Reeleezee "
-            "onder Uitgaven landen in plaats van Inkomsten.",
+            "onder Uitgaven landen in plaats van Inkomsten." + waarom,
             'Klik "Type wijzigen → kassarapport": het document gaat opnieuw door de omzet-verwerking en verschijnt '
             "in het omzet-controlescherm. Is het tóch een inkoopfactuur, accepteer dan met reden.",
         )

@@ -328,6 +328,11 @@ class TestInkoopstroomRapport:
             soort=DocumentSoort.INKOOPFACTUUR,
         ).document_id
         with admin_engine.begin() as conn:
+            # Peter 19-09: de upload typeert een parser-treffer direct als kassarapport — dit rapport gaat over documenten
+            # van vóór die regel; zet de soort terug zoals ze toen stonden.
+            conn.execute(
+                text("UPDATE boekhouding.document SET soort = 'inkoopfactuur' WHERE id IN (:a, :b)"), {"a": fout, "b": geboekt}
+            )
             conn.execute(text("UPDATE boekhouding.document SET status = 'geboekt' WHERE id = :id"), {"id": geboekt})
         rapporten = inkoopstroom_rapport.rapport(dagen=30, administratie_ids=[administratie_id], opslag=opslag)
         assert len(rapporten) == 1

@@ -83,6 +83,8 @@ def _naar_voorstel_response(
         entiteit_naam=data.entiteit_naam,
         bron=data.bron,
         bron_detail=data.bron_detail,
+        automatisch_getypeerd=data.automatisch_getypeerd_bron is not None,
+        automatisch_getypeerd_bron=data.automatisch_getypeerd_bron,
         **extra,
     )
 
@@ -378,6 +380,41 @@ def omzet_boeken(
         verkoop_boekstuknummer=resultaat.verkoop_boekstuknummer,
         memoriaal_rlz_id=resultaat.memoriaal_rlz_id,
         memoriaal_boekstuknummer=resultaat.memoriaal_boekstuknummer,
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/omzet/documenten/{document_id}/toch-inkoopfactuur",
+    response_model=schemas.TochInkoopfactuurResponse,
+)
+def omzet_toch_inkoopfactuur(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    invoer: schemas.TochInkoopfactuurInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.TochInkoopfactuurResponse:
+    """Terugweg (Peter 19-09): het automatisch getypeerde kassarapport is tóch een inkoopfactuur → bestaande
+    soort-wissel terug naar de inkoopstroom (ONTVANGEN, extractie opnieuw via het inkooppad) + observatie
+    `typering_correctie`; ná 2 correcties op dezelfde sleutel (administratie × bron × afzender) meldt de module i.p.v. doen. 422 zonder reden of
+    op een niet-kassarapport, 409 als de status de wissel niet toelaat (geboekt/ter accordering)."""
+    from app.omzet import autotype
+
+    try:
+        r = autotype.toch_inkoopfactuur(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id, reden=invoer.reden
+        )
+    except autotype.TochInkoopfactuurFout as exc:
+        tekst = str(exc)
+        conflict = "stand" in tekst.lower() or "status" in tekst.lower() or "geboekt" in tekst.lower()
+        code = status.HTTP_409_CONFLICT if conflict else status.HTTP_422_UNPROCESSABLE_CONTENT
+        raise HTTPException(status_code=code, detail=tekst) from exc
+    return schemas.TochInkoopfactuurResponse(
+        document_id=r.document_id,
+        status=r.status,
+        correcties=r.correcties,
+        bron=r.bron,
+        valt_terug_op_melden=r.valt_terug_op_melden,
+        doel_pad=f"/?administratie={administratie_id}&document={document_id}",
     )
 
 

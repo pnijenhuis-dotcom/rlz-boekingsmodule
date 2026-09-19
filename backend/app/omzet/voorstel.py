@@ -82,6 +82,8 @@ class OmzetVoorstelData:
     # = betaalwijzen/kas/controles/batch uit de bron — informatief voor het controlescherm én de harde checks.
     bron: str | None = None
     bron_detail: dict | None = None
+    # Peter 19-09: bron van de automatische typering (inkoopfactuur → kassarapport); None = mens koos de soort.
+    automatisch_getypeerd_bron: str | None = None
 
 
 def _laad_kassarapport(session: Session, *, document_id: uuid.UUID) -> Document:
@@ -267,6 +269,10 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
         mappings = actieve_mappings(session, administratie_id=administratie_id)
         bron_detail = _met_tegenzijde(session, administratie_id, veldvoorstel)
         btw_defaults = _btw_defaults(session, administratie_id) if veldvoorstel.get("bron") else None
+        from app.omzet import autotype
+
+        auto = autotype.is_automatisch_getypeerd(session, document_id=document_id)
+        auto_bron = (auto.get("bron") or "onbekend") if auto is not None else None
 
         bestaand = session.get(OmzetVoorstel, document_id)
         if bestaand is not None:
@@ -306,6 +312,7 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
                 entiteit_naam=veldvoorstel.get("entiteit_naam"),
                 bron=veldvoorstel.get("bron"),
                 bron_detail=bron_detail,
+                automatisch_getypeerd_bron=auto_bron,
             )
 
         totaal_omzet = _als_decimal(veldvoorstel.get("totaal_omzet"))
@@ -335,6 +342,7 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
             entiteit_naam=veldvoorstel.get("entiteit_naam"),
             bron=veldvoorstel.get("bron"),
             bron_detail=bron_detail,
+            automatisch_getypeerd_bron=auto_bron,
         )
 
 

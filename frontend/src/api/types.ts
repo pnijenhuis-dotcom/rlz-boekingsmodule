@@ -1378,6 +1378,22 @@ export interface OmzetVoorstelDto {
    * (gesynchroniseerde DocumentType-10-categorieën mét binder) voor de klikbare keuze — mens wint en wordt default. */
   verkoop_categorie?: VerkoopCategorieDto | null
   verkoop_categorieen?: VerkoopCategorieKeuzeDto[]
+  /** Peter 19-09: het document kwam als inkoopfactuur binnen en is op een parser-treffer automatisch kassarapport
+   * geworden — chip "automatisch getypeerd" + terugweg "Tóch inkoopfactuur…" (verplichte reden). */
+  automatisch_getypeerd?: boolean
+  automatisch_getypeerd_bron?: string | null
+}
+
+/** Antwoord van POST …/omzet/documenten/{id}/toch-inkoopfactuur (Peter 19-09). */
+export interface TochInkoopfactuurResponseDto {
+  document_id: string
+  status: string
+  /** Aantal "Tóch inkoopfactuur"-correcties op deze sleutel (administratie × bron × afzender) ná deze. */
+  correcties: number
+  bron: string | null
+  /** True = vanaf nu meldt de module voor deze afzender/bron i.p.v. automatisch omzetten. */
+  valt_terug_op_melden: boolean
+  doel_pad: string
 }
 
 export interface VerkoopCategorieDto {

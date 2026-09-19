@@ -1258,6 +1258,9 @@ def upload_document(
     gesplitst_uit_id: uuid.UUID | None = None,
     bron_bestand: BronBestand | None = None,
     weiger_al_aanwezig: bool | None = None,
+    # Peter 19-09: True = de intake bepaalde de soort (herkenning op inhoud/AI), False = een mens koos 'm (upload-
+    # zone, klantpagina, bulk). Stuurt het automatisch typeren: een mens-keuze "kassarapport" wordt nooit overruled.
+    soort_door_systeem: bool = False,
 ) -> UploadResultaat:
     """Slaat het bestand op, detecteert mogelijke duplicaten (sha256, binnen dezelfde
     administratie) en start de extractie: klein = synchroon binnen deze request (snelle
@@ -1313,6 +1316,41 @@ def upload_document(
                 )
                 raise geweigerd
 
+        # Kassarapport automatisch typeren (Peter 19-09, `app/omzet/autotype.py`): een inkoopfactuur waarop een
+        # bron-parser deterministisch aanslaat (ProfX/dagstaat/kascheck/pilates — geen AI) wordt DIRECT kassarapport;
+        # omgekeerd valt een door de intake herkend kassarapport ná ≥ 2 "Tóch inkoopfactuur"-correcties op dezelfde
+        # sleutel (administratie × bron × afzender) terug op inkoopfactuur + dagelijkse melding. Nooit stil: beide
+        # uitkomsten krijgen een tijdlijnregel + audit (dagteller `kassarapport_autotype`).
+        from app.omzet import autotype
+
+        autotype_besluit: autotype.Besluit | None = None
+        autotype_ingang = (
+            "intake" if intake_bericht_id is not None else ("splitsing" if gesplitst_uit_id is not None else "upload")
+        )
+        if soort == DocumentSoort.INKOOPFACTUUR:
+            b = autotype.beslis(
+                session,
+                administratie_id=administratie_id,
+                bestandsnaam=bestandsnaam,
+                inhoud=inhoud,
+                afzender=afzender_hint,
+            )
+            if b.bron is not None:
+                autotype_besluit = b
+                if b.doen:
+                    soort = DocumentSoort.KASSARAPPORT
+        elif soort == DocumentSoort.KASSARAPPORT and soort_door_systeem:
+            b = autotype.beslis(
+                session,
+                administratie_id=administratie_id,
+                bestandsnaam=bestandsnaam,
+                inhoud=inhoud,
+                afzender=afzender_hint,
+            )
+            if b.bron is not None and not b.doen:
+                autotype_besluit = b
+                soort = DocumentSoort.INKOOPFACTUUR
+
         opslag_pad = f"{administratie_id}/{document_id}{Path(bestandsnaam).suffix.lower()}"
         opslag.opslaan(pad=opslag_pad, inhoud=inhoud)
         bron_pad = _sla_bronbestand_op(opslag, opslag_pad=opslag_pad, bron=bron_bestand)
@@ -1360,6 +1398,60 @@ def upload_document(
             nieuwe_waarde={"bestandsnaam": bestandsnaam, "bron": bron.value},
             administratie_id=administratie_id,
         )
+        if autotype_besluit is not None:
+            if autotype_besluit.doen:
+                session.add(
+                    DocumentGebeurtenis(
+                        id=uuid.uuid4(),
+                        document_id=document_id,
+                        van_status=DocumentStatus.ONTVANGEN,
+                        naar_status=DocumentStatus.ONTVANGEN,
+                        actor_id=actor_id,
+                        detail=autotype.tijdlijn_detail(autotype_besluit),
+                    )
+                )
+                autotype.audit_gewijzigd(
+                    session,
+                    administratie_id=administratie_id,
+                    document_id=document_id,
+                    actor_id=actor_id,
+                    besluit=autotype_besluit,
+                    bestandsnaam=bestandsnaam,
+                    afzender=afzender_hint,
+                    ingang=autotype_ingang,
+                )
+            else:
+                session.add(
+                    DocumentGebeurtenis(
+                        id=uuid.uuid4(),
+                        document_id=document_id,
+                        van_status=DocumentStatus.ONTVANGEN,
+                        naar_status=DocumentStatus.ONTVANGEN,
+                        actor_id=actor_id,
+                        detail={
+                            "reden": (
+                                f"niet automatisch getypeerd als kassarapport ({autotype_besluit.kenmerken}): "
+                                f"{autotype_besluit.correcties}× eerder teruggezet naar inkoopfactuur voor deze "
+                                "afzender — blijft inkoopfactuur, de dagelijkse toets meldt het"
+                            ),
+                            "kassarapport_autotype_overgeslagen": {
+                                "bron": autotype_besluit.bron,
+                                "reden": autotype_besluit.reden,
+                                "correcties": autotype_besluit.correcties,
+                            },
+                        },
+                    )
+                )
+                autotype.audit_overgeslagen(
+                    session,
+                    administratie_id=administratie_id,
+                    document_id=document_id,
+                    actor_id=actor_id,
+                    besluit=autotype_besluit,
+                    bestandsnaam=bestandsnaam,
+                    afzender=afzender_hint,
+                    ingang=autotype_ingang,
+                )
 
         wachtrij_detail = _groot_document_detail(session, document=document, inhoud=inhoud)
         if wachtrij_detail is not None:

@@ -46,6 +46,11 @@ class OmzetVoorstelResponse(BaseModel):
     # (gesynchroniseerde DocumentType-10-categorieën mét binder) voor de klikbare keuze in het scherm.
     verkoop_categorie: VerkoopCategorieDto | None = None
     verkoop_categorieen: list[VerkoopCategorieKeuzeDto] = []
+    # Peter 19-09: het document kwam als inkoopfactuur binnen en is op een parser-treffer automatisch kassarapport
+    # geworden (chip "automatisch getypeerd" + terugweg "Tóch inkoopfactuur"). `automatisch_getypeerd_bron` = de bron
+    # (profx_journaal, …); None = de mens koos de soort zelf.
+    automatisch_getypeerd: bool = False
+    automatisch_getypeerd_bron: str | None = None
 
 
 class VerkoopCategorieDto(BaseModel):
@@ -188,3 +193,19 @@ class OmzetStoreKoppelInput(StrikteInvoer):
 class OmzetStoreWijzigInput(StrikteInvoer):
     administratie_id: uuid.UUID | None = None
     actief: bool | None = None
+
+
+class TochInkoopfactuurInput(StrikteInvoer):
+    """Terugweg omzet-controlescherm (Peter 19-09): verplichte reden — voedt de observatie `typering_correctie`."""
+
+    reden: str = Field(min_length=5, max_length=500)
+
+
+class TochInkoopfactuurResponse(BaseModel):
+    document_id: uuid.UUID
+    status: str
+    correcties: int
+    bron: str | None = None
+    #: True = vanaf nu meldt de module voor deze afzender/bron i.p.v. automatisch omzetten.
+    valt_terug_op_melden: bool
+    doel_pad: str

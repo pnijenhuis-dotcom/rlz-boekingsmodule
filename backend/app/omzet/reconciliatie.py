@@ -110,11 +110,36 @@ def omzet_in_inkoopstroom_afwijkingen(
     `kassarapport_inkoopstroom_run` per administratie mét tellers — de bron van de automatiserings-teller."""
     from app.db.audit import record_audit_event
     from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-    from app.omzet import inkoopstroom
+    from app.omzet import autotype, inkoopstroom
+
+    # Peter 19-09: eenduidig = systeem. In de ECHTE run zet de motor élk werkvoorraad-document mét parser-treffer eerst
+    # automatisch om (tijdlijn + audit + dagteller); wat overblijft is een melding mét knop: het zachte signaal
+    # 'omzetrekeningen' (geen parser) en parser-treffers die bewust zijn overgeslagen (≥ 2 correcties, status, fout).
+    # Lees-only (--lees-only / losse CLI) schrijft niets en toont de kandidaten mét "automatisch bij de dagelijkse run".
+    autotype_reden: dict[uuid.UUID, str] = {}
+    if registreer:
+        try:
+            run = autotype.verwerk_werkvoorraad(administratie_id)
+            autotype_reden = {
+                d.document_id: (
+                    f"overgeslagen: {d.reden}" + (f" {d.correcties}×" if d.reden == autotype.REDEN_CORRECTIES else "")
+                )
+                for d in run.documenten
+                if d.uitkomst == "overgeslagen"
+            }
+        except Exception:  # noqa: BLE001 — de motor mag de toets nooit laten omvallen; dan blijven het meldingen
+            logger.exception("kassarapport-autotype mislukt voor %s", administratie_id)
 
     with scoped_session(administratie_id) as session:
         treffers = inkoopstroom.geboekte_kassarapporten_in_inkoopstroom(session, administratie_id=administratie_id)
         ongeboekt = inkoopstroom.ongeboekte_kassarapporten_in_inkoopstroom(session, administratie_id=administratie_id)
+
+    def _automatisch(w) -> str:  # noqa: ANN001
+        if w.signaal == "omzetrekeningen":
+            return ""
+        if not registreer:
+            return ", automatisch bij de dagelijkse run"
+        return f", automatisch {autotype_reden.get(w.document_id, 'overgeslagen: onbekend')}"
     uit = [
         OmzetAfwijking(
             administratie_id=administratie_id,
@@ -139,6 +164,7 @@ def omzet_in_inkoopstroom_afwijkingen(
                 f"Kassarapport {w.bestandsnaam} staat als inkoopfactuur in de werkvoorraad (status {w.status}; "
                 f"signaal {w.signaal}"
                 + (f", {w.regels_op_omzet}/{w.regels_totaal} regels op een omzetrekening" if w.regels_totaal else "")
+                + _automatisch(w)
                 + ") — type wijzigen naar kassarapport"
             ),
         )

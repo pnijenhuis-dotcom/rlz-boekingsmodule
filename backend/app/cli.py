@@ -528,6 +528,58 @@ def _kassarapporten_in_inkoopstroom(args: argparse.Namespace) -> int:
     return 0
 
 
+def _kassarapport_autotype_nazorg(args: argparse.Namespace) -> int:
+    """Nazorg (Peter 19-09, eenmalig ná deploy via de job-image): álle werkvoorraad-documenten mét een eenduidige
+    parser-treffer die nog als inkoopfactuur staan alsnog automatisch omzetten (tijdlijn + audit per document, één
+    rapportregel per administratie). --dry-run = 0 writes; idempotent (een tweede echte run vindt niets meer)."""
+    from app.db.models import Administratie
+    from app.omzet import autotype
+
+    if args.administratie:
+        treffers = _zoek_administraties(args.administratie)
+        if len(treffers) != 1:
+            print(
+                f"--administratie {args.administratie!r}: {len(treffers)} treffer(s) — precies één vereist: "
+                + ", ".join(f"{n} ({i})" for i, n in treffers),
+                file=sys.stderr,
+            )
+            return 2
+        administraties = treffers
+    else:
+        with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+            administraties = [
+                (a.id, a.naam)
+                for a in session.scalars(
+                    select(Administratie).where(Administratie.actief.is_(True)).order_by(Administratie.naam)
+                ).all()
+            ]
+    label = " [dry-run — 0 writes]" if args.dry_run else ""
+    tot_verwacht = tot_gedaan = 0
+    tot_over: dict[str, int] = {}
+    for aid, naam in administraties:
+        uit = autotype.verwerk_werkvoorraad(aid, dry_run=bool(args.dry_run))
+        if not uit.documenten:
+            continue
+        tot_verwacht += uit.verwacht
+        tot_gedaan += uit.gedaan + uit.zou_doen
+        for r, n in uit.overgeslagen.items():
+            tot_over[r] = tot_over.get(r, 0) + n
+        over = ", ".join(f"{r} {n}" for r, n in sorted(uit.overgeslagen.items())) or "—"
+        print(
+            f"{naam}: {uit.verwacht} kandidaat/kandidaten, "
+            f"{'zou omzetten' if args.dry_run else 'omgezet'} {uit.gedaan + uit.zou_doen}, overgeslagen {over}"
+        )
+        for d in uit.documenten:
+            extra = f" ({d.reden}{f' {d.correcties}×' if d.correcties else ''})" if d.uitkomst == "overgeslagen" else ""
+            print(f"  {d.uitkomst:12} {d.bestandsnaam} · {autotype.bron_leesbaar(d.bron)} · {d.document_id}{extra}")
+    over_tot = ", ".join(f"{r} {n}" for r, n in sorted(tot_over.items())) or "—"
+    print(
+        f"kassarapport-autotype-nazorg{label}: {len(administraties)} administratie(s), {tot_verwacht} kandidaat/"
+        f"kandidaten, {'zou omzetten' if args.dry_run else 'omgezet'} {tot_gedaan}, overgeslagen {over_tot}"
+    )
+    return 0
+
+
 def _duplicaat_status_backfill(args: argparse.Namespace) -> int:
     """Blok 3 (fixrun 08-09, feedback Peter): eenmalige data-stap ná migratie 0122 — legacy-rijen die vóór deze
     deploy als duplicaat naar `afgewezen` zijn afgevoerd (open afwijzing mét kruisverwijzing, exact het
@@ -3261,6 +3313,17 @@ def main(argv: list[str] | None = None) -> int:
         "--administratie", default=None, metavar="UUID|NAAMDEEL", help="Beperk tot één administratie."
     )
 
+    autotype_parser = subparsers.add_parser(
+        "kassarapport-autotype-nazorg",
+        help="Peter 19-09: werkvoorraad-inkoopfacturen mét een eenduidige parser-treffer (ProfX/dagstaat/kascheck/"
+        "pilates) alsnog automatisch omzetten naar kassarapport — tijdlijn + audit per document, één regel per "
+        "administratie. --dry-run = 0 writes; idempotent. Geen AI, geen RLZ-call.",
+    )
+    autotype_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
+    autotype_parser.add_argument(
+        "--administratie", default=None, metavar="UUID|NAAMDEEL", help="Beperk tot één administratie."
+    )
+
     status_backfill_parser = subparsers.add_parser(
         "duplicaat-status-backfill",
         help="Blok 3 08-09: legacy duplicaat-afvoer-rijen (status afgewezen mét een open afwijzing die een "
@@ -3898,6 +3961,8 @@ def main(argv: list[str] | None = None) -> int:
         return _referentie_norm_backfill(args)
     if args.commando == "duplicaat-extern-rapport":
         return _duplicaat_extern_rapport(args)
+    if args.commando == "kassarapport-autotype-nazorg":
+        return _kassarapport_autotype_nazorg(args)
     if args.commando == "kassarapporten-in-inkoopstroom":
         return _kassarapporten_in_inkoopstroom(args)
     if args.commando == "omzet-stores-migreren":

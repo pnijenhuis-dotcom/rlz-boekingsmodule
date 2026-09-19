@@ -45,10 +45,21 @@ def _profx_pdf() -> bytes:
     return keten_pdf.maak_pdf(paginas)
 
 
-def _inkoopfactuur_in_werkvoorraad(administratie_id, actor, opslag, *, naam: str, inhoud: bytes, ledgers=()) -> uuid.UUID:  # noqa: ANN001
+def _inkoopfactuur_in_werkvoorraad(administratie_id, actor, opslag, *, naam: str, inhoud: bytes, ledgers=(), admin_engine=None) -> uuid.UUID:  # noqa: ANN001
     doc_id = documenten_service.upload_document(
         administratie_id=administratie_id, bestandsnaam=naam, inhoud=inhoud, actor_id=actor, opslag=opslag
     ).document_id
+    # Peter 19-09: een parser-treffer wordt bij upload DIRECT kassarapport (autotype). Deze tests toetsen de dagelijkse
+    # toets op documenten van vóór die regel — zet de soort terug zoals ze toen in de werkvoorraad stonden (admin-engine:
+    # de tijdlijn is append-only voor de app-rol).
+    with scoped_session(administratie_id, actor_id=actor) as session:
+        soort_nu = session.get(Document, doc_id).soort
+    if soort_nu == DocumentSoort.KASSARAPPORT.value:
+        assert admin_engine is not None, "ProfX-upload vraagt admin_engine om de pre-19-09-stand te simuleren"
+        with admin_engine.begin() as conn:
+            conn.execute(text("UPDATE boekhouding.document SET soort = 'inkoopfactuur', status = 'te_controleren' WHERE id = :id"), {"id": doc_id})
+            conn.execute(text("DELETE FROM boekhouding.document_gebeurtenis WHERE document_id = :id"), {"id": doc_id})
+            conn.execute(text("DELETE FROM platform.audit_event WHERE record_id = :id AND actie = 'soort_automatisch_gewijzigd'"), {"id": doc_id})
     with scoped_session(administratie_id, actor_id=actor) as session:
         doc = session.get(Document, doc_id)
         assert doc.status in inkoopstroom.WERKVOORRAAD_STATUSSEN, doc.status
@@ -68,7 +79,7 @@ class TestDetectieWerkvoorraad:
     def test_profx_pdf_en_omzetrekeningen_worden_gevonden_niet_gewone_facturen(
         self, administratie_id, gescoopte_gebruiker, opslag, omzet_ledgers, admin_engine
     ) -> None:
-        profx = _inkoopfactuur_in_werkvoorraad(administratie_id, gescoopte_gebruiker, opslag, naam="Journaal 11-9.pdf", inhoud=_profx_pdf())
+        profx = _inkoopfactuur_in_werkvoorraad(administratie_id, gescoopte_gebruiker, opslag, naam="Journaal 11-9.pdf", inhoud=_profx_pdf(), admin_engine=admin_engine)
         omzet = _inkoopfactuur_in_werkvoorraad(
             administratie_id, gescoopte_gebruiker, opslag, naam="rapport.pdf", inhoud=b"%PDF-1.4 x",
             ledgers=[omzet_ledgers["omzet_hoog"], omzet_ledgers["omzet_laag"]],
@@ -85,10 +96,15 @@ class TestDetectieWerkvoorraad:
         afw = omzet_reconciliatie.omzet_in_inkoopstroom_afwijkingen(administratie_id)
         assert sorted(a.soort for a in afw) == [inkoopstroom.SOORT_WERKVOORRAAD, inkoopstroom.SOORT_WERKVOORRAAD]
         assert _audit(admin_engine, "kassarapport_inkoopstroom_run") == []
-        omzet_reconciliatie.omzet_in_inkoopstroom_afwijkingen(administratie_id, registreer=True)
+        # Echte run (Peter 19-09): de parser-treffer wordt eerst automatisch omgezet (autotype); alleen het zachte
+        # signaal 'omzetrekeningen' blijft over als melding mét knop.
+        afw_echt = omzet_reconciliatie.omzet_in_inkoopstroom_afwijkingen(administratie_id, registreer=True)
+        assert [x.document_id for x in afw_echt] == [omzet]
         [(nw, aid)] = _audit(admin_engine, "kassarapport_inkoopstroom_run")
-        assert (nw["geboekt"], nw["ongeboekt"], aid) == (0, 2, administratie_id)
-        assert set(nw["signalen"]) == {"profx_journaal", "omzetrekeningen"}
+        assert (nw["geboekt"], nw["ongeboekt"], aid) == (0, 1, administratie_id)
+        assert set(nw["signalen"]) == {"omzetrekeningen"}
+        with admin_engine.connect() as conn:
+            assert conn.execute(text("SELECT soort FROM boekhouding.document WHERE id = :id"), {"id": profx}).scalar_one() == "kassarapport"
         # Leesbare tekst (titel / wat / doe) — geen GUID's, wél de handeling.
         a = next(x for x in afw if x.document_id == profx)
         lb = teksten.leesbaar(
@@ -98,9 +114,9 @@ class TestDetectieWerkvoorraad:
         assert "herkend kassarapport" in lb.wat and "Type wijzigen" in lb.doe and not teksten.bevat_technische_sleutel(lb.wat)
 
     def test_pdf_lezing_is_begrensd_en_reconcilieer_alle_omzet_neemt_odoo_mee(
-        self, administratie_id, gescoopte_gebruiker, opslag, monkeypatch
+        self, administratie_id, gescoopte_gebruiker, opslag, monkeypatch, admin_engine
     ) -> None:
-        _inkoopfactuur_in_werkvoorraad(administratie_id, gescoopte_gebruiker, opslag, naam="Journaal 12-9.pdf", inhoud=_profx_pdf())
+        _inkoopfactuur_in_werkvoorraad(administratie_id, gescoopte_gebruiker, opslag, naam="Journaal 12-9.pdf", inhoud=_profx_pdf(), admin_engine=admin_engine)
         with scoped_session(administratie_id) as session:
             assert inkoopstroom.ongeboekte_kassarapporten_in_inkoopstroom(session, administratie_id=administratie_id, opslag=opslag, max_pdf_lezingen=0) == []
         # Odoo-administratie: het RLZ-blok wordt overgeslagen, de lokale toets loopt wél (A12 + blok C).
@@ -132,7 +148,7 @@ class TestTypeWijzigenVanuitBevinding:
     def test_kantoorrol_wisselt_type_en_de_bevinding_verdwijnt_bij_de_volgende_toets(
         self, administratie_id, gescoopte_gebruiker, beheerder_id, opslag, monkeypatch, admin_engine
     ) -> None:
-        doc = _inkoopfactuur_in_werkvoorraad(administratie_id, gescoopte_gebruiker, opslag, naam="Journaal 13-9.pdf", inhoud=_profx_pdf())
+        doc = _inkoopfactuur_in_werkvoorraad(administratie_id, gescoopte_gebruiker, opslag, naam="Journaal 13-9.pdf", inhoud=_profx_pdf(), admin_engine=admin_engine)
         # Geen echte extractie ná de wissel (geen AI in de suite) — de statuswissel zelf is wat we toetsen.
         monkeypatch.setattr(soort_service, "start_extractie_na_toewijzing", lambda **kw: DocumentStatus.ONTVANGEN, raising=False)
         [a] = omzet_reconciliatie.omzet_in_inkoopstroom_afwijkingen(administratie_id)

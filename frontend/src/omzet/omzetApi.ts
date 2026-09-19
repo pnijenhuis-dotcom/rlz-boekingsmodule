@@ -6,6 +6,7 @@ import type {
   OmzetVoorstelDto,
   OmzetVoorstelInputDto,
   OmzetVoorstelMetChecksDto,
+  TochInkoopfactuurResponseDto,
   VerkoopCategorieDto,
 } from '../api/types'
 
@@ -71,4 +72,16 @@ export function zetOmzetBronInstellingen(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(waarden),
   })
+}
+
+/** Terugweg (Peter 19-09): automatisch getypeerd kassarapport is tóch een inkoopfactuur — verplichte reden. */
+export function tochInkoopfactuur(
+  administratieId: string,
+  documentId: string,
+  reden: string,
+): Promise<TochInkoopfactuurResponseDto> {
+  return apiPostJson<TochInkoopfactuurResponseDto>(
+    `/administraties/${administratieId}/omzet/documenten/${documentId}/toch-inkoopfactuur`,
+    { reden },
+  )
 }
