@@ -291,6 +291,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   1. Company-pin in de code, kill-switch alleen als executie-override, elke write terug-gelezen, audit per call; nooit unlink (annuleren = button_cancel); nooit via `nameting.sh` (weigert de schrijvende commando's hard).
   2. Memoriaalregels uitsluitend uit `DebitAmount`/`CreditAmount` (nooit `NetAmount`/`CreditOrDebit`); liquide middelen nooit in de rol-pool; één regel, één bestemming (overlap 1001-model ↔ rol = ROOD).
   3. Toets vóór het onomkeerbare moment: concepten → cent-exacte toets (Odoo-regels, per pand sluit) → pas dán posten; rood = niets posten; GO Peter op het SCHRIJF-c-rapport vóór de volledige run; RLZ-webfilter-blokkering = meting ongeldig.
+  4. Vastly-klant op Odoo (verkoop/waarborg/bank-afletteren/webhooks; pilot verhuurder, nooit VGG) = ONTWERP TER AKKOORD (19-09): toets + pilotmeting gedaan, advies ARVUM onder voorwaarde Vastly-onboarding + Odoo-company, concept-addendum v1.21 in Platform/OPEN_ITEMS; geen bouw vóór akkoord — zie BESLISSINGEN "VASTLY OP ODOO — ONTWERP TER AKKOORD (Peter 19-09)" + `docs/ONTWERP_VASTLY_ODOO.md`.
   **LEESPLICHT: lees `docs/regels/vgg-odoo-migratie.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Activa / MVA** — Ontwerp ter akkoord (Peter 16-09, geen bouw): register in RLZ `FixedAssets`/Odoo, detectie + voorvullen bij boeken, fiscale toetsing zonder zelf rekenen, reconciliatieblok `activa`; lees-only nulmeting `activa-nulmeting`.

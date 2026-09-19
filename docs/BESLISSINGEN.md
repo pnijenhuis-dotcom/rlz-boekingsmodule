@@ -42,6 +42,7 @@
 | Boekingsgeheugen (seed uit RLZ-historie + leerlus + voorstel + UI-chips; correcties > historie; seed-only = oranje tot eerste app-bevestiging) | gebouwd + getest (B1–B6, 2026-07-13/14) | BOUWPLAN fase 1 punt 7b; CLAUDE.md "Boekingsgeheugen"; `backend/app/geheugen/` |
 | — openstaand daarbij: live visuele verificatie groen/oranje chips + voorstel-op-blur voor handmatige regels | goedgekeurd (follow-up) | BOUWPLAN punt 7b follow-ups (2026-07-14) |
 | Factuuropdracht per project (steigerbouw → verkoopfactuur klaarzetten in RLZ/Odoo) | mockup TER AKKOORD (18-09); beslispunten ④ verzenden, ⑥ klant-accordering | BESLISSINGEN "FACTUUROPDRACHT PER PROJECT — MOCKUP (Peter 18-09)"; `mockup/factuuropdracht-project.html`; rapport `docs/rapporten/2026-09-18-mockup-factuuropdracht.md` |
+| Vastly-klant op een Odoo-boekhouding (verkoop/waarborg/bank-afletteren/webhooks; pilot verhuurder ARVUM of Rubicon, nooit VGG) | **ONTWERP TER AKKOORD (19-09)** — bron-vs-realiteit-toets + lees-only pilotmeting uitgevoerd door CC 19-09; vijf beslispunten (+ zesde creditnota-vorm); pilot-advies ARVUM onder voorwaarde Vastly-onboarding + Odoo-company; geen bouw | BESLISSINGEN "VASTLY OP ODOO — ONTWERP TER AKKOORD (Peter 19-09)"; `docs/ONTWERP_VASTLY_ODOO.md`; rapport `docs/rapporten/2026-09-19-ontwerp-vastly-odoo-toets.md`; concept-addendum v1.21 in `../Platform/OPEN_ITEMS.md` |
 
 ## Harde/blokkerende checks (checkstatus-audit 2026-07-13 — actueel houden; CLAUDE.md delegeert de canonieke checkstatus hierheen en somt alleen kort op — drift-audit 02-09)
 
@@ -11654,3 +11655,44 @@ alleen een nummer aan het begin van de naam, dus "Afgesloten 26064 Apeldoorn" na
   nooit bewerken terwijl een achtergrondrun ervan loopt (bash leest het bestand incrementeel — `nameting.sh` strandde op "efail" ná
   mijn allowlist-edit; de job-executie zelf was klaar, het log is via Cloud Logging gelezen).
 
+## VASTLY OP ODOO — ONTWERP TER AKKOORD (Peter 19-09) — verkoop, waarborg, bank/afletteren en webhooks voor een Vastly-administratie op Odoo; pilot = verhuurder, nooit VGG; geen bouw
+
+**Status: ONTWERP TER AKKOORD 19-09-2026** (vraag Peter 19-09 "voor Vastly kunnen wij ook een Odoo-boekhouding koppelen? Maakt dat veel uit?";
+ontwerp `docs/ONTWERP_VASTLY_ODOO.md` door Cowork 19-09; bron-vs-realiteit-toets + lees-only pilotmeting door CC 19-09 —
+opdracht `opdrachten/gedaan/2026-09-19-ontwerp-vastly-odoo-toetsen-en-pilotmeting.md`, rapport `docs/rapporten/2026-09-19-ontwerp-vastly-odoo-toets.md`).
+Geen code, geen migratie, geen RLZ-/Odoo-write, geen Odoo-koppeling aangemaakt. Bouw uitsluitend ná akkoord Peter; dan volledige regeltekst in
+`docs/regels/vgg-odoo-migratie.md` (of een eigen regelsbestand als het domein groter wordt dan VGG).
+
+**Antwoord in één alinea (ontwerp §0, bevestigd):** voor Vastly maakt het niets uit (Vastly praat nooit met de boekhouding; UBL in, webhooks terug);
+voor ons wél: inkoop op Odoo is klaar (`InkoopPort`), verkoop/waarborg/bank zijn niet als boekpad gebouwd — en de seam ontbreekt niet alleen in de
+bank maar óók in verkoop, waarborg, omzet en doorbelasting (alle rechtstreeks `RlzClient`; er is één port).
+
+**Wat de toets corrigeerde (volledig in het ontwerp als "gecorrigeerd door CC 19-09"):** (1) verkoop-`out_invoice`, memoriaal-`entry`, statement
+lines én de reconcile-routes i/ii/iii + `remove_move_reconcile` bestaan al als primitieven in `app/migratie/odoo_schrijf.py` achter de kill-switch —
+STAP-0 = die live bewijzen, niet herschrijven; (2) `reversed_entry_id`/`invoice_origin` zijn readonly (`fields_get` company 3) → creditnota 381 via
+de reversal-wizard óf losse `out_refund` (beslispunt 6); (3) afgeletterd-signaal: `amount_residual` stored + `payment_state`; **`in_payment` nooit als
+afgeletterd melden** (residual is dan al 0 vóór de bankmatch); (4) `factuur_geboekt` vuurt VANDAAG al voor een Odoo-is_vastgoed-administratie mét
+UUIDv5 + sentinel-`rlz_admin_id` zonder `backend`-veld (latent, alle zes is_vastgoed-administraties draaien rlz); `factuur_afgeletterd` vuurt voor
+Odoo nooit; (5) registersync levert Odoo-administraties mee mét sentinel `rlz_admin_id` (geen UUID) — contractpunt; (6) `partners.py` = alleen
+crediteuren, huurder-partner is nieuw; (7) twee ontbrekende stromen: Kempen-doorbelasting (Rubicon = DOEL) en route A §5 (RLZ-only) → fasering 2b/3b;
+(8) ARVUM: 3 lagen, 3 accordeurs (niet 4), `is_vastgoed` staat al AAN (registerdrift `Platform/registers/entiteiten.md`, noot toegevoegd).
+
+**Pilotmeting (leesreplica + RLZ GET, 19-09; tabel in het rapport §2):** geen van beide administraties heeft ooit een VASTLY-VERKOOP-document of
+WAARBORG-bericht via de module ontvangen (0/0; RLZ SalesInvoices sinds 01-03: Rubicon 0, ARVUM 2 niet-Vastly) — verkoop/waarborg is voor élke
+administratie greenfield. ARVUM: 1 betaalrekening, 10–20 mutaties/mnd, 15 open bankregels, 9 open posten € 57.480,26, 5 huurders/4 objecten, 0 webhooks.
+Rubicon: 7 rekeningen, 35–45/mnd, 52 open bankregels, 36 open posten € 62.692,68, 19 huurders/11 objecten, doorbelasting-DOEL, 2 × `factuur_geboekt`
+afgeleverd (27-08, 11-09). **Pilot-advies: ARVUM B.V.**, onder de voorwaarde dat Vastly ARVUM onboardt (register + huurfacturen) en Peter een
+Odoo-company voor ARVUM aanmaakt; Rubicon als tweede ná de eerste cent-exacte maand.
+
+**Vastly-kant (read-only in de vastgoed-repo, rapport §3):** breekt stil bij een sentinel-`rlz_admin_id` (`rlz_webhook.py:456-467` → `onbekende_administratie`
++ 200); `soort` int 1..4 hard (DB-check); waarborg-default `0204` + XML-attribuut `rlzAdminId` + vier klantzichtbare "RLZ"-teksten RLZ-gekleurd; `code`,
+`cbc:AccountingCost`, UUIDv5-id's en de entiteit↔administratie-koppeling (platform-UUID) werken ongewijzigd. **Verificatievraag aan Vastly (OPEN_ITEM):**
+dezelfde lookup neemt bij RLZ eerst de RLZ-GUID en vergelijkt met een platform-UUID-kolom — zijn de twee Rubicon-kostenevents (ref 24713213/24713354)
+wel verwerkt? **Concept-addendum v1.21** (backend-veld, backend-neutrale id-semantiek, `rlz_admin_id` als text-sleutel, `soort` vierdeling, `balans_gb_code`
+in backend-code, afgeletterd-bron per backend; bumps geboekt 1.3 / afgeletterd 2.1 / registersync 1.1) staat als voorstel in `../Platform/OPEN_ITEMS.md` —
+niets in het contract gewijzigd (v1.5-regel: akkoord beide projecten).
+
+**Beslispunten Peter (ontwerp §5):** (1) pilot ARVUM ↔ Rubicon (advies ARVUM, voorwaarde hierboven); (2) bank "B eindbeeld, A brug" of direct B;
+(3) addendum v1.21 als OPEN_ITEM — gedaan als concept, akkoord Vastly nodig; (4) volgorde t.o.v. VGG (VGG SCHRIJF c eerst, STAP-0 bank parallel);
+(5) Vastly toont per klant de boekhouding-naam (label-map bestaat, vier plekken omzeilen die); (6) creditnota 381 op Odoo via reversal-wizard (advies)
+of losse `out_refund`.
