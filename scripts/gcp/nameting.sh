@@ -23,7 +23,7 @@ REGION="${REGION:-europe-west4}"
 JOB="${JOB:-rlz-reconciliatie}"
 # rlz-lezen (blok 10 11-09): één OData-GET op de RLZ-API van één administratie — het commando weigert zelf élke
 # niet-GET en elk Actions-/Download-pad (app/rlz/lezen_cli.py), --top ≤ 50, uitvoer altijd geanonimiseerd.
-ALLOWLIST="reconciliatie-alles autoboek-leren-rapport btw-default-rapport btw-tarief-afwijking-rapport administratie-naam-bron-backfill bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay duplicaat-extern-rapport referentie-norm-backfill activa-nulmeting groep-saldi kassarapporten-in-inkoopstroom omzet-binder-rapport omzet-stores-migreren doorbelasting-aansluiting app-bundels bevindingssoort-stand db-lezen rlz-feiten projecten-afsluit-kandidaten projecten-dubbele-nummers facturen-zonder-project"  # 18-09 avond: facturen-zonder-project lees-only (--rlz = uitsluitend GET)  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only; 16-09: duplicaat-extern-rapport lees-only, referentie-norm-backfill alleen --dry-run
+ALLOWLIST="reconciliatie-alles autoboek-leren-rapport btw-default-rapport btw-tarief-afwijking-rapport administratie-naam-bron-backfill bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay duplicaat-extern-rapport referentie-norm-backfill activa-nulmeting groep-saldi kassarapporten-in-inkoopstroom omzet-binder-rapport omzet-stores-migreren doorbelasting-aansluiting app-bundels bevindingssoort-stand db-lezen rlz-feiten projecten-afsluit-kandidaten projecten-dubbele-nummers facturen-zonder-project projectverdeling-afgesloten-rapport"  # 19-09: projectverdeling-afgesloten-rapport lees-only (geen write, geen RLZ-call)  # 18-09 avond: facturen-zonder-project lees-only (--rlz = uitsluitend GET)  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only; 16-09: duplicaat-extern-rapport lees-only, referentie-norm-backfill alleen --dry-run
 CMD="${1:-}"; [[ -n "$CMD" ]] || { echo "gebruik: $0 <cli-commando> [args…]" >&2; exit 2; }
 # run 2 VGG blok 5: de Odoo-migratie-commando's SCHRIJVEN (DB-koppeling resp. concepten op company 6) — nooit een nameting.
 for schrijvend in odoo-koppeling-migratiedoel vgg-odoo-stap0 vgg-odoo-migratie; do
@@ -80,6 +80,7 @@ fi
 via_gh_onderdeel() {
   case "$1" in
     doorbelasting-aansluiting) echo doorbelasting-aansluiting ;;
+    facturen-zonder-project|projectverdeling-afgesloten-rapport) echo projecten-afgesloten ;;
     app-bundels) echo app-bundels ;;
     reconciliatie-alles) echo reconciliatie ;;
     btw-default-rapport) echo btw-default ;;

@@ -1159,6 +1159,16 @@ def _let_op(d: dict, tekst: str, administratie_naam: str | None) -> tuple[str, s
         return _automatisering(d, administratie_naam)
     if d.get("rc_zonder_tegenrekening") or d.get("afwijking_soort") == "rc_zonder_tegenrekening":
         return _rc_zonder_tegenrekening(d, administratie_naam)
+    if d.get("afwijking_soort") == "project_naam_afgesloten_status_actief":
+        # Opdracht 19-09: de projectverdeling sluit afgesloten projecten uit op STATUS, nooit op naam — dit is de actie.
+        naam = _s(d, "project_naam") or "?"
+        return (
+            _titel("Project heet 'Afgesloten' maar staat actief", administratie_naam or ""),
+            f"Project {naam} heet afgesloten, maar de status is lopend en het project staat in de bron actief — de "
+            "pro-rato-projectverdeling verdeelt er dus nog kosten over.",
+            "Sluit het project af via Projecten › Afsluiten… (zet de bron inactief en de status afgesloten); daarna "
+            "valt het uit de verdeelsleutel. Hoort het project wél open te blijven: hernoem het in Reeleezee.",
+        )
     if d.get("reden") == "opruimlijst_fout" or (not d.get("kant") and "opruimlijst" in (tekst or "").lower()):
         return (
             "Opruimlijst niet compleet",

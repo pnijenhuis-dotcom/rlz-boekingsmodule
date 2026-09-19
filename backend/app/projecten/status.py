@@ -227,7 +227,20 @@ def _wissel(
             },
             administratie_id=administratie_id,
         )
-        return nieuw
+        nieuw_stand = nieuw
+    # Opdracht 19-09: de omzetsleutel van de projectverdeling volgt de status — nog niet geboekte verdelingen die dit project
+    # raken worden herrekend (snapshot + tijdlijn "verdeling herberekend: ‹project› afgesloten"), geboekte blijven staan.
+    # Eigen transactie, nooit blokkerend (fout = logregel; de volgende lezing rekent tóch live).
+    from app.projectverdeling.afgesloten import herbereken_na_projectstatus_veilig
+
+    herbereken_na_projectstatus_veilig(
+        administratie_id=administratie_id,
+        project_id=project_id,
+        project_naam=project.naam,
+        naar=naar,
+        actor_id=actor_id,
+    )
+    return nieuw_stand
 
 
 def sluit_project_af(

@@ -104,6 +104,10 @@ REGISTRY: dict[str, SoortDefinitie] = {
         _oud("dubbel_in_rlz", "rlz_dubbel"),
         # projecten (blok 3 18-09): dubbel projectnummer in één administratie (ook buiten de module om) — meten.
         SoortDefinitie(soort="project_nummer_dubbel", blok="projecten", sinds=date(2026, 9, 18), default=METEN),
+        # projecten (opdracht 19-09): actief project mét een "Afgesloten"-naam — LET-OP "afsluiten?" (blok projecten).
+        SoortDefinitie(
+            soort="project_naam_afgesloten_status_actief", blok="projecten", sinds=date(2026, 9, 19), default=METEN
+        ),
     )
 }
 

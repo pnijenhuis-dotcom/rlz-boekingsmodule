@@ -224,6 +224,7 @@ def cli_blok(args, verzamelaar=None, *, stdout: Callable[[str], None] = print) -
     Soort start in stand `meten` (registry) — telt, vraagt nog geen handeling. Exit 1 zodra er een dubbel is."""
     from app.db.models import Administratie
     from app.db.session import scoped_session
+    from app.projectverdeling import afgesloten
     from app.reconciliatie.models import BevindingSoort
 
     with scoped_session(None) as session:
@@ -234,11 +235,19 @@ def cli_blok(args, verzamelaar=None, *, stdout: Callable[[str], None] = print) -
         ).all()
     exit_code = 0
     totaal = 0
+    let_op_totaal = 0
     for aid, naam in administraties:
         with scoped_session(aid) as session:
             dubbel = dubbele_nummers(session, administratie_id=aid)
+            # Opdracht 19-09: actief project mét een "Afgesloten"-naam = LET-OP "afsluiten?" (geen filter in de sleutel).
+            let_ops = afgesloten.let_op_bevindingen(session, administratie_id=aid, administratie_naam=naam)
         if verzamelaar is not None:
             verzamelaar.gecontroleerd(1)
+        for lo in let_ops:
+            let_op_totaal += 1
+            stdout(f"{lo['tekst']}  [{naam}]")
+            if verzamelaar is not None:
+                verzamelaar.bevinding(**lo)
         for d in dubbel:
             totaal += 1
             exit_code = 1
@@ -270,5 +279,8 @@ def cli_blok(args, verzamelaar=None, *, stdout: Callable[[str], None] = print) -
                     },
                     blok=BLOK,
                 )
-    stdout(f"projecten-reconciliatie: {len(administraties)} administraties, {totaal} dubbel(e) projectnummer(s)")
+    stdout(
+        f"projecten-reconciliatie: {len(administraties)} administraties, {totaal} dubbel(e) projectnummer(s), "
+        f"{let_op_totaal} actief project(en) mét 'Afgesloten'-naam (LET-OP)"
+    )
     return exit_code

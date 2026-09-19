@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten)"
         type: choice
         default: alles
         options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query]
@@ -76,7 +76,7 @@ jobs:
           DATUM="$(TZ=Europe/Amsterdam date +%d-%m)"
           echo "onderdeel=$ONDERDEEL datum=$DATUM"
           rc_vgg=0
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -174,6 +174,31 @@ jobs:
             fi
             echo "STATUS app-bundels: rapport in $UIT (job-exit $rc_ab)"
           fi
+          if [[ "$ONDERDEEL" == "projecten-afgesloten" ]]; then
+            # Opdracht 19-09 (nazorg facturen zonder project 18-09): alleen op verzoek (niet in "alles"). Lees-only CLI's op de
+            # job-image: (1) RLZ-kant facturen zonder project voor Universal + alle project-verplichte administraties (--rlz =
+            # uitsluitend GET), (2) projectverdeling × afgesloten projecten (geboekte delen op 'Afgesloten'-projecten, LET-OP-lijst,
+            # overhead via de sleutel). Oordeelregel: het aantal actieve 'Afgesloten'-projecten uit het tweede rapport.
+            UIT="verkenning/nameting-projecten-afgesloten-$DATUM.txt"
+            rc_pa=0
+            {
+              echo "== facturen-zonder-project Universal Steigerbouw 2026 --rlz (alleen GET) =="
+              scripts/gcp/nameting.sh facturen-zonder-project --administratie "Universal Steigerbouw" --jaar 2026 --rlz 2> nameting-pa.stderr || rc_pa=$?
+              echo "== facturen-zonder-project --alle-projectverplicht 2026 --rlz (alleen GET) =="
+              scripts/gcp/nameting.sh facturen-zonder-project --alle-projectverplicht --jaar 2026 --rlz 2>> nameting-pa.stderr || rc_pa=$?
+              echo "== projectverdeling-afgesloten-rapport --alle-projectverplicht =="
+              scripts/gcp/nameting.sh projectverdeling-afgesloten-rapport --alle-projectverplicht 2>> nameting-pa.stderr || rc_pa=$?
+            } > "$UIT"
+            cat nameting-pa.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-pa.stderr; then
+              echo "::error::projecten-afgesloten kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_pa)" >> "$UIT"
+            TOT="$(grep -m1 -o "Totaal: [0-9]* actief project(en) mét 'Afgesloten'-naam, [0-9]* geboekt(e) verdelingsdeel(en)" "$UIT" || true)"
+            echo "Oordeel: ${TOT:-geen totaalregel} — job-exit $rc_pa" >> "$UIT"
+            echo "STATUS projecten-afgesloten: rapport in $UIT (job-exit $rc_pa = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
             # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
@@ -204,6 +229,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-reconciliatie-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "app-bundels" ]]; then
             OORDEEL_BRON="verkenning/nameting-app-bundels-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "projecten-afgesloten" ]]; then
+            OORDEEL_BRON="verkenning/nameting-projecten-afgesloten-$DATUM.txt"
           else
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           fi
