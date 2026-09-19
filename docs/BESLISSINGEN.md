@@ -11661,7 +11661,11 @@ alleen een nummer aan het begin van de naam, dus "Afgesloten 26064 Apeldoorn" na
 
 **Status: GEBOUWD + GETEST 19-09 (opdracht "projecten-afsluit-kandidaten-scherm-bulk-afsluiten", Peter 19-09: "welk project is
 afgesloten? dat onderscheid maken wij nu nog niet" — voorwaarde voor de verdeelsleutel-opdracht van dezelfde ochtend); werkt in
-productie: niet gemeten (deploy ná deze run — meetrecept in het rapport, vervolg-opdracht in de inbox). Rapport
+productie: GEMETEN 19-09 avond ná deploy `a3eac85` (service én jobs) — JA voor de motor op de job-image (nameting-runs 35450280469 +
+35454573374: Universal 83 beoordeeld, 8 kandidaat, alle op naam, 0 uitgesteld, nog niets afgevinkt), NIET GEMETEN voor de tab zelf
+(`GET /projecten/afsluit-kandidaten` op 19-09 door geen mens aangeroepen); correctie: 25017 heeft géén eindfactuur-reden (jongste
+verkoopregel = termijn 03-06, de eindafrekening was 06-03); bijvangst gefixt: eindfactuur-keuze bij meerdere regels op één datum was
+databasevolgorde-afhankelijk — rapport `docs/rapporten/2026-09-19-nameting-projecten-afsluiten-tab-na-deploy.md`. Bouwrapport
 `docs/rapporten/2026-09-19-projecten-afsluiten-tab-bulk.md`. Migratie 0167 (dev + test gedraaid, `alembic check` schoon, dump
 ververst); geen RLZ-write in deze run. Canonieke regeltekst: `docs/regels/verplichtingen-projecten-voorraad.md` alinea "Projecten —
 tab "Afsluiten? (N)" mét bulk-afsluiten en "Niet afsluiten"" + `docs/regels/kantoor-frontend.md` alinea "Tabs op een lijstpagina".**
@@ -11680,7 +11684,7 @@ tab "Afsluiten? (N)" mét bulk-afsluiten en "Niet afsluiten"" + `docs/regels/kan
   per rij gelukt/bron_weigert/al_afgesloten/niet_gevonden/geen_toegang; één bron-client per administratie; geen credential = leesbare
   reden, geen 500), `POST /projecten/{aid}/{pid}/niet-afsluiten` (reden verplicht, upsert + snapshot + audit `project_afsluiten_uitgesteld`),
   `GET/PUT /projecten/{aid}/afsluit-instelling` (1..36 mnd, audit `project_afsluit_stil_maanden_gewijzigd`).
-- **Meting Universal 19-09 (leesreplica):** 83 lopende actieve projecten → 8 kandidaten, alle op naam (25017 óók eindfactuur), 0 stil bij
+- **Meting Universal 19-09 (leesreplica):** 83 lopende actieve projecten → 8 kandidaten, alle op naam (25017 "óók eindfactuur" bleek fout — zie statusalinea), 0 stil bij
   6 mnd (25157 Harderwijk 173 dagen = net binnen), 0 looptijd (geen `looptijd_tot` gevuld); 11 projecten zonder activiteit; dubbele
   nummers 26064 en 26149 gezien → `projecten-dubbele-nummers`. Peters "twee 'Afgesloten …'-projecten" zijn er in de cache acht (het
   18-09-rapport zag alleen de twee mét geboekte verdelingen).

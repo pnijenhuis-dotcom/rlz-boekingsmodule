@@ -8,6 +8,10 @@ RLZ-write in deze run. **Werkt in productie: niet gemeten** — de code deployt 
 `…?reden=naam_afgesloten&toon_uitgesteld=true` en `GET /projecten/{aid}/afsluit-instelling` → 200 op een eigen uvicorn (8017) ná de upgrade.
 **BESLISSINGEN:** "PROJECTEN — TAB AFSLUITEN? MÉT BULK-AFSLUITEN EN NIET-AFSLUITEN (Peter 19-09)".
 
+> **Nameting ná deploy 19-09 avond:** `docs/rapporten/2026-09-19-nameting-projecten-afsluiten-tab-na-deploy.md` — motor werkt in
+> productie (8/8 dezelfde kandidaten op de job-image), tab-route nog door niemand geopend; **correctie:** 25017 heeft géén
+> eindfactuur-reden (jongste verkoopregel = termijn 03-06); bijvangst-fix eindfactuur-keuze deterministisch.
+
 ## Één regel voor Peter
 Projecten (per administratie én kantoorbreed) heeft een tab **"Afsluiten? (N)"**: bij Universal staan daar ná de deploy **8 projecten**,
 alle acht omdat hun naam met "Afgesloten" begint terwijl ze in Reeleezee actief staan (25017 Kudo Arnhem óók omdat de eindfactuur

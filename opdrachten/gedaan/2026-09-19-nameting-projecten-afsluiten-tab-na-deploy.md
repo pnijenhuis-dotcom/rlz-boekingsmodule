@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-19, rapport: docs/rapporten/2026-09-19-nameting-projecten-afsluiten-tab-na-deploy.md
+
 Domeinen: verplichtingen-projecten-voorraad, werkloop-productie
 
 # OPDRACHT 19-09 — Nameting ná deploy: Projecten › Afsluiten? (N) bij Universal Steigerbouw (vervolg op

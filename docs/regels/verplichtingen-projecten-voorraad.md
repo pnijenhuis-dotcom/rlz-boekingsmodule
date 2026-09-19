@@ -260,6 +260,25 @@
   or-GET, oudere client twee GET's; dubbelen-test mét de 26064-casus), `test_kantoor_module.py::test_volgende_projectnummer` (+ "Afgesloten
   26140" telt door). Rapport `docs/rapporten/2026-09-19-projectnummer-uit-afgesloten-naam.md`.
 
+<!-- toegevoegd 19-09-2026 avond, opdracht "nameting-projecten-afsluiten-tab-na-deploy" -->
+- **Tab "Afsluiten? (N)" — nameting ná deploy + eindfactuur-reden deterministisch bij meerdere regels op één datum (19-09 avond; geen
+  migratie, geen RLZ-write; BESLISSINGEN "PROJECTEN — TAB AFSLUITEN? MÉT BULK-AFSLUITEN EN NIET-AFSLUITEN (Peter 19-09)" statusalinea):**
+  **werkt in productie: JA (motor op de job-image), niet gemeten (de tab zelf — `GET /projecten/afsluit-kandidaten` is op 19-09 door geen
+  mens aangeroepen; Peter/Haci openen 'm morgen).** Meting op service én jobs `a3eac85` (bevat `86ecbad` = 0167 + motor): nameting-run
+  35450280469 (bot-bestand `verkenning/nameting-projecten-afgesloten-19-09.txt`, `d724769`) en herhaling 35454573374 geven bij Universal
+  "83 lopende projecten beoordeeld, 8 kandidaat afsluiten (geen activiteit 0, eindfactuur geboekt 0, naam zegt afgesloten 8, looptijd
+  verstreken 0), 0 uitgesteld" — dezelfde acht als op de replica; leesreplica: `project_cache` Universal 83 lopend+actief / 87
+  lopend+inactief / 0 afgesloten, `project_afsluit_uitstel` 0, stil-venster 6, 0 audit-events `project_afgesloten`/`_uitgesteld`/
+  `_stil_maanden_gewijzigd` → er is nog niets afgevinkt. **Correctie op het bouwrapport:** "25017 óók eindfactuur" was fout — de jongste
+  verkoopregel van 25017 is 03-06 "Hefsteiger compleet 2e van 2 termijnen)" (808010818); de "Eindafrekening" (808010670) is van 06-03 en
+  telt volgens de regel (jongste verkoopregel) terecht niet: ná een eindafrekening zijn er nog twee termijnen gefactureerd. **Latente
+  niet-determinisme gefixt:** `_laatste_regel_per_project` koos bij meerdere regels op dezelfde jongste datum (een factuur mét meerdere
+  regels — de normale situatie) de eerste rij in databasevolgorde, zodat de reden `eindfactuur` op de replica anders kon uitvallen dan op
+  de primary; sinds 19-09 avond wint een regel mét de eindfactuur-tekst, anders de eerste op (`rlz_document_id`, `id`) — een reden mag
+  nooit van de rijvolgorde afhangen. Guard `tests/projecten/test_afsluiten.py::test_eindfactuur_meerdere_regels_op_jongste_datum_is_deterministisch`
+  (drie regels op één datum mét de eindfactuurregel als tweede ingevoegd → reden; de 25017-casus → geen reden; tegenproef zónder fix rood).
+  Rapport `docs/rapporten/2026-09-19-nameting-projecten-afsluiten-tab-na-deploy.md`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)
