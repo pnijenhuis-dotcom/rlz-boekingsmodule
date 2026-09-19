@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-19, rapport: docs/rapporten/2026-09-19-projectnummer-uit-afgesloten-naam.md (sectie "Nameting ná deploy")
+
 Domeinen: verplichtingen-projecten-voorraad, reconciliatie, werkloop-productie
 
 # OPDRACHT 19-09 — Nameting ná deploy: projectnummer óók uit "Afgesloten NNNNN …"-namen (vervolg op

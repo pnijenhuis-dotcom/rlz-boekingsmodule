@@ -2,8 +2,8 @@
 
 **Opdracht:** `opdrachten/gedaan/2026-09-19-projectnummer-uit-afgesloten-naam.md` (19-09, bijvangst rapport
 `2026-09-19-projectverdeling-afgesloten-projecten-en-rlz-kant-meting.md` sectie "Nameting ná deploy"). **Geen migratie, geen AI, geen
-RLZ-write.** **Werkt in productie: niet gemeten** — de code deployt ná deze run; het meetrecept staat als vervolg-opdracht
-`opdrachten/inbox/2026-09-19-nameting-projectnummer-afgesloten-na-deploy.md` en is als onderdeel in de nameting-workflow opgenomen.
+RLZ-write.** **Werkt in productie: JA** — gemeten 19-09 17:15 ná deploy `1dab82c` (service én jobs), zie sectie "Nameting ná deploy";
+meetrecept = vervolg-opdracht `opdrachten/gedaan/2026-09-19-nameting-projectnummer-afgesloten-na-deploy.md` + workflow-onderdeel `projecten-afgesloten`.
 **BESLISSINGEN:** "PROJECTEN — STATUS AFGESLOTEN + PROJECTNUMMER UNIEK (Peter 18-09)" rij B4. **Regels:**
 `docs/regels/verplichtingen-projecten-voorraad.md` alinea "Projectnummer óók lezen uit 'Afgesloten NNNNN …'-namen" +
 `docs/regels/reconciliatie.md` alinea "Blok `projecten` — `project_nummer_dubbel` telt óók …".
@@ -79,7 +79,55 @@ Frontend: geen wijziging (geen nummer-afleiding in de frontend; `projectcode`-ch
 - **Bijvangst werkboom:** er stond bij de start een nieuwe inbox-opdracht `2026-09-19-cc-inbox-lock-per-opdracht-en-wachten-op-suite.md`
   van een andere sessie (ongecommit); niet aangeraakt, niet meegecommit.
 
+## Nameting ná deploy (19-09 16:57–17:16 UTC+2, opdracht `2026-09-19-nameting-projectnummer-afgesloten-na-deploy`)
+
+**Stap 0 — deploy-check (service ÉN jobs):** `6a7215c` (deze feature) zit in `0791109` (deploy-run 35447506842, groen 16:07) en in
+`1dab82c` (deploy-run 35449947839, groen 16:55). Op het meetmoment: `gcloud run services list` → `rlz-backend` op
+`backend:1dab82cd…`; `gcloud run jobs list` → álle 17 jobs (incl. `rlz-reconciliatie`) op `backend:1dab82cd…`; tag `1dab82c` =
+digest `sha256:71012c5b…` = de image van élke executie hieronder. Geen drift, `main..origin/main` = 0 (geen stille push-blokkade), meten mocht.
+
+**Stap 1 — meetrecept (lees-only, `gh workflow run nameting.yml -f onderdeel=projecten-afgesloten` → run 35450280469 op `1dab82c`,
+WIF als `nameting@`, zes executies op de job-image):**
+
+| meting | executie (image-digest `71012c5b…`) | uitkomst | verwacht (opdracht) | klopt |
+|---|---|---|---|---|
+| `reconciliatie-alles --alleen projecten --lees-only` | rlz-reconciliatie-k4cbl (container exit 1 = afwijkingen gemeld, uitkomst) | **4 × AFWIJKING `project_nummer_dubbel`** bij Universal: 26053 (Den Haag Vink en Veen / Den Haag Monchyplein), **26064 ("26064 Harskamp (vd Brandhof)" \| "Afgesloten 26064 Apeldoorn (Ben Kuijer)")**, 26084 ("(Harskamp) van den Brandhof" / "Harskamp (vd Brandhof)"), 26149 ("26149" / "Poeldijk, Anjerstraat 245 (Weboma)"); 8 × LET-OP `project_naam_afgesloten_status_actief`; slotregel "78 administraties, 4 dubbel(e) projectnummer(s), 8 actief project(en) mét 'Afgesloten'-naam"; "LEES-ONLY afgerond — niets vastgelegd" | 4 × (26053, **26064**, 26084, 26149); LET-OP's 8 of minder | **ja** (vóór deploy 10:20: 3, zonder 26064) |
+| `projecten-dubbele-nummers --administratie "Universal Steigerbouw"` | rlz-reconciliatie-lkb4k (exit 0) | nummer 26064 mét beide project-id's: `4dfd2322-f2c5-445d-ad03-48149c59f4f7` "26064 Harskamp (vd Brandhof)" facturen=0 weekstaten=0 planning=0 en `36d04825-b4ff-43ba-a04f-4a2313a8eb31` "Afgesloten 26064 Apeldoorn (Ben Kuijer)" **facturen=10** weekstaten=0 planning=0 ← voorstel: blijft; 26053 (1/0 → Vink en Veen blijft), 26084 (0/2 → "26084 Harskamp (vd Brandhof)" blijft), 26149 (0/0 → eerste blijft); "Totaal: 4 dubbel(e) nummer(s). Verliezer ná verhuizing op afgesloten (IsActive uit) — nooit verwijderen." | 26064 mét beide id's + tellers + "blijft"; opdracht verwachtte 0/0 → eerste | **ja** voor id's/tellers/voorstel; **afwijking t.o.v. de verwachting:** Apeldoorn heeft 10 factuurregels in `project_regel_cache` (RLZ-Lines), niet 0 |
+| overige vier executies (facturen-zonder-project Universal + alle-projectverplicht `--rlz`, projectverdeling-afgesloten-rapport, projecten-afsluit-kandidaten) | pxgjv, 2ft4t, v5hj5, 6fvj7 (exit 0) | ongewijzigd t.o.v. 16:28: 0 bevindingen zonder project (1.296 RLZ-facturen gelezen, 0 leesfouten), 8 actieve "Afgesloten"-projecten, 10 geboekte verdelingsdelen, 8 kandidaten afsluiten | geen wijziging | ja |
+
+**Bot-bestand:** de commit-stap van run 35450280469 meldde letterlijk "geen wijzigingen in verkenning/nameting-*.txt … — geen commit":
+de uitvoer op `1dab82c` is **byte-identiek** aan `verkenning/nameting-projecten-afgesloten-19-09.txt` zoals gecommit door de
+nameting-bot in `d724769` (run 35447853112, 16:09–16:28, job-image `0791109` — dat beeld droeg `6a7215c` al; die run werd gestart
+door een andere sessie vóór deze opdracht begon). Het bestand op main IS dus het meetresultaat; de regels hierboven zijn daarnaast
+onafhankelijk uit het run-log en de Cloud-Logging-uitvoer van executies k4cbl/lkb4k gelezen (regel: bot-bestand op main óf run-log gelezen).
+
+**Stap 4 — 409-proef:** NIET gedaan (optioneel, alleen op verzoek van Peter, nooit vanuit een run). Het gedrag is door
+`test_afgesloten_naam_in_rlz_of_cache_bezet_het_nummer` gedekt; live in productie is de cache-treffer op "26064 Harskamp (vd Brandhof)"
+de eerste die de poort raakt.
+
+→ **werkt in productie: JA** — 3 → 4 dubbelen exact als verwacht, 26064 mét beide kanten, geen drift, niets geschreven.
+
+**Bevinding buiten de verwachting (klikpunt Peter, uit dit rapport — niet voor de run):** het voorstel "blijft" bij 26064 valt op
+**"Afgesloten 26064 Apeldoorn (Ben Kuijer)"** omdat dát project 10 factuurregels draagt en Harskamp 0. De heuristiek "meeste activiteit
+blijft" is correct toegepast, maar wijst hier naar het project dat Universal zelf als afgesloten heeft gemarkeerd. De opdrachttekst
+("beide geen activiteit → eerste") was een aanname van 19-09 ochtend die niet klopte: de tab "Afsluiten?" toonde diezelfde dag al
+"laatste activiteit inkoop 2026-06-11 € 688,00 [2026-424]" voor Apeldoorn. Geen voorkeur van het systeem; de mens beslist: (a)
+Harskamp (vd Brandhof) komt drie keer voor (26064 + 2 × 26084, alle drie actief) — samenvoegen is mens-werk, verliezers ná verhuizing
+op afgesloten (IsActive uit), nooit verwijderen; (b) Apeldoorn staat al in de LET-OP-lijst "afsluiten?" (8). Vervolgpunt, niet gebouwd:
+het dubbelen-rapport kan bij een "blijft"-kandidaat mét afsluitmarkering een expliciete regel "let op: naam zegt afgesloten" tonen.
+
+**Keuzes in deze run (Peter kijkt niet mee):** (1) de workflow tóch opnieuw gedraaid hoewel `d724769` al een meting op een image mét
+`6a7215c` droeg — de opdracht eist stap 0 op de commit zoals gedeployd op service ÉN jobs, en de meting van 16:28 was door een
+andere run gestart; identieke uitvoer = sterker bewijs, geen dubbel werk. (2) Geen nieuw rapportbestand, sectie in dit rapport +
+INDEX-regel bijgewerkt (opdracht punt 5; precedent `8143d29`). (3) Geen code gewijzigd; het vervolgpunt onder de bevinding blijft
+een voorstel.
+
 ## Gelezen regels
 Volledig gelezen vóór de start (LEESPLICHT):
 - `docs/regels/verplichtingen-projecten-voorraad.md` (372 regels — stand ná deze run; vóór de run 349)
 - `docs/regels/reconciliatie.md` (115 regels — stand ná deze run; vóór de run 107)
+
+Nameting-run 19-09 (deze sectie), volledig gelezen vóór de start:
+- `docs/regels/verplichtingen-projecten-voorraad.md` (372 regels)
+- `docs/regels/reconciliatie.md` (130 regels)
+- `docs/regels/werkloop-productie.md` (142 regels)

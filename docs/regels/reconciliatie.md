@@ -75,8 +75,9 @@
 - **Blok `projecten` — `project_nummer_dubbel` telt óók "Afgesloten NNNNN …"-namen (19-09; geen migratie):** de bevindingssoort
   gebruikt sinds 19-09 dezelfde nummerlezer `nummer.cijfer_prefix` die door het afsluitwoord van Universal heen leest, zodat "Afgesloten
   26064 Apeldoorn" + "26064 Harskamp" één afwijking `project_nummer_dubbel` nummer 26064 geeft (vingerafdruk administratie + nummer,
-  ongewijzigd; stand `meten` blijft). Verwacht effect Universal ná deploy: 3 → 4 dubbelen (26053, 26064, 26084, 26149) — nameting als
-  vervolg-opdracht. Volledige tekst: `docs/regels/verplichtingen-projecten-voorraad.md` alinea "Projectnummer óók lezen uit
+  ongewijzigd; stand `meten` blijft). Verwacht effect Universal ná deploy: 3 → 4 dubbelen (26053, 26064, 26084, 26149) — **gemeten 19-09 17:15 op
+  `1dab82c` (run 35450280469): 4, exact als verwacht; werkt in productie JA** (rapport `2026-09-19-projectnummer-uit-afgesloten-naam.md`
+  sectie "Nameting ná deploy"). Volledige tekst: `docs/regels/verplichtingen-projecten-voorraad.md` alinea "Projectnummer óók lezen uit
   'Afgesloten NNNNN …'-namen".
 
 <!-- toegevoegd 19-09-2026, opdracht "ic-spiegel-rood-174-doorbelastingsparen-verkoop-niet-gevonden" -->

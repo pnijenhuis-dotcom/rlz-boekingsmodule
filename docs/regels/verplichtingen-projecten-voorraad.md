@@ -252,7 +252,11 @@
   (klikpunt), nooit verwijderen. Nameting ná deploy = vervolg-opdracht (verwacht 4 × `project_nummer_dubbel` bij Universal: 26053, 26064,
   26084, 26149; `projecten-dubbele-nummers --administratie "Universal Steigerbouw"` toont 26064 mét beide kanten + voorstel "blijft");
   workflow-onderdeel `projecten-afgesloten` draait sinds 19-09 óók `reconciliatie-alles --alleen projecten --lees-only` en
-  `projecten-dubbele-nummers`. Tests `tests/projecten/test_status_en_nummer.py` (+3: prefix door het afsluitwoord, 409 cache + RLZ mét
+  `projecten-dubbele-nummers`. **Gemeten 19-09 17:15 ná deploy `1dab82c` (service én jobs; nameting-run 35450280469, opdracht
+  `2026-09-19-nameting-projectnummer-afgesloten-na-deploy`): werkt in productie JA — 4 × `project_nummer_dubbel` (26053, 26064, 26084,
+  26149; was 3), 26064 mét beide id's; het voorstel "blijft" valt op "Afgesloten 26064 Apeldoorn" (10 factuurregels vs 0 bij Harskamp) —
+  correct volgens de heuristiek, maar het wijst naar het als afgesloten gemarkeerde project: klikpunt Peter, geen systeemvoorkeur;
+  vervolgpunt (niet gebouwd) = expliciete regel "let op: naam zegt afgesloten" bij zo'n voorstel.** Tests `tests/projecten/test_status_en_nummer.py` (+3: prefix door het afsluitwoord, 409 cache + RLZ mét
   or-GET, oudere client twee GET's; dubbelen-test mét de 26064-casus), `test_kantoor_module.py::test_volgende_projectnummer` (+ "Afgesloten
   26140" telt door). Rapport `docs/rapporten/2026-09-19-projectnummer-uit-afgesloten-naam.md`.
 
