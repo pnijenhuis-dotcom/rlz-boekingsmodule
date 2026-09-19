@@ -275,6 +275,26 @@ class TestWerkvoorraadMotorEnReconciliatie:
         assert len(_audit(admin_engine, autotype.AUDIT_RUN)) == 1
         assert cli.main(["kassarapport-autotype-nazorg", "--administratie", "bestaat-niet-xyz"]) == 2
 
+    def test_nazorg_cli_kantoorbreed_zonder_administratie_loopt(
+        self, administratie_id, gescoopte_gebruiker, opslag, admin_engine, monkeypatch, capsys
+    ) -> None:
+        """Nameting 19-09 poging 2 (executie rlz-reconciliatie-m6pst): de kantoorbrede tak — zonder `--administratie` —
+        strandde in productie op `NameError: scoped_session` (de import stond alleen in `_zoek_administraties`); de test
+        hierboven dekte uitsluitend de `--administratie`-tak. Deze test loopt beide kantoorbrede vormen (dry-run + echt)."""
+        from app import cli
+
+        monkeypatch.setattr(soort_service, "start_extractie_na_toewijzing", lambda **kw: DocumentStatus.ONTVANGEN, raising=False)
+        profx = _upload(administratie_id, gescoopte_gebruiker, opslag, naam="Journaal 10-9.pdf", inhoud=_profx_pdf())
+        _zet_terug_naar_inkoopfactuur(admin_engine, profx)
+        assert cli.main(["kassarapport-autotype-nazorg", "--dry-run"]) == 0
+        uit = capsys.readouterr().out
+        assert "dry-run — 0 writes" in uit and "zou omzetten 1" in uit and "Journaal 10-9.pdf" in uit
+        assert _rij(admin_engine, profx)[0] == "inkoopfactuur"
+        assert cli.main(["kassarapport-autotype-nazorg"]) == 0
+        assert "omgezet 1" in capsys.readouterr().out and _rij(admin_engine, profx)[0] == "kassarapport"
+        assert cli.main(["kassarapport-autotype-nazorg", "--dry-run"]) == 0
+        assert "0 kandidaat/kandidaten" in capsys.readouterr().out
+
 
 class TestTochInkoopfactuur:
     def test_route_zet_terug_schrijft_observatie_en_meldt_de_drempel(

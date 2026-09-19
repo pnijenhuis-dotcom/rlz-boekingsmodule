@@ -533,6 +533,7 @@ def _kassarapport_autotype_nazorg(args: argparse.Namespace) -> int:
     parser-treffer die nog als inkoopfactuur staan alsnog automatisch omzetten (tijdlijn + audit per document, één
     rapportregel per administratie). --dry-run = 0 writes; idempotent (een tweede echte run vindt niets meer)."""
     from app.db.models import Administratie
+    from app.db.session import scoped_session  # nameting 19-09 poging 2: ontbrak → NameError op de kantoorbrede tak
     from app.omzet import autotype
 
     if args.administratie:
