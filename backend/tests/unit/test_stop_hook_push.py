@@ -178,3 +178,26 @@ def test_lokale_stop_hook_roept_het_script_aan_voor_beide_repos() -> None:
     assert all("scripts/git-hooks/stop-push.sh" in c for c in commando_s), commando_s
     assert any("Platform" in c for c in commando_s) and any("$CLAUDE_PROJECT_DIR" in c for c in commando_s)
     assert not any("push handmatig" in c for c in commando_s)
+    # Opdracht 19-09 "stop-hook-push-non-fast-forward": de shellregel in de settings-JSON draagt zelf geen git-commando meer —
+    # geen rebase-/force-/push-woord; alle logica staat in het tracked script (getoetst hierboven).
+    for c in commando_s:
+        assert not re.search(r"\b(rebase|force|push origin|stash)\b", c), c
+
+
+def test_reproductie_bot_commit_tijdens_run_voor_en_na(werkplaats: dict[str, Path]) -> None:
+    """Opdracht 19-09 (stille deploy-blokkade): VÓÓR = de oude hook-regel (één `git push origin main`) → non-fast-forward, exit 1,
+    origin houdt alleen de bot-commit (drie uur geen deploy op 19-09); NÁ = stop-push.sh → merge --no-ff + push, origin/main
+    draagt bot-commit én run-commit, geen blokkade-bestand, geen rebase in de reflog."""
+    mac = werkplaats["mac"]
+    lokaal = _commit(mac, "docs/rapporten/2026-09-19-run.md", "rapport\n", "docs(rapport run)")
+    bot = _commit(werkplaats["bot"], "verkenning/nameting-alles-19-09.txt", "Oordeel: groen\n", "nameting 19-09 alles")
+    _git(werkplaats["bot"], "push", "-q", "origin", "HEAD:main")
+    voor = subprocess.run(["git", "-C", str(mac), "push", "origin", "main"], capture_output=True, text=True, env=GIT_ENV)
+    assert voor.returncode == 1 and "[rejected]" in voor.stderr and "fetch first" in voor.stderr, voor.stderr
+    assert _git(werkplaats["origin"], "rev-parse", "main") == bot, "vóór: origin houdt alleen de bot-commit"
+    uit = _hook(werkplaats)
+    assert uit.returncode == 0, uit.stderr
+    top = _git(werkplaats["origin"], "rev-parse", "main")
+    assert set(_git(werkplaats["origin"], "log", "-1", "--format=%P", top).split()) == {lokaal, bot}, "ná: merge van beide kanten"
+    assert not (mac / "opdrachten" / ".push-geblokkeerd").exists()
+    assert "rebase" not in _git(mac, "reflog")

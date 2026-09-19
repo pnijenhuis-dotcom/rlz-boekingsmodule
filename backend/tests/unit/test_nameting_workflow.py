@@ -282,3 +282,17 @@ def test_onderdeel_app_bundels_alleen_op_verzoek_en_lees_only(tmp_path: Path) ->
         },
     )
     assert oordeel.startswith("Oordeel: geen bundel voor runtime 1.1"), oordeel
+
+
+def test_bot_commit_blijft_op_main_en_wacht_niet_op_een_deploy() -> None:
+    """Beslissing 19-09 (opdracht "stop-hook-push-non-fast-forward-stille-deploy-blokkade", punt 3): de bot-commit gaat NIET naar
+    een eigen branch en wacht NIET op een deploy-run — een meting telt pas als het bot-bestand op main staat (werkloop-productie),
+    en de Stop-hook (`scripts/git-hooks/stop-push.sh`) merget een gedivergeerde origin/main zelf (`--no-ff`) mét retry. De
+    `pull --rebase` in de bot-stap raakt uitsluitend de ene, verse bot-commit (geen rapport citeert die hash) en blijft dus."""
+    t = _tekst()
+    assert "git push origin HEAD:main" in t
+    assert not re.search(r"push\s+origin\s+HEAD:(?!main\b)", t), "bot pusht naar main, niet naar een eigen branch"
+    assert "workflow_run" not in t and "gh run list" not in t and "deploy.yml" not in t.split("Auth:")[1].split("name: nameting")[0].replace(
+        "DEZELFDE provider als deploy.yml", ""
+    ), "geen wacht-op-deploy-constructie"
+    assert t.count("--rebase") == 1, "één rebase: alleen de bot's eigen commit op origin/main"
