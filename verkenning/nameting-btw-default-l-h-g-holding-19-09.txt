@@ -1,0 +1,8 @@
+Btw-default per grootboekrekening — L.H.G. Holding B.V. (8299910f-cc71-4bca-94ef-aacf1b12ca3d)
+boekingsgeheugen: 0 observaties totaal (laatste —), 2 boekingsregels (inkoop + bank) mét tarief in het venster van 744 dagen; regel: ≥ 5 regels én één tarief ≥ 90 %; laatste afleiding: 2026-09-16T05:02+00:00
+code    rekening                                RLZ-default                 historie-default                            verdeling
+4303    Verzekering vervoermiddelen             geen                        geen (1 regels, hoogste 100 %)              NL, Geen BTW (Vrijgesteld) 1×
+4404    Kosten mobiele telefonie                geen                        geen (1 regels, hoogste 100 %)              NL, Hoog Tarief 1×
+299 rekeningen (2 getoond): 0 mét RLZ-default, 0 mét historie-default, 2 mét regels zonder default, 297 zonder regels.
+Container called exit(0).
+
