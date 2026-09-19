@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-19, rapport: docs/rapporten/2026-09-19-projectverdeling-afgesloten-projecten-en-rlz-kant-meting.md (sectie "Nameting ná deploy")
+
 Domeinen: verplichtingen-projecten-voorraad, werkloop-productie
 
 # NAMETING 19-09 — projectverdeling × afgesloten projecten ná deploy (vervolg op rapport 2026-09-19-projectverdeling-afgesloten-projecten-en-rlz-kant-meting.md)

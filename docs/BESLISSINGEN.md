@@ -11601,9 +11601,21 @@ n.v.t. (lees-only) — module-kant gemeten op de leesreplica, RLZ-kant NIET geme
 ## PROJECTVERDELING SLUIT AFGESLOTEN PROJECTEN UIT + RLZ-KANT-METING FACTUREN ZONDER PROJECT (19-09) — omzetsleutel volgt de projectstatus (0160), herberekening bij afsluiten mét tijdlijnregel, LET-OP "naam zegt afgesloten" in blok projecten, lees-only rapport + CLI, Universal RLZ-kant 2026 = 0 zonder project; geen migratie
 
 **Status: GEBOUWD + GETEST 19-09 (opdracht "projectverdeling-sluit-afgesloten-projecten-uit-en-rlz-kant-meting", nazorg rapport
-2026-09-18-facturen-zonder-project beslispunt 3); werkt in productie: niet gemeten (deploy ná deze run — meetrecept in het rapport);
+2026-09-18-facturen-zonder-project beslispunt 3); werkt in productie: A1/A3 JA, A2 NIET GEMETEN (nameting 19-09 ná deploy `1c7ae8c` — zie alinea "Nameting ná deploy" hieronder);
 RLZ-kant-meting facturen zonder project WEL gemeten (job-image `cfa6d42`/`e6c8ca3`, executie rlz-reconciliatie-5z68r). Rapport
 `docs/rapporten/2026-09-19-projectverdeling-afgesloten-projecten-en-rlz-kant-meting.md`. Geen migratie, geen RLZ-write.**
+
+**Nameting ná deploy 19-09 (opdracht "nameting-projectverdeling-afgesloten-na-deploy", rapport-sectie "Nameting ná deploy"):** deploy-check
+groen (run 35428694410, service én `rlz-reconciliatie` op `1c7ae8c`); `projectverdeling-afgesloten-rapport` op de job-image (executie
+rlz-reconciliatie-s9p4x) = 8 actieve "Afgesloten"-projecten, 10 geboekte delen € 1.239,05, overhead € 12.229,32 geboekt + € 31,50 onderweg,
+OVH nee — exact de verwachting; `reconciliatie-alles --alleen projecten --lees-only` (rlz-reconciliatie-b6rdf) = 8 × LET-OP
+`project_naam_afgesloten_status_actief` (registry METEN, geen mail) + 3 × `project_nummer_dubbel`. A2 (herberekening bij afsluiten) niet
+gemeten: op de leesreplica staan alle 8 nog op lopend/actief en het Exact-document 16616342 draagt geen "verdeling herberekend"-regel —
+wacht op afsluiten door Peter, nooit zelf afgesloten. Meetroute: `gh workflow run -f onderdeel=projecten-afgesloten` gaf HTTP 422 omdat het
+onderdeel niet in `options:` stond (bouwfout 240b7f5) → lokaal mét `NAMETING_VIA_GH=0` gedraaid (zelfde SA/job-image), optie + guard
+`test_elk_dispatch_onderdeel_staat_in_de_keuzelijst` toegevoegd (regels werkloop-productie). Bijvangst: `nummer.py::_NUMMER_PREFIX` leest
+alleen een nummer aan het begin van de naam, dus "Afgesloten 26064 Apeldoorn" naast "26064 Harskamp" is onzichtbaar voor `project_nummer_dubbel`
+én voor de 409-poort bij aanmaken → vervolg-opdracht `opdrachten/inbox/2026-09-19-projectnummer-uit-afgesloten-naam.md`.
 
 - **A1 — sleutel alleen actieve projecten:** `omzet_per_project` filterde al op `is_actief` (bron-spiegel); sinds 19-09 óók op
   `project_cache.status != 'afgesloten'` (0160) — afsluiten in de module telt ook als RLZ het project buiten de module om weer actief

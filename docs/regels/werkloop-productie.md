@@ -63,3 +63,14 @@
   levende lock, "af (staat in gedaan/ — de volgende tick ruimt de kopie op)", anders "gestrand (geen levende lock — terug naar inbox/)";
   leeg = "lopend/: leeg". Guards `tests/unit/test_cc_inbox_herstel.py::test_lopend_kopie_van_afgeronde_opdracht_*` (+ tegenproef zonder
   kopregel) en `tests/unit/test_cc_inbox_parallel.py::test_rlz_inbox_status_toont_lopend_*`.
+
+<!-- toegevoegd 19-09-2026, opdracht "nameting-projectverdeling-afgesloten-na-deploy" -->
+- **Nameting-workflow — een dispatch-onderdeel staat óók in de keuzelijst (19-09; BESLISSINGEN "PROJECTVERDELING SLUIT AFGESLOTEN PROJECTEN
+  UIT + RLZ-KANT-METING FACTUREN ZONDER PROJECT (19-09)" alinea "Nameting ná deploy 19-09"):** `gh workflow run nameting -f
+  onderdeel=projecten-afgesloten` gaf HTTP 422 — het onderdeel stond in de if-takken en de beschrijving van `.github/workflows/nameting.yml`,
+  niet in `options:` van de choice-input; GitHub weigert dan élke dispatch, dus ook `nameting.sh` zonder TTY (via_gh) en de vervolg-opdracht
+  ná deploy. Regel: een nieuw onderdeel = if-tak + `options:` + `via_gh_onderdeel` in `scripts/gcp/nameting.sh` in één commit; guard
+  `tests/unit/test_nameting_workflow.py::test_elk_dispatch_onderdeel_staat_in_de_keuzelijst` (élke `"$ONDERDEEL" == …`-vergelijking ∈ options).
+  Terugvalroute in een run die de workflow niet meer gefixt-gepusht krijgt: hetzelfde script lokaal mét `NAMETING_VIA_GH=0` (zelfde
+  SA-impersonatie, zelfde job-executie op de gedeployde image — geen lokaal proces tegen productie) en de ruwe uitvoer in het rapport,
+  want er komt dan geen bot-bestand op main.

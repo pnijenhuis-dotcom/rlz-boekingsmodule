@@ -64,10 +64,26 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     tekst = _tekst()
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
-    assert re.search(r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query\]", tekst)
+    assert re.search(
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten\]",
+        tekst,
+    )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
     assert re.search(r"query:\s*\n\s*description:", tekst) and "--(sql|als)" in tekst
     assert len(_run_stappen()) >= 2, "verwacht minstens de meet- en de commit-stap als run-blok"
+
+
+def test_elk_dispatch_onderdeel_staat_in_de_keuzelijst() -> None:
+    """Nameting 19-09: `gh workflow run nameting -f onderdeel=projecten-afgesloten` gaf HTTP 422 — het onderdeel stond in de
+    if-takken en de beschrijving, maar niet in `options:` (een choice-input weigert élke andere waarde, ook via nameting.sh zonder
+    TTY). Élk onderdeel dat de run-stap toetst moet in de keuzelijst staan."""
+    tekst = _tekst()
+    m = re.search(r"options: \[([^\]]+)\]", tekst)
+    assert m, "options-lijst ontbreekt"
+    opties = {o.strip() for o in m.group(1).split(",")}
+    gebruikt = set(re.findall(r'"\$ONDERDEEL" (?:==|!=) "([a-z-]+)"', tekst))
+    assert gebruikt, "geen $ONDERDEEL-vergelijkingen gevonden"
+    assert gebruikt <= opties, f"onderdelen zonder keuze-optie (dispatch geeft 422): {sorted(gebruikt - opties)}"
 
 
 def test_auth_uitsluitend_nameting_sa_nooit_deploy() -> None:

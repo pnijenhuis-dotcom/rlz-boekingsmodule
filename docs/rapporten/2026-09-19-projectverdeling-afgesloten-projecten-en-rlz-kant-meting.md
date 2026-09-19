@@ -133,6 +133,53 @@ Peter één van de 8 via Projecten › Afsluiten… afsluit: tijdlijnregel "verd
 en het project weg uit die verdeling — dát is de regel "werkt in productie: ja". Let wel: zolang de 8 niet afgesloten zijn, bevat
 een nieuwe Universal-verdeling nog steeds die projecten — per de regel (status leidend, nooit de naam).
 
+## Nameting ná deploy (19-09 ±10:00–10:20, opdracht `2026-09-19-nameting-projectverdeling-afgesloten-na-deploy`)
+
+**Stap 0 — deploy-check (service ÉN jobs):** deploy-run 35428694410 op `1c7ae8c` groen (07:18 UTC); `gcloud run services describe
+rlz-backend` en `gcloud run jobs describe rlz-reconciliatie` tonen hetzelfde beeld `backend:1c7ae8cc…` — `app/projectverdeling/
+afgesloten.py` (commit `240b7f5`) staat live op service én jobs. Geen drift, meten mocht.
+
+**Stap 1 — meetrecept (lees-only, onder `nameting@` via impersonatie, executies op de job-image):**
+
+| meting | executie | uitkomst | verwacht | klopt |
+|---|---|---|---|---|
+| `projectverdeling-afgesloten-rapport --administratie "Universal Steigerbouw"` | rlz-reconciliatie-s9p4x (exit 0) | 8 actieve projecten mét "Afgesloten"-naam (25017, 25116, 25147, 25157, 26012, 26051, 26064, 26091 — alle `is_actief=True, status=lopend`); 10 geboekte verdelingsdelen € 1.239,05 (5 documenten RLZ-04-00003213/3215/3234/3235/3236 × 26012 Tilburg / 26051 Opijnen), élk voorstel "laten staan tot het project is afgesloten"; overhead 6 van 6 pro-rato-documenten, geboekt € 12.229,32 (4499 ×3, 4606 € 630, 4003 € 11.000), onderweg € 31,50 (Exact 4410); "OVH-project aanwezig: nee"; "Totaal: 8 … 10 …" | 8 / 10 = € 1.239,05 / € 12.229,32 / OVH nee | ja |
+| `reconciliatie-alles --alleen projecten --lees-only` | rlz-reconciliatie-b6rdf (container exit 1 = afwijkingen gemeld, uitkomst) | 8 × LET-OP `project_naam_afgesloten_status_actief` (Universal, tekst "naam zegt afgesloten, status actief — afsluiten?"), 3 × AFWIJKING `project_nummer_dubbel` (26053, 26084, 26149); "78 administraties"; "LEES-ONLY: geen run-rij, geen bevindingen, geen acceptatie-overdracht, geen mail" | 8 LET-OP in blok `projecten`, facet "in meting" (registry `soort_stand.py`: default METEN sinds 19-09), nooit actiemail | ja |
+
+**Meetroute-afwijking:** `gh workflow run nameting -f onderdeel=projecten-afgesloten` gaf **HTTP 422** ("not in the list of allowed
+values"): het onderdeel staat in de if-takken en de beschrijving van `nameting.yml`, maar NIET in `options:` van de choice-input
+(bouwfout `240b7f5`; de guard pinde de oude lijst letterlijk en zag het niet). Daarom hetzelfde script lokaal gedraaid mét
+`NAMETING_VIA_GH=0` (zelfde SA-impersonatie, zelfde job-image — de nameting-regel van 10-09 blijft staan: geen lokaal proces tegen
+productie, alleen job-executies). Er is dus GEEN bot-bestand `verkenning/nameting-projecten-afgesloten-19-09.txt`; de ruwe uitvoer
+staat hierboven. Gefixt in deze run: optie toegevoegd + guard `test_nameting_workflow.py::test_elk_dispatch_onderdeel_staat_in_de_keuzelijst`
+(élke `"$ONDERDEEL" == …`-vergelijking ∈ options) — werkt ná de volgende push.
+
+**Stap 2 — "werkt in productie" (leesreplica `db_lezen.sh --als <beheerder> --administratie 3ee6edf0…`, ±10:10):** alle 8
+"Afgesloten"-projecten staan nog op `status=lopend`, `is_actief=t`, `afgesloten_op` leeg — Peter heeft er nog geen afgesloten.
+Exact RLZ-2026053923 (`16616342-ee4c-4711-af7c-99afc0e11e5c`): jongste tijdlijnregel 17-09 11:39 `accordering_akkoord laag 1`, geen
+"verdeling herberekend"; zijn verdeling staat op `voorstel`, periode 2026-08-01, € 31,50, 8 delen (sleutels
+`project_id/aandeel/bedrag/omzet/wijze`) — de twee "Afgesloten"-projecten zitten er per de regel nog in (status leidend, nooit de naam).
+
+→ **werkt in productie: A1 (sleutel-CLI op de job-image) en A3 (LET-OP in blok projecten) JA — cijfers exact als verwacht; A2
+(herberekening bij afsluiten) NIET GEMETEN (wacht op afsluiten door Peter) — nooit zelf een project afgesloten.** Zodra Peter één van
+de 8 afsluit (Projecten › Afsluiten… of de nieuwe tab "Afsluiten? (N)"): dezelfde replica-toets — tijdlijnregel
+"verdeling herberekend: ‹project› afgesloten" op het Exact-document + project weg uit `projectverdeling.verdeling`.
+
+**Bijvangst — gat in de nummer-detectie (niet gefixt in deze run; vervolg-opdracht `opdrachten/inbox/2026-09-19-projectnummer-uit-
+afgesloten-naam.md`):** `project_nummer_dubbel` meldt 26053/26084/26149 maar mist **26064**: de replica toont "26064 Harskamp (vd
+Brandhof)" én "Afgesloten 26064 Apeldoorn (Ben Kuijer)" (beide lopend/actief), maar `app/projecten/nummer.py::_NUMMER_PREFIX` leest het
+nummer alleen aan het begin van de naam — "Afgesloten 26064 …" telt als naamloos. Dezelfde blinde vlek zit in de 409-poort bij aanmaken
+(`startswith(Name,'26064 ')`): een nieuw "26064 …" naast een "Afgesloten 26064 …" wordt niet geblokkeerd. Én: Harskamp (vd Brandhof)
+komt drie keer voor (26064 + 2 × 26084) — klikpunt Peter mét `projecten-dubbele-nummers`.
+
+**Werkloop-observaties deze run:** (1) de vorige inbox-run (Afsluiten?-tab, 09:17–09:52) eindigde met code 0 terwijl suite en sweep
+nog liepen; zijn werk (23 tracked + 11 nieuwe bestanden, o.a. migratie 0167, rapport `2026-09-19-projecten-afsluiten-tab-bulk.md` en de
+gedaan-kopregel) staat ONGECOMMIT in de werkboom. Deze run heeft alleen de eigen paden gestaged (gedeelde bestanden `nameting.yml`,
+`INDEX.md`, `BESLISSINGEN.md` via HEAD-herbouw) en dat werk laten staan: het is niet door zijn eigen poort gekomen, committen is aan die
+run/Peter (zelfde patroon als 18-09 "offerte-verbruik UITGESTELD"). (2) De dagelijkse nameting van 18-09 (run 35332118963, 09:56 UTC)
+was rood op "STOP: deploy-drift (service ≠ jobs)" en op 19-09 is nog geen schedule-run zichtbaar; vandaag zijn service en jobs gelijk —
+de volgende schedule-run bewaken.
+
 ## Beslispunten Peter
 1. Herverdeling van de geboekte € 1.239,05 op "Afgesloten 26012 Tilburg" / "Afgesloten 26051 Opijnen": laten staan (advies) of
    storno 19 + herverdeling (Q3 open, 5 documenten).
@@ -145,4 +192,8 @@ En: de 8 actieve "Afgesloten"-projecten afsluiten via Projecten › Afsluiten…
 Volledig gelezen vóór de start (LEESPLICHT):
 - `docs/regels/verplichtingen-projecten-voorraad.md` (282 regels)
 - `docs/regels/reconciliatie.md` (94 regels)
+- `docs/regels/werkloop-productie.md` (65 regels)
+
+Nameting-run ná deploy (aanvulling 19-09, zelfde bestand), volledig gelezen vóór de start:
+- `docs/regels/verplichtingen-projecten-voorraad.md` (349 regels)
 - `docs/regels/werkloop-productie.md` (65 regels)
