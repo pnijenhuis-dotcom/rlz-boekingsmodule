@@ -74,3 +74,14 @@
   Terugvalroute in een run die de workflow niet meer gefixt-gepusht krijgt: hetzelfde script lokaal mét `NAMETING_VIA_GH=0` (zelfde
   SA-impersonatie, zelfde job-executie op de gedeployde image — geen lokaal proces tegen productie) en de ruwe uitvoer in het rapport,
   want er komt dan geen bot-bestand op main.
+
+<!-- toegevoegd 19-09-2026, opdracht "nameting-kassarapport-autotype-na-deploy" (poging 1) -->
+- **Stop-hook-push non-fast-forward = stille deploy-blokkade (19-09; BESLISSINGEN "KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING ZONDER
+  HANDELING SWEEP (Peter 19-09)" rij "Nameting kassarapport-autotype poging 1"):** committe de nameting-bot op origin/main terwijl een run
+  liep, dan faalt de Stop-hook-push van die run én van élke volgende run non-fast-forward; de hook meldt dat alleen op stderr (exit 1) en de
+  inbox-tick slaat een gedivergeerde branch bewust over — op 19-09 stond de deploy daardoor drie uur stil (`86ecbad` 12:44 → 15:47) terwijl
+  vier na-deploy-nametingen wachtten. Regel: (1) élke run mét een deploy-afhankelijke stap 0 toetst óók `git rev-list --count
+  main..origin/main`; is die > 0, dan `git merge --no-ff origin/main` — nooit rebase (hashes staan in rapporten/BESLISSINGEN), nooit force —
+  en pas daarna de deploy-check; (2) een deploy-check die "niet gedeployd" zegt terwijl de commit ouder is dan ~30 min is een signaal om de
+  push-stand te lezen, niet om te wachten; (3) procesfix (vervolg-opdracht 19-09, niet gebouwd): Stop-hook merge-bij-bot-only + luide melding
+  óók in `claude -p`, `rlz inbox status` toont "origin gedivergeerd (N lokaal / M remote)".

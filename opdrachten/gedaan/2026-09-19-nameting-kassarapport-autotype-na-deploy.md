@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-19 (poging 1 — NIET GEMETEN, deploy geblokkeerd; poging 2 in de inbox), rapport: docs/rapporten/2026-09-19-nameting-kassarapport-autotype-poging-1-deploy-geblokkeerd.md
+
 Domeinen: omzet, reconciliatie, werkloop-productie
 
 # OPDRACHT 19-09 — Nameting + nazorg ná deploy: kassarapport automatisch typeren (Van Boxtel Journaal 1-9/2-9/3-9) — vervolg op

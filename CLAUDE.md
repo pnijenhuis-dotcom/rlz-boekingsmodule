@@ -312,6 +312,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   3. Een `^<t>^`-scheidingsteken staat nooit in een waarde; volledige envset per service/job in één stap; élk CC-eindrapport als `docs/rapporten/<datum>-<slug>.md` + INDEX-regel + sectie "Gelezen regels".
   4. Wachten van de inbox op een handmatige CC is nooit stil (duur, aantal, melding ná 30 min, `rlz inbox vrijgeven` als bewuste keuze).
   5. CC-inbox rij (i) (18-09 avond): een lopend-kopie van een opdracht die al in gedaan/ staat mét kopregel is af — opruimen, nooit herstarten; `rlz inbox status` toont lopend/ als loopt/af/gestrand — zie BESLISSINGEN "FACTUREN ZONDER PROJECT — LEES-ONLY RAPPORT + INBOX-HYGIËNE (18-09 avond)".
+  6. Stop-hook-push non-fast-forward = stille deploy-blokkade (19-09): bot-commit op origin tijdens een run → élke volgende push faalt stil; stap 0 toetst óók `main..origin/main` en merget (`--no-ff`, nooit rebase) vóór de deploy-check — zie BESLISSINGEN "KASSARAPPORT AUTOMATISCH TYPEREN + SIGNALERING ZONDER HANDELING SWEEP (Peter 19-09)".
   **LEESPLICHT: lees `docs/regels/werkloop-productie.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 ## Praktijklessen uit echte documenten (verkenning/12_DOCUMENTANALYSE_UNIVERSAL.md)

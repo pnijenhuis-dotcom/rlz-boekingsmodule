@@ -11804,3 +11804,13 @@ alinea "Patroon vaststaande actie = het systeem doet het".**
   (bulk op de cloud-wachtrij → één executie, één verwerker per document, cache = telling, late schrijver geweigerd). Regelteksten: `docs/regels/reconciliatie.md`,
   `docs/regels/doorbelasting-intercompany.md`, `docs/regels/intake-extractie.md` (alinea's 19-09 "Systeemfout ic_spiegel_rood …").
 
+
+- **Nameting kassarapport-autotype poging 1 (19-09 ~16:00) — NIET GEMETEN, deploy geblokkeerd door een stille push-fout.** Stap 0 faalde:
+  `a5c0663` stond niet op origin — de nameting-bot committe `78aca7a` om 12:18 op origin/main terwijl een run liep, waarna élke
+  Stop-hook-push sinds `86ecbad` (12:44) non-fast-forward faalde (stderr + exit 1, onzichtbaar in `claude -p`) en de inbox-tick de
+  gedivergeerde branch bewust oversloeg; service én job `rlz-reconciliatie` op `0bad465`. Fix in de run: merge `origin/main` (`6dafb0f`,
+  `--no-ff`, géén rebase omdat de hashes in rapporten staan); nulmeting Van Boxtel op de leesreplica: 4 × `profx_journaal` = Journaal
+  31-8/1-9/2-9/3-9 (niet "1-9/2-9/3-9 + één treffer"), 1 × `omzetrekeningen` = Journaal 4-9, 8 × `omzet_in_inkoopstroom`. Poging 2 +
+  procesfix-opdracht (Stop-hook merge-bij-bot-only, `rlz inbox status` toont divergentie) in de inbox. Rapport
+  `docs/rapporten/2026-09-19-nameting-kassarapport-autotype-poging-1-deploy-geblokkeerd.md`; regeltekst `docs/regels/werkloop-productie.md`
+  alinea "Stop-hook-push non-fast-forward = stille deploy-blokkade (19-09)". Werkt in productie: niet gemeten.
