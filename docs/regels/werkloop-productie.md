@@ -83,8 +83,20 @@
   vier na-deploy-nametingen wachtten. Regel: (1) élke run mét een deploy-afhankelijke stap 0 toetst óók `git rev-list --count
   main..origin/main`; is die > 0, dan `git merge --no-ff origin/main` — nooit rebase (hashes staan in rapporten/BESLISSINGEN), nooit force —
   en pas daarna de deploy-check; (2) een deploy-check die "niet gedeployd" zegt terwijl de commit ouder is dan ~30 min is een signaal om de
-  push-stand te lezen, niet om te wachten; (3) procesfix (vervolg-opdracht 19-09, niet gebouwd): Stop-hook merge-bij-bot-only + luide melding
-  óók in `claude -p`, `rlz inbox status` toont "origin gedivergeerd (N lokaal / M remote)".
+  push-stand te lezen, niet om te wachten; (3) procesfix — GEBOUWD 19-09 (rij (j4) hieronder + opdracht "stop-hook-push-non-fast-forward-stille-
+  deploy-blokkade", rapport `docs/rapporten/2026-09-19-stop-hook-push-non-fast-forward-procesfix.md`): de Stop-hook roept
+  `scripts/git-hooks/stop-push.sh` aan (fetch + `merge --no-ff` + retry; blokkade luid: stderr, macOS-melding, `push.log`,
+  `opdrachten/.push-geblokkeerd`), de inbox-tick meldt divergentie (hoogstens elk uur), `rlz inbox status` toont "origin gedivergeerd
+  (N lokaal / M remote) — deploy staat stil". **Beslissingen 19-09 avond:** (a) GEEN bot-only-filter — een mens-commit op origin is even
+  legitiem als een bot-commit; élke conflictvrije divergentie merget, een conflict blokkeert luid; (b) `.github/workflows/nameting.yml`
+  blijft ONGEWIJZIGD: de bot-commit gaat niet naar een eigen branch (een meting telt pas als het bot-bestand op main staat) en wacht
+  niet op een deploy-run (extra bewegend deel zonder winst — de kosten van een bot-commit tijdens een run zijn sinds (3) één
+  merge-commit + één extra deploy, en de bot pusht vaak juist tijdens de run die 'm aanvroeg); de `pull --rebase` in de bot-stap raakt
+  alleen de ene verse bot-commit en blijft; guard `test_nameting_workflow.py::test_bot_commit_blijft_op_main_en_wacht_niet_op_een_deploy`.
+  Bewijs vóór/ná in een tijdelijke kloon (bare origin + bot-kloon): oude hook-regel `git push origin main` → `! [rejected] … (fetch
+  first)`, exit 1, origin alleen de bot-commit; `stop-push.sh` → merge-commit mét beide ouders op origin/main, exit 0, geen
+  blokkade-bestand, geen rebase in de reflog — als test `test_stop_hook_push.py::test_reproductie_bot_commit_tijdens_run_voor_en_na`;
+  de settings-JSON-hookregels dragen zelf geen git-woord meer (zelfde guard).
 
 <!-- toegevoegd 19-09-2026, opdracht "cc-inbox-lock-per-opdracht-en-wachten-op-suite" -->
 - **CC-inbox rij (j) — lock per opdracht, één runner per repo, poort vóór einde, push-retry (19-09; BESLISSINGEN "CC-INBOX — LOCK PER

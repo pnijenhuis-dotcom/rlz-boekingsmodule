@@ -11883,3 +11883,13 @@ werkloop op de Mac; de eerste echte inbox-run ná deze commit is de nameting —
 - **Guards:** `test_cc_inbox_claim_en_poort.py` (16), `test_stop_hook_push.py` (7); bestaande `test_cc_inbox_parallel/_herstel/_pull.py`
   aangepast (64 inbox-guards groen). Nameting rij 5 (twee `rlz cc`-starts → één loopt, één stopt mét melding) = test
   `test_twee_rlz_cc_starts_tegelijk_een_loopt_een_stopt_met_melding` tegen de échte zsh-functie.
+- **Opdracht "stop-hook-push-non-fast-forward-stille-deploy-blokkade" — AFGEROND 19-09 avond (rapport
+  `docs/rapporten/2026-09-19-stop-hook-push-non-fast-forward-procesfix.md`):** punten 1, 2 en 4 stonden al (deze sectie, rij (j4));
+  toets: compleet. Beslissingen: (a) geen bot-only-filter (élke conflictvrije divergentie merget, conflict = luide blokkade); (b) punt 3
+  NIET gebouwd — `nameting.yml` ongewijzigd: bot-commit blijft op main (meting telt pas mét bot-bestand op main) en wacht niet op een
+  deploy-run (kosten van een bot-commit tijdens een run = één merge-commit + één extra deploy; de bot pusht meestal juist tijdens de
+  run die de meting aanvroeg, wachten zou de meting zelf vertragen); guard `test_nameting_workflow.py::
+  test_bot_commit_blijft_op_main_en_wacht_niet_op_een_deploy`. Bewijs vóór/ná in een tijdelijke kloon (oude regel `git push origin
+  main` → rejected/exit 1; `stop-push.sh` → merge --no-ff + push ok, geen rebase-spoor) = `test_stop_hook_push.py::
+  test_reproductie_bot_commit_tijdens_run_voor_en_na` + settings-JSON-hookregels zonder git-woord. Werkt in productie: n.v.t.
+  (lokale werkloop).

@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-19, rapport: docs/rapporten/2026-09-19-stop-hook-push-non-fast-forward-procesfix.md
+
 > **NB 19-09 (run "cc-inbox-lock-per-opdracht-en-wachten-op-suite", rapport `docs/rapporten/2026-09-19-cc-inbox-lock-per-opdracht-en-poort.md`):**
 > punten 1, 2 en 4 zijn dáár gebouwd — Stop-hook via `scripts/git-hooks/stop-push.sh` (fetch + merge --no-ff + retry, blokkade luid,
 > `opdrachten/.push-geblokkeerd`), inbox-tick meldt divergentie, `rlz inbox status` toont "origin gedivergeerd (N lokaal / M remote)",
