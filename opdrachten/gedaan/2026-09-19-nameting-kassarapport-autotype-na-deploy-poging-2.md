@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-19, rapport: docs/rapporten/2026-09-19-nameting-kassarapport-autotype-poging-2.md
+
 Domeinen: omzet, reconciliatie, werkloop-productie
 
 # OPDRACHT 19-09 — Nameting + nazorg ná deploy: kassarapport automatisch typeren — POGING 2 (vervolg op

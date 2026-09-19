@@ -152,3 +152,11 @@
   wachten tot de achtergrondrun klaar is, of gaan in een kopie. (3) Een lees-only nameting legt niets vast: auto-sluiting van bevindingen,
   aandacht-tellers en dagtellers zijn pas meetbaar ná de eerstvolgende ÉCHTE run (scheduler 06:30) — een échte run forceren = actiemail
   buiten het dagritme, dus een vervolg-opdracht in de inbox met de datum van die run.
+
+<!-- toegevoegd 19-09-2026, opdracht "nameting-kassarapport-autotype-na-deploy-poging-2" -->
+- **Élke CLI-vorm die een meetrecept noemt is in de suite gedraaid (19-09 poging 2; rapport `2026-09-19-nameting-kassarapport-autotype-poging-2.md`):**
+  het meetrecept noemde `kassarapport-autotype-nazorg --dry-run` kantoorbreed; de suite draaide alleen de zustervorm mét `--administratie`, en precies de
+  ongeteste tak strandde op de job-image (`NameError: scoped_session` — import stond alleen in de helper van de andere tak). Regel: wie een nazorg-/meet-CLI
+  bouwt, laat de test élke argumentvorm uit het meetrecept letterlijk aanroepen (mét en zónder filter, dry-run én echt); een meetrecept dat een vorm noemt
+  die de suite niet kent is niet af. Een NameError/ImportError op een job-executie is een systeemfout van de bouw, geen productie-incident: fix + guard in
+  dezelfde run, en de meetlat opnieuw ná deploy (vervolg-opdracht).

@@ -11741,8 +11741,12 @@ of losse `out_refund`.
 Peter 19-09 op de screenshot Inzicht › Reconciliatie Van Boxtel Journaal 1-9/2-9/3-9: "dit zijn meldingen waar ik dus niks mee doe.
 Als de module weet dat het verkoopboekingen zijn, wijzig het dan automatisch. Mocht er een fout tussen zitten dan valt dat op
 tijdens het boeken en corrigeren we het dan weer, wordt het model steeds slimmer"); deel B = lees-only sweep (niets gebouwd);
-werkt in productie: niet gemeten (deploy ná deze run; meetrecept + nazorg-CLI in het rapport). Rapport
-`docs/rapporten/2026-09-19-kassarapport-autotype-en-signalering-sweep.md`. Geen migratie, geen RLZ-write. Canonieke regeltekst:
+werkt in productie: **GEMETEN 19-09 18:00–18:15 op `764072a` — JA** voor motor, nazorg per administratie, tijdlijn, audit, omzetpad en
+het verdwijnen van de profx-bevindingen (Van Boxtel 4/4 omgezet, `--alleen omzet --lees-only` 0 × profx, 1 × omzetrekeningen, 8 × omzet_in_inkoopstroom);
+**NEE** voor de kantoorbrede nazorg-CLI zonder `--administratie` (`NameError scoped_session`, gefixt + guard in poging 2, deploy volgt);
+niet gemeten: aandacht-teller 340 → 336, auto-sluiting, dagteller-UI (ná de échte run 20-09 06:30 — vervolg-opdracht in de inbox; rij "poging 2"
+hieronder). Rapport bouw `docs/rapporten/2026-09-19-kassarapport-autotype-en-signalering-sweep.md`, nameting
+`docs/rapporten/2026-09-19-nameting-kassarapport-autotype-poging-2.md`. Geen migratie, geen RLZ-write. Canonieke regeltekst:
 `docs/regels/omzet.md` alinea "Kassarapport automatisch typeren" (herziet regel 3 van 16-09 avond) + `docs/regels/reconciliatie.md`
 alinea "Patroon vaststaande actie = het systeem doet het".**
 
@@ -11825,7 +11829,22 @@ alinea "Patroon vaststaande actie = het systeem doet het".**
   31-8/1-9/2-9/3-9 (niet "1-9/2-9/3-9 + één treffer"), 1 × `omzetrekeningen` = Journaal 4-9, 8 × `omzet_in_inkoopstroom`. Poging 2 +
   procesfix-opdracht (Stop-hook merge-bij-bot-only, `rlz inbox status` toont divergentie) in de inbox. Rapport
   `docs/rapporten/2026-09-19-nameting-kassarapport-autotype-poging-1-deploy-geblokkeerd.md`; regeltekst `docs/regels/werkloop-productie.md`
-  alinea "Stop-hook-push non-fast-forward = stille deploy-blokkade (19-09)". Werkt in productie: niet gemeten.
+  alinea "Stop-hook-push non-fast-forward = stille deploy-blokkade (19-09)". Werkt in productie: niet gemeten in poging 1 → gemeten in poging 2 (19-09 18:00, rij hieronder).
+- **Nameting kassarapport-autotype poging 2 (19-09 18:00–18:15, image `764072a`, deploy-run 35453174871) — GEMETEN: JA, mét één NEE.** Stap 0 groen
+  (geen divergentie, service én job `rlz-reconciliatie` op hetzelfde image). Nazorg-CLI `--dry-run --administratie "Van Boxtel"` (executie `bcc6b`) = "4
+  kandidaat/kandidaten, zou omzetten 4" = Journaal 31-8/1-9/2-9/3-9, Journaal 4-9 géén kandidaat — exact de nulmeting; echte run (`hpjtd`) "omgezet 4".
+  Leesreplica: vier documenten soort `kassarapport`, tijdlijn `te_controleren → ontvangen` ("type automatisch gewijzigd … ProfX-journaal herkend") →
+  `extractie_bezig` → `te_controleren` ("omzetbron deterministisch gelezen (geen AI)") → `vraag_open` (automatische vraag "Nieuwe rapportcategorie(ën)
+  zonder GB/btw-mapping: Dranken/Edible/Hash/Headshop/Joints/Snacks/Wiet" — bestaand omzetpad-gedrag, eenmalige mapping door het kantoor); audit 4 ×
+  `soort_automatisch_gewijzigd` + 1 × `kassarapport_autotype_run` {verwacht 4, gedaan 4, overgeslagen {}}. `reconciliatie-alles --alleen omzet
+  --lees-only` (`tp6ng`): Van Boxtel 1 × `kassarapport_in_werkvoorraad` (4-9, signaal omzetrekeningen), 0 × profx, 8 × `omzet_in_inkoopstroom`;
+  kantoorbreed 9 afwijkingen, alle Van Boxtel. **BUG:** kantoorbrede `kassarapport-autotype-nazorg --dry-run` (zonder `--administratie`, executie
+  `m6pst`) = `NameError: name 'scoped_session' is not defined` (`cli.py:549`, import stond alleen in `_zoek_administraties`; de bestaande test dekte
+  alleen de `--administratie`-tak) → fix (één import) + guard `test_nazorg_cli_kantoorbreed_zonder_administratie_loopt` (tegenproef rood zonder fix);
+  dagelijkse run onaangetast (roept `verwerk_werkvoorraad` rechtstreeks). Niet gemeten (lees-only legt niets vast): aandacht 340 → 336, auto-sluiting
+  van de 4 profx-bevindingen, dagteller in systeemmail/Instellingen › Boeken (afgeleid 4 uit de audit) → vervolg-opdracht
+  `2026-09-20-nameting-kassarapport-autotype-na-echte-run.md` (stap 0 op de fix-commit; kantoorbrede dry-run = exit 0). Rapport
+  `docs/rapporten/2026-09-19-nameting-kassarapport-autotype-poging-2.md`.
 
 ## CC-INBOX — LOCK PER OPDRACHT, POORT VÓÓR EINDE, PUSH-RETRY (19-09) — procesles inbox-run 19-09 12:46: atomische claim per opdracht + één runner per repo, ongecommit werk ná een run = WIP-branch (nooit gedaan/), exit 0 zonder resultaat = herstart, Stop-hook merge --no-ff + retry i.p.v. "push handmatig"; geen migratie
 

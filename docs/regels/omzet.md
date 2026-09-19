@@ -74,7 +74,12 @@
   nazorg-CLI dry-run 0 writes; route 422/409/403; dagteller), gouden set
   `tests/keten/test_ad2_autotype_inkoopfactuur_wordt_kassarapport.py` (ProfX-upload als inkoopfactuur → kassarapport zonder AI;
   tegenproef: géén inkoop-casus van de gouden set geeft een parser-treffer), vitest `OmzetReviewScreen.test.tsx` (chip + modal +
-  doel_pad).
+  doel_pad). **Gemeten 19-09 18:00 op `764072a` (poging 2, rapport `2026-09-19-nameting-kassarapport-autotype-poging-2.md`): nazorg-CLI
+  Van Boxtel dry-run 4 = echt 4 (Journaal 31-8/1-9/2-9/3-9 → `kassarapport`, tijdlijn + audit 4 × `soort_automatisch_gewijzigd` + run-rij 4/4/0),
+  het omzetpad eindigt bij een administratie zonder categorie-mapping in de bestaande automatische vraag (`vraag_open`, eenmalig mappen), Journaal 4-9
+  blijft terecht de melding mét knop, `--alleen omzet --lees-only` 0 × profx — werkt in productie JA. De kantoorbrede CLI-vorm zonder
+  `--administratie` strandde op `NameError scoped_session` (gefixt 19-09 + guard `test_nazorg_cli_kantoorbreed_zonder_administratie_loopt`); de
+  dagelijkse run roept `verwerk_werkvoorraad` rechtstreeks en was niet geraakt.**
 
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
