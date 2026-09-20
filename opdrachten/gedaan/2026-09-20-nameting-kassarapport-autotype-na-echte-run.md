@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-20, rapport: docs/rapporten/2026-09-20-nameting-kassarapport-autotype-na-echte-run.md
+
 Domeinen: omzet, reconciliatie, werkloop-productie
 
 > **niet vóór: 2026-09-20 07:15** — meet ná de scheduler-run van 20-09 04:30 UTC (06:30 NL). Toegevoegd 19-09 avond (poging 1 van de
