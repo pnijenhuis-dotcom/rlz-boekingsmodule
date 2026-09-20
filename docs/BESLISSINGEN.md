@@ -11891,6 +11891,18 @@ alinea "Patroon vaststaande actie = het systeem doet het".**
   van de 4 profx-bevindingen, dagteller in systeemmail/Instellingen › Boeken (afgeleid 4 uit de audit) → vervolg-opdracht
   `2026-09-20-nameting-kassarapport-autotype-na-echte-run.md` (stap 0 op de fix-commit; kantoorbrede dry-run = exit 0). Rapport
   `docs/rapporten/2026-09-19-nameting-kassarapport-autotype-poging-2.md`.
+- **Nameting kassarapport-autotype ná de ÉCHTE run van 20-09 (20-09 ~08:40–09:20, image `1b61fef` mét fix `4d4366b`, scheduler-run `55facc7c`
+  04:30–04:44 UTC) — GEMETEN: werkt in productie JA.** Kantoorbrede `kassarapport-autotype-nazorg --dry-run` (executie `qj4cx`) = exit 0, "78
+  administratie(s), 0 kandidaat/kandidaten" (19-09 nog `NameError`). Auto-sluiting: Van Boxtel 5 → 1 × `kassarapport_in_werkvoorraad` (alleen Journaal
+  4-9, omzetrekeningen) + 8 × `omzet_in_inkoopstroom` ongewijzigd; audit `reconciliatie_auto_gesloten` 04:44:54 UTC één rij `kassarapport_in_werkvoorraad`
+  / aantal 4 / administratie `cd973c86` (in `nieuwe_waarde`), `delta.verdwenen_afwijkingen` 10 waarvan deze 4. Aandacht-proxy 341 → 176 (bovengrens, zelfde
+  scope-loop als de ic_spiegel-nameting van die ochtend), kassarapport-aandeel exact −4. Dagteller `kassarapport_autotype` 20-09 = gedaan 0: 0
+  autotype-auditrijen over alle 80 administraties sinds 04:00 UTC (filter getoetst op de 5 bekende rijen van 19-09). **Verwachting "audit
+  `kassarapport_autotype_run` verwacht 0 / gedaan 0" was fout, gedrag correct:** `verwerk_werkvoorraad` schrijft de run-rij alleen bij ≥ 1 kandidaat
+  (`if not dry_run and uit.documenten`) — bewust geen 78 lege rijen per dag; dezelfde les als rij "Poging 2 (20-09)" van de ic_spiegel-nameting (een
+  audit-verwachting eerst in de code aanwijzen). Vier documenten nog `vraag_open` (categorie-mapping = kantoor, niets geforceerd). Klikpunten: UI-teller
+  aandacht (≤ 176) en Instellingen › Boeken (gedaan 0 op 20-09, 4 op 19-09). Geen code, geen RLZ-write. Rapport
+  `docs/rapporten/2026-09-20-nameting-kassarapport-autotype-na-echte-run.md`.
 
 ## CC-INBOX — LOCK PER OPDRACHT, POORT VÓÓR EINDE, PUSH-RETRY (19-09) — procesles inbox-run 19-09 12:46: atomische claim per opdracht + één runner per repo, ongecommit werk ná een run = WIP-branch (nooit gedaan/), exit 0 zonder resultaat = herstart, Stop-hook merge --no-ff + retry i.p.v. "push handmatig"; geen migratie
 

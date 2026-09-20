@@ -79,7 +79,12 @@
   het omzetpad eindigt bij een administratie zonder categorie-mapping in de bestaande automatische vraag (`vraag_open`, eenmalig mappen), Journaal 4-9
   blijft terecht de melding mét knop, `--alleen omzet --lees-only` 0 × profx — werkt in productie JA. De kantoorbrede CLI-vorm zonder
   `--administratie` strandde op `NameError scoped_session` (gefixt 19-09 + guard `test_nazorg_cli_kantoorbreed_zonder_administratie_loopt`); de
-  dagelijkse run roept `verwerk_werkvoorraad` rechtstreeks en was niet geraakt.**
+  dagelijkse run roept `verwerk_werkvoorraad` rechtstreeks en was niet geraakt.** **Gemeten 20-09 ná de échte run `55facc7c` op `1b61fef` (rapport
+  `2026-09-20-nameting-kassarapport-autotype-na-echte-run.md`): kantoorbrede nazorg-CLI exit 0 / 78 administraties / 0 kandidaten; de vier
+  profx-bevindingen automatisch gesloten mét audit `reconciliatie_auto_gesloten` (aantal 4), Van Boxtel over 1 × omzetrekeningen + 8 × `omzet_in_inkoopstroom`;
+  aandacht-proxy 341 → 176 (kassarapport-aandeel −4); 0 autotype-auditrijen over 80 administraties = dagteller gedaan 0 — werkt in productie JA. Let op
+  voor meetrecepten: de audit-rij `kassarapport_autotype_run` wordt alleen geschreven als er ≥ 1 kandidaat was (`if not dry_run and uit.documenten`); een
+  administratie zonder treffer laat bewust géén rij achter, "verwacht 0 / gedaan 0" is dus nooit als rij meetbaar, alleen als afwezigheid.**
 
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
