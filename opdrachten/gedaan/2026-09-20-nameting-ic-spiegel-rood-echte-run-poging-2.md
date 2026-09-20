@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-20, rapport: docs/rapporten/2026-09-20-nameting-ic-spiegel-rood-echte-run-poging-2.md
+
 Domeinen: reconciliatie, doorbelasting-intercompany, werkloop-productie
 
 > **niet vóór: 2026-09-20 07:15** — meet ná de scheduler-run van 20-09 04:30 UTC (06:30 NL, ~15 min) én ná de deploy van de
