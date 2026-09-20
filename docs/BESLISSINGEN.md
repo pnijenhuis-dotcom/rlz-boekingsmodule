@@ -11841,6 +11841,30 @@ alinea "Patroon vaststaande actie = het systeem doet het".**
   `fout` / `intercompany` / NULL / 174 + `delta.verdwenen_fouten` 174. Tests: `test_run.py` (+2), `test_soort_stand.py` (+1 e2e),
   `test_cc_inbox_claim_en_poort.py` (+4). **Procesfix:** "niet vóór"-poort in de inbox-runner — zie CC-INBOX-sectie rij (k); beide
   20-09-opdrachten dragen `niet vóór: 2026-09-20 07:15`. Vervolg: `opdrachten/inbox/2026-09-20-nameting-ic-spiegel-rood-echte-run-poging-2.md`.
+  **Poging 2 (20-09 ~07:20–08:00, rapport `docs/rapporten/2026-09-20-nameting-ic-spiegel-rood-echte-run-poging-2.md`) — werkt in productie JA
+  voor stap 1–4, bovengrens voor stap 5, niet meetbaar stap 6, klikpunt blijft stap 7.** Stap 0: `main..origin/main` 0; deploy-run 35457743184
+  (`0453020`, bevat `8d03c45`) groen 19-09 17:25 UTC; service `rlz-backend` én job `rlz-reconciliatie` op `backend:0453020…`; scheduler-run
+  `55facc7c` 04:30:20–04:44:52 UTC (executie `kv8v6`, ná de deploy → nieuwe code), `klaar`, exit 1 (= afwijkingen), `mail_status`
+  `actie=verzonden;systeem=uitgeschakeld`, log "RUN 55facc7c vastgelegd (778 bevinding(en) …)", geen "niet afgerond". Stap 1: NULL-scope
+  `intercompany`/`fout` 174 → 0 (alleen 1 × `automatisering`/`let_op`); `samenvatting.intercompany.fouten` 0 (afwijkingen 210, let_op 7, spiegelparen
+  174/174 groen); `samenvatting.delta` = verdwenen_fouten 174, verdwenen_afwijkingen 10, nieuwe_afwijkingen 111, nieuwe_let_op 10, nieuwe_fouten 0,
+  blokken_fout []. Stap 2: audit `reconciliatie_auto_gesloten` 04:44:54 UTC — precies één rij `ic_spiegel_rood`/`fout`/`intercompany`/NULL/174/
+  174 vingerafdrukken/reden "niet meer geproduceerd door run 55facc7c… — fout uit de vorige run verdwenen (blok intercompany)" + vijf rijen voor de
+  10 verdwenen afwijkingen (`ic_ontbreekt_bij_ontvanger` 3 + 1, `ic_ontbreekt_bij_verkoper` 1, `kassarapport_in_werkvoorraad` 4,
+  `dubbele_betaling_vermoed` 1 mét herdefinitie-reden); totaal 66 → 72 rijen; de kolom `administratie_id` is bij álle rijen NULL (run schrijft
+  zonder scope), de administratie staat in `nieuwe_waarde.administratie_id`. Stap 3: `soort_standen` = `{rc_sluit_niet, da_ontbreekt_in_doel,
+  ic_ontbreekt_bij_ontvanger: meten}`; audit `bevindingssoort_naar_meten` 04:44:52 reden "explosie-rem: 99 bevindingen in één run (> 50)";
+  bevinding `automatisering`/`let_op` reden `bevindingssoort_explodeert` aantal 99; audit `automatisering_regressie` categorie
+  `bevindingssoort_explodeert`. Aansluitingsblok: 105 afwijkingen (niet 108) = 99 `da_ontbreekt_in_doel` in `meten` (96 Molenhof Beheer + 3 Oirschot)
+  + 4 `da_inkoop_zonder_verkoop` + 2 `da_bedrag_afwijkt` in `actie`; 108 → 105 = venster 2025-08-15 → 2025-08-16 (drie Molenhof-verkopen van 15-08-2025
+  eruit; 1758/1660/1652 → 1744/1649/1641), geen regressie. Stap 4: systeemmail uit → herstelregel alleen via delta + audit toetsbaar (letterlijk).
+  Stap 5 (aandacht): scope-loop over 80 administraties + NULL-scope = 778 bevindingen (= run-log); afwijking 667 + let_op 101 + fout 0 − `meten`
+  592 (dubbele_betaling 194, ic_ontbreekt_bij_ontvanger 203, rc_sluit_niet 91, da_ontbreekt_in_doel 99, project_nummer_dubbel 4,
+  wordt_geboekt_verouderd 1) = **176 als bovengrens** (gesnoozede LET-OP's en live-acceptaties niet afgetrokken); 48 administraties mét ≥ 1
+  aandacht-rij; UI-teller op Inzicht › Reconciliatie = klikpunt Peter. Vorige run ter vergelijking: zie rapport. Stap 6: extractie-wachtrij 6
+  executies/uur (19-09 00:00 → 20-09 04:00 UTC), dagteller `extractie_wachtrij` verwacht 1 / gedaan 0 / overgeslagen `lokaal_thread` 1, geen bulk →
+  `trigger_gebundeld` niet meetbaar (geen fout); bijvangst: `kassarapport_autotype` dagteller 4/4. Stap 7: BLOW `c9ba6d8d` nog `te_controleren`
+  (18-09 11:05:14 UTC) → klikpunt blijft, geen schrijvende job. Geen RLZ-write, geen migratie, geen codewijziging.
 
 
 - **Nameting kassarapport-autotype poging 1 (19-09 ~16:00) — NIET GEMETEN, deploy geblokkeerd door een stille push-fout.** Stap 0 faalde:

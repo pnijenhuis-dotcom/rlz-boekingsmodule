@@ -51,6 +51,14 @@
   **Gemeten 19-09 avond (poging 1, executie `j6kgg`, image `aef301f`): `reconciliatie-alles --alleen doorbelasting_aansluiting --lees-only` werkt op
   de job-image (geen argparse-fout meer), 1 bron / 8 doelen / 1758-1660-1652 / 108 afwijkingen (99/3/3/2/1) identiek — werkt in productie JA**
   (rapport `2026-09-19-nameting-ic-spiegel-rood-echte-run-poging-1.md`); de auto-sluiting van de 174 fouten volgt in poging 2 ná de run van 20-09.
+  **Gemeten 20-09 in de échte scheduler-run `55facc7c` (poging 2, rapport `2026-09-20-nameting-ic-spiegel-rood-echte-run-poging-2.md`): IC-blok
+  "spiegelparen 174 groen / 0 rood, 0 fout(en)", de 174 × `ic_spiegel_rood` automatisch gesloten mét audit; aansluitingsblok KF 8 doelen,
+  1744 verkoop / 1649 inkoop / 1641 sluiten, 105 afwijkingen (96 Molenhof Beheer + 3 Oirschot `da_ontbreekt_in_doel`, 4 `da_inkoop_zonder_verkoop`,
+  2 `da_bedrag_afwijkt`) — 108 → 105 is géén regressie maar het 400-dagen-venster dat van 2025-08-15 naar 2025-08-16 schoof: precies de drie
+  Molenhof-Beheer-verkopen van 15-08-2025 vielen eruit (lees-only 19-09: 3 × `datum=2025-08-15`). De explosie-rem zette `da_ontbreekt_in_doel`
+  (99 > 50) naar `meten` mét audit `bevindingssoort_naar_meten` + `automatisering_regressie` + LET-OP `bevindingssoort_explodeert`; de 3 Oirschot-
+  rijen vallen mee onder die stand (soort als geheel), de 6 andere `da_*` blijven `actie`. Klikpunt Molenhof Beheer (worden KF-verkopen daar buiten
+  de KF-crediteurrecords geboekt?) staat open — pas ná dat antwoord mag `da_ontbreekt_in_doel` terug naar `actie`.**
 
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 

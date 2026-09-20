@@ -117,8 +117,16 @@
   geaccepteerd/fouten, verdwenen_afwijkingen/fouten, blokken_fout) omdat de systeemmail in productie `uitgeschakeld` is en de herstelregel anders
   nergens meetbaar is. Verdwenen fouten alléén maken géén systeemmail nodig (`systeemmail_nodig` ongewijzigd: herstel is informatie, geen
   handeling). Tests `tests/reconciliatie/test_run.py` (delta, `bouw_mail`) + `test_soort_stand.py::test_verdwenen_fout_en_afwijking_automatisch_
-  gesloten_met_audit`. **Niet gemeten** (échte run 20-09 04:30 UTC; verwachting: één audit-rij `ic_spiegel_rood`/`fout`/`intercompany`/
-  NULL/174 + `delta.verdwenen_fouten` 174) — vervolg-opdracht `2026-09-20-nameting-ic-spiegel-rood-echte-run-poging-2.md`. Les voor élk meetrecept:
+  gesloten_met_audit`. **Gemeten 20-09 (poging 2, scheduler-run `55facc7c` 04:30–04:44 UTC op image `0453020`, executie `kv8v6` — werkt in
+  productie JA):** NULL-scope-bevindingen `intercompany`/`fout` 174 → 0; `samenvatting["delta"]` = `verdwenen_fouten` 174, `verdwenen_afwijkingen` 10,
+  `nieuwe_afwijkingen` 111, `nieuwe_let_op` 10, `nieuwe_fouten` 0, `blokken_fout` []; audit `reconciliatie_auto_gesloten` 04:44:54 UTC: precies één rij
+  `ic_spiegel_rood` / `fout` / `intercompany` / administratie NULL / aantal 174 / 174 vingerafdrukken / reden "niet meer geproduceerd door run 55facc7c… —
+  fout uit de vorige run verdwenen (blok intercompany)", plus vijf rijen voor de 10 verdwenen afwijkingen (`ic_ontbreekt_bij_ontvanger` 3 + 1,
+  `ic_ontbreekt_bij_verkoper` 1, `kassarapport_in_werkvoorraad` 4, `dubbele_betaling_vermoed` 1 mét zijn herdefinitie-reden). Let op: de KOLOM
+  `audit_event.administratie_id` is bij álle zes rijen NULL (de run schrijft in `scoped_session(None)`, zie memory "audit_event mét administratie_id
+  vereist scope"); de administratie van de verdwenen bevinding staat in `nieuwe_waarde.administratie_id`. De systeemmail bleef `uitgeschakeld`
+  (`mail_status` `actie=verzonden;systeem=uitgeschakeld`), dus de herstelregel is uitsluitend via delta + audit gemeten — precies de reden waarom
+  `samenvatting["delta"]` bestaat. Rapport `2026-09-20-nameting-ic-spiegel-rood-echte-run-poging-2.md`. Les voor élk meetrecept:
   een verwachting op een audit-/mail-spoor eerst in de code aanwijzen (welke functie schrijft het, voor welke soorten) vóór je 'm als "verwacht"
   opschrijft — anders meet je een gegarandeerde 0.
 
