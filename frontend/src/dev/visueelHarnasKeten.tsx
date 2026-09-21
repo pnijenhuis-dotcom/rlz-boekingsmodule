@@ -247,6 +247,24 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
     )
   }
   if (pad.includes('/doorbelasting/') && pad.endsWith('/spiegel-taken')) return Promise.resolve(jsonResponse([]))
+  // Activa fase 1 (21-09): leeg voorstel = geen kaart (de casussen hebben geen activarekening).
+  if (pad.endsWith('/activa-voorstel') && methode === 'GET') {
+    return Promise.resolve(
+      jsonResponse({
+        administratie_id: ADMINISTRATIE_ID,
+        document_id: DOCUMENT_ID,
+        document_geboekt: false,
+        grens: '450.00',
+        grens_bron: 'instelling',
+        automatisch_ingeschakeld: false,
+        register_leesbaar: null,
+        register_fout: null,
+        kandidaten: [],
+        onder_grens: [],
+        afschrijving_ledger_opties: [],
+      }),
+    )
+  }
   if (pad.includes('/uren/') || pad.includes('/weekstaten')) return Promise.resolve(jsonResponse({}))
   if (pad.startsWith('/administraties/') || pad.startsWith('/auth/') || pad.startsWith('/projecten')) {
     onbekend.push(`${methode} ${pad}`)

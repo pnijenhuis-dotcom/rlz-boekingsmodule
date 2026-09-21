@@ -88,6 +88,15 @@ afterEach(() => {
 })
 
 describe('ActivaVoorstelKaart', () => {
+  it('toont niets en crasht niet bij een antwoord zonder kandidaten-lijst (gouden-set-les 21-09: `{}` trok het controlescherm leeg)', async () => {
+    installFetch(json({}) as unknown as Response)
+    const { container } = toon()
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled())
+    // Even wachten tot de then() verwerkt is; daarna mag er niets staan en géén fout gegooid zijn.
+    await new Promise((r) => setTimeout(r, 20))
+    expect(container).toBeEmptyDOMElement()
+  })
+
   it('toont per kandidaat de voorgevulde velden, de chip "wordt activum", het fiscale signaal en de voorgevulde afschrijvingsrekening', async () => {
     installFetch(voorstel())
     toon()

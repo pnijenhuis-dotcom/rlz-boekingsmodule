@@ -48,7 +48,14 @@ export function ActivaVoorstelKaart({
   const [overslaanVoor, setOverslaanVoor] = useState<ActivaKandidaatDto | null>(null)
   const relevant = soort === 'inkoopfactuur'
 
-  const neemOver = useCallback((v: ActivaVoorstelDto) => {
+  const neemOver = useCallback((v: ActivaVoorstelDto | null | undefined) => {
+    // Fail-safe (gouden-set-les 21-09: het keten-harnas gaf `{}` en `v.kandidaten is not iterable` trok het HELE
+    // controlescherm leeg — React ontkoppelt de root bij een onafgevangen render-fout): een antwoord zonder de twee
+    // lijsten is geen voorstel → niets tonen. De kaart is verrijking en blokkeert het scherm nooit.
+    if (!v || !Array.isArray(v.kandidaten) || !Array.isArray(v.onder_grens)) {
+      setVoorstel(null)
+      return
+    }
     setVoorstel(v)
     setAfschrijving((huidig) => {
       const volgend: Record<number, string | null> = {}
