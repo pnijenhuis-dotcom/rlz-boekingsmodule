@@ -6,6 +6,12 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-21 — Groepssaldi debiteuren/crediteuren werken weer
+
+<!-- groepssaldi-fix-21-09 -->
+
+- **De kaart "Groepssaldi" op de klantenlijst (bij een gekozen groep) toonde sinds 16-09 voor elke administratie "meting mislukt".** Twee leesfouten richting Reeleezee en Odoo zijn hersteld; vanaf de eerstvolgende nachtelijke stand staan de saldi er weer, met de intercompany-kolom. Blijft een administratie op "mislukt" staan, dan meldt de dagelijkse controle dat nu als systeemfout in plaats van alleen een grijze kaart.
+
 ## 2026-09-19 — 174 valse "systeemfouten" op Inzicht › Reconciliatie verdwijnen; grote uploads verwerken rustiger
 
 <!-- ic-spiegel-rood-wachtrij-19-09 -->

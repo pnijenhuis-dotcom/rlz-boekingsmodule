@@ -130,6 +130,20 @@
   een verwachting op een audit-/mail-spoor eerst in de code aanwijzen (welke functie schrijft het, voor welke soorten) vóór je 'm als "verwacht"
   opschrijft — anders meet je een gegarandeerde 0.
 
+<!-- toegevoegd 21-09-2026, opdracht "BUG-groepssaldi-alle-35-administraties-fout-rlz-enumfilter-en-odoo-deprecated" -->
+- **Regressie-detector `groep_saldo_fout` — een `fout` in de nachtelijke groepssaldi-stand is een LET-OP mét systeemmail, geen grijze kaart
+  (21-09; geen migratie; BESLISSINGEN "GROEPSSALDI — PRODUCTIEFOUT 16→21-09 (enumfilter + deprecated)"):** `automatiseringen.groep_saldi_bevinding` (in `registreer`)
+  leest per lid van élke actieve groep de LAATSTE rij van `groep_saldo_stand` in de eigen administratie-scope (`saldi.standen_met_fout`;
+  de cache-policy is scope/Beheerder — nooit in `scoped_session(None)`, les 19-09) en maakt bij ≥ 1 status `fout` één platformbrede
+  LET-OP: aantal leden/groepen, eerste vijf "naam: melding", deeplink `/?groep=<id>`, vingerafdruk stabiel per set falende leden.
+  De categorie zit in `REGRESSIE_CATEGORIEEN` → `run.is_regressie` → systeemmail + audit `automatisering_regressie` + bewakingsprobe
+  (regel 1 "regressies = systeemfout — automatisch gemeld"); bewust NIET via `meten`: een detector op een codefout is geen nieuwe
+  domeinbevinding. `ongeldig` (webfilter) en `geen_rekening` zijn geen regressie; "geen stand" evenmin (de run van 06:30 loopt vóór
+  `sync-alles` 07:00 — een gisteren toegevoegd lid heeft dan nog geen stand). Aanleiding: 16→21-09 stonden 35/35 leden van "Kempen groep"
+  op `fout` (RLZ-enumfilter + Odoo `deprecated`) en het enige signaal was "meting mislukt" op een kaart die niemand las. **Verwacht ná
+  deploy: de run van 22-09 06:30 leest nog de stand van 21-09 (oude image) en meldt de LET-OP precies één keer mét audit; de `sync-alles`
+  van 22-09 07:00 schrijft de eerste groene stand en op 23-09 is de LET-OP weg.** Test `tests/groepen/test_saldi.py::TestStandSysteemEnDetector`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Synthetische bewaking + alerting (CLAUDE.md `ed6d176` r. 632–644)

@@ -192,6 +192,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   1. Rechten-probe = de eerste-sync-routes (één bron `app/rlz/leesroutes.py`), altijd óók met de OPGESLAGEN login; 403 ná groene probe = herproberen (max 24 u), nooit stil.
   2. Dubbele Odoo-koppeling is een failsafe in drie lagen; VGG company 6 = migratiedoel, nooit een nieuwe administratie; URL-normalisatie via `app/odoo/ids.py`.
   3. Groep = filter (hoogstens één per administratie); naam met `naam_bron` ≠ mens volgt de bron; verplaatsen loopt via de SECURITY DEFINER-functie mét expliciete RLS-policy.
+  4. Groepssaldi (BUG 21-09): RLZ-enum-velden (`AccountType`) nooit als int in `$filter` maar client-side (guard `test_rlz_filter_enum_guard.py`), Odoo-domeinen alleen velden die `odoo/sync.py` bewijst (geen `deprecated`), `fout` in de nachtelijke stand = regressie-LET-OP `groep_saldo_fout` (systeemmail), CLI `groep-saldi --stand`, nameting-onderdeel `groep-saldi` — zie BESLISSINGEN "GROEPSSALDI — PRODUCTIEFOUT 16→21-09 (enumfilter + deprecated)".
   **LEESPLICHT: lees `docs/regels/administraties-instellingen.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Auth, rollen, scope, RLS, app-auth en gebruikersbeheer** — Kantoor: e-mailuitnodiging + wachtwoord + TOTP, passkeys eerste lijn (0020); app-rollen: toestelbinding + toegangscode zonder passkey (0029); RLS + `vereis_kantoorrol`-poorten; Gebruikers & toegang; herstel-links; mails en push.

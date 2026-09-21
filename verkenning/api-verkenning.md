@@ -2559,3 +2559,21 @@ unie van álle documenttypen → altijd client-side `DocumentType` 10 toetsen. M
 leest `SalesInvoices` ∪ `Receipts` (constante `VERKOOP_COLLECTIES`), ontdubbeld op id — dezelfde lezer dient het IC-blok én het
 aansluitingsblok. Instrument: `rlz-lezen --top` is begrensd op 50 (nameting = steekproef); `--count` geeft het totaal.
 
+## AccountType is een enum in `$filter` — int-literal = 400 (productie 21-09, opdracht "BUG groepssaldi")
+
+**Bron:** letterlijk RLZ-antwoord uit Peters sessie (Cowork 21-09 ~09:00) op `GET /<admin>/Ledgers?$filter=IsTotalAccount eq false and
+(AccountType eq 3 or AccountType eq 4)&$expand=SystemAccountList&$top=500`, op 33 verschillende administraties identiek:
+
+```
+400 A binary operator with incompatible types was detected. Found operand types 'Reeleezee.DTO.AccountTypeEnum' and 'Edm.Int32'.
+```
+
+- `AccountType` is in het OData-model een **enum** (`Reeleezee.DTO.AccountTypeEnum`); de JSON-uitvoer geeft 'm als int (1 opbrengsten,
+  2 kosten, 3 activa, 4 passiva — ongewijzigd), maar in `$filter` mag je 'm niet met een int vergelijken. Boolean- en string-filters op
+  Ledgers (`IsTotalAccount eq false`, `IsFixedAssetAccount eq true`, `AccountNumber ge '4400'`) werken wél (bewezen elders in dit bestand).
+- **Niet getest:** de enum-literal-vorm (`AccountType eq Reeleezee.DTO.AccountTypeEnum'3'` of `'Asset'`). Zonder STAP-0-bewijs niet gebruiken —
+  client-side toetsen is deterministisch en bewezen. Guard: `backend/tests/unit/test_rlz_filter_enum_guard.py`.
+- Open vraag voor een STAP-0: gelden dezelfde enum-semantiek voor `Status` (documenten) en `DocumentType`? `Status eq 2` en `DocumentType eq 10`
+  worden nu wél in `$filter` gebruikt en geven in productie geen 400 (IC-blok, saldi.ic_open) — die zijn dus kennelijk Edm.Int32; alleen
+  `AccountType` staat in `ENUM_VELDEN`.
+- Zie BESLISSINGEN "GROEPSSALDI — PRODUCTIEFOUT 16→21-09 (enumfilter + deprecated)".

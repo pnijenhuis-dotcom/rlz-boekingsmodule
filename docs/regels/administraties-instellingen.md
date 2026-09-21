@@ -22,6 +22,21 @@
 <!-- uit CLAUDE.md § Domeinbeslissingen -->
 - **Groepssaldi debiteuren/crediteuren per groep (Peter 16-09; lees-only; migratie 0149 cache):** rekeningen uit de bron (RLZ RGS `BVorDeb…`/`BSchCre…` of naam, Odoo `account_type`; nooit 1300/1600), saldo Σ Debit−Credit, drie kolommen bruto = zonder-IC + IC (IC = open posten op groepsmaatschappijen uit `intercompany_relatie`), webfilter = `ongeldig` per administratie; CLI `groep-saldi --groep "Kempen groep"` (nameting-allowlist, live) + kaart "Groepssaldi" op de klantenlijst bij actief Groep-filter (nachtelijke stand uit `sync-alles`, RLS = "N van M in je scope") — zie BESLISSINGEN "GROEPSSALDI DEBITEUREN/CREDITEUREN (Peter 16-09)".
 
+<!-- toegevoegd 21-09-2026, opdracht "BUG-groepssaldi-alle-35-administraties-fout-rlz-enumfilter-en-odoo-deprecated" -->
+- **Groepssaldi — productiefout 16→21-09 (BUG 21-09; geen migratie; BESLISSINGEN "GROEPSSALDI — PRODUCTIEFOUT 16→21-09 (enumfilter + deprecated)"):** de kaart en `groep-saldi` leverden
+  vanaf de deploy van 16-09 voor álle 35 leden van "Kempen groep" status `fout`: (1) RLZ weigert een int-literal op het enum-veld
+  `AccountType` in `$filter` (400 "'Reeleezee.DTO.AccountTypeEnum' and 'Edm.Int32'") — de Ledgers-lezer filtert sinds 21-09 alleen
+  `IsTotalAccount eq false` (+ `$expand=SystemAccountList`, gepagineerd `$top/$skip`) en toetst de balanszijde client-side in
+  `vind_rekeningen_rlz`; regel: RLZ-enum-velden nooit als int in `$filter`, geen enum-literal-syntax zonder STAP-0-bewijs (guard
+  `tests/unit/test_rlz_filter_enum_guard.py`, lijst `ENUM_VELDEN` alleen mét bewijs uitbreiden); (2) Odoo 19 kent op `account.account`
+  geen `deprecated` (500 "Invalid field") — het domein van `OdooBron.rekeningen` is sinds 21-09 `company_ids in [company]` +
+  `account_type` + `active = True`, identiek aan `odoo/sync.py::lees_grootboek`; regel: een Odoo-domein gebruikt alleen velden die
+  `odoo/sync.py` live bewezen gebruikt (guard `tests/groepen/test_saldi.py::TestOdooDomein`). Een client-stub in een test speelt het
+  bron-gedrag na (assert op de letterlijke `$filter`/het domein) — mocken zonder die toets is precies hoe deze bug vijf dagen
+  onzichtbaar bleef. CLI `groep-saldi --groep … --stand` toont de nachtelijke cache-stand zonder lezer-scope (nameting); het signaal bij
+  `fout` staat in `docs/regels/reconciliatie.md` (`groep_saldo_fout`). Werkt in productie: niet gemeten (vervolg-opdracht `niet vóór:
+  2026-09-22 09:00`, dispatch-onderdeel `groep-saldi`).
+
 <!-- uit CLAUDE.md § Domeinbeslissingen -->
 - **Administratienaam — bewerkbaar + volgt de bron (Peter 15-09; casus Camping Nieuwenhoven → "Strandpark Zilverduynen" in Odoo; migratie 0144):** veld "Naam" op Instellingen › Administraties › ‹administratie› › Algemeen (Beheerder-only, inline, `PUT /administraties/{id}/naam`, audit `administratie_naam_gewijzigd` oud→nieuw, bezet = 409); `naam_bron` 'odoo'|'rlz'|'mens' — ≠ mens volgt de bronnaam (Odoo `res.company.name` / RLZ `Administrations.Name`, één leesbron per backend) bij élke stamgegevens-sync (audit `administratie_naam_gevolgd`), mens = nooit overschrijven maar chip "in Odoo/Reeleezee heet deze administratie nu ‹naam›" + "Naam overnemen"; data-stap CLI `administratie-naam-bron-backfill` (dry-run default) — zie BESLISSINGEN "ADMINISTRATIENAAM — BEWERKBAAR + VOLGT DE BRON (Peter 15-09)".
 

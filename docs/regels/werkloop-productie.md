@@ -182,3 +182,14 @@
   `rlz inbox status` toont "inbox/: X — wacht tot …". Een run die zelf vaststelt dat het te vroeg is (run nog niet gelopen, deploy niet live)
   zet die regel bovenin en legt de opdracht terug in inbox/ — geen tweede mechanisme. Bij een nameting ná een scheduler-run: run-tijd + duur +
   marge voor de deploy van de eigen commit (06:30 NL + ~15 min → `niet vóór: … 07:15`). Guards `test_cc_inbox_claim_en_poort.py::test_niet_voor_*`.
+
+<!-- toegevoegd 21-09-2026, opdracht "BUG-groepssaldi-alle-35-administraties-fout-rlz-enumfilter-en-odoo-deprecated" -->
+- **"Werkt in productie: niet gemeten" is een openstaande schuld mét vervaldatum, geen eindstand (21-09; BESLISSINGEN "GROEPSSALDI — PRODUCTIEFOUT 16→21-09 (enumfilter + deprecated)"):** de
+  groepssaldi van 16-09 eindigden mét "niet gemeten" en een meetrecept dat niemand draaide; de feature stond vijf dagen kapot in productie
+  (35/35 leden `fout`) zonder enig signaal, want de enige zichtbare uitkomst was een grijze kaart. Regel: (1) een bouwrapport mét "niet
+  gemeten" levert in dezelfde run een vervolg-opdracht in `opdrachten/inbox/` mét `niet vóór:` (deploy + eerste scheduler-run) én het
+  meetrecept als dispatch-onderdeel in `nameting.yml` (if-tak + `options:` + `via_gh_onderdeel`) — het antwoord komt dan als bot-bestand
+  op main, niet als belofte; (2) élke nachtelijke stand/cache die een UI-kaart voedt en een fout-status kent, heeft een regressie-detector
+  in het reconciliatieblok (LET-OP mét systeemmail + audit), zodat "kapot" een handeling wordt en geen kleur; (3) een test-stub voor een
+  externe bron speelt het bewezen gedrag van die bron na (assert op de letterlijke query/het domein) — een stub die alles accepteert
+  bewijst niets over de query. Les in `Platform/registers/verbeteringen.md` (21-09).
