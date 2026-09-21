@@ -1273,6 +1273,33 @@ def _zet_server_timing(response: Response, timing: checks_extern.StapTiming, *, 
 
 
 @router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/boek-wachtrij/opnieuw-indienen",
+    response_model=schemas.BoekWachtrijOpnieuwResponse,
+)
+def document_boek_wachtrij_opnieuw_indienen(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.BoekWachtrijOpnieuwResponse:
+    """21-09 (BUG rlz-boek-wachtrij): "Opnieuw indienen" op een boeking die op 'Wordt geboekt…' blijft hangen — géén
+    nieuwe boeking, dezelfde sleutel; alleen de achtergrond-schrijver wordt opnieuw gestart (tijdlijn + audit, de
+    trigger-uitkomst direct terug). Niet op wordt_geboekt = 409 (nooit stil opnieuw indienen wat al geboekt/mislukt is)."""
+    try:
+        uit = boek_wachtrij.dien_opnieuw_in(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id
+        )
+    except boeken.OngeldigeBoekpoging as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.BoekWachtrijOpnieuwResponse(
+        document_id=uit.document_id,
+        status=uit.status.value,
+        sleutel=uit.sleutel,
+        trigger_uitkomst=uit.trigger_uitkomst,
+        trigger_fout=uit.trigger_fout,
+    )
+
+
+@router.post(
     "/administraties/{administratie_id}/documenten/{document_id}/boeken",
     response_model=None,
     responses={200: {"model": schemas.BoekenResponse}, 202: {"model": schemas.BoekIngediendResponse}},

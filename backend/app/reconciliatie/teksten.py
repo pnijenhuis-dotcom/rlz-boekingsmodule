@@ -1143,6 +1143,18 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
             f"Controleer steekproefsgewijs of rekening en btw kloppen via {plek}; herstel zo nodig de oorzaak "
             "(Instellingen › Intake & AI) zodat de toets weer meeloopt.",
         )
+    if reden == auto.BOEK_WACHTRIJ_GESTRAND:
+        # 21-09: boeking hangt > herstelgrens op wordt_geboekt — regressie (systeemmail); handeling op de rij = Opnieuw
+        # indienen (frontend `OpnieuwIndienenActie`), deeplink = het document.
+        minuten = d.get("minuten") or "?"
+        return (
+            _titel("Boeking blijft hangen op 'Wordt geboekt…'", waar or ""),
+            f"Deze boeking is {minuten} minuten geleden ingediend maar de achtergrond-schrijver rondde haar niet af "
+            f"({_s(d, 'oorzaak') or 'oorzaak onbekend'}); in Reeleezee is nog niets geboekt. "
+            + (auto.REGRESSIE_TEKST[0].upper() + auto.REGRESSIE_TEKST[1:] + "."),
+            "Kies 'Opnieuw indienen' op deze rij (zelfde boeking, niets dubbel) of open het document; blijft de rij "
+            "hangen, dan start de job niet — controleer de deploy (job-smoketest) en de scheduler rlz-boek-wachtrij.",
+        )
     if reden == auto.SA_KEY_ROTATIE:
         # Blok 1 nametingen-run 10-09 (§F7): beheer-signaal (systeemmail) — jaarlijkse rotatie van de nameting-key.
         return (

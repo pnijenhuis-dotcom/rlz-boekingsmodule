@@ -90,6 +90,7 @@ via_gh_onderdeel() {
     groep-saldi) echo groep-saldi ;;
     bua-kandidaten) echo bua-kandidaten ;;
     veldwerkers-dubbelen) echo veldwerkers-dubbelen ;;
+    jobs-start) echo jobs-start ;;  # 21-09: geen CLI-commando — het workflow-onderdeel doet gcloud describe + db-lezen boek-wachtrij
     reconciliatie-alles) echo reconciliatie ;;
     btw-default-rapport) echo btw-default ;;
     migratie-schoonlijst) echo a ;;

@@ -861,6 +861,17 @@ class BoekIngediendResponse(BaseModel):
     sleutel: str
 
 
+class BoekWachtrijOpnieuwResponse(BaseModel):
+    """21-09: antwoord van `POST …/boek-wachtrij/opnieuw-indienen` — zelfde boeking/sleutel, verwerker opnieuw gestart.
+    `trigger_uitkomst` 'geslaagd' | 'mislukt' (mét `trigger_fout`; het scheduler-vangnet volgt) | 'lokaal'."""
+
+    document_id: uuid.UUID
+    status: str
+    sleutel: str | None = None
+    trigger_uitkomst: str
+    trigger_fout: str | None = None
+
+
 class BoekvoorstelMetChecksResponse(BaseModel):
     boekvoorstel: BoekvoorstelResponse
     checks: CheckRapportResponse

@@ -182,7 +182,19 @@ echo "   beeld voor de bootstrap: ${IMAGE}"
 for REGELS in "${JOBS[@]}"; do
   IFS='|' read -r NAAM CLI TIMEOUT _CADANS <<< "${REGELS}"
   if gcloud run jobs describe "${NAAM}" --region="${REGION}" >/dev/null 2>&1; then
-    echo "   job ${NAAM} bestaat al — overgeslagen (deploy.yml onderhoudt 'm)."
+    # BUG 21-09 (rlz-boek-wachtrij, aangemaakt door deploy.yml op 18-09 zónder commando → "Application exec likely
+    # failed", nul regels uitvoer, drie dagen "Wordt geboekt…"): "bestaat al" toetst sinds 21-09 óók het startcommando en
+    # zet het bij als het ontbreekt — de Dockerfile heeft bewust geen ENTRYPOINT, dus zonder `command: python` start
+    # geen enkele job. deploy.yml draagt `--command python` sinds 21-09 zelf; dit is het vangnet voor een job die door
+    # een oudere deploy is aangemaakt.
+    COMMANDO="$(gcloud run jobs describe "${NAAM}" --region="${REGION}" \
+      --format="value(spec.template.spec.template.spec.containers[0].command)" 2>/dev/null || true)"
+    if [ -z "${COMMANDO}" ]; then
+      gcloud run jobs update "${NAAM}" --region="${REGION}" --command python --quiet >/dev/null
+      echo "   job ${NAAM} bestaat al — LET OP: had GEEN startcommando → --command python bijgezet (BUG 21-09)."
+    else
+      echo "   job ${NAAM} bestaat al (command: ${COMMANDO}) — overgeslagen (deploy.yml onderhoudt 'm)."
+    fi
     continue
   fi
   gcloud run jobs deploy "${NAAM}" \
@@ -256,6 +268,21 @@ if [ "${NIEUWE_FACTUREN_NIEUW}" = "1" ]; then
   gcloud scheduler jobs pause rlz-nieuwe-facturen --location="${REGION}" --quiet >/dev/null
   echo "   rlz-nieuwe-facturen GEPAUZEERD (resume samen met/na de notificatie-live-verificatie)."
 fi
+# VANGNET-SCHEDULERS DIRECT ACTIEF (BUG 21-09): de */2-cadans van rlz-boek-wachtrij stond in productie GEPAUZEERD terwijl
+# de trigger vanuit de service sinds 18-09 faalde (invoker ontbrak) — niemand hervatte 'm ("verse cadansen starten
+# gepauzeerd" was de enige melding). Een vangnet dat gepauzeerd staat vangt niets: deze schedulers worden hier
+# onvoorwaardelijk op ENABLED gezet (idempotent: alleen `resume` als de stand PAUSED is). Notificatie-cadansen
+# (herinneringen, nieuwe facturen, intake) houden hun bewuste pauze-regels hierboven.
+VANGNET_SCHEDULERS=(rlz-boek-wachtrij rlz-extractie-wachtrij rlz-bank-sync rlz-bewaking rlz-webhook-afleveraar)
+for NAAM in "${VANGNET_SCHEDULERS[@]}"; do
+  STAND="$(gcloud scheduler jobs describe "${NAAM}" --location="${REGION}" --format="value(state)" 2>/dev/null || true)"
+  case "${STAND}" in
+    "")       echo "   vangnet ${NAAM}: geen scheduler (on-demand only of nog niet aangemaakt) — overgeslagen." ;;
+    PAUSED)   gcloud scheduler jobs resume "${NAAM}" --location="${REGION}" --quiet >/dev/null
+              echo "   vangnet ${NAAM}: stond GEPAUZEERD → hervat (ENABLED)." ;;
+    *)        echo "   vangnet ${NAAM}: ${STAND}." ;;
+  esac
+done
 
 echo "== 6. rlz-projecten-cijfers: on-demand job (achtergrondrun-fix 2026-08-23) =="
 # Deze job heeft bewust GÉÉN scheduler: de sync-knop op de service zet een wachtrij-rij
@@ -388,4 +415,37 @@ if gcloud run jobs describe rlz-reconciliatie --region="${REGION}" --format="val
 else
   echo "   LET OP: job rlz-reconciliatie bestaat nog niet — draai dit script na de eerste deploy opnieuw,"
   echo "   anders faalt 'Nu draaien' zichtbaar met 'Achtergrondrun starten mislukt' (403); de 06:30-run werkt wel."
+fi
+
+echo
+echo "== 12. Slotcontrole: gepauzeerde schedulers + jobs zonder startcommando (BUG 21-09 — nooit stil) =="
+GEPAUZEERD=()
+for REGELS in "${JOBS[@]}"; do
+  IFS='|' read -r NAAM _ _ _ <<< "${REGELS}"
+  STAND="$(gcloud scheduler jobs describe "${NAAM}" --location="${REGION}" --format="value(state)" 2>/dev/null || true)"
+  [ "${STAND}" = "PAUSED" ] && GEPAUZEERD+=("${NAAM}")
+done
+if [ "${#GEPAUZEERD[@]}" -gt 0 ]; then
+  echo "   GEPAUZEERD: ${GEPAUZEERD[*]}"
+  echo "   Een gepauzeerde cadans draait NIET. Bewust (notificaties vóór de live-verificatie)? Laat staan. Anders hervatten:"
+  for NAAM in "${GEPAUZEERD[@]}"; do
+    echo "     gcloud scheduler jobs resume ${NAAM} --location=${REGION}"
+  done
+else
+  echo "   geen gepauzeerde schedulers."
+fi
+ZONDER_COMMANDO=()
+for REGELS in "${JOBS[@]}"; do
+  IFS='|' read -r NAAM _ _ _ <<< "${REGELS}"
+  COMMANDO="$(gcloud run jobs describe "${NAAM}" --region="${REGION}" \
+    --format="value(spec.template.spec.template.spec.containers[0].command)" 2>/dev/null || true)"
+  [ -z "${COMMANDO}" ] && ZONDER_COMMANDO+=("${NAAM}")
+done
+if [ "${#ZONDER_COMMANDO[@]}" -gt 0 ]; then
+  echo "   ZONDER STARTCOMMANDO (start niet — 'Application exec likely failed'): ${ZONDER_COMMANDO[*]}"
+  for NAAM in "${ZONDER_COMMANDO[@]}"; do
+    echo "     gcloud run jobs update ${NAAM} --region=${REGION} --command python"
+  done
+else
+  echo "   alle jobs dragen een startcommando."
 fi

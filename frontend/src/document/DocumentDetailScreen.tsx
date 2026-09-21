@@ -18,6 +18,7 @@ import { filterDocumenten, lijstContextUitParams, lijstPositie, lijstRoute, type
 import { SNELTOETSEN_CONTROLESCHERM, useSneltoetsen } from './sneltoetsen'
 import { SneltoetsOverzicht } from './SneltoetsOverzicht'
 import { AnkerPopup, useToastOptioneel, SkeletonPaneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
+import { WordtGeboektBalk } from './WordtGeboektBalk'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { extractieActief, statusLabel } from '../werkvoorraad/status'
 import { actorLabel, toegewezeneLabel, useMedewerkers } from '../vragen/useMedewerkers'
@@ -1179,6 +1180,18 @@ export function DocumentDetailScreen() {
                 </p>
               )}
             </div>
+          )}
+
+          {detail.status === 'wordt_geboekt' && (
+            <WordtGeboektBalk
+              administratieId={administratieId}
+              documentId={documentId}
+              laatstGewijzigdOp={detail.laatst_gewijzigd_op}
+              onOpnieuw={(m) => {
+                meld(m.tekst, m.soort)
+                laadDetail()
+              }}
+            />
           )}
 
           {achtergrondBezig && (

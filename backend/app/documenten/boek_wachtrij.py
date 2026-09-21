@@ -68,7 +68,15 @@ logger = logging.getLogger(__name__)
 AUDIT_INGEDIEND = "boek_wachtrij_ingediend"
 AUDIT_AFGEROND = "boek_wachtrij_afgerond"
 AUDIT_TRIGGER = "boek_wachtrij_trigger"
-#: Reconciliatie-bevindingssoort (blok documenten, start in `meten`).
+#: 21-09: een mens (of de reconciliatie-actie) diende een hangende boeking opnieuw in — zelfde sleutel, nieuwe trigger.
+AUDIT_OPNIEUW = "boek_wachtrij_opnieuw_ingediend"
+#:  Reconciliatie-bevindingssoort. Tot 21-09 een `afwijking` in `meten` (blok documenten); sinds 21-09 (BUG
+#: rlz-boek-wachtrij
+#:  zonder `--command python`: drie dagen "Wordt geboekt…" zonder één signaal) is een boeking > herstelgrens op
+#: wordt_geboekt
+#:  een REGRESSIE-LET-OP op blok automatisering (`automatiseringen.boek_wachtrij_gestrand_bevindingen` → systeemmail +
+#: audit  `automatisering_regressie` + bewakingsprobe) én een kwartier-probe `boek_wachtrij_gestrand` (app/bewaking). De
+#: soortnaam reist mee in `detail.afwijking_soort` zodat de rij op /reconciliatie de actie "Opnieuw indienen" draagt.
 BEVINDING_VEROUDERD = "wordt_geboekt_verouderd"
 
 #: Statussen waarin een document "te verwerken" is voor de doorloop — spiegel van
@@ -98,7 +106,10 @@ BoekTaak = Callable[..., None]
 
 
 class BoekWachtrij(Protocol):
-    def enqueue(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> None: ...
+    def enqueue(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
+        """Plant de boeking in. Geeft de trigger-FOUT terug als het starten van de verwerker mislukte (Cloud), anders
+        None — zodat "Opnieuw indienen" de uitkomst direct aan de mens kan tonen (21-09, nooit stil)."""
+        ...
 
 
 class InProcessBoekWachtrij:
@@ -111,12 +122,13 @@ class InProcessBoekWachtrij:
         self._lock = threading.Lock()
         self._futures: list[Future[None]] = []
 
-    def enqueue(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> None:
+    def enqueue(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
         with self._lock:
             self._futures = [f for f in self._futures if not f.done()]
             self._futures.append(
                 self._executor.submit(self._veilig, administratie_id=administratie_id, document_id=document_id)
             )
+        return None
 
     def _veilig(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> None:
         try:
@@ -137,12 +149,13 @@ class DirecteBoekWachtrij:
         self._taak = taak
         self.verwerkt: list[uuid.UUID] = []
 
-    def enqueue(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> None:
+    def enqueue(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
         try:
             self._taak(administratie_id=administratie_id, document_id=document_id)
         except Exception:  # noqa: BLE001
             logger.exception("Boek-wachtrijtaak faalde onverwacht voor document %s", document_id)
         self.verwerkt.append(document_id)
+        return None
 
 
 class CloudRunJobBoekWachtrij:
@@ -155,7 +168,7 @@ class CloudRunJobBoekWachtrij:
         self._job_resource = job_resource
         self._trigger = trigger
 
-    def enqueue(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> None:
+    def enqueue(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
         fout: str | None = None
         try:
             if self._trigger is not None:
@@ -171,12 +184,26 @@ class CloudRunJobBoekWachtrij:
                 self._job_resource,
                 document_id,
             )
+        job = self._job_resource.rsplit("/", 1)[-1]
         _audit_stil(
             administratie_id,
-            document_id,
-            AUDIT_TRIGGER,
-            {"uitkomst": "mislukt" if fout else "geslaagd", "job": self._job_resource.rsplit("/", 1)[-1], "fout": fout},
+            document_id, AUDIT_TRIGGER,
+            {"uitkomst": "mislukt" if fout else "geslaagd", "job": job, "fout": fout},
         )
+        if fout:
+            # 21-09 (kernprincipe 4): de mislukte start stond alleen in het audit — de tijdlijn van het document zei
+            # "de boeking loopt op de achtergrond" en daarna niets. Nu één zichtbare systeemregel op de tijdlijn.
+            _tijdlijn_stil(
+                administratie_id,
+                document_id, {
+                    "boek_wachtrij_trigger": {"uitkomst": "mislukt", "job": job, "fout": fout},
+                    "reden": (
+                        f"achtergrond-schrijver starten mislukt (job {job}): {fout} — het scheduler-vangnet (elke "
+                        f"2 min) pakt de boeking op; blijft de rij op 'Wordt geboekt…' staan, kies 'Opnieuw indienen'"
+                    ),
+                },
+            )
+        return fout
 
 
 _wachtrij: BoekWachtrij | None = None
@@ -208,6 +235,47 @@ def _audit_stil(administratie_id: uuid.UUID, document_id: uuid.UUID, actie: str,
             )
     except Exception:  # noqa: BLE001
         logger.exception("Boek-wachtrij: audit %s niet geschreven voor document %s", actie, document_id)
+
+
+def _tijdlijn_stil(administratie_id: uuid.UUID, document_id: uuid.UUID, detail: dict) -> None:
+    """Eén systeemregel op de tijdlijn (van = naar = wordt_geboekt, geen statusovergang) — alleen als het document nog
+    op wordt_geboekt staat; een fout hier mag de indiening nooit breken."""
+    try:
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            document = session.get(Document, document_id)
+            if document is None or document.status != DocumentStatus.WORDT_GEBOEKT:
+                return
+            session.add(
+                DocumentGebeurtenis(
+                    id=uuid.uuid4(),
+                    document_id=document_id,
+                    van_status=DocumentStatus.WORDT_GEBOEKT,
+                    naar_status=DocumentStatus.WORDT_GEBOEKT,
+                    actor_id=SYSTEEM_ACTOR_ID,
+                    detail=detail,
+                )
+            )
+    except Exception:  # noqa: BLE001
+        logger.exception("Boek-wachtrij: tijdlijnregel niet geschreven voor document %s", document_id)
+
+
+def laatste_trigger(administratie_id: uuid.UUID, document_id: uuid.UUID) -> dict | None:
+    """De jongste `boek_wachtrij_trigger`-audit van dit document: {uitkomst, job, fout, tijdstip} of None (geen
+    job-resource: lokaal/thread)."""
+    from app.db.models import AuditEvent
+
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        rij = session.execute(
+            select(AuditEvent.nieuwe_waarde, AuditEvent.tijdstip)
+            .where(AuditEvent.actie == AUDIT_TRIGGER, AuditEvent.record_id == document_id)
+            .order_by(AuditEvent.tijdstip.desc())
+            .limit(1)
+        ).first()
+    if rij is None:
+        return None
+    nw = dict(rij[0] or {})
+    nw["tijdstip"] = _utc(rij[1]).isoformat()
+    return nw
 
 
 # --- synchroon deel: indienen -------------------------------------------------------------------------------------
@@ -361,12 +429,15 @@ def dien_boeking_in(
 
 
 def _wachtrij_detail(session, document_id: uuid.UUID) -> dict:  # noqa: ANN001
-    """Het `boek_wachtrij`-detail van de jongste overgang naar wordt_geboekt (actor + bevestigingsvlaggen)."""
+    """Het `boek_wachtrij`-detail van de jongste ÉCHTE overgang naar wordt_geboekt (actor + bevestigingsvlaggen). De
+    tijdlijnregels van 21-09 (trigger mislukt, opnieuw ingediend) hebben van = naar = wordt_geboekt en tellen niet —
+    anders verloor de verwerker de actor en de bevestigingsvlaggen van de indiening."""
     gebeurtenis = session.scalar(
         select(DocumentGebeurtenis)
         .where(
             DocumentGebeurtenis.document_id == document_id,
             DocumentGebeurtenis.naar_status == DocumentStatus.WORDT_GEBOEKT,
+            DocumentGebeurtenis.van_status != DocumentStatus.WORDT_GEBOEKT,
         )
         .order_by(DocumentGebeurtenis.tijdstip.desc())
         .limit(1)
@@ -530,11 +601,14 @@ def _wordt_geboekt_documenten(*, ouder_dan: timedelta | None = None) -> list[tup
                     Document.administratie_id == administratie_id, Document.status == DocumentStatus.WORDT_GEBOEKT
                 )
             ):
+                # `sinds` = de échte indiening (van ≠ wordt_geboekt): de tijdlijnregels "trigger mislukt"/"opnieuw
+                # ingediend" (van = naar = wordt_geboekt, 21-09) verschuiven het indienmoment niet.
                 sinds = session.scalar(
                     select(DocumentGebeurtenis.tijdstip)
                     .where(
                         DocumentGebeurtenis.document_id == document.id,
                         DocumentGebeurtenis.naar_status == DocumentStatus.WORDT_GEBOEKT,
+                        DocumentGebeurtenis.van_status != DocumentStatus.WORDT_GEBOEKT,
                     )
                     .order_by(DocumentGebeurtenis.tijdstip.desc())
                     .limit(1)
@@ -574,7 +648,106 @@ def herstel_achtergebleven_boekingen(*, wachtrij: BoekWachtrij | None = None) ->
 
 
 def verouderde_boekingen(*, nu: datetime | None = None) -> list[tuple[uuid.UUID, uuid.UUID, datetime]]:
-    """Voor de reconciliatie (bevinding `wordt_geboekt_verouderd`, start in `meten`): documenten die langer dan de
-    herstelgrens op wordt_geboekt staan."""
+    """Documenten die langer dan de herstelgrens (`BOEK_WACHTRIJ_HERSTEL_MINUTEN`, 10) op wordt_geboekt staan — de bron
+    voor de regressie-LET-OP `boek_wachtrij_gestrand` (reconciliatie) en de kwartier-probe (bewaking)."""
     del nu
     return _wordt_geboekt_documenten(ouder_dan=timedelta(minutes=settings.boek_wachtrij_herstel_minuten))
+
+
+@dataclass(frozen=True)
+class GestrandeBoeking:
+    administratie_id: uuid.UUID
+    document_id: uuid.UUID
+    sinds: datetime
+    minuten: int
+    #: jongste trigger-audit: 'geslaagd' | 'mislukt' | None (geen job-resource / geen spoor)
+    trigger_uitkomst: str | None
+    trigger_fout: str | None
+    trigger_op: str | None
+
+
+def gestrande_boekingen(*, nu: datetime | None = None) -> list[GestrandeBoeking]:
+    """`verouderde_boekingen` verrijkt mét de reden uit het jongste `boek_wachtrij_trigger`-audit ("trigger mislukt:
+    <fout>") — dát is wat de LET-OP, de probe en de tijdlijn aan de mens laten zien (21-09)."""
+    nu = nu or datetime.now(UTC)
+    uit: list[GestrandeBoeking] = []
+    for administratie_id, document_id, sinds in verouderde_boekingen():
+        trigger = laatste_trigger(administratie_id, document_id) or {}
+        uit.append(
+            GestrandeBoeking(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                sinds=sinds, minuten=max(0, int((nu - sinds).total_seconds() // 60)),
+                trigger_uitkomst=trigger.get("uitkomst"),
+                trigger_fout=trigger.get("fout"),
+                trigger_op=trigger.get("tijdstip"),
+            )
+        )
+    return uit
+
+
+@dataclass(frozen=True)
+class OpnieuwIngediend:
+    document_id: uuid.UUID
+    status: DocumentStatus
+    sleutel: str | None
+    #: 'geslaagd' (job gestart) | 'mislukt' (trigger-fout, vangnet volgt) | 'lokaal' (in-process/directe wachtrij)
+    trigger_uitkomst: str
+    trigger_fout: str | None
+
+
+def dien_opnieuw_in(
+    *, administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    wachtrij: BoekWachtrij | None = None,
+) -> OpnieuwIngediend:
+    """"Opnieuw indienen" op een boeking die op wordt_geboekt blijft hangen (21-09; rij op /reconciliatie, balk op het
+    document, lijstlabel "loopt vast"): géén nieuwe boeking en geen statuswissel — de bestaande sleutel/claim blijft
+    (idempotent: een gestrande claim wordt door de verwerker hervat), alleen de verwerker wordt opnieuw gestart.
+    Tijdlijnregel + audit `boek_wachtrij_opnieuw_ingediend`; de trigger-uitkomst gaat direct terug naar de mens.
+    Niet op wordt_geboekt = `OngeldigeBoekpoging` (409 in de router) — een boeking die intussen geboekt of mislukt is,
+    wordt nooit stil opnieuw ingediend."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            raise boeken_service.OngeldigeBoekpoging("Document niet gevonden")
+        if document.status != DocumentStatus.WORDT_GEBOEKT:
+            raise boeken_service.OngeldigeBoekpoging(
+                f"Opnieuw indienen kan alleen bij 'Wordt geboekt…' — dit document staat op {document.status.value}"
+            )
+        sleutel_ = (_wachtrij_detail(session, document_id) or {}).get("sleutel")
+        session.add(
+            DocumentGebeurtenis(
+                id=uuid.uuid4(),
+                document_id=document_id,
+                van_status=DocumentStatus.WORDT_GEBOEKT,
+                naar_status=DocumentStatus.WORDT_GEBOEKT,
+                actor_id=actor_id,
+                detail={
+                    "boek_wachtrij_opnieuw": {"sleutel": sleutel_},
+                    "reden": "Opnieuw ingediend — de achtergrond-schrijver wordt opnieuw gestart (zelfde boeking, zelfde "
+                    "sleutel; niets wordt dubbel geboekt)",
+                },
+            )
+        )
+        record_audit_event(
+            session, actor_id=actor_id,
+            module="boekhouding",
+            tabel="document",
+            record_id=document_id,
+            actie=AUDIT_OPNIEUW,
+            correlatie_id=document_id,
+            nieuwe_waarde={"sleutel": sleutel_},
+            administratie_id=administratie_id,
+        )
+    gekozen = wachtrij or _standaard_wachtrij()
+    fout = gekozen.enqueue(administratie_id=administratie_id, document_id=document_id)
+    uitkomst = ("mislukt" if fout else "geslaagd") if isinstance(gekozen, CloudRunJobBoekWachtrij) else "lokaal"
+    return OpnieuwIngediend(
+        document_id=document_id,
+        status=DocumentStatus.WORDT_GEBOEKT,
+        sleutel=sleutel_,
+        trigger_uitkomst=uitkomst,
+        trigger_fout=fout,
+    )

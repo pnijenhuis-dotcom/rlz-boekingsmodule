@@ -1103,6 +1103,7 @@ export function DocumentenDeelscherm({
                         <StatusChip
                           status={d.status}
                           soort={d.soort}
+                          laatstGewijzigdOp={d.laatst_gewijzigd_op}
                           title={d.geboekt_in_rlz ? geboektInRlzTooltip(d.geboekt_in_rlz) : undefined}
                         />
                         {d.automatisch_geboekt && (

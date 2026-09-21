@@ -6,6 +6,15 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-21 — Boeken: een boeking die blijft hangen zie je nu, en je kunt hem opnieuw indienen
+
+<!-- boek-wachtrij-niets-stil-21-09 -->
+
+- **"Wordt geboekt…" blijft niet meer stil hangen.** Duurt het langer dan vijf minuten, dan zegt de rij in de documentenlijst "Wordt geboekt… (loopt vast — N min)" met een oranje stip, en op het document staat een balk met de knop "Opnieuw indienen". Die knop start de verwerking opnieuw voor dezelfde boeking; er wordt nooit iets dubbel geboekt.
+- **Wat er misging staat in de tijdlijn.** Kon de verwerking op de achtergrond niet starten, dan staat de reden nu als regel in de tijdlijn van het document (niet meer alleen in het logboek).
+- **Het systeem meldt het zelf.** Een boeking die langer dan tien minuten blijft hangen komt als waarschuwing op Inzicht › Reconciliatie mét dezelfde knop "Opnieuw indienen", en het beheer krijgt binnen een halfuur een melding.
+- **Achtergrond.** Van 18 tot 21 september bleven vijf boekingen hangen omdat de achtergrondverwerking na een uitrol niet kon starten; de uitrol controleert nu na elke release of élke achtergrondtaak start.
+
 ## 2026-09-21 — Planning: conflicten leesbaar, per dag, mét een knop om ze op te lossen
 
 <!-- planning-conflictenpaneel-21-09 -->

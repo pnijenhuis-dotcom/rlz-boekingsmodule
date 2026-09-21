@@ -79,6 +79,32 @@ export function boekenActief(status: string): boolean {
   return status === 'wordt_geboekt'
 }
 
+/** BUG 21-09 (rlz-boek-wachtrij startte drie dagen niet — de rij toonde een eeuwige stip): ná zoveel minuten op
+ * wordt_geboekt zegt de rij "loopt vast" en wordt de dot oranje. Server-herstelgrens = 10 min (BOEK_WACHTRIJ_HERSTEL_MINUTEN);
+ * de mens ziet het eerder. */
+export const WORDT_GEBOEKT_VAST_MINUTEN = 5
+
+/** Minuten sinds `laatstGewijzigdOp` (de overgang naar wordt_geboekt is de laatste wijziging: het document is dan
+ * niet bewerkbaar). Onleesbare datum = 0 (nooit een vals "loopt vast"). */
+export function wordtGeboektMinuten(laatstGewijzigdOp: string | null | undefined, nu: number = Date.now()): number {
+  if (!laatstGewijzigdOp) return 0
+  const t = new Date(laatstGewijzigdOp).getTime()
+  if (Number.isNaN(t)) return 0
+  return Math.max(0, Math.floor((nu - t) / 60000))
+}
+
+export function wordtGeboektLooptVast(laatstGewijzigdOp: string | null | undefined, nu: number = Date.now()): boolean {
+  return wordtGeboektMinuten(laatstGewijzigdOp, nu) >= WORDT_GEBOEKT_VAST_MINUTEN
+}
+
+/** Rijlabel voor status wordt_geboekt: "Wordt geboekt…" of "Wordt geboekt… (loopt vast — N min)". */
+export function wordtGeboektLabel(laatstGewijzigdOp: string | null | undefined, nu: number = Date.now()): string {
+  const basis = STATUS_LABELS.wordt_geboekt
+  return wordtGeboektLooptVast(laatstGewijzigdOp, nu)
+    ? `${basis} (loopt vast — ${wordtGeboektMinuten(laatstGewijzigdOp, nu)} min)`
+    : basis
+}
+
 /** Statuslabel, optioneel soort-bewust (blok B 04-09) — zonder `soort` blijft het gedrag exact
  * zoals het was, zodat alle bestaande aanroepen ongewijzigd werken. */
 export function statusLabel(status: string, soort?: string | null): string {

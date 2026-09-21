@@ -428,6 +428,38 @@ def _probe_rls_weigering(nu: datetime) -> ProbeUitkomst:
     )
 
 
+def _probe_boek_wachtrij_gestrand(nu: datetime) -> ProbeUitkomst:
+    """21-09 (BUG rlz-boek-wachtrij zonder `--command python`: drie dagen "Wordt geboekt…" zonder één alert): élk
+    document dat langer dan `BOEK_WACHTRIJ_HERSTEL_MINUTEN` (10) op wordt_geboekt staat = 'fout' (alert via de
+    statemachine ná twee kwartiermetingen = binnen ~30 min, herstelmelding zodra de wachtrij leeg is) mét per document
+    de minuten en de reden
+    uit het jongste `boek_wachtrij_trigger`-audit. De reconciliatie (06:30) toont dezelfde documenten als
+    regressie-LET-OP mét de actie "Opnieuw indienen"; deze probe is de snelle weg."""
+    from app.documenten import boek_wachtrij
+
+    gestrand = boek_wachtrij.gestrande_boekingen(nu=nu)
+    if not gestrand:
+        return ProbeUitkomst(
+            soort="boek_wachtrij_gestrand", status="ok", detail="geen boeking > herstelgrens op wordt_geboekt"
+        )
+    delen = [
+        f"document {g.document_id} ({g.minuten} min; trigger {g.trigger_uitkomst or 'geen spoor'}"
+        + (f": {g.trigger_fout[:160]}" if g.trigger_fout else "")
+        + ")"
+        for g in gestrand[:5]
+    ]
+    return ProbeUitkomst(
+        soort="boek_wachtrij_gestrand",
+        status="fout",
+        detail=(
+            f"{len(gestrand)} boeking(en) staan langer dan {settings.boek_wachtrij_herstel_minuten} min op "
+            "wordt_geboekt — de achtergrond-schrijver (job rlz-boek-wachtrij) start niet of is gestrand; in Reeleezee "
+            "is niets geboekt. Controleer: `gcloud run jobs describe rlz-boek-wachtrij` (command: python), scheduler "
+            "ENABLED, executies. " + "; ".join(delen)
+        )[:1000],
+    )
+
+
 # ---- storing-administratie + alerts --------------------------------------------------------------
 
 
@@ -548,6 +580,7 @@ def voer_probes_uit(nu: datetime | None = None) -> dict[str, str]:
         _meet("automatisering_regressie", lambda: _probe_automatisering_regressie(nu)),
         _meet("deploy_drift", lambda: _probe_deploy_drift(nu)),
         _meet("rls_weigering", lambda: _probe_rls_weigering(nu)),
+        _meet("boek_wachtrij_gestrand", lambda: _probe_boek_wachtrij_gestrand(nu)),  # 21-09
         _meet("eerste_sync_wekker", lambda: _wekker_eerste_sync(nu)),
     ]
     if met_ai:

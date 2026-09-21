@@ -154,7 +154,13 @@ BEVINDINGSSOORT_EXPLODEERT = "bevindingssoort_explodeert"
 #: motor — een webfilter is `ongeldig`, een ontbrekende rekening `geen_rekening`; die zijn geen regressie). Direct
 #: LET-OP + systeemmail + audit `automatisering_regressie` (regel reconciliatie 1), niet via `meten`.
 GROEP_SALDO_FOUT = "groep_saldo_fout"
-REGRESSIE_CATEGORIEEN = frozenset({GEEN_EIGENAAR, BEVINDINGSSOORT_EXPLODEERT, GROEP_SALDO_FOUT})
+#: 21-09 (BUG rlz-boek-wachtrij zonder `--command python`: "Boeken in RLZ" bleef van 18-09 tot 21-09 op "Wordt geboekt…"
+#:  hangen zonder één signaal — trigger faalde op IAM, scheduler-vangnet stond gepauzeerd, job startte niet): een
+#: document dat langer dan `BOEK_WACHTRIJ_HERSTEL_MINUTEN` (10) op wordt_geboekt staat terwijl trigger én vangnet bestaan =
+#: regressie (infra/codefout, geen kantoorhandeling) → LET-OP per document mét actie "Opnieuw indienen" + systeemmail +
+#: audit `automatisering_regressie` + bewakingsprobe. Vervangt de `afwijking` `wordt_geboekt_verouderd` in `meten`.
+BOEK_WACHTRIJ_GESTRAND = "boek_wachtrij_gestrand"
+REGRESSIE_CATEGORIEEN = frozenset({GEEN_EIGENAAR, BEVINDINGSSOORT_EXPLODEERT, GROEP_SALDO_FOUT, BOEK_WACHTRIJ_GESTRAND})
 #: Blok 1 nametingen-run 10-09 (§F7 route A): jaarlijkse rotatie van de key van het nameting-serviceaccount — beheer-signaal
 #: (systeemmail), 30 dagen vóór 12 maanden ná `settings.nameting_sa_aangemaakt_op`.
 SA_KEY_ROTATIE = "nameting_sa_key_rotatie"
@@ -179,6 +185,7 @@ REDEN_LABEL: dict[str, str] = {
     RECHTEN_NA_24U: "na 24 uur herproberen weigert RLZ nog steeds (403)",
     GEEN_EIGENAAR: "geen eigenaar/toewijzing",
     GROEP_SALDO_FOUT: "groepssaldi-stand mét status fout (bron-/codefout in de nachtelijke meting)",
+    BOEK_WACHTRIJ_GESTRAND: "boeking blijft hangen op 'Wordt geboekt…' (achtergrond-schrijver niet gestart/gestrand)",
     VOLUMEREM: "volumerem bereikt",
     VOORVERWARMEN_UIT: "voorverwarmen staat uit (instelling CHECKS_VOORVERWARMEN)",
     VOORVERWARMEN_BEZIG: "al een voorverwarming bezig (max 1 tegelijk) of document niet leesbaar",
@@ -413,6 +420,7 @@ _ACTIES: tuple[str, ...] = (
     "boek_wachtrij_ingediend",
     "boek_wachtrij_afgerond",
     "boek_wachtrij_trigger",
+    "boek_wachtrij_opnieuw_ingediend",  # 21-09: mens/reconciliatie-actie startte de verwerker opnieuw
     "checks_voorverwarmd",
 )
 
@@ -933,6 +941,10 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         elif f.actie == "boek_wachtrij_trigger":
             if nw.get("uitkomst") != "geslaagd":
                 tel_over(boek_wachtrij, f.tijdstip, VANGNET_SCHEDULER, None, str(nw.get("fout") or ""))
+        elif f.actie == "boek_wachtrij_opnieuw_ingediend":
+            if f.tijdstip >= dag_vanaf:
+                boek_wachtrij.detail = boek_wachtrij.detail or {"ingediend_24u": 0}
+                boek_wachtrij.detail["opnieuw_ingediend_24u"] = int(boek_wachtrij.detail.get("opnieuw_ingediend_24u") or 0) + 1
         elif f.actie == "checks_voorverwarmd":
             uitkomst = str(nw.get("uitkomst") or "")
             if uitkomst in ("gedaan", "uit_cache"):
@@ -1953,6 +1965,63 @@ def werkvoorraad_tellers_bevinding(*, nu: datetime, rapport=None) -> dict[str, A
     }
 
 
+def boek_wachtrij_gestrand_bevindingen(*, nu: datetime, gestrand=None) -> list[dict[str, Any]]:  # noqa: ANN001
+    """21-09: per document dat langer dan de herstelgrens op wordt_geboekt staat één regressie-LET-OP (blok
+    automatisering, categorie `boek_wachtrij_gestrand`, mét administratie) — systeemmail + audit
+    `automatisering_regressie` + bewakingsprobe, en op /reconciliatie de rij mét actie "Opnieuw indienen" (frontend
+    herkent `detail.afwijking_soort == wordt_geboekt_verouderd` + `detail.document_id`) en de deeplink naar het
+    document.
+    De tekst draagt de reden uit het jongste `boek_wachtrij_trigger`-audit ("trigger mislukt: <fout>") — tot 21-09 stond
+    die alleen in het audit. Vingerafdruk per document × indienmoment: één mail per hangende boeking, geen herhaling
+    per run zolang dezelfde indiening hangt. `gestrand` = al gelezen `GestrandeBoeking`-rijen (tests)."""
+    if gestrand is None:
+        from app.documenten import boek_wachtrij
+
+        gestrand = boek_wachtrij.gestrande_boekingen(nu=nu)
+    uit: list[dict[str, Any]] = []
+    for g in gestrand:
+        if g.trigger_uitkomst == "mislukt":
+            oorzaak = f"trigger mislukt: {g.trigger_fout or 'onbekende fout'}"
+        elif g.trigger_uitkomst == "geslaagd":
+            oorzaak = "trigger geslaagd maar de job rondde de boeking niet af (job start niet / verwerker gestrand)"
+        else:
+            oorzaak = "geen trigger-spoor (geen job-resource of indiening van vóór het spoor)"
+        tekst = (
+            f"LET-OP     automatisering boek_wachtrij: document {g.document_id} staat {g.minuten} min op "
+            f"wordt_geboekt (ingediend {g.sinds.isoformat(timespec='minutes')}) — {oorzaak} — de rij toont "
+            f"'Wordt geboekt… (loopt vast)'; handeling: Opnieuw indienen — {REGRESSIE_TEKST}"
+        )[:1000]
+        uit.append(
+            {
+                "soort": "let_op",
+                "administratie_id": g.administratie_id,
+                "blok": BLOK,
+                "vingerafdruk": vingerafdruk_automatisering(
+                    sleutel=f"boek_wachtrij_gestrand|{g.document_id}|{g.sinds.isoformat(timespec='minutes')}",
+                    categorie=BOEK_WACHTRIJ_GESTRAND,
+                    administratie_id=g.administratie_id,
+                ), "tekst": tekst,
+                "detail": {
+                    "automatisering": BOEK_WACHTRIJ,
+                    "automatisering_label": "Achtergrond-schrijver 'Boeken in RLZ'",
+                    "reden": BOEK_WACHTRIJ_GESTRAND,
+                    "afwijking_soort": "wordt_geboekt_verouderd",
+                    "aantal": 1,
+                    "document_id": str(g.document_id),
+                    "administratie_id": str(g.administratie_id),
+                    "sinds": g.sinds.isoformat(),
+                    "minuten": g.minuten,
+                    "trigger_uitkomst": g.trigger_uitkomst,
+                    "trigger_fout": (g.trigger_fout or "")[:500] or None,
+                    "trigger_op": g.trigger_op,
+                    "oorzaak": oorzaak[:600],
+                    "doel_pad": f"/?administratie={g.administratie_id}&document={g.document_id}",
+                },
+            }
+        )
+    return uit
+
+
 def registreer(verzamelaar, *, nu: datetime | None = None, stdout=None) -> dict:  # noqa: ANN001
     """Ingang vanuit de run-motor: feiten lezen, tellers berekenen, LET-OPs als bevindingen op de
     verzamelaar zetten en de JSON-samenvatting teruggeven (die `Verzamelaar.samenvatting()` onder
@@ -1978,6 +2047,8 @@ def registreer(verzamelaar, *, nu: datetime | None = None, stdout=None) -> dict:
     groep_saldi = groep_saldi_bevinding(nu=nu)  # 21-09: regressie-detector groepssaldi
     if groep_saldi is not None:
         verzamelaar.bevinding(**groep_saldi)
+    for kw in boek_wachtrij_gestrand_bevindingen(nu=nu):  # 21-09: boeking hangt > herstelgrens op wordt_geboekt
+        verzamelaar.bevinding(**kw)
     if stdout is not None:
         for regel in regels(tellers):
             stdout(regel)

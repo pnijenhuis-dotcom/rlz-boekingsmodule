@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -277,6 +277,41 @@ jobs:
             TOTAAL="$(grep -m1 -o 'TOTAAL [0-9]* kandidaat-cluster(s) over [0-9]* veldwerker(s) in [0-9]* administratie(s) · [0-9]* fout(en)' "$UIT" || true)"
             echo "Oordeel: ${TOTAAL:-geen totaalregel} — job-exit $rc_vd" >> "$UIT"
             echo "STATUS veldwerkers-dubbelen: rapport in $UIT (job-exit $rc_vd = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "jobs-start" ]]; then
+            # 21-09 (BUG rlz-boek-wachtrij zonder --command python; BESLISSINGEN "F3-JOBS — COMMAND PYTHON IN DEPLOY.YML +
+            # JOB-SMOKETEST + WORDT_GEBOEKT LET-OP (21-09)"): lees-only meetlat "start élke job?" — per Cloud Run-job het
+            # startcommando (verwacht: python; rlz-migratie: alembic), de laatste executies van rlz-boek-wachtrij, de
+            # scheduler-stand van de vangnetten (nameting@ heeft géén cloudscheduler.viewer → dan "niet leesbaar", geen fout)
+            # en de wachtrij-audits via de querybibliotheek (db-lezen boek-wachtrij). Oordeel: alle jobs command=python.
+            UIT="verkenning/nameting-jobs-start-$DATUM.txt"
+            rc_js=0
+            {
+              echo "== gcloud run jobs: startcommando per job (verwacht python; rlz-migratie alembic) =="
+              gcloud run jobs list --region "$REGION" --project "$PROJECT_ID" \
+                --format="table(metadata.name,spec.template.spec.template.spec.containers[0].command.flatten(),spec.template.spec.template.spec.containers[0].args.flatten(),spec.template.spec.template.spec.containers[0].image.basename())" || rc_js=$?
+              echo
+              echo "== rlz-boek-wachtrij: laatste 8 executies =="
+              gcloud run jobs executions list --job rlz-boek-wachtrij --region "$REGION" --project "$PROJECT_ID" --limit 8 \
+                --format="table(metadata.name,status.completionTime,status.succeededCount,status.failedCount)" || rc_js=$?
+              echo
+              echo "== scheduler-stand vangnetten (ENABLED verwacht; 'niet leesbaar' = nameting@ zonder cloudscheduler.viewer) =="
+              for S in rlz-boek-wachtrij rlz-extractie-wachtrij rlz-bank-sync rlz-bewaking rlz-webhook-afleveraar; do
+                ST="$(gcloud scheduler jobs describe "$S" --location "$REGION" --project "$PROJECT_ID" --format="value(state)" 2>/dev/null || echo "niet leesbaar")"
+                echo "$S: ${ST:-geen scheduler}"
+              done
+              echo
+              echo "== db-lezen boek-wachtrij (7 dagen; wordt_geboekt_nu + ingediend/trigger/afgerond/opnieuw) =="
+              scripts/gcp/nameting.sh db-lezen boek-wachtrij 2> nameting-js.stderr || rc_js=$?
+            } > "$UIT"
+            cat nameting-js.stderr >&2 2>/dev/null || true
+            ZONDER="$(awk 'NR>1 && $1 ~ /^rlz-/ && $1 != "rlz-migratie" && $2 !~ /python/ {print $1}' <(sed -n '/startcommando per job/,/^$/p' "$UIT") || true)"
+            if [[ -n "$ZONDER" ]]; then
+              echo "Oordeel: ROOD — job(s) zonder command python: $(tr '\n' ' ' <<<"$ZONDER") — job-exit $rc_js" >> "$UIT"
+            else
+              echo "Oordeel: alle jobs dragen command python (rlz-migratie: alembic) — job-exit $rc_js" >> "$UIT"
+            fi
+            echo "STATUS jobs-start: rapport in $UIT (exit $rc_js = uitkomst)"
           fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only

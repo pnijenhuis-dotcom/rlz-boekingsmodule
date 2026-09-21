@@ -65,8 +65,19 @@ REGISTRY: dict[str, SoortDefinitie] = {
         _oud("niet_geboekt_in_odoo", "documenten"),
         _oud("teruggedraaid_in_odoo", "documenten"),
         _oud("half_geboekt", "documenten"),
-        # boeken sneller (18-09): achtergrond-schrijver gestrand (> herstelgrens op wordt_geboekt) — eerst meten.
-        SoortDefinitie(soort="wordt_geboekt_verouderd", blok="documenten", sinds=date(2026, 9, 18), default=METEN),
+        # boeken sneller (18-09): achtergrond-schrijver gestrand (> herstelgrens op wordt_geboekt) — startte in meten.
+        # 21-09: niet meer als afwijking geproduceerd — het is een REGRESSIE-LET-OP op blok automatisering (categorie
+        # `boek_wachtrij_gestrand`, systeemmail + audit + probe); de soortnaam reist mee in `detail.afwijking_soort` van
+        # die LET-OP (actie "Opnieuw indienen" op de rij). Entry blijft voor de tekst-guard en oude bevindingen.
+        SoortDefinitie(
+            soort="wordt_geboekt_verouderd",
+            blok="documenten",
+            sinds=date(2026, 9, 18),
+            default=METEN,
+            gepromoveerd_op=date(2026, 9, 21),
+            meting="21-09: drie dagen gestrand zonder signaal (BUG --command python) → LET-OP via automatiseringen, "
+            "rapport docs/rapporten/2026-09-21-f3-jobs-command-python-job-smoketest-wordt-geboekt-let-op.md",
+        ),
         # bank
         _oud("document_ontbreekt_in_rlz", "bank"),
         _oud("boeking_teruggedraaid_in_rlz", "bank"),

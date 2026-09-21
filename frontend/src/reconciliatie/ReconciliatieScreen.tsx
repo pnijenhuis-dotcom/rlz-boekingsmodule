@@ -31,6 +31,7 @@ import { BewustVerwijderdActie } from './BewustVerwijderdActie'
 import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
 import { HerboekenAlsOmzetActie, isOmzetInInkoopstroom } from './HerboekenAlsOmzetActie'
 import { isKassarapportInWerkvoorraad, TypeWijzigenKassarapportActie } from './TypeWijzigenKassarapportActie'
+import { isBoekWachtrijGestrand, OpnieuwIndienenActie } from './OpnieuwIndienenActie'
 import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
 import {
   accepteerBevinding,
@@ -242,19 +243,37 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
     // Automatiserings-LET-OP (07-09 blok C): de handeling is de instelling herstellen — de deeplink wijst
     // naar de instellingenpagina, ook zonder administratie (platformbrede voorwaarde).
     const isAutomatisering = r.blok === 'automatisering'
+    // 21-09: een automatiserings-LET-OP mét document (boek_wachtrij_gestrand) linkt naar het document, niet naar een instelling.
+    const naarDocument = !isAutomatisering || typeof r.detail?.document_id === 'string'
     const deeplink = r.doel_pad ? (
       <Link
         to={r.doel_pad}
         className="btn secondary"
         aria-label={
-          isAutomatisering
-            ? `Naar de instelling van ${titelVan(r)}`
-            : `Naar het document van ${r.administratie_naam ?? 'deze bevinding'}`
+          naarDocument
+            ? `Naar het document van ${r.administratie_naam ?? 'deze bevinding'}`
+            : `Naar de instelling van ${titelVan(r)}`
         }
       >
-        {isAutomatisering ? 'Naar de instelling →' : r.soort === 'let_op' ? 'Naar de doorbelasting →' : 'Naar het document →'}
+        {!naarDocument ? 'Naar de instelling →' : r.soort === 'let_op' && !isAutomatisering ? 'Naar de doorbelasting →' : 'Naar het document →'}
       </Link>
     ) : null
+
+    // 21-09 (BUG rlz-boek-wachtrij): boeking hangt op "Wordt geboekt…" → "Opnieuw indienen" is de primaire handeling.
+    if (isBoekWachtrijGestrand(r)) {
+      return (
+        <>
+          <OpnieuwIndienenActie
+            bevinding={r}
+            onGelukt={(melding, soort) => {
+              toast.meld(melding, soort)
+              herlaad()
+            }}
+          />{' '}
+          {deeplink}
+        </>
+      )
+    }
 
     // A11 (07-09): extern document verdwenen → "Opnieuw boeken…" (herboek-mechanisme zonder tegenboeking) is de
     // primaire handeling; accepteren (Beheerder) blijft als tweede knop beschikbaar.

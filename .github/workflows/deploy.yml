@@ -246,27 +246,38 @@ jobs:
       # rlz-terugkerend-herbereken, rlz-reconciliatie ("Nu draaien").
       # rlz-sync task-timeout 5400 (blok 1 bundel 08-09): sync-alles draait óók de bank-sync voor álle administraties.
       # BEWAKING_ALERT_ONTVANGER blijft de code-default (p.nijenhuis@kempengroep.nl) — geen env nodig.
-      - name: F3-jobs bijwerken (zelfde beeld, CLI-entrypoints, volledige envset per job)
+      # `--command python` (BUG 21-09, BESLISSINGEN "F3-JOBS — COMMAND PYTHON IN DEPLOY.YML + JOB-SMOKETEST + WORDT_GEBOEKT LET-OP
+      # (21-09)"): de Dockerfile heeft bewust GEEN ENTRYPOINT (de service-CMD is `sh -c exec uvicorn …`; een
+      # `ENTRYPOINT ["python"]` zou die CMD tot `python sh -c …` maken) — het startcommando van een job staat dus UITSLUITEND
+      # hier. Tot 21-09 gaf deze lus alleen `--args` en erfde een job zijn commando van de eerste aanmaak door f3_jobs.sh; de
+      # eerste job die deploy.yml zélf aanmaakte (rlz-boek-wachtrij, 18-09) had daardoor géén commando: "Application exec
+      # likely failed", nul regels uitvoer, drie dagen "Wordt geboekt…". Een job die door de deploy wordt aangemaakt erft niets
+      # van het bootstrap-script — élke eigenschap die de start bepaalt staat in de deploy zelf. Guard:
+      # tests/unit/test_deploy_yml_jobs_command.py. Ná de lus start élke job één keer mét `--smoketest` (imports + settings +
+      # DB-ping, geen werk): een job die niet start maakt de deploy rood (les 10-09 "service en jobs uit de pas" geldt nu ook
+      # voor start-baarheid).
+      - name: F3-jobs bijwerken (zelfde beeld, CLI-entrypoints, volledige envset per job) + job-smoketest
         run: |
           BASIS_ENVS="ENVIRONMENT=production|CLOUD_SQL_VERBINDING=${CLOUD_SQL}|LEES_CLOUD_SQL_VERBINDING=${CLOUD_SQL_LEES}|STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748|STORE_APP_VERSIE_IOS=1.1|DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten|KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey|APP_BUNDEL_GCS_BUCKET=${APP_BUNDEL_BUCKET}|APP_MIN_RUNTIME_VERSIE=${APP_MIN_RUNTIME_VERSIE}"
           BASIS_SECRETS="APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest"
-          for JOB in \
-            "rlz-sync|sync-alles|5400" \
-            "rlz-reconciliatie|reconciliatie-alles|3600" \
-            "rlz-intake-imap|intake-postvak-verwerken|900" \
-            "rlz-accordeur-herinneringen|accordeur-herinneringen|600" \
-            "rlz-nieuwe-facturen|nieuwe-facturen-melden|600" \
-            "rlz-uren-herinneringen|uren-herinneringen|600" \
-            "rlz-kantoor-digest|kantoor-digest|600" \
-            "rlz-projecten-cijfers|projecten-cijfers-wachtrij|3600" \
-            "rlz-bank-sync|bank-sync-wachtrij|900" \
-            "rlz-extractie-wachtrij|extractie-wachtrij-verwerken|1800" \
-            "rlz-boek-wachtrij|boek-wachtrij-verwerken|900" \
-            "rlz-eerste-sync|eerste-sync-wachtrij|1800" \
-            "rlz-terugkerend-herbereken|terugkerend-herbereken-wachtrij|1800" \
-            "rlz-bewaking|bewaking-probe|300" \
-            "rlz-webhook-afleveraar|webhook-afleveren|600" \
-          ; do
+          F3_JOBS=(
+            "rlz-sync|sync-alles|5400"
+            "rlz-reconciliatie|reconciliatie-alles|3600"
+            "rlz-intake-imap|intake-postvak-verwerken|900"
+            "rlz-accordeur-herinneringen|accordeur-herinneringen|600"
+            "rlz-nieuwe-facturen|nieuwe-facturen-melden|600"
+            "rlz-uren-herinneringen|uren-herinneringen|600"
+            "rlz-kantoor-digest|kantoor-digest|600"
+            "rlz-projecten-cijfers|projecten-cijfers-wachtrij|3600"
+            "rlz-bank-sync|bank-sync-wachtrij|900"
+            "rlz-extractie-wachtrij|extractie-wachtrij-verwerken|1800"
+            "rlz-boek-wachtrij|boek-wachtrij-verwerken|900"
+            "rlz-eerste-sync|eerste-sync-wachtrij|1800"
+            "rlz-terugkerend-herbereken|terugkerend-herbereken-wachtrij|1800"
+            "rlz-bewaking|bewaking-probe|300"
+            "rlz-webhook-afleveraar|webhook-afleveren|600"
+          )
+          for JOB in "${F3_JOBS[@]}"; do
             NAAM="${JOB%%|*}"; REST="${JOB#*|}"; CLI="${REST%%|*}"; TIMEOUT="${REST##*|}"
             ENVS="${BASIS_ENVS}"; SECRETS="${BASIS_SECRETS}"
             case "${NAAM}" in
@@ -296,11 +307,31 @@ jobs:
               --set-cloudsql-instances "${CLOUD_SQL},${CLOUD_SQL_LEES}" \
               --set-env-vars "^|^${ENVS}" \
               --set-secrets "${SECRETS}" \
+              --command python \
               --args="-m,app.cli,${CLI}" \
               --max-retries 0 \
               --task-timeout "${TIMEOUT}" \
               --quiet
           done
+          # JOB-SMOKETEST (21-09): élke job één keer starten op het nieuwe beeld mét de no-op-vlag `--smoketest` (app/cli.py:
+          # argparse + imports + settings + DB-ping, daarna stoppen — géén werk). Parallel gestart (één executie per job, ~30–60 s
+          # elk) en dan gewacht; één job die niet start = deze stap rood → `if: failure()` mailt het beheer. rlz-migratie en
+          # rlz-smoketest bewijzen hun start-baarheid al doordat ze in deze workflow zelf draaien.
+          FOUT=0; declare -A PIDS
+          for JOB in "${F3_JOBS[@]}"; do
+            NAAM="${JOB%%|*}"; REST="${JOB#*|}"; CLI="${REST%%|*}"
+            ( gcloud run jobs execute "${NAAM}" --region "${REGION}" --project "${PROJECT_ID}" \
+                --args="^|^-m|app.cli|--smoketest|${CLI}" --wait --quiet > "smoketest-${NAAM}.log" 2>&1 ) &
+            PIDS["${NAAM}"]=$!
+          done
+          for NAAM in "${!PIDS[@]}"; do
+            if wait "${PIDS[${NAAM}]}"; then
+              echo "job-smoketest ${NAAM}: start ok"
+            else
+              FOUT=1; echo "::error::job-smoketest ${NAAM}: de job start NIET op dit beeld (zie log hieronder)"; cat "smoketest-${NAAM}.log"
+            fi
+          done
+          [ "${FOUT}" = "0" ] || { echo "FOUT: minstens één job start niet — deploy rood (les 21-09: command/entrypoint/imports)"; exit 1; }
 
       # POST-DEPLOY-SMOKETEST (best-practice-besluit 1, 31-08 punt 4 — aanleiding: de
       # schema-limiet-bug van 30-08 haalde een groene deploy en legde de extractie een dag

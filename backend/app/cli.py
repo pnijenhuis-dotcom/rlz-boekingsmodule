@@ -770,6 +770,39 @@ def _bewaking_probe(args: argparse.Namespace) -> int:
     return 0
 
 
+def _job_smoketest(args: argparse.Namespace) -> int:
+    """Job-smoketest (BUG 21-09 `rlz-boek-wachtrij` zonder `--command python`: "Application exec likely failed", nul
+    regels uitvoer, drie dagen "Wordt geboekt…"). deploy.yml start ná de F3-lus élke job één keer als
+    `python -m app.cli --smoketest <cli>`: argparse heeft het subcommando dan al herkend (het bestaat op dit beeld),
+    hier volgen de imports die élke job nodig heeft, de settings en één `SELECT 1` op de database — géén werk, geen
+    RLZ-call, geen mail. Exit 0 = de job start; élke fout = exit 1 = de deploy is rood. Guard:
+    tests/unit/test_cli_smoketest.py."""
+    import platform
+
+    from sqlalchemy import text
+
+    from app.config import settings
+    from app.db import session as db_session
+
+    fouten: list[str] = []
+    try:
+        with db_session.engine.connect() as conn:
+            een = conn.execute(text("SELECT 1")).scalar()
+        if een != 1:
+            fouten.append(f"database: SELECT 1 gaf {een!r}")
+    except Exception as exc:  # noqa: BLE001 — élke DB-fout hoort de deploy rood te maken
+        fouten.append(f"database onbereikbaar: {exc}")
+    if fouten:
+        for fout in fouten:
+            print(f"job-smoketest FOUT ({args.commando}): {fout}", file=sys.stderr)
+        return 1
+    print(
+        f"job-smoketest ok: commando={args.commando} python={platform.python_version()} "
+        f"environment={settings.environment} database=bereikbaar — geen werk uitgevoerd"
+    )
+    return 0
+
+
 def _deploy_smoketest(args: argparse.Namespace) -> int:
     """Post-deploy-smoketest (best-practice-besluit 1, 31-08 punt 4 — geen stille kapotte
     deploys meer): AI-schema-zelftest (union-limiet, de 30-08-klasse), DB + migratieversie en
@@ -1790,32 +1823,18 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
                     "documenten", b, None, document_id=a.document_id, **getattr(a, "context", {})
                 ),
             )
-    # Boeken sneller (18-09): een document dat langer dan de herstelgrens op wordt_geboekt staat = gestrande
-    # achtergrond-schrijver → bevinding `wordt_geboekt_verouderd` (start in `meten`) mét actie "Opnieuw proberen" op de
-    # rij (deeplink naar het document). Het herstel-vangnet plant 'm bovendien zelf opnieuw in.
+    # Boeken sneller (18-09) → 21-09: een document dat langer dan de herstelgrens op wordt_geboekt staat was hier een
+    # `afwijking` `wordt_geboekt_verouderd` in `meten` (facet "in meting", nooit een mail) — en bleef zo drie dagen
+    # onzichtbaar (BUG rlz-boek-wachtrij zonder --command python). Sinds 21-09 is het een REGRESSIE-LET-OP op blok
+    # automatisering (`automatiseringen.boek_wachtrij_gestrand_bevindingen`, via `registreer`) mét de trigger-fout en de
+    # actie "Opnieuw indienen"; hier alleen nog de informatieve regel in de CLI-uitvoer van dit blok.
     from app.documenten import boek_wachtrij
 
-    for aid, doc_id, sinds in boek_wachtrij.verouderde_boekingen():
-        regel = (
-            f"document={doc_id}: staat sinds {sinds.isoformat(timespec='minutes')} op wordt_geboekt "
-            f"(> {_settings().boek_wachtrij_herstel_minuten} min) — achtergrond-schrijver gestrand"
-        )
-        print(f"    - {regel}")
-        afwijkingen_totaal += 1
-        _meld(
-            verzamelaar,
-            soort="afwijking",
-            administratie_id=aid,
-            tekst=regel,
-            detail={
-                "bron": "documenten",
-                "record_id": str(doc_id),
-                "document_id": str(doc_id),
-                "afwijking_soort": boek_wachtrij.BEVINDING_VEROUDERD,
-                "detail": regel,
-                "geaccepteerd": False,
-                "sinds": sinds.isoformat(),
-            },
+    for g in boek_wachtrij.gestrande_boekingen():
+        print(
+            f"    - document={g.document_id}: staat {g.minuten} min op wordt_geboekt "
+            f"(> {_settings().boek_wachtrij_herstel_minuten} min) — trigger {g.trigger_uitkomst or 'geen spoor'}"
+            f"{': ' + g.trigger_fout if g.trigger_fout else ''} — LET-OP in blok automatisering (Opnieuw indienen)"
         )
     uitgesloten_naschrift = (
         f"; daarnaast {geaccepteerd_uitgesloten} geaccepteerd op uitgesloten administraties — telt niet mee"
@@ -3053,6 +3072,13 @@ def _reconciliatie_run_blokken() -> tuple[str, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="RLZ Boekingsmodule beheer-CLI")
+    parser.add_argument(
+        "--smoketest",
+        action="store_true",
+        help="Job-smoketest (deploy.yml, 21-09): parse het subcommando, importeer app + settings, ping de database en "
+        "stop zonder werk — bewijst dat een Cloud Run-job op dit beeld START (command/entrypoint/imports). "
+        "Gebruik: `python -m app.cli --smoketest <commando>`.",
+    )
     subparsers = parser.add_subparsers(dest="commando", required=True)
 
     bootstrap_parser = subparsers.add_parser(
@@ -3837,6 +3863,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    if args.smoketest:  # 21-09: job-smoketest — vóór élke dispatcher, nooit werk
+        return _job_smoketest(args)
     if (uitkomst_autoboek_leren := dispatch_autoboek_leren(args)) is not None:  # blok A 10-09
         return uitkomst_autoboek_leren
     if (uitkomst_administratienaam := dispatch_administratienaam(args)) is not None:  # 15-09 (0144)
