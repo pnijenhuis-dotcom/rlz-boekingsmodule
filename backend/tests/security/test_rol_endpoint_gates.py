@@ -121,6 +121,7 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         # Planning v3 dag-eerst (18-09): bulkroute, reservering en afwezigheid onder module-recht/veldwerkerbeheer
         # + scope.
         ("POST", "/uren/kantoor/planning/bulk"),
+        ("POST", "/uren/kantoor/planning/conflict-akkoord"),  # 21-09: conflictenpaneel mét handeling
         ("POST", "/uren/kantoor/planning/reservering"),
         ("POST", "/uren/kantoor/planning/reservering/verwijderen"),
         ("GET", f"/uren/kantoor/afwezigheid?administratie_id={aid}"),

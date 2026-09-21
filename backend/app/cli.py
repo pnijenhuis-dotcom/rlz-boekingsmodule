@@ -36,6 +36,11 @@ from app.omzet import reconciliatie as omzet_reconciliatie
 from app.panden.cli_cmd import register_panden, run_panden
 from app.panden.toewijzen_cli import PAND_TOEWIJZEN_COMMANDO, register_pand_toewijzen, run_pand_toewijzen  # 21-09 VGG bp 1
 from app.projecten.cli_cmd import PROJECTEN_COMMANDOS, register_projecten, run_projecten  # blok 3 18-09
+from app.uren.dubbelen_cli import (  # opdracht 21-09: veldwerkers-dubbelen (lees-only, harde sleutels)
+    VELDWERKERS_DUBBELEN_COMMANDOS,
+    register_veldwerkers_dubbelen,
+    run_veldwerkers_dubbelen,
+)
 from app.projectverdeling.cli_cmd import (  # opdracht 19-09: projectverdeling-afgesloten-rapport (lees-only)
     PROJECTVERDELING_COMMANDOS,
     register_projectverdeling,
@@ -3501,6 +3506,7 @@ def main(argv: list[str] | None = None) -> int:
     register_bank(subparsers)  # blok B 10-09: bank-voorstellen-lezen + bank-historie-backfill (app/bank/cli_cmd.py)
     register_projecten(subparsers)  # blok 3 18-09: projecten-afsluit-kandidaten + projecten-dubbele-nummers (lees-only)
     register_projectverdeling(subparsers)  # opdracht 19-09: projectverdeling-afgesloten-rapport (lees-only)
+    register_veldwerkers_dubbelen(subparsers)  # opdracht 21-09: veldwerkers-dubbelen (lees-only, harde sleutels)
     register_verplichting(subparsers)  # 18-09: verplichting-match-herberekenen (SCHRIJVEND, nazorg onderweg-verbruik)
     register_accordering(subparsers)  # blok 7 11-09: staande-goedkeuring-voorstellen-lezen (app/accordering/cli_cmd.py)
     register_migratie(subparsers)  # blok D1 10-09: migratie-schoonlijst (app/migratie/cli_cmd.py)
@@ -3882,6 +3888,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_projecten(args)
     if args.commando in PROJECTVERDELING_COMMANDOS:
         return run_projectverdeling(args)
+    if args.commando in VELDWERKERS_DUBBELEN_COMMANDOS:
+        return run_veldwerkers_dubbelen(args)  # 21-09, lees-only
     if args.commando in VERPLICHTING_COMMANDOS:
         return run_verplichting(args)
     if args.commando in ACCORDERING_COMMANDOS:

@@ -8,7 +8,7 @@
  * filters, één request) blijft, de selectors volgen de nieuwe weergave. */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PlanningScreen } from './PlanningScreen'
 
 const ADMINISTRATIE_ID = 'dddddddd-0000-0000-0000-00000000000d'
@@ -165,7 +165,15 @@ function renderScherm(zoekdeel = `?administratie=${ADMINISTRATIE_ID}`) {
   )
 }
 
+// 21-09: het conflictenpaneel toont alleen conflicten vanaf vandaag — de testweek 2026-W35 moet dus in de toekomst liggen. Alleen
+// `Date` wordt gefaket (timers blijven echt, zodat waitFor/fetch-mocks gewoon lopen).
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-08-10T09:00:00'))
+})
+
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -374,14 +382,97 @@ describe('PlanningScreen — dag-eerst (v3, Peter 18-09)', () => {
     renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
     await wachtOpGrid()
     const balk = screen.getByTestId('conflictenbalk')
-    expect(balk).toHaveTextContent('1 conflict deze week')
-    expect(balk).toHaveTextContent('ma 24-8: Milan K. op 144 Breda (Moeskops) én 25036 Arnhem')
+    // 21-09: paneel — kop noemt de GETOONDE week (niet "deze week": vandaag = 10-8 = week 33), rij = persoon · projecten · soort.
+    expect(balk).toHaveTextContent('1 conflict in week 35')
+    const rij = within(balk).getByTestId(`conflict-rij-dubbel-2026-08-24-${ZZP_ID}`)
+    expect(rij).toHaveTextContent('ma 24-8')
+    expect(rij).toHaveTextContent('Milan K.')
+    expect(rij).toHaveTextContent('144 Breda (Moeskops) én 25036 Arnhem')
+    expect(rij).toHaveTextContent('dubbel gepland')
+    // Handelingen: Houd A · Houd B · Beide (halve dagen)… · Toon in grid — nooit alleen "spring naar kaart".
+    expect(within(rij).getByRole('button', { name: 'Houd 144 Breda (Moeskops)' })).toBeInTheDocument()
+    expect(within(rij).getByRole('button', { name: 'Houd 25036 Arnhem' })).toBeInTheDocument()
+    expect(within(rij).getByRole('button', { name: 'Beide (halve dagen)…' })).toBeInTheDocument()
     // Beide kaarten dragen de conflict-chip; Milans initiaal oranje omrand.
     expect(within(screen.getByTestId(`kaart-${KAART_MA}`)).getByTestId('kaart-conflict')).toBeInTheDocument()
     expect(within(screen.getByTestId(`kaart-${KAART_MA}`)).getByTestId(`initiaal-${ZZP_ID}`).className).toContain(' c')
-    fireEvent.click(within(balk).getByRole('button', { name: /Milan K. op/ }))
+    fireEvent.click(within(rij).getByRole('button', { name: 'Toon in grid' }))
     await waitFor(() => expect(screen.getByTestId(`kaart-${KAART_MA}`).className).toContain('oplichten'))
     expect(screen.getByTestId('ploeg-paneel')).toBeInTheDocument()
+  })
+
+  it('conflictenpaneel: "Houd ‹A›" = de andere kaart weg via de bulkroute (bron conflict, verwijderen) + toast mét ongedaan maken', async () => {
+    const week = planningWeek()
+    const compact = (week.projecten as Record<string, unknown>[])[1]
+    ;(compact.per_datum as Record<string, unknown>)['2026-08-24'] = [{ gebruiker_id: ZZP_ID, naam: 'Milan K.', rol: 'zzper', dagdeel: 'heel' }]
+    const fetchMock = installMock({
+      planning: () => jsonResponse(week),
+      bulk: (body) => jsonResponse(bulkResultaat(body, { aangemaakt: body.items })),
+    })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    fireEvent.click(screen.getByRole('button', { name: 'Houd 144 Breda (Moeskops)' }))
+    await waitFor(() => expect(posts(fetchMock, '/uren/kantoor/planning/bulk')).toHaveLength(1))
+    const [call] = posts(fetchMock, '/uren/kantoor/planning/bulk')
+    expect(call.body.bron).toBe('conflict')
+    expect(call.body.verwijderen).toBe(true)
+    // Alleen de ÁNDERE kaart (Arnhem) gaat weg; Breda blijft.
+    expect(call.body.items).toEqual([{ gebruiker_id: ZZP_ID, project_id: COMPACT_PROJECT_ID, datum: '2026-08-24' }])
+    await waitFor(() => expect(screen.getByTestId('ongedaan-maken')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('ongedaan-maken'))
+    await waitFor(() => expect(posts(fetchMock, '/uren/kantoor/planning/bulk')).toHaveLength(2))
+    const terug = posts(fetchMock, '/uren/kantoor/planning/bulk')[1]
+    expect(terug.body.bron).toBe('ongedaan')
+    expect(terug.body.verwijderen).toBeUndefined()
+    expect(terug.body.items).toEqual(call.body.items) // exact de verwijderde set terug
+  })
+
+  it('conflictenpaneel: "Beide (halve dagen)…" = reden verplicht → conflict-akkoord mét halve_dagen; akkoord in de respons verbergt de rij', async () => {
+    const week = planningWeek()
+    const compact = (week.projecten as Record<string, unknown>[])[1]
+    ;(compact.per_datum as Record<string, unknown>)['2026-08-24'] = [{ gebruiker_id: ZZP_ID, naam: 'Milan K.', rol: 'zzper', dagdeel: 'heel' }]
+    let akkoorden: Record<string, unknown>[] = []
+    const fetchMock = installMock({
+      planning: () => jsonResponse({ ...week, conflict_akkoorden: akkoorden }),
+      post: () => jsonResponse({ id: 'ak-1', gebruiker_id: ZZP_ID, datum: '2026-08-24', soort: 'dubbel', project_ids: [PROJECT_ID, COMPACT_PROJECT_ID], reden: 'x', aangemaakt_door: 'b', aangemaakt_op: '2026-08-10T09:00:00Z' }),
+    })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    fireEvent.click(screen.getByRole('button', { name: 'Beide (halve dagen)…' }))
+    const bevestig = await screen.findByTestId('bevestig-akkoord')
+    expect(bevestig).toBeDisabled() // reden verplicht
+    fireEvent.change(screen.getByLabelText('Reden bewust houden'), { target: { value: 'ochtend Breda, middag Arnhem' } })
+    akkoorden = [{ id: 'ak-1', gebruiker_id: ZZP_ID, datum: '2026-08-24', soort: 'dubbel', project_ids: [COMPACT_PROJECT_ID, PROJECT_ID], reden: 'x', aangemaakt_door: 'b', aangemaakt_op: '2026-08-10T09:00:00Z' }]
+    fireEvent.click(bevestig)
+    await waitFor(() => expect(posts(fetchMock, '/uren/kantoor/planning/conflict-akkoord')).toHaveLength(1))
+    const [call] = posts(fetchMock, '/uren/kantoor/planning/conflict-akkoord')
+    expect(call.body).toMatchObject({ gebruiker_id: ZZP_ID, datum: '2026-08-24', soort: 'dubbel', halve_dagen: true, reden: 'ochtend Breda, middag Arnhem' })
+    // Ná herladen draagt de respons het akkoord → de rij is weg (tot de planning wijzigt).
+    await waitFor(() => expect(screen.queryByTestId('conflictenbalk')).not.toBeInTheDocument())
+  })
+
+  it('conflictenpaneel: verstreken dagen tellen niet mee (historie) — de kop zegt "deze week" alleen voor de huidige week', async () => {
+    vi.setSystemTime(new Date('2026-08-26T09:00:00')) // woensdag in week 35: ma 24-8 is verstreken
+    const week = planningWeek()
+    const compact = (week.projecten as Record<string, unknown>[])[1]
+    ;(compact.per_datum as Record<string, unknown>)['2026-08-24'] = [{ gebruiker_id: ZZP_ID, naam: 'Milan K.', rol: 'zzper', dagdeel: 'heel' }]
+    installMock({ planning: () => jsonResponse(week) })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    const balk = screen.getByTestId('conflictenbalk')
+    expect(balk).toHaveTextContent('Geen conflicten deze week — 1 op verstreken dag (historie, zie "Per project")')
+    expect(screen.queryByRole('button', { name: /^Houd / })).not.toBeInTheDocument()
+    expect(screen.getByTestId('week-stand')).toHaveTextContent('lopende week')
+    // De kaart-chip blijft (historie zichtbaar in het grid en in "Per project").
+    expect(within(screen.getByTestId(`kaart-${KAART_MA}`)).getByTestId('kaart-conflict')).toBeInTheDocument()
+  })
+
+  it('weekchip: een deeplink naar een verstreken week zegt dat eerlijk ("verstreken week")', async () => {
+    vi.setSystemTime(new Date('2026-09-21T09:00:00'))
+    installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    expect(screen.getByTestId('week-stand')).toHaveTextContent('verstreken week')
   })
 
   it('afwezigheid: pool toont "afwezig t/m", filter "alleen vrij" verbergt geplande en afwezige, paneel schakelt de afwezige uit; gepland op zo\'n dag = conflict', async () => {
@@ -390,7 +481,11 @@ describe('PlanningScreen — dag-eerst (v3, Peter 18-09)', () => {
     renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
     await wachtOpGrid()
     expect(screen.getByTestId(`pool-${UITV_ID}`)).toHaveTextContent('afwezig t/m 25-8')
-    expect(screen.getByTestId('conflictenbalk')).toHaveTextContent('Ben v. Dijk afwezig (verlof) maar gepland op 144 Breda')
+    const afwRij = within(screen.getByTestId('conflictenbalk')).getByTestId(`conflict-rij-afwezig-2026-08-24-${UITV_ID}`)
+    expect(afwRij).toHaveTextContent('Ben v. Dijk')
+    expect(afwRij).toHaveTextContent('afwezig')
+    expect(within(afwRij).getByRole('button', { name: 'Van planning halen' })).toBeInTheDocument()
+    expect(within(afwRij).getByRole('button', { name: 'Tóch plannen…' })).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('pool-alleen-vrij'))
     expect(screen.queryByTestId(`pool-${UITV_ID}`)).not.toBeInTheDocument()
     expect(screen.queryByTestId(`pool-${ZZP_ID}`)).not.toBeInTheDocument()

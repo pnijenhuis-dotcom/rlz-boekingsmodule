@@ -1034,6 +1034,7 @@ def kantoor_planning(
         wachtrisico=[schemas.WachtrisicoKortDto(**w.__dict__) for w in data.wachtrisico],
         reserveringen=[schemas.PlanningReserveringDto(**r.__dict__) for r in data.reserveringen],
         afwezigheid=[_afwezigheid_dto(a) for a in data.afwezigheid],
+        conflict_akkoorden=[schemas.PlanningConflictAkkoordDto(**a.__dict__) for a in data.conflict_akkoorden],
     )
 
 
@@ -1073,6 +1074,31 @@ def kantoor_planning_bulk(
         aangemaakt=[_bulk_item_dto(r) for r in data.aangemaakt],
         resultaten=[_bulk_item_dto(r) for r in data.resultaten],
     )
+
+
+@router.post("/kantoor/planning/conflict-akkoord", response_model=schemas.PlanningConflictAkkoordDto)
+def kantoor_planning_conflict_akkoord(
+    payload: schemas.PlanningConflictAkkoordRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.PlanningConflictAkkoordDto:
+    """Conflictenpaneel (Peter 21-09): "Beide (halve dagen)" (dubbel) of "Tóch plannen" (afwezig) — het conflict bewust
+    houden mét verplichte reden; `halve_dagen` zet alle kaartjes van die persoon × dag op ½. Idempotent op dezelfde
+    stand;
+    404 zonder planning die dag; 422 zonder dubbele planning bij soort dubbel."""
+    try:
+        data = planning.bevestig_conflict(
+            administratie_id=payload.administratie_id,
+            gebruiker_id=payload.gebruiker_id,
+            datum=payload.datum,
+            soort=payload.soort,
+            reden=payload.reden,
+            halve_dagen=payload.halve_dagen,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.PlanningConflictAkkoordDto(**data.__dict__)
 
 
 @router.post("/kantoor/planning/reservering", response_model=schemas.PlanningReserveringDto)

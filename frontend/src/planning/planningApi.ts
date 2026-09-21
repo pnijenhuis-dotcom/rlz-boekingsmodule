@@ -144,7 +144,8 @@ export interface AfwezigheidDto {
   beeindigd_op?: string | null
 }
 
-export type PlanningBulkBron = 'vulhandvat' | 'ploeg' | 'ongedaan'
+/** 21-09: `conflict` = "Houd ‹project›" / "Van planning halen" uit het conflictenpaneel (verwijderen via dezelfde bulkroute). */
+export type PlanningBulkBron = 'vulhandvat' | 'ploeg' | 'ongedaan' | 'conflict'
 /** Contract-afwijking 4B (18-09): dagdeel = de bestaande enumeratie heel/half (geen ochtend/middag). */
 export type PlanningDagdeelV3 = 'heel' | 'half'
 
@@ -179,6 +180,28 @@ export interface PlanningBulkResultaatDto {
   /** verwijderen=false: de daadwerkelijk aangemaakte items; verwijderen=true: de verwijderde items. */
   aangemaakt: PlanningBulkItemDto[]
   resultaten: PlanningBulkResultaatItemDto[]
+}
+
+/** Bewust gehouden conflict (21-09, migratie 0169): het paneel verbergt het conflict alleen zolang de planningsstand
+ * (gesorteerde project-id's van die persoon × dag) exact gelijk is aan `project_ids`. */
+export interface PlanningConflictAkkoordDto {
+  id: string
+  gebruiker_id: string
+  datum: string
+  soort: 'dubbel' | 'afwezig'
+  project_ids: string[]
+  reden: string
+  aangemaakt_door: string
+  aangemaakt_op: string
+}
+
+export interface PlanningConflictAkkoordRequest {
+  administratie_id: string
+  gebruiker_id: string
+  datum: string
+  soort: 'dubbel' | 'afwezig'
+  reden: string
+  halve_dagen?: boolean
 }
 
 export interface BuitenPlanningMeldingDto {
@@ -218,6 +241,8 @@ export interface PlanningWeekDto {
   /** V3 dag-eerst (18-09, additief — oudere responses missen ze): reserveringen van deze week + afwezigheid die de week overlapt. */
   reserveringen?: PlanningReserveringDto[]
   afwezigheid?: AfwezigheidDto[]
+  /** 21-09: bewust gehouden conflicten in deze week (conflictenpaneel). */
+  conflict_akkoorden?: PlanningConflictAkkoordDto[]
 }
 
 export function haalPlanning(administratieId: string, jaar: number, weeknummer: number): Promise<PlanningWeekDto> {
@@ -272,6 +297,11 @@ export function zetDagdeel(payload: {
 
 /** Eén transactie voor N persoon-dagen (vulhandvat, ploeg-paneel, ongedaan maken): overgeslagen/conflict is géén
  * fout, alleen een echte fout rolt alles terug. Limiet 200 items (server 422). */
+/** Conflictenpaneel (21-09): "Beide (halve dagen)" / "Tóch plannen" — bewust houden mét reden. */
+export function bevestigConflict(payload: PlanningConflictAkkoordRequest): Promise<PlanningConflictAkkoordDto> {
+  return apiPostJson(`/uren/kantoor/planning/conflict-akkoord?administratie_id=${payload.administratie_id}`, payload)
+}
+
 export function planBulk(payload: PlanningBulkRequest): Promise<PlanningBulkResultaatDto> {
   return apiPostJson(`/uren/kantoor/planning/bulk?administratie_id=${payload.administratie_id}`, payload)
 }

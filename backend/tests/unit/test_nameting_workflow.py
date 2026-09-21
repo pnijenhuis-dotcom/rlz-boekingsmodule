@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -362,3 +362,25 @@ def test_nameting_sh_bua_kandidaten_in_allowlist_en_zetten_geweigerd() -> None:
     assert re.search(r"^\s*bua-kandidaten\) echo bua-kandidaten ;;", sh, flags=re.M), (
         "via_gh_onderdeel mist bua-kandidaten"
     )
+
+
+def test_onderdeel_veldwerkers_dubbelen_alleen_op_verzoek_en_lees_only(tmp_path: Path) -> None:
+    """21-09 (conflictenpaneel + dubbele veldwerkers): lees-only kandidatenrapport op harde sleutels (`veldwerkers-dubbelen
+    --alles`) alleen op verzoek (niet in 'alles'), uitsluitend via nameting.sh, uitkomst in
+    verkenning/nameting-veldwerkers-dubbelen-<dd-mm>.txt mét eigen oordeelregel."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "veldwerkers-dubbelen" ]]; then' in meet
+    assert "scripts/gcp/nameting.sh veldwerkers-dubbelen --alles" in meet
+    assert 'UIT="verkenning/nameting-veldwerkers-dubbelen-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "veldwerkers-dubbelen"' not in meet, "niet in 'alles'"
+    assert 'OORDEEL_BRON="verkenning/nameting-veldwerkers-dubbelen-$DATUM.txt"' in meet
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "veldwerkers-dubbelen",
+        {
+            "nameting-veldwerkers-dubbelen-14-09.txt": (
+                "kop\nOordeel: TOTAAL 0 kandidaat-cluster(s) over 41 veldwerker(s) in 3 administratie(s) · 0 fout(en) — job-exit 0\n"
+            )
+        },
+    )
+    assert "TOTAAL 0 kandidaat-cluster(s)" in oordeel

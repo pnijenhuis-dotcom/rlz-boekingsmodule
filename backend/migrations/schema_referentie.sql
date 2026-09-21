@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0168
+-- Migratie-head bij deze dump: 0169
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2381,6 +2381,27 @@ CREATE TABLE boekhouding.payment_item_cache (
 );
 
 ALTER TABLE ONLY boekhouding.payment_item_cache FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: planning_conflict_akkoord; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.planning_conflict_akkoord (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    datum date NOT NULL,
+    soort text NOT NULL,
+    project_ids jsonb NOT NULL,
+    reden text NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_planning_conflict_akkoord_reden CHECK ((length(btrim(reden)) >= 3)),
+    CONSTRAINT ck_planning_conflict_akkoord_soort CHECK ((soort = ANY (ARRAY['dubbel'::text, 'afwezig'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.planning_conflict_akkoord FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -5166,6 +5187,14 @@ ALTER TABLE ONLY boekhouding.project_afsluit_uitstel
 
 
 --
+-- Name: planning_conflict_akkoord planning_conflict_akkoord_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_conflict_akkoord
+    ADD CONSTRAINT planning_conflict_akkoord_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: planning_reservering planning_reservering_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -6938,6 +6967,13 @@ CREATE INDEX ix_payment_account_cache_administratie_id ON boekhouding.payment_ac
 --
 
 CREATE INDEX ix_payment_item_cache_administratie_id ON boekhouding.payment_item_cache USING btree (administratie_id);
+
+
+--
+-- Name: ix_planning_conflict_akkoord_datum; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_planning_conflict_akkoord_datum ON boekhouding.planning_conflict_akkoord USING btree (administratie_id, datum);
 
 
 --
@@ -9739,6 +9775,30 @@ ALTER TABLE ONLY boekhouding.payment_item_cache
 
 
 --
+-- Name: planning_conflict_akkoord planning_conflict_akkoord_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_conflict_akkoord
+    ADD CONSTRAINT planning_conflict_akkoord_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: planning_conflict_akkoord planning_conflict_akkoord_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_conflict_akkoord
+    ADD CONSTRAINT planning_conflict_akkoord_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: planning_conflict_akkoord planning_conflict_akkoord_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_conflict_akkoord
+    ADD CONSTRAINT planning_conflict_akkoord_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: planning_reservering planning_reservering_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -12536,6 +12596,19 @@ ALTER TABLE boekhouding.payment_item_cache ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY payment_item_cache_scope ON boekhouding.payment_item_cache USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: planning_conflict_akkoord; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.planning_conflict_akkoord ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: planning_conflict_akkoord planning_conflict_akkoord_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY planning_conflict_akkoord_scope ON boekhouding.planning_conflict_akkoord USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

@@ -33,6 +33,7 @@ from app.db.session import scoped_session
 from app.sync.models import ProjectCache
 from app.tijd import kalenderdag_nl, vandaag_nl
 from app.uren.models import (
+    PlanningConflictAkkoord,
     PlanningDagdeel,
     PlanningReservering,
     PlanningToewijzing,
@@ -60,7 +61,11 @@ from app.uren.service import (
 
 #: Bulkroute (v3 18-09): hoogstens zoveel items per aanroep — 5 dagen × 40 man past ruim; erboven 422.
 BULK_MAX_ITEMS = 200
-BULK_BRONNEN = ("vulhandvat", "ploeg", "ongedaan")
+#: 21-09 (conflictenpaneel mét handeling): bron `conflict` = "Houd ‹project›" / "Van planning halen" uit het paneel —
+#: dezelfde
+#: bulkroute mét `verwijderen=True`, herkenbaar in de audit.
+BULK_BRONNEN = ("vulhandvat", "ploeg", "ongedaan", "conflict")
+CONFLICT_AKKOORD_SOORTEN = ("dubbel", "afwezig")
 
 DUBBELE_DAG_VENSTER_DAGEN = 30  # teller-venster (mockup: "3× / 30 dgn")
 ZACHT_SIGNAAL_DAGEN = Decimal("5")  # besluit C: > 5 geplande dagen p.p. per week
@@ -228,6 +233,24 @@ class PlanningWeekData:
     # v3 (18-09): reserveringen (kaart zonder ploeg) en afwezigheid die de week overlapt.
     reserveringen: list[ReserveringData] = field(default_factory=list)
     afwezigheid: list[AfwezigheidData] = field(default_factory=list)
+    # 21-09: bewust gehouden conflicten in deze week (het paneel verbergt een conflict alleen bij exact dezelfde stand).
+    conflict_akkoorden: list[ConflictAkkoordData] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ConflictAkkoordData:
+    """Bewust gehouden conflict (21-09, migratie 0169): persoon × dag × soort mét de planningsstand (gesorteerde
+    project-id's
+    als tekst) waarop het akkoord gold."""
+
+    id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    datum: date
+    soort: str
+    project_ids: list[str]
+    reden: str
+    aangemaakt_door: uuid.UUID
+    aangemaakt_op: object
 
 
 @dataclass(frozen=True)
@@ -814,7 +837,7 @@ def plan_bulk(
     Set-based: één query voor de bestaande toewijzingen, één voor afwezigheid, één per uniek project, één per unieke
     persoon, de projectkoppeling één keer per (persoon, project) — onafhankelijk van het aantal items."""
     if bron not in BULK_BRONNEN:
-        raise OngeldigeInvoer(f"Onbekende bron {bron!r} (vulhandvat, ploeg of ongedaan)")
+        raise OngeldigeInvoer(f"Onbekende bron {bron!r} (vulhandvat, ploeg, ongedaan of conflict)")
     if not items:
         raise OngeldigeInvoer("Geen items om te plannen")
     if len(items) > BULK_MAX_ITEMS:
@@ -1454,6 +1477,18 @@ def planning_overzicht(
         for tw in toewijzingen:
             personeel[(tw.project_id, tw.datum)] = personeel.get((tw.project_id, tw.datum), 0) + 1
         wachtrisico = wachtrisico_in_sessie(session, administratie_id=administratie_id, personeel=personeel)
+        akkoorden = [
+            _conflict_akkoord_data(a)
+            for a in session.scalars(
+                select(PlanningConflictAkkoord)
+                .where(
+                    PlanningConflictAkkoord.administratie_id == administratie_id,
+                    PlanningConflictAkkoord.datum >= maandag,
+                    PlanningConflictAkkoord.datum <= zondag,
+                )
+                .order_by(PlanningConflictAkkoord.aangemaakt_op)
+            )
+        ]
         return PlanningWeekData(
             jaar=jaar,
             weeknummer=weeknummer,
@@ -1467,7 +1502,134 @@ def planning_overzicht(
             wachtrisico=wachtrisico,
             reserveringen=reserveringen,
             afwezigheid=[_afwezigheid_data(a) for a in afwezig_rijen],
+            conflict_akkoorden=akkoorden,
         )
+
+
+# --- kantoor: conflict bewust houden (opdracht Peter 21-09, migratie 0169)
+# ---------------------------------------------
+
+
+def _conflict_akkoord_data(a: PlanningConflictAkkoord) -> ConflictAkkoordData:
+    return ConflictAkkoordData(
+        id=a.id,
+        gebruiker_id=a.gebruiker_id,
+        datum=a.datum,
+        soort=a.soort,
+        project_ids=[str(p) for p in a.project_ids],
+        reden=a.reden,
+        aangemaakt_door=a.aangemaakt_door,
+        aangemaakt_op=a.aangemaakt_op,
+    )
+
+
+def bevestig_conflict(
+    *,
+    administratie_id: uuid.UUID,
+    gebruiker_id: uuid.UUID,
+    datum: date,
+    soort: str,
+    reden: str,
+    halve_dagen: bool = False,
+    actor_id: uuid.UUID,
+) -> ConflictAkkoordData:
+    """"Beide (halve dagen)" (soort `dubbel`) of "Tóch plannen" (soort `afwezig`) uit het conflictenpaneel: het
+    conflict wordt
+    BEWUST gehouden mét verplichte reden (Kernprincipe 7.2: signalering zonder handeling is niet af; niets verdwijnt
+    stil).
+    `halve_dagen=True` zet álle kaartjes van die persoon × dag op dagdeel `half` (audit per kaartje, zelfde als de losse
+    dagdeel-route). De akkoord-rij draagt de planningsstand (gesorteerde project-id's) NÁ die wijziging: het paneel
+    verbergt het
+    conflict alleen zolang de stand exact gelijk blijft. Idempotent: bestaat er al een akkoord voor dezelfde stand,
+    dan komt
+    die terug zonder nieuwe rij. Geen toewijzing die dag = 404 (er is niets te houden)."""
+    if soort not in CONFLICT_AKKOORD_SOORTEN:
+        raise OngeldigeInvoer("Soort moet 'dubbel' of 'afwezig' zijn")
+    reden = (reden or "").strip()
+    if len(reden) < 3:
+        raise OngeldigeInvoer("Een reden is verplicht (minstens 3 tekens)")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_meerwerk_recht(session, actor_id)
+        rijen = list(
+            session.scalars(
+                select(PlanningToewijzing).where(
+                    PlanningToewijzing.administratie_id == administratie_id,
+                    PlanningToewijzing.gebruiker_id == gebruiker_id,
+                    PlanningToewijzing.datum == datum,
+                )
+            )
+        )
+        if not rijen:
+            raise NietGevonden("Deze persoon staat op die dag niet gepland — niets te houden")
+        if soort == "dubbel" and len(rijen) < 2:
+            raise OngeldigeInvoer("Geen dubbele planning op deze dag — het conflict bestaat niet (meer)")
+        gewijzigd: list[str] = []
+        if halve_dagen:
+            for rij in rijen:
+                if rij.dagdeel == PlanningDagdeel.HALF.value:
+                    continue
+                oud = rij.dagdeel
+                rij.dagdeel = PlanningDagdeel.HALF.value
+                gewijzigd.append(str(rij.project_id))
+                record_audit_event(
+                    session,
+                    actor_id=actor_id,
+                    module=MODULE,
+                    tabel="planning_toewijzing",
+                    record_id=gebruiker_id,
+                    actie="planning_dagdeel_gezet",
+                    correlatie_id=rij.project_id,
+                    oude_waarde={"dagdeel": oud, "datum": datum.isoformat()},
+                    nieuwe_waarde={"dagdeel": rij.dagdeel, "datum": datum.isoformat(), "bron": "conflict_akkoord"},
+                    administratie_id=administratie_id,
+                )
+        stand = sorted(str(r.project_id) for r in rijen)
+        bestaand = session.scalars(
+            select(PlanningConflictAkkoord)
+            .where(
+                PlanningConflictAkkoord.administratie_id == administratie_id,
+                PlanningConflictAkkoord.gebruiker_id == gebruiker_id,
+                PlanningConflictAkkoord.datum == datum,
+                PlanningConflictAkkoord.soort == soort,
+            )
+            .order_by(PlanningConflictAkkoord.aangemaakt_op.desc())
+        ).all()
+        for a in bestaand:
+            if [str(p) for p in a.project_ids] == stand:
+                return _conflict_akkoord_data(a)  # idempotent: zelfde stand al bewust gehouden
+        akkoord = PlanningConflictAkkoord(
+            administratie_id=administratie_id,
+            gebruiker_id=gebruiker_id,
+            datum=datum,
+            soort=soort,
+            project_ids=stand,
+            reden=reden,
+            aangemaakt_door=actor_id,
+        )
+        session.add(akkoord)
+        session.flush()
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="planning_conflict_akkoord",
+            record_id=akkoord.id,
+            actie="planning_conflict_akkoord",
+            correlatie_id=gebruiker_id,
+            nieuwe_waarde={
+                "gebruiker_id": str(gebruiker_id),
+                "datum": datum.isoformat(),
+                "soort": soort,
+                "project_ids": stand,
+                "reden": reden,
+                "halve_dagen": halve_dagen,
+                "dagdeel_gewijzigd_projecten": gewijzigd,
+            },
+            administratie_id=administratie_id,
+        )
+        session.refresh(akkoord)
+        return _conflict_akkoord_data(akkoord)
 
 
 # --- veld: eigen planning alleen-lezen (besluit B) ----------------------------------------------

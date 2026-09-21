@@ -11,6 +11,7 @@
 #   scripts/gcp/nameting.sh groep-saldi --groep "Kempen groep" [--stand]                          # 16-09: groepssaldi deb/cred (lees-only, live; --stand = nachtelijke cache, 21-09)
 #   scripts/gcp/nameting.sh rlz-lezen --administratie "Kempen Facilities" --pad AssetTypes --root   # 16-09: RLZ-brede enumeraties
 #   scripts/gcp/nameting.sh btw-default-rapport --administratie "L.H.G. Holding"   # lees-only, 14-09 (0143)
+#   scripts/gcp/nameting.sh veldwerkers-dubbelen (--administratie <naamdeel> | --alles)                   # 21-09: dubbele veldwerkers op harde sleutels (KvK/IBAN/e-mail), lees-only; naam/planning nooit een signaal
 #   scripts/gcp/nameting.sh bua-kandidaten [--administratie <naamdeel>] [--jaar 2026] [--detail]   # 21-09: BUA-kandidaat-rekeningen kantoorbreed (lees-only, geen RLZ-call); de zetting `bua-kenmerk-zetten` is SCHRIJVEND → gcloud run jobs execute ná Peters "ja"
 #   scripts/gcp/nameting.sh bank-voorstellen-lezen --administratie "Administratiekantoor Nijenhuis" --met-ai-toets
 #   scripts/gcp/nameting.sh rlz-lezen --administratie "Administratiekantoor Nijenhuis C.V." --pad PaymentTransactions --filter "PaymentBatchId ne null" --expand "Batch,PaymentReferenceList(\$expand=Document)" --top 5
@@ -25,7 +26,7 @@ REGION="${REGION:-europe-west4}"
 JOB="${JOB:-rlz-reconciliatie}"
 # rlz-lezen (blok 10 11-09): één OData-GET op de RLZ-API van één administratie — het commando weigert zelf élke
 # niet-GET en elk Actions-/Download-pad (app/rlz/lezen_cli.py), --top ≤ 50, uitvoer altijd geanonimiseerd.
-ALLOWLIST="reconciliatie-alles autoboek-leren-rapport btw-default-rapport btw-tarief-afwijking-rapport administratie-naam-bron-backfill bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay duplicaat-extern-rapport referentie-norm-backfill activa-nulmeting groep-saldi kassarapporten-in-inkoopstroom omzet-binder-rapport omzet-stores-migreren doorbelasting-aansluiting app-bundels bevindingssoort-stand db-lezen rlz-feiten projecten-afsluit-kandidaten projecten-dubbele-nummers facturen-zonder-project projectverdeling-afgesloten-rapport bua-kandidaten"  # 21-09: bua-kandidaten lees-only (geen write, geen RLZ-call)  # 19-09: projectverdeling-afgesloten-rapport lees-only (geen write, geen RLZ-call)  # 18-09 avond: facturen-zonder-project lees-only (--rlz = uitsluitend GET)  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only; 16-09: duplicaat-extern-rapport lees-only, referentie-norm-backfill alleen --dry-run
+ALLOWLIST="reconciliatie-alles autoboek-leren-rapport btw-default-rapport btw-tarief-afwijking-rapport administratie-naam-bron-backfill bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay duplicaat-extern-rapport referentie-norm-backfill activa-nulmeting groep-saldi kassarapporten-in-inkoopstroom omzet-binder-rapport omzet-stores-migreren doorbelasting-aansluiting app-bundels bevindingssoort-stand db-lezen rlz-feiten projecten-afsluit-kandidaten projecten-dubbele-nummers facturen-zonder-project projectverdeling-afgesloten-rapport bua-kandidaten veldwerkers-dubbelen"  # 21-09: veldwerkers-dubbelen lees-only (harde sleutels, geen write)  # 21-09: bua-kandidaten lees-only (geen write, geen RLZ-call)  # 19-09: projectverdeling-afgesloten-rapport lees-only (geen write, geen RLZ-call)  # 18-09 avond: facturen-zonder-project lees-only (--rlz = uitsluitend GET)  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only; 16-09: duplicaat-extern-rapport lees-only, referentie-norm-backfill alleen --dry-run
 CMD="${1:-}"; [[ -n "$CMD" ]] || { echo "gebruik: $0 <cli-commando> [args…]" >&2; exit 2; }
 # run 2 VGG blok 5: de Odoo-migratie-commando's SCHRIJVEN (DB-koppeling resp. concepten op company 6) — nooit een nameting.
 # 21-09 (VGG beslispunt 1): pand-toewijzen schrijft pand/pand_boeking (mens-toewijzing) — ook de dry-run hoort niet in een nameting.
@@ -88,6 +89,7 @@ via_gh_onderdeel() {
     app-bundels) echo app-bundels ;;
     groep-saldi) echo groep-saldi ;;
     bua-kandidaten) echo bua-kandidaten ;;
+    veldwerkers-dubbelen) echo veldwerkers-dubbelen ;;
     reconciliatie-alles) echo reconciliatie ;;
     btw-default-rapport) echo btw-default ;;
     migratie-schoonlijst) echo a ;;

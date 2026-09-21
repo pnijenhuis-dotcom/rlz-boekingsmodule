@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -258,6 +258,26 @@ jobs:
             echo "Oordeel: ${TOTAAL:-geen totaalregel} · ${FOUTEN:-fouten onbekend} — job-exit $rc_bua" >> "$UIT"
             echo "STATUS bua-kandidaten: rapport in $UIT (job-exit $rc_bua = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "veldwerkers-dubbelen" ]]; then
+            # 21-09 (opdracht Peter, correctie "broers in één ploeg"): lees-only kandidatenrapport dubbele veldwerkers op HARDE
+            # sleutels alleen (KvK, IBAN via crediteur, e-mail) over alle administraties mét uren-opt-in — alleen op verzoek,
+            # geen write, geen RLZ-call. Meetrecept "werkt in productie": TOTAAL-regel mét 0 fouten (Universal: verwacht 0 clusters).
+            UIT="verkenning/nameting-veldwerkers-dubbelen-$DATUM.txt"
+            rc_vd=0
+            {
+              echo "== veldwerkers-dubbelen --alles (lees-only, harde sleutels) =="
+              scripts/gcp/nameting.sh veldwerkers-dubbelen --alles 2> nameting-vd.stderr || rc_vd=$?
+            } > "$UIT"
+            cat nameting-vd.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-vd.stderr; then
+              echo "::error::veldwerkers-dubbelen kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_vd)" >> "$UIT"
+            TOTAAL="$(grep -m1 -o 'TOTAAL [0-9]* kandidaat-cluster(s) over [0-9]* veldwerker(s) in [0-9]* administratie(s) · [0-9]* fout(en)' "$UIT" || true)"
+            echo "Oordeel: ${TOTAAL:-geen totaalregel} — job-exit $rc_vd" >> "$UIT"
+            echo "STATUS veldwerkers-dubbelen: rapport in $UIT (job-exit $rc_vd = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
             # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
@@ -294,6 +314,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-groep-saldi-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "bua-kandidaten" ]]; then
             OORDEEL_BRON="verkenning/nameting-bua-kandidaten-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "veldwerkers-dubbelen" ]]; then
+            OORDEEL_BRON="verkenning/nameting-veldwerkers-dubbelen-$DATUM.txt"
           else
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           fi

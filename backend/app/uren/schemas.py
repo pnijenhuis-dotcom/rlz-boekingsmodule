@@ -702,6 +702,33 @@ class PlanningWeekDto(BaseModel):
     # v3 (18-09): reserveringen deze week + afwezigheid die de week overlapt (voor pool, paneel en conflictenbalk).
     reserveringen: list[PlanningReserveringDto] = []
     afwezigheid: list[AfwezigheidDto] = []
+    # 21-09 (conflictenpaneel mét handeling, migratie 0169): bewust gehouden conflicten in deze week.
+    conflict_akkoorden: list[PlanningConflictAkkoordDto] = []
+
+
+class PlanningConflictAkkoordDto(BaseModel):
+    """Bewust gehouden conflict (21-09): het paneel verbergt het conflict alleen zolang de planningsstand (gesorteerde
+    project-id's van die persoon × dag) exact gelijk is aan `project_ids`."""
+
+    id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    datum: date
+    soort: str  # 'dubbel' | 'afwezig'
+    project_ids: list[str]
+    reden: str
+    aangemaakt_door: uuid.UUID
+    aangemaakt_op: datetime
+
+
+class PlanningConflictAkkoordRequest(StrikteInvoer):
+    """ "Beide (halve dagen)" / "Tóch plannen" uit het conflictenpaneel — reden verplicht."""
+
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    datum: date
+    soort: str  # 'dubbel' | 'afwezig'
+    reden: str = Field(min_length=3, max_length=500)
+    halve_dagen: bool = False
 
 
 class PlanningBulkItemRequest(StrikteInvoer):
@@ -715,7 +742,7 @@ class PlanningBulkRequest(StrikteInvoer):
     """Vulhandvat / ploeg-paneel / ongedaan maken in ÉÉN transactie (v3 18-09). Limiet 200 items (422 erboven)."""
 
     administratie_id: uuid.UUID
-    bron: str  # 'vulhandvat' | 'ploeg' | 'ongedaan'
+    bron: str  # 'vulhandvat' | 'ploeg' | 'ongedaan' | 'conflict' (21-09: paneel-acties)
     verwijderen: bool = False
     correlatie_id: uuid.UUID | None = None
     items: list[PlanningBulkItemRequest] = Field(min_length=1, max_length=200)

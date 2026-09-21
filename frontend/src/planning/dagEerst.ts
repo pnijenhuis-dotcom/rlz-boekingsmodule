@@ -2,6 +2,7 @@ import { normaliseerTekst } from '../bank/bankZoek'
 import {
   kaartPastInFilter,
   type AfwezigheidDto,
+  type PlanningConflictAkkoordDto,
   type PlanningKaartDto,
   type PlanningPoolPersoonDto,
   type PlanningProjectRijDto,
@@ -84,6 +85,10 @@ export const MAX_PLOEG_ZONDER_SIGNAAL = 5
  * (uit `per_datum`, dus óók vóór de server-melding `dubbele_dagen` die pas ná uren ontstaat); afwezig = gepland binnen een
  * afwezigheid; te_groot = > 5 op één kaart (besluit C); geen_dossier = pool-vlag (optioneel in de DTO). */
 export function conflictenVoorWeek(data: PlanningWeekDto): Conflict[] {
+  return zonderAkkoord(ruweConflictenVoorWeek(data), data.conflict_akkoorden ?? [])
+}
+
+function ruweConflictenVoorWeek(data: PlanningWeekDto): Conflict[] {
   const uit: Conflict[] = []
   const perPersoonDag = new Map<string, { kaart: PlanningKaartDto; project_id: string }[]>()
   for (const rij of data.projecten) {
@@ -148,6 +153,61 @@ export function conflictenVoorWeek(data: PlanningWeekDto): Conflict[] {
     }
   }
   return uit.sort((a, b) => (a.datum < b.datum ? -1 : a.datum > b.datum ? 1 : 0))
+}
+
+/** 21-09: een bewust gehouden conflict (akkoord mét reden) verdwijnt zolang de planningsstand van die persoon × dag exact
+ * gelijk is aan de stand op het akkoord (gesorteerde project-id's). Wijzigt de planning, dan is het conflict weer zichtbaar. */
+export function zonderAkkoord(conflicten: Conflict[], akkoorden: PlanningConflictAkkoordDto[]): Conflict[] {
+  if (akkoorden.length === 0) return conflicten
+  return conflicten.filter((c) => {
+    if (c.soort !== 'dubbel' && c.soort !== 'afwezig') return true
+    const stand = [...c.project_ids].sort().join('|')
+    return !akkoorden.some(
+      (a) => a.soort === c.soort && a.gebruiker_id === c.gebruiker_id && a.datum === c.datum && [...a.project_ids].sort().join('|') === stand,
+    )
+  })
+}
+
+export const CONFLICT_SOORT_LABEL: Record<ConflictSoort, string> = {
+  dubbel: 'dubbel gepland',
+  afwezig: 'afwezig',
+  te_groot: `> ${MAX_PLOEG_ZONDER_SIGNAAL} op kaart`,
+  geen_dossier: "ZZP'er zonder dossier",
+}
+
+/** Paneel-regel (21-09): alleen huidige + toekomstige dagen zijn planningsconflicten; een verstreken dag is historie (hoogstens
+ * een urenstaat-toets) en blijft alleen in "Per project" leesbaar. `vanaf` = vandaag als ISO-datum. */
+export function conflictenVanaf(conflicten: Conflict[], vanaf: string): Conflict[] {
+  return conflicten.filter((c) => c.datum >= vanaf)
+}
+
+export interface ConflictDagGroep {
+  datum: string
+  label: string
+  rijen: Conflict[]
+}
+
+/** Gegroepeerd per dag (gesorteerd), rijen uniek (dubbel over meerdere kaarten = één rij). */
+export function groepeerConflictenPerDag(conflicten: Conflict[]): ConflictDagGroep[] {
+  const uniek = conflictenUniek(conflicten).sort((a, b) => (a.datum < b.datum ? -1 : a.datum > b.datum ? 1 : (a.naam ?? '').localeCompare(b.naam ?? '')))
+  const groepen: ConflictDagGroep[] = []
+  for (const c of uniek) {
+    const laatste = groepen[groepen.length - 1]
+    if (laatste && laatste.datum === c.datum) laatste.rijen.push(c)
+    else groepen.push({ datum: c.datum, label: dagKort(c.datum), rijen: [c] })
+  }
+  return groepen
+}
+
+/** Kop van het paneel: "deze week" alleen als de getoonde week de huidige is, anders "week N" (21-09: de balk zei "deze
+ * week" bij een deeplink naar week 37). */
+export function conflictWeekLabel(getoond: { jaar: number; weeknummer: number }, huidig: { jaar: number; weeknummer: number }): string {
+  return getoond.jaar === huidig.jaar && getoond.weeknummer === huidig.weeknummer ? 'deze week' : `week ${getoond.weeknummer}`
+}
+
+/** "Per project"-weergave en kaart-chips tonen alle conflicten; het paneel alleen vanaf vandaag zonder akkoord. */
+export function conflictenVoorPaneel(conflicten: Conflict[], vanaf: string): ConflictDagGroep[] {
+  return groepeerConflictenPerDag(conflictenVanaf(conflicten, vanaf))
 }
 
 /** Voor de conflictenbalk: elk conflict één keer (dubbel over meerdere kaarten = één regel). */

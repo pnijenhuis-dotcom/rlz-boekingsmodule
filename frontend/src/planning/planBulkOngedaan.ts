@@ -15,6 +15,8 @@ export interface OngedaanStand {
   /** Eerste conflict-kaart (`project|datum`) voor "Toon conflict". */
   conflict_sleutel: string | null
   verloopt_op: number
+  /** 21-09 (conflictenpaneel): ná een verwijdering via bron `conflict` = exact de verwijderde set, om terug te plaatsen. */
+  herplaats?: PlanningBulkItemDto[]
 }
 
 /** "Gekopieerd naar di–vr · 16 persoon-dagen · 1 conflict" (vulhandvat) of "Ploeg opgeslagen · 3 toegevoegd · 1 verwijderd". */

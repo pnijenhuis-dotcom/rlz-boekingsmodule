@@ -10,15 +10,16 @@ import { FoutMelding } from '../ui/FoutMelding'
 import { NieuwProjectModal } from '../projecten/NieuwProjectModal'
 import { archiveerGebruiker, haalOpenWerkOp, nodigUit } from '../gebruikers/gebruikersApi'
 import { TransportTab } from './TransportTab'
-import { ConflictenBalk } from './ConflictenBalk'
+import { ConflictenPaneel } from './ConflictenPaneel'
 import { DagEerstGrid, type KaartDropPayload } from './DagEerstGrid'
 import { PerProjectWeergave } from './PerProjectWeergave'
 import { PloegPaneel } from './PloegPaneel'
 import { ProjectBalk } from './ProjectBalk'
-import { afwezigTot, bouwDagKolommen, conflictenVoorWeek, dagKort, parseKaartParam, poolStand, projectTegels, type DagKaart, type VulhandvatVoorbeeld } from './dagEerst'
+import { afwezigTot, bouwDagKolommen, conflictWeekLabel, conflictenUniek, conflictenVanaf, conflictenVoorPaneel, conflictenVoorWeek, dagKort, parseKaartParam, poolStand, projectTegels, type Conflict, type DagKaart, type VulhandvatVoorbeeld } from './dagEerst'
 import { isOngedaanToets, maakOngedaanStand, type OngedaanStand } from './planBulkOngedaan'
 import { maakSleepPayload } from './useDagDrop'
 import {
+  bevestigConflict,
   haalPlanning,
   haalWerkopdrachten,
   isoWeekVan,
@@ -68,6 +69,13 @@ import {
  * De zijbalk toont de pool (geplande dagen; > 5 = zacht signaal, besluit C), de controle-
  * meldingen en de dubbele-dag-teller — uitsluitend kantoor. Toegang: module-recht
  * 'Meerwerk & urenstaten'. */
+
+/** 21-09: de weekchip zegt eerlijk of de getoonde week verstreken/lopend is (deeplinks landen bewust op een oude week). */
+function weekStand(vrijdag: string, maandag: string, vandaag: string): 'verstreken' | 'lopend' | 'komend' {
+  if (vrijdag < vandaag) return 'verstreken'
+  if (maandag <= vandaag) return 'lopend'
+  return 'komend'
+}
 
 function dagLabel(iso: string): string {
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString('nl-NL', { day: 'numeric', month: 'numeric' })
@@ -585,6 +593,10 @@ export function PlanningScreen() {
 
   // V3: één request levert álle actieve projecten; de transformatie naar dagkolommen is puur (dagEerst.ts).
   const conflicten = data ? conflictenVoorWeek(data) : []
+  // 21-09: het paneel toont alleen conflicten vanaf vandaag (verstreken dag = historie, wél in "Per project"); kaart-chips en
+  // "Per project" houden álle conflicten. Label "deze week" alleen als de getoonde week de huidige is.
+  const conflictGroepen = conflictenVoorPaneel(conflicten, vandaagIso)
+  const verstrekenConflicten = conflictenUniek(conflicten).length - conflictenUniek(conflictenVanaf(conflicten, vandaagIso)).length
   const kolommen = data ? bouwDagKolommen(data, alleDagen, { urenFilter, conflicten }) : []
   const tegels = data ? projectTegels(data, dagen, filterTerm) : []
   const alleRijen = data?.projecten ?? []
@@ -644,6 +656,12 @@ export function PlanningScreen() {
 
   async function maakOngedaan() {
     const stand = ongedaanRef.current
+    if (stand && (stand.herplaats ?? []).length > 0) {
+      // 21-09: ongedaan ná een conflict-verwijdering = exact de verwijderde set terugplaatsen.
+      setOngedaan(null)
+      await actie(() => planBulk({ administratie_id: administratieId!, bron: 'ongedaan', correlatie_id: stand.correlatie_id, items: stand.herplaats! }))
+      return
+    }
     if (!stand || stand.aangemaakt.length === 0) {
       setOngedaan(null)
       return
@@ -659,6 +677,57 @@ export function PlanningScreen() {
     setGeselecteerd(sleutel)
     setOplichten(sleutel)
     window.setTimeout(() => setOplichten((h) => (h === sleutel ? null : h)), 2500)
+  }
+
+  function projectNaam(projectId: string): string {
+    return alleRijen.find((r) => r.project_id === projectId)?.project_naam ?? projectId
+  }
+
+  /** Conflictenpaneel (21-09): "Houd ‹A›" = de andere kaart(en) van die persoon-dag weg via de bulkroute (bron conflict);
+   * toast mét "Ongedaan maken" zet exact die set terug. */
+  async function houdProject(c: Conflict, projectId: string) {
+    if (!c.gebruiker_id) return
+    const weg = c.project_ids.filter((p) => p !== projectId).map((p) => ({ gebruiker_id: c.gebruiker_id!, project_id: p, datum: c.datum }))
+    await verwijderViaConflict(weg, `${c.naam ?? '?'} houdt ${projectNaam(projectId)} op ${dagKort(c.datum)}`)
+  }
+
+  async function verwijderConflictKaart(c: Conflict) {
+    if (!c.gebruiker_id) return
+    await verwijderViaConflict([{ gebruiker_id: c.gebruiker_id, project_id: c.project_id, datum: c.datum }], `${c.naam ?? '?'} van ${projectNaam(c.project_id)} gehaald op ${dagKort(c.datum)}`)
+  }
+
+  async function verwijderViaConflict(items: PlanningBulkItemDto[], tekst: string) {
+    if (items.length === 0) return
+    setActieFout(null)
+    setBezig(true)
+    try {
+      const r = await planBulk({ administratie_id: administratieId!, bron: 'conflict', verwijderen: true, items })
+      const verwijderd = r.resultaten.filter((x) => x.uitkomst !== 'overgeslagen').length
+      // Ongedaan = de verwijderde set opnieuw plannen (bron ongedaan, zelfde correlatie-id).
+      setOngedaan({
+        correlatie_id: r.correlatie_id,
+        aangemaakt: [],
+        tekst: `${tekst} · ${verwijderd} kaart${verwijderd === 1 ? '' : 'en'} verwijderd`,
+        aantal_conflicten: 0,
+        conflict_sleutel: null,
+        verloopt_op: Date.now() + 10_000,
+        herplaats: r.aangemaakt,
+      })
+      laad()
+    } catch (err) {
+      setActieFout(err instanceof ApiError ? err.message : 'Actie mislukt — probeer het opnieuw.')
+      laad()
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  /** "Beide (halve dagen)…" (dubbel) / "Tóch plannen…" (afwezig): bewust houden mét reden — de rij verdwijnt tot de planning wijzigt. */
+  function conflictAkkoord(c: Conflict, reden: string) {
+    if (!c.gebruiker_id || (c.soort !== 'dubbel' && c.soort !== 'afwezig')) return
+    void actie(() =>
+      bevestigConflict({ administratie_id: administratieId!, gebruiker_id: c.gebruiker_id!, datum: c.datum, soort: c.soort as 'dubbel' | 'afwezig', reden, halve_dagen: c.soort === 'dubbel' }),
+    )
   }
 
   function dropOpDag(datum: string, payload: KaartDropPayload) {
@@ -764,6 +833,14 @@ export function PlanningScreen() {
           <h1>Planning — {administratieNaam}</h1>
           <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 3 }} data-testid="planning-subkop">
             Week {week.weeknummer} · {dagLabel(dagen[0].datum)} – {dagLabel(dagen[4].datum)}
+            {weekStand(dagen[4].datum, dagen[0].datum, vandaagIso) !== 'komend' && (
+              <>
+                {' '}
+                <Badge variant={weekStand(dagen[4].datum, dagen[0].datum, vandaagIso) === 'verstreken' ? 'stil' : 'info'} data-testid="week-stand">
+                  {weekStand(dagen[4].datum, dagen[0].datum, vandaagIso) === 'verstreken' ? 'verstreken week' : 'lopende week'}
+                </Badge>
+              </>
+            )}
             {data && ` · ${totaalMan} mensen gepland · ${metPlanning} ${metPlanning === 1 ? 'project' : 'projecten'} · ${aantalActief} actieve projecten`}
             {' · '}sleep een project naar een dag, klik een kaart voor de ploeg, trek de kaart met het handvat over de week
           </div>
@@ -885,7 +962,17 @@ export function PlanningScreen() {
           {data !== null && (
             <>
               <ProjectBalk tegels={tegels} zoek={filterTerm} onZoek={setFilterTerm} selectie={projectSelectie} onSelecteer={setProjectSelectie} />
-              <ConflictenBalk conflicten={conflicten} onSpring={spring} />
+              <ConflictenPaneel
+                groepen={conflictGroepen}
+                weekLabel={conflictWeekLabel(week, vandaagWeek)}
+                verstrekenAantal={verstrekenConflicten}
+                projectNaam={projectNaam}
+                bezig={bezig}
+                onSpring={spring}
+                onHoud={(c, p) => void houdProject(c, p)}
+                onVerwijder={(c) => void verwijderConflictKaart(c)}
+                onAkkoord={conflictAkkoord}
+              />
               {alleRijen.length === 0 && (
                 <div className="panel">
                   <p className="hint" style={{ margin: 0 }}>
@@ -1163,7 +1250,7 @@ export function PlanningScreen() {
       {ongedaan && (
         <div className="plan-toast" role="status" data-testid="bulk-toast">
           <span>{ongedaan.tekst}</span>
-          {ongedaan.aangemaakt.length > 0 && (
+          {(ongedaan.aangemaakt.length > 0 || (ongedaan.herplaats ?? []).length > 0) && (
             <button type="button" className="linkbtn" onClick={() => void maakOngedaan()} data-testid="ongedaan-maken">
               Ongedaan maken
             </button>

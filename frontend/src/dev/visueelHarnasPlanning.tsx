@@ -25,7 +25,20 @@ function fakeAccessToken(): string {
   return `kop.${payload}.handtekening`
 }
 
-// Vaste week (38, 14–18 sep 2026) zodat de screenshots stabiel zijn.
+// Vaste week (38, 14–18 sep 2026) zodat de screenshots stabiel zijn. 21-09: het conflictenpaneel toont alleen conflicten
+// vanaf VANDAAG — daarom hier óók een vaste "vandaag" (di 15-9-2026): ma 14-9 = 1 verstreken conflict (tekstregel), wo/do
+// gevuld (dubbel, > 5, afwezig, dossier) en de weekchip zegt "lopende week".
+const VASTE_NU = new Date(2026, 8, 15, 9, 0, 0).getTime()
+class VasteDate extends Date {
+  constructor(...args: unknown[]) {
+    if (args.length === 0) super(VASTE_NU)
+    else super(...(args as [number]))
+  }
+  static now(): number {
+    return VASTE_NU
+  }
+}
+;(globalThis as unknown as { Date: unknown }).Date = VasteDate
 const WEEK = '2026-W38'
 const D = ['2026-09-14', '2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18']
 const NAMEN = ['Orfan Ogur', 'Reijer de Vries', 'M. Sanli', 'R. Yücetaş', 'S. Hasturk', 'V. Ponchev', 'Z.V. Panchev', 'Hakim Lali', 'Adem Sarac', 'I. Onel', 'A. Alizada', 'Baki Genc']

@@ -118,7 +118,18 @@ table.pp td.c{text-align:center}
       </div>
     </div>
 
-    <div class="conf"><b>2 conflicten deze week</b><span>wo 16-9: <b>M. Sanli</b> op Arnhem én Rijssen</span> · <span>do 17-9: <b>R. Yücetaş</b> afwezig (verlof) maar gepland op Nieuwegein</span><a style="margin-left:auto">Toon in grid</a></div>
+    <!-- 21-09 (Peter): conflictenPANEEL i.p.v. inline balk — kop noemt de GETOONDE week, per dag gegroepeerd, per rij persoon · projecten · soort · handeling;
+         alleen huidige + toekomstige dagen; ingeklapt 3 rijen, "Alle N tonen" = tabel in .tabel-scroll. -->
+    <div class="conf" style="display:block">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><b>2 conflicten deze week</b><span class="s" style="font-size:11px">nooit blokkerend — kantoor beslist · 1 op verstreken dag niet getoond (zie "Per project")</span></div>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="font-size:11px;color:var(--muted);text-align:left"><th>Dag</th><th>Persoon</th><th>Projecten</th><th>Conflict</th><th>Handeling</th></tr></thead>
+        <tbody>
+          <tr><td><b>wo 16-9</b></td><td>M. Sanli</td><td>25026 Arnhem én 26031 Rijssen</td><td><span class="chip c-warn">dubbel gepland</span></td><td><a>Houd 25026 Arnhem</a> · <a>Houd 26031 Rijssen</a> · <a>Beide (halve dagen)…</a> · <a class="s">Toon in grid</a></td></tr>
+          <tr><td><b>do 17-9</b></td><td>R. Yücetaş</td><td>25039 Nieuwegein</td><td><span class="chip c-warn">afwezig</span></td><td><a>Van planning halen</a> · <a>Tóch plannen…</a> · <a class="s">Toon in grid</a></td></tr>
+        </tbody>
+      </table>
+    </div>
 
     <div class="layout">
       <div class="grid">
@@ -276,7 +287,7 @@ table.pp td.c{text-align:center}
 <li><b>Vulhandvat</b> (Excel): kaart + ploeg kopiëren over dagen; voorbeeld tijdens slepen; bestaande kaart van hetzelfde project wordt overgeslagen; afwezig/dubbel = oranje, nooit blokkerend; Cmd/Ctrl-Z + toast "Ongedaan maken"; één audit-regel per (persoon, dag). Beslispunt: ook over de weekgrens? voorstel nee.</li>
 <li><b>Ploeg kiezen</b>: paneel rechts (geen modaal), volledige lijst mét vinkjes en beschikbaarheid voor die dag (vrij · al op ‹project› · afwezig), zoeken, "Zelfde ploeg als ‹vorige werkdag›", "Toepassen op hele week"; conflict kiezen mag.</li>
 <li><b>Slepen van personen</b>: pool → kaart = toevoegen; initiaal → andere kaart = verplaatsen (met Alt/Option = kopiëren). Pool toont "N dg" + vrij/afwezig; filter "alleen vrij".</li>
-<li><b>Conflictenbalk</b> boven het grid: dubbel gepland op één dag, afwezig, &gt; 5 op één kaart (besluit C), ZZP'er zonder dossier — klik = spring naar kaart. Nooit blokkerend: kantoor beslist.</li>
+<li><b>Conflictenbalk → conflictenPANEEL (Peter 21-09, "ik kan er niet uithalen wat het conflict is")</b> boven het grid: kop "N conflicten in week 39" (de GETOONDE week — "deze week" alleen als dat de huidige is), gegroepeerd per dag, per rij persoon · projecten · <b>soort</b> (dubbel gepland / afwezig / &gt; 5 op kaart / ZZP'er zonder dossier) · <b>handeling</b>: "Houd ‹A›" / "Houd ‹B›" (de andere kaart weg via de bulkroute, audit, ongedaan maken), "Beide (halve dagen)…" = bewust gehouden mét verplichte reden (rij verdwijnt tot de planning van die dag wijzigt); afwezig: "Van planning halen" / "Tóch plannen…"; &gt; 5: "Ploeg aanpassen"; dossier: "Dossier openen". Alleen huidige + toekomstige dagen (een verstreken dag is historie — wél in "Per project"). Ingeklapt 3 rijen, "Alle N tonen" = tabel in <code>.tabel-scroll</code>, nooit een inline lap tekst. Nooit blokkerend: kantoor beslist. Past in de bestaande IA (zelfde plek boven het grid, geen nieuwe route/tegel).</li>
 <li><b>Per project = lezen</b>: continuïteit en weekstaat-stand per project (het huidige grid gedraaid), bewerken alleen in dag-eerst — één bewerkroute, geen twee waarheden. Het kantoor-signaal "geplande week zonder weekstaat" blijft hierop werken.</li>
 <li><b>Ongewijzigd</b>: meldingen per veldwerker × week (gebundeld), audit `achteraf` bij plannen in een verstreken/lopende week, Transport- en Werkopdrachten-tabs (hergebruiken de kaartcomponent), uitvoerder-app (project-eerst, geen planningstab).</li>
 <li><b>Schaal</b>: één query per week (kaarten + ploegen + status), geen N+1; 200+ veldwerkers in de pool = gevirtualiseerd.</li>

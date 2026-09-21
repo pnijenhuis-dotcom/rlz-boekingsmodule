@@ -1135,6 +1135,33 @@ class VeldwerkerAfwezigheid(Base):
     beeindigd_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
+class PlanningConflictAkkoord(Base):
+    """Bewust gehouden planningsconflict (opdracht Peter 21-09, migratie 0169): "Beide (halve dagen)" bij dubbel
+    gepland of
+    "Tóch plannen" bij afwezig — mét verplichte reden. `project_ids` = de gesorteerde project-id's (als tekst) van die
+    persoon × dag op het moment van het akkoord; de conflictenlijst verbergt het conflict alleen zolang de huidige stand
+    daar exact aan gelijk is (wijzigt de planning, dan is het conflict weer zichtbaar). Nooit DELETE — historie.
+    RLS op administratie (FORCE), grants zonder DELETE."""
+
+    __tablename__ = "planning_conflict_akkoord"
+    __table_args__ = (
+        CheckConstraint("soort IN ('dubbel', 'afwezig')", name="ck_planning_conflict_akkoord_soort"),
+        CheckConstraint("length(btrim(reden)) >= 3", name="ck_planning_conflict_akkoord_reden"),
+        Index("ix_planning_conflict_akkoord_datum", "administratie_id", "datum"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    datum: Mapped[date]
+    soort: Mapped[str] = mapped_column(Text)
+    project_ids: Mapped[list] = mapped_column(JSONB)
+    reden: Mapped[str] = mapped_column(Text)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class UrenHerinnering(Base):
     """Dagrij-claim van de dag-einde herinnering "Nog geen uren voor vandaag" (veld-app UX run B, Peter 18-09;
     migratie 0162): hooguit één rij per veldwerker per NL-kalenderdag over álle administraties (UNIQUE gebruiker_id +

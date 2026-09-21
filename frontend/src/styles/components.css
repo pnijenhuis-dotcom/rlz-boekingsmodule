@@ -1594,6 +1594,18 @@ tr.subrij .eerste-sync-rij ul {
   font-size: 12.5px;
 }
 .plan-conf > b { color: var(--warn); }
+/* 21-09: conflictenPANEEL (vervángt de inline linkbtn-lap): kop + tabel per dag, uitgeklapt in .tabel-scroll. */
+.plan-conf-paneel { display: block; padding: 8px 12px 6px; }
+.plan-conf-kop { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.plan-conf-kop > b { color: var(--warn); }
+.plan-conf-tabel { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.plan-conf-tabel th { text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); padding: 2px 8px 4px 0; white-space: nowrap; }
+.plan-conf-tabel td { padding: 4px 8px 4px 0; vertical-align: top; border-top: 1px solid color-mix(in srgb, var(--warn) 18%, var(--border)); }
+.plan-conf-tabel td.plan-conf-dag { font-weight: 700; white-space: nowrap; width: 64px; }
+.plan-conf-tabel td.plan-conf-acties { display: flex; flex-wrap: wrap; gap: 2px 10px; min-width: 260px; }
+.plan-conf-tabel td.plan-conf-acties .linkbtn { font-size: 12.5px; white-space: nowrap; }
+.plan-conf-tabel td.plan-conf-acties .linkbtn:last-child { color: var(--muted); }
+.plan-conf .tabel-scroll { margin: 0; }
 
 /* dagkolommen */
 .plan-dagen td.plan-dagkolom {

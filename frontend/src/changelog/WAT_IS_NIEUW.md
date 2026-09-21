@@ -6,6 +6,15 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-21 — Planning: conflicten leesbaar, per dag, mét een knop om ze op te lossen
+
+<!-- planning-conflictenpaneel-21-09 -->
+
+- **De conflictenregel boven de planning is een overzicht per dag geworden.** Per regel ziet u wie, op welke projecten, en wát het conflict is: "dubbel gepland", "afwezig", "meer dan 5 op één kaart" of "zonder compleet dossier". Ingeklapt drie regels, met "Alle N tonen" voor de rest.
+- **Elk conflict heeft een handeling.** Bij dubbel gepland kiest u "Houd ‹project A›" of "Houd ‹project B›" (de andere kaart gaat van de planning, met "Ongedaan maken"), of "Beide (halve dagen)" met een reden — dan worden beide kaarten een halve dag en verdwijnt het conflict tot de planning van die dag verandert. Bij afwezigheid: "Van planning halen" of "Tóch plannen" met reden.
+- **Alleen vandaag en later tellen als conflict.** Een dubbele planning op een dag die al voorbij is, is geen planningsconflict meer; die blijft zichtbaar in "Per project". De kop zegt "deze week" alleen als u ook echt de huidige week bekijkt, anders "in week 37" — en naast de weekkop staat dan "verstreken week".
+- **Broers in één ploeg zijn geen dubbele medewerkers.** Het kantoor kan met een lees-only rapport nagaan of veldwerkers écht dubbel geregistreerd staan; dat kijkt uitsluitend naar hetzelfde KvK-nummer, rekeningnummer of e-mailadres, nooit naar gelijkende namen of dezelfde planning.
+
 ## 2026-09-21 — Activa: een aanschaf op een activarekening wordt een activum in Reeleezee
 
 <!-- activa-fase1-21-09 -->

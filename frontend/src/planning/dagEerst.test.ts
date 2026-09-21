@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   beschikbaarheid,
   bouwDagKolommen,
+  conflictWeekLabel,
   conflictenUniek,
+  conflictenVanaf,
+  conflictenVoorPaneel,
   conflictenVoorWeek,
   dagTotaalLabel,
   handvatBereik,
@@ -12,6 +15,7 @@ import {
   poolStand,
   projectTegels,
   vulhandvatVoorbeeld,
+  zonderAkkoord,
 } from './dagEerst'
 import type { PlanningKaartDto, PlanningWeekDto } from './planningApi'
 import { bulkToastTekst, isOngedaanToets, maakOngedaanStand } from './planBulkOngedaan'
@@ -140,6 +144,38 @@ describe('dagEerst — transformatie', () => {
     const wo = bouwDagKolommen(data, DAGEN, { conflicten })[2]
     expect(wo.kaarten[0].conflicten.map((c) => c.soort).sort()).toEqual(['dubbel', 'geen_dossier'])
     expect(wo.kaarten[1].conflicten.map((c) => c.soort).sort()).toEqual(['afwezig', 'dubbel', 'geen_dossier'])
+  })
+
+  it('21-09: paneel = alleen vanaf vandaag, gegroepeerd per dag, uniek; label "deze week" alleen voor de huidige week', () => {
+    const data = week()
+    const conflicten = conflictenVoorWeek(data)
+    // Vandaag = di 15-9: ma 14-9 (dossier M. Sanli) is historie en valt uit het paneel; wo 16-9 blijft.
+    const groepen = conflictenVoorPaneel(conflicten, '2026-09-15')
+    expect(groepen.map((g) => g.label)).toEqual(['wo 16-9'])
+    const soorten = groepen[0].rijen.map((c) => `${c.soort}:${c.naam}`)
+    expect(soorten).toContain('dubbel:M. Sanli')
+    expect(soorten).toContain('afwezig:R. Yücetaş')
+    expect(soorten.filter((x) => x === 'dubbel:M. Sanli')).toHaveLength(1) // dubbel over 2 kaarten = één rij
+    expect(conflictenVanaf(conflicten, '2026-09-17')).toEqual([])
+    expect(conflictenUniek(conflicten).length - conflictenUniek(conflictenVanaf(conflicten, '2026-09-15')).length).toBe(1)
+    expect(conflictWeekLabel({ jaar: 2026, weeknummer: 38 }, { jaar: 2026, weeknummer: 38 })).toBe('deze week')
+    expect(conflictWeekLabel({ jaar: 2026, weeknummer: 37 }, { jaar: 2026, weeknummer: 39 })).toBe('week 37')
+  })
+
+  it('21-09: een akkoord verbergt het conflict alleen bij exact dezelfde planningsstand (gesorteerde project-id\'s)', () => {
+    const data = week()
+    const dubbel = conflictenVoorWeek(data).filter((c) => c.soort === 'dubbel' && c.gebruiker_id === G2)
+    expect(dubbel.length).toBe(2)
+    const akkoord = { id: 'a', gebruiker_id: G2, datum: '2026-09-16', soort: 'dubbel' as const, project_ids: [P_B, P_A], reden: 'x', aangemaakt_door: 'b', aangemaakt_op: 't' }
+    expect(zonderAkkoord(dubbel, [akkoord])).toEqual([])
+    // Andere stand (derde project erbij) → conflict weer zichtbaar.
+    expect(zonderAkkoord(dubbel, [{ ...akkoord, project_ids: [P_A, P_B, P_C] }])).toHaveLength(2)
+    // Ander soort/persoon/dag → geen effect; te_groot/geen_dossier nooit verborgen.
+    expect(zonderAkkoord(dubbel, [{ ...akkoord, soort: 'afwezig' }])).toHaveLength(2)
+    expect(zonderAkkoord(dubbel, [{ ...akkoord, datum: '2026-09-17' }])).toHaveLength(2)
+    data.conflict_akkoorden = [akkoord]
+    expect(conflictenVoorWeek(data).some((c) => c.soort === 'dubbel' && c.gebruiker_id === G2)).toBe(false)
+    expect(conflictenVoorWeek(data).some((c) => c.soort === 'geen_dossier')).toBe(true)
   })
 
   it('> 5 op één kaart = conflict te_groot (besluit C)', () => {
