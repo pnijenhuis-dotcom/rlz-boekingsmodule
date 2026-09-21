@@ -34,6 +34,7 @@ from app.migratie.cli_replay import VGG_REPLAY_COMMANDO, register_vgg_replay, ru
 from app.odoo.cli_rj220 import VGG_REKENINGEN_COMMANDO, register_vgg_rekeningen, run_vgg_rekeningen  # run 2 VGG blok 4
 from app.omzet import reconciliatie as omzet_reconciliatie
 from app.panden.cli_cmd import register_panden, run_panden
+from app.panden.toewijzen_cli import PAND_TOEWIJZEN_COMMANDO, register_pand_toewijzen, run_pand_toewijzen  # 21-09 VGG bp 1
 from app.projecten.cli_cmd import PROJECTEN_COMMANDOS, register_projecten, run_projecten  # blok 3 18-09
 from app.projectverdeling.cli_cmd import (  # opdracht 19-09: projectverdeling-afgesloten-rapport (lees-only)
     PROJECTVERDELING_COMMANDOS,
@@ -2308,6 +2309,7 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
     rlz_dubbel) en `--lees-only`/`--dry-run` (geen run-rij, geen bevindingen, geen mail, geen acceptatie-
     overdracht). `--alleen` vereist `--lees-only`: een deel-run die als 'laatste afgeronde run' zou worden
     vastgelegd laat de kantoorbrede lijst de andere blokken verliezen en mailt hun afwijkingen als 'hersteld'."""
+    from app.activa import reconciliatie as activa_reconciliatie
     from app.doorbelasting import aansluiting as doorbelasting_aansluiting
     from app.intercompany import factuurmatch, rekening_courant
     from app.projecten import nummer as projecten_nummer
@@ -2332,6 +2334,9 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
         # Blok 3 18-09: dubbele projectnummers (buiten de module om in RLZ ontstaan) — soort `project_nummer_dubbel`
         # start in `meten`; schrappen = deze regel + run.BLOKKEN.
         (projecten_nummer.BLOK, projecten_nummer.cli_blok),
+        # Activa fase 1 (Peter 21-09): aansluiting module-boekingen ↔ RLZ-activaregister (vijf soorten, alle in `meten`);
+        # schrappen = deze regel + run.BLOKKEN.
+        (activa_reconciliatie.BLOK, activa_reconciliatie.cli_blok),
     )
     alleen = set(getattr(args, "alleen", None) or [])
     lees_only = bool(getattr(args, "lees_only", False))
@@ -3077,6 +3082,10 @@ def main(argv: list[str] | None = None) -> int:
     from app.geheugen.btw_default_cli import register as register_btw_default
 
     register_btw_default(subparsers)  # btw-default-rapport (lees-only)
+    from app.beheer.bua_cli import dispatch as dispatch_bua  # 21-09: bua-kandidaten (lees-only) + bua-kenmerk-zetten
+    from app.beheer.bua_cli import register as register_bua
+
+    register_bua(subparsers)
     from app.documenten.btw_tarief_cli import dispatch as dispatch_btw_tarief  # 18-09 (lees-only)
     from app.documenten.btw_tarief_cli import register as register_btw_tarief
 
@@ -3496,6 +3505,7 @@ def main(argv: list[str] | None = None) -> int:
     register_accordering(subparsers)  # blok 7 11-09: staande-goedkeuring-voorstellen-lezen (app/accordering/cli_cmd.py)
     register_migratie(subparsers)  # blok D1 10-09: migratie-schoonlijst (app/migratie/cli_cmd.py)
     register_panden(subparsers)  # blok D2 10-09: pandenregister-afleiden (app/panden/cli_cmd.py)
+    register_pand_toewijzen(subparsers)  # 21-09 VGG beslispunt 1: pand-toewijzen (SCHRIJVEND met --schrijf, RLZ lees-only)
     register_rlz_lezen(subparsers)  # blok 10 11-09: rlz-lezen, LEES-ONLY OData-GET (app/rlz/lezen_cli.py)
     register_rlz_feiten(subparsers)  # Feiten eerst 17-09: rlz-feiten rlz|bank, LEES-ONLY (app/rlz/feiten_cli.py)
     register_db_lezen(subparsers)  # Feiten eerst 17-09: db-lezen querybibliotheek + vrije SELECT op de replica (app/lezen/cli_cmd.py)
@@ -3827,6 +3837,8 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_administratienaam
     if (uitkomst_btw_default := dispatch_btw_default(args)) is not None:  # 14-09 (0143), lees-only
         return uitkomst_btw_default
+    if (uitkomst_bua := dispatch_bua(args)) is not None:  # 21-09: bua-kandidaten (lees-only) / bua-kenmerk-zetten
+        return uitkomst_bua
     if (uitkomst_btw_tarief := dispatch_btw_tarief(args)) is not None:  # 18-09, lees-only
         return uitkomst_btw_tarief
     if (uitkomst_appupdate := dispatch_appupdate(args)) is not None:  # OTA 16-09 nacht
@@ -3878,6 +3890,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_migratie(args)  # blok D1 10-09
     if args.commando == "pandenregister-afleiden":
         return run_panden(args)  # blok D2 10-09
+    if args.commando == PAND_TOEWIJZEN_COMMANDO:
+        return run_pand_toewijzen(args)  # 21-09 VGG beslispunt 1: mens-toewijzing pand + soort (app/panden/toewijzen_cli.py)
     if args.commando == RLZ_LEZEN_COMMANDO:
         return run_rlz_lezen(args)  # blok 10 11-09, lees-only
     if args.commando == RLZ_FEITEN_COMMANDO:

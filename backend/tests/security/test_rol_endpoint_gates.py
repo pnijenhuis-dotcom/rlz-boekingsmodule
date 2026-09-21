@@ -258,6 +258,12 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/mini-voorraad/{aid}/producten/{DUMMY_ID}/dearchiveren"),  # beheerder-only
         ("POST", f"/mini-voorraad/{aid}/beschadigingen"),
         ("PATCH", f"/administraties/{aid}/mini-voorraad"),  # opt-in-toggle (beheerder-only)
+        # Activa / MVA fase 1 (Peter 21-09): router-breed vereis_kantoorrol + scope; instelling-PUT Beheerder-only.
+        ("GET", f"/administraties/{aid}/documenten/{DUMMY_ID}/activa-voorstel"),
+        ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/activa-voorstel/1/aanmaken"),
+        ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/activa-voorstel/1/overslaan"),
+        ("GET", f"/administraties/{aid}/activa-instelling"),
+        ("PUT", f"/administraties/{aid}/activa-instelling"),  # beheerder-only
         # Groepskenmerk (blok 8 run 11-09, migratie 0135): lezen = kantoorrol (filter-keuzelijst), muteren Beheerder-only.
         ("GET", "/groepen"),
         ("POST", "/groepen"),  # beheerder-only
@@ -432,6 +438,7 @@ class TestKantoorBlijftWerken:
                 or pad.endswith("/groep")  # blok 8 11-09: groep van een administratie zetten = Beheerder-only
                 or pad.endswith(("/naam", "/naam-overnemen"))  # 15-09 (0144): administratienaam = Beheerder-only
                 or pad.endswith("/kassa-profiel")  # blok G ProfX 16-09: profiel-override = Beheerder-only
+                or (pad.endswith("/activa-instelling") and methode == "PUT")  # activa 21-09: instelling = Beheerder-only
                 or (pad.startswith("/groepen") and methode != "GET")  # blok 8 11-09: groepen muteren = Beheerder-only
                 or pad.startswith("/intercompany/")  # blok A 16-09: intercompany-relaties/RC = Beheerder-only
                 or (pad.startswith("/instellingen/omzet/stores") and methode != "GET")  # 0151 16-09 avond: koppelen = Beheerder-only

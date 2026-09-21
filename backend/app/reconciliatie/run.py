@@ -77,6 +77,8 @@ BLOKKEN = (
     "rlz_dubbel",
     # Blok 3 18-09: dubbele projectnummers per administratie (app/projecten/nummer.py, soort in `meten`).
     "projecten",
+    # Activa fase 1 (Peter 21-09): aansluiting module-boekingen ↔ RLZ-activaregister (app/activa/reconciliatie.py, meten).
+    "activa",
 )
 #: Sleutel in `samenvatting` voor de tellers per automatisering (géén blokstand — de bevindingen ervan
 #: staan onder blok `automatisering`, enkelvoud).

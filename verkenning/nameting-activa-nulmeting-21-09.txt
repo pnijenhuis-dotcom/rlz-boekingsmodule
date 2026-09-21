@@ -1,0 +1,444 @@
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
+>> gcloud run jobs execute rlz-reconciliatie (activa-nulmeting) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+Creating execution...
+Provisioning resources.................done
+Starting execution...............................................................done
+Running execution...............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-hrtzq] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-hrtzq
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-hrtzq?project=652591056217
+rlz-reconciliatie-hrtzq
+>> uitvoer van rlz-reconciliatie-hrtzq (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+activa-nulmeting (lees-only, module-regels laatste 400 dagen): 78 administratie(s), 75 met MVA-rekeningen, 344 MVA-rekeningen, 51 activa in de RLZ-registers, 1 module-regels op MVA-rekeningen
+  6-Steps Projectbeheersing: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Abbegaa B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 28.48 (1 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Adda Import-Export: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 2512.78 (33 regels), module 0 regel(s) € 0.00
+  Administratiekantoor Nijenhuis C.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 7071.00 (23 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  ARVUM B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Grond Cavalier 4: saldo € 76653.00 (7 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  ARVUM Holding B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Breukerweg 182 te Heerlen: saldo € 0.00 (3 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  A.Y. Holding 2 B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  A.Y. Holding BV: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 165729.00 (4 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Baard beheer & management B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Beauty by Tessa Elst: 4 MVA-rekening(en), 2 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Belastingbutler B.V.: 4 MVA-rekening(en), 3 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 7506.00 (21 regels), module 0 regel(s) € 0.00
+  Beleggingsmaatschappij Meyer BV: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 2440000.00 (3 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Betbellat BV: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computers: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  BLOw B.V: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  OVERGESLAGEN Bonte Hoeve B.V.: Odoo-administratie — nulmeting is RLZ-only (Odoo company 3: 0 activa, STAP-0 §13)
+  Bouwadvies Oost Nederland B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 9361.16 (2 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Box Beheer B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Box Invest B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Bradwolff Constructie B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Bradwolff Holding B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  B. van Rooijen / G. Schaalje: 19 MVA-rekening(en), 0 activa, 21 calls
+    - 0101 Palmboomstraat: saldo € 196500.00 (1 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0120 Emmaplein 47: saldo € 240000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0121 Emmaplein 75: saldo € 210000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0122 Aartshertogenlaan: saldo € 200000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0123 Jan Scharptstraat 15: saldo € 135000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0124 Zuidoosterstraat 46: saldo € 180000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0125 Huissensestraat 56 1: saldo € 130000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0126 Huissensestraat 115 3: saldo € 130000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0127 Huissensestraat 105 2: saldo € 131250.00 (2 regels), module 0 regel(s) € 0.00
+    - 0128 Huissensestraat 105 3: saldo € 127099.00 (4 regels), module 0 regel(s) € 0.00
+    - 0129 Reinaldstraat 35: saldo € 150000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0130 Boulevard Heuvelink 203: saldo € 160000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0131 Kamphuizenlaan 87 2: saldo € 160000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0132 Matenalaan 157: saldo € 160000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0133 Gildemeestersplein 60: saldo € 160000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0134 Calonge VLP: saldo € 850000.00 (1 regels), module 0 regel(s) € 0.00
+  BWC Steigers B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 1006.00 (2 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 3400.00 (3 regels), module 0 regel(s) € 0.00
+  OVERGESLAGEN Camping "Nieuwenhoven" B.V.: Odoo-administratie — nulmeting is RLZ-only (Odoo company 3: 0 activa, STAP-0 §13)
+  Caravanpark "De Visotter" B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Clean Care Arnhem B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Clean Care Holding B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Delascos BV: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 5745.50 (4 regels), module 0 regel(s) € 0.00
+  De Nederlandse Beheer B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  De Wit Beheer Oss B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Dimo Living & Styles: 4 MVA-rekening(en), 1 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 770.00 (15 regels), module 0 regel(s) € 0.00
+  DP Investments B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Fortuna Beheer B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Frij Beheer BV: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Handelsonderneming Kempen B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Hotel Pax: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Inpensas Beheer BV: 5 MVA-rekening(en), 0 activa, 7 calls
+    - 0101 Achterstraatje 3, 3A en 3B te Veenendaal: saldo € 31800.00 (1 regels), module 0 regel(s) € 0.00
+    - 01011 Ekkersrijt 2012 te Son en Breugel: saldo € 3414642.58 (5 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  J.G.M. Elissen Holding BV: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 979428.00 (2 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Kempen B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Kempen Chalets B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 10342.00 (3 regels), module 0 regel(s) € 0.00
+  Kempen Facilities B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  L.H.G. Admin B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  L.H.G. Holding B.V.: 4 MVA-rekening(en), 1 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 53.00 (9 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 2904.00 (11 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Mantelzorgwoningen Midden Nederland: 4 MVA-rekening(en), 11 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 2924.28 (2 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 3516.50 (22 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 12875.50 (58 regels), module 0 regel(s) € 0.00
+  Mantelzorgwoningen Oost Nederland B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Midden Nederland Beheer BV: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 324678.00 (8 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 1032.23 (1 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Molenhof Beheer B.V.: 5 MVA-rekening(en), 0 activa, 7 calls
+    - 0101 Grond centrumvoorziening: saldo € 195564.00 (2 regels), module 0 regel(s) € 0.00
+    - 01012 Grond S-kavels: saldo € 935016.06 (89 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Molenhof Verhuur B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 13863.85 (6 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Necol Beheer BV: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Necol Energie B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Novitas Holding B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Oirschot Recreatie B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 1315.00 (3 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 16334.00 (3 regels), module 0 regel(s) € 0.00
+  Oirschot Vastgoed Beheer B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Grond: saldo € 1228356.82 (29 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Old Dutch BV: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Pilates Bloom B.V.: 4 MVA-rekening(en), 20 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 5825.00 (28 regels), module 0 regel(s) € 0.00
+  RB Infra B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Recreapi B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 1906.61 (1 regels), module 0 regel(s) € 0.00
+    - 0113 Software: saldo € 832439.00 (68 regels), module 0 regel(s) € 0.00
+  Recreatiecentrum Dijkstel B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  OVERGESLAGEN Recreatief Vastgoed Nederland BV.: Odoo-administratie — nulmeting is RLZ-only (Odoo company 3: 0 activa, STAP-0 §13)
+  Rubicon Investments B.V.: 28 MVA-rekening(en), register: recht ontbreekt (403), 29 calls
+    - 01100 Pand L. van Meerderv. 30: saldo € 1007771.00 (9 regels), module 0 regel(s) € 0.00
+    - 01101 Grond pand Den Haag: saldo € 27953.00 (1 regels), module 0 regel(s) € 0.00
+    - 01110 Beeklaan 385 B: saldo € 250582.20 (33 regels), module 0 regel(s) € 0.00
+    - 011101 Beeklaan 385 C: saldo € 250582.19 (2 regels), module 0 regel(s) € 0.00
+    - 011102 Beeklaan 385 D: saldo € 250690.01 (3 regels), module 0 regel(s) € 0.00
+    - 01111 Grond Beeklaan Den Haag: saldo € 34936.43 (4 regels), module 0 regel(s) € 0.00
+    - 01120 Pand Vlaardingen GBS: saldo € 536494.00 (4 regels), module 0 regel(s) € 0.00
+    - 01121 Grond Vlaardingen GBS: saldo € 45218.00 (1 regels), module 0 regel(s) € 0.00
+    - 01130 Pand Hoek van Holland: saldo € 72689.00 (1 regels), module 0 regel(s) € 0.00
+    - 01140 Pand Bergen op Zoom: saldo € 675946.50 (5 regels), module 0 regel(s) € 0.00
+    - 01141 Grond Bergen op Zoom: saldo € 431091.00 (1 regels), module 0 regel(s) € 0.00
+    - 01150 Pand Gouda: saldo € 174984.00 (1 regels), module 0 regel(s) € 0.00
+    - 01151 Grond Gouda: saldo € 32672.00 (1 regels), module 0 regel(s) € 0.00
+    - 01152 Renovatie pand Gouda: saldo € 235846.00 (1 regels), module 0 regel(s) € 0.00
+    - 01160 Pand Den Bosch: saldo € 292334.00 (1 regels), module 0 regel(s) € 0.00
+    - 01161 Grond Den Bosch: saldo € 37187.00 (1 regels), module 0 regel(s) € 0.00
+    - 01162 Renovatie Den Bosch: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 01180 Pand Nijmegen: saldo € 0.00 (2 regels), module 0 regel(s) € 0.00
+    - 01181 Grond Nijmegen: saldo € 0.00 (2 regels), module 0 regel(s) € 0.00
+    - 01182 Renovatie Nijmegen: saldo € 0.00 (2 regels), module 0 regel(s) € 0.00
+    - 01190 Pand Tilburg: saldo € 237069.00 (1 regels), module 0 regel(s) € 0.00
+    - 01191 Grond Tilburg: saldo € 59899.00 (1 regels), module 0 regel(s) € 0.00
+    - 01200 Pand Utrecht: saldo € 380431.00 (1 regels), module 0 regel(s) € 0.00
+    - 01300 Pand Overdinkel: saldo € 257000.00 (4 regels), module 0 regel(s) € 0.00
+    - 01301 Grond Overdinkel: saldo € 25000.00 (2 regels), module 0 regel(s) € 0.00
+    - 01304 Cum waardeverminderingen gebouwen: saldo € -115202.00 (2 regels), module 0 regel(s) € 0.00
+    - 0160 Bedrijfsinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0170 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  SOW Vastgoed B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Stephanie Loeffen B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Stichting Shuto: 7 MVA-rekening(en), 0 activa, 9 calls
+    - 01011 Koningstraat 43 -43a, Arnhem (50%): saldo € 324000.00 (1 regels), module 0 regel(s) € 0.00
+    - 01012 Hoogstraat 3 -3a, Arnhem: saldo € 202000.00 (1 regels), module 0 regel(s) € 0.00
+    - 01013 Immenweg 15-20, Lunteren: saldo € 0.00 (2 regels), module 0 regel(s) € 0.00
+    - 01014 Willemstraat 16b, Elst (Jur.): saldo € 1.00 (1 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Sunfactory Beheer B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Sunset Beheer B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Sunshine Island B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  T&J Hoveniers: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Totaal Ontruimingen: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 11432.00 (3 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Tupker Beheer B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Universal Materiaal B.V.: 4 MVA-rekening(en), 0 activa, 8 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Verhuurmateriaal: saldo € 5225769.67 (403 regels), module 0 regel(s) € 0.00
+  Universal Nederland B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (2 regels), module 0 regel(s) € 0.00
+    - 0107 Verhuur software: saldo € 99964.92 (80 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 26660.65 (13 regels), module 0 regel(s) € 0.00
+    - 0113 Verhuurmateriaal: saldo € 25961.87 (80 regels), module 0 regel(s) € 0.00
+  Universal Steigerbouw B.V.: 4 MVA-rekening(en), register: recht ontbreekt (403), 5 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 9690.00 (2 regels), module 0 regel(s) € 0.00
+  Universal Verkoop B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Van Boxtel Horeca Exploitatie B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 828.62 (2 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 1178.21 (4 regels), module 1 regel(s) € 45.67
+  Vastgoedgroep Nederland B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 183871.22 (1 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 449.00 (1 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 437.00 (1 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 24739.90 (15 regels), module 0 regel(s) € 0.00
+  Veldhoven Recreatie B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 5573.00 (2 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 30154.00 (2 regels), module 0 regel(s) € 0.00
+  Zilver Beheer B.V.: 4 MVA-rekening(en), 13 activa, 6 calls
+    - 0101 Grond: saldo € 250000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0107 Beschoeiing / jachthaven: saldo € 450000.00 (1 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Ziton Holding B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+  Zonnestudio Elderveld B.V.: 4 MVA-rekening(en), 0 activa, 6 calls
+    - 0101 Gebouwen en terreinen: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0107 Kantoorinventaris: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+    - 0111 ICT apparatuur (computers e.d.): saldo € 0.00 (16 regels), module 0 regel(s) € 0.00
+    - 0113 Computersoftware: saldo € 0.00 (0 regels), module 0 regel(s) € 0.00
+Container called exit(0).
+
+exit=0

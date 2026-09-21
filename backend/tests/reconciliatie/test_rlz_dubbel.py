@@ -1135,4 +1135,5 @@ class TestCliLeesOnly:
             "doorbelasting_aansluiting",
             "rlz_dubbel",
             "projecten",  # blok 3 18-09: dubbele projectnummers (soort project_nummer_dubbel, stand meten)
+            "activa",  # activa fase 1 21-09: aansluiting module ↔ RLZ-activaregister (vijf soorten, stand meten)
         ]

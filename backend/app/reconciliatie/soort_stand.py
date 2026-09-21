@@ -108,6 +108,12 @@ REGISTRY: dict[str, SoortDefinitie] = {
         SoortDefinitie(
             soort="project_naam_afgesloten_status_actief", blok="projecten", sinds=date(2026, 9, 19), default=METEN
         ),
+        # activa (fase 1, Peter 21-09): aansluiting module-boekingen ↔ RLZ-activaregister — alles eerst meten.
+        SoortDefinitie(soort="activa_register_niet_leesbaar", blok="activa", sinds=date(2026, 9, 21), default=METEN),
+        SoortDefinitie(soort="mva_boeking_zonder_activum", blok="activa", sinds=date(2026, 9, 21), default=METEN),
+        SoortDefinitie(soort="activum_zonder_boeking", blok="activa", sinds=date(2026, 9, 21), default=METEN),
+        SoortDefinitie(soort="afschrijving_niet_gelopen", blok="activa", sinds=date(2026, 9, 21), default=METEN),
+        SoortDefinitie(soort="activum_aanmaken_mislukt", blok="activa", sinds=date(2026, 9, 21), default=METEN),
     )
 }
 

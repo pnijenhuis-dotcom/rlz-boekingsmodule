@@ -401,6 +401,16 @@ export const REGISTRY: readonly RegistryEntry[] = [
     doel: { soort: 'tab', tab: 'boeken-ai', anker: 'btw-aftrek' },
     beheerder: true,
   },
+  // 21-09 (Activa / MVA fase 1, akkoord Peter, migratie 0168): activum aanmaken ná boeken (opt-in), activeringsgrens,
+  // termijn + afschrijvingsrekening per categorie, registerstand.
+  {
+    id: 'activa',
+    naam: 'Activa / MVA — activum aanmaken, activeringsgrens, termijnen',
+    waar: 'Administraties › <administratie> › tab Boeken & AI › Activa',
+    synoniemen: ['activa', 'activum', 'mva', 'vaste activa', 'afschrijving', 'afschrijven', 'activeren', 'activeringsgrens', 'investering', 'inventaris', 'steigermateriaal', 'termijn', 'lineair', 'fixed assets'],
+    doel: { soort: 'tab', tab: 'boeken-ai', anker: 'activa' },
+    beheerder: true,
+  },
   // Losse instellingen bínnen een sectie (deep-link mét anker).
   {
     id: 'bulk-accordering',

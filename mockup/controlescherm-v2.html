@@ -73,6 +73,13 @@
   .btn.prim{background:var(--teal);color:var(--teal-donker)}
   .btn.sec{border:1px solid var(--border);color:var(--text)}
   .btn.stil{color:var(--muted);border:none}
+  /* activum-kaart (⑨, 21-09) — de voorstel-kaart-norm uit bank-voorstel-kaart.html */
+  .vk{border:1px solid var(--border);border-radius:9px;padding:8px 10px;background:var(--panel-2);font-size:12px;line-height:1.45;max-width:520px}
+  .vk .kop{font-weight:700;font-size:12.5px}
+  .vk .r{color:var(--muted)}
+  .vk .chip.info{background:rgba(120,150,230,.16);color:#9fb3f0}
+  .vk .acties{display:flex;align-items:center;gap:12px;margin-top:8px}
+  .vk .link{color:var(--teal);font-weight:600;cursor:pointer}
   .noot{max-width:1500px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--muted);line-height:1.75;margin-top:22px}
   .noot b{color:var(--text)}
 </style>
@@ -144,6 +151,19 @@ alleen afwijkingen nemen ruimte in.</p>
           </table>
         </div>
 
+        <div class="sectie">
+          <h3>Activum aanmaken? <span class="chip info" style="margin-left:6px">1 regel wordt activum</span></h3>
+          <div class="vk">
+            <div class="kop">Keuken Mantelzorgwoning Druten <span class="chip info">wordt activum</span></div>
+            <div class="r">rekening <b>0310</b> Inventaris</div>
+            <div class="r">aanschafwaarde <b>€ 11.157,02</b> · aanschafdatum 10-08-2026</div>
+            <div class="r">categorie <b>Inventaris</b> · termijn <b>Lineair 5 jaar</b> (60 mnd) · restwaarde € 0,00</div>
+            <div class="veld" style="max-width:340px;margin-top:6px">0810 · Afschrijving inventaris <span class="herkomst">· uit instelling</span></div>
+            <div style="margin-top:6px"><span class="chip warn">KIA/MIA/Vamil mogelijk van toepassing — adviseur beslist</span></div>
+            <div class="acties"><span class="btn prim" style="padding:6px 12px;font-size:12px">Aanmaken ná boeken</span><span class="link">Niet activeren…</span></div>
+          </div>
+        </div>
+
         <div class="sectie" style="background:none">
           <div class="inklap">
             <span class="item">▸ Controles (7 groen)</span>
@@ -180,6 +200,18 @@ afwijkend KvK wordt NOOIT stil voorgesteld maar als waarschuwing getoond (casus 
 scan (naam/KvK/btw/IBAN, herkomst-chips) — daarmee vervalt ook de valse IBAN-wissel-blokkade bij een nieuwe entiteit.
 ⑦ Doorbelasten gebruikt het v2-blok (restant-balk, mockup doorbelasten-blok-v2.html) en staat ín de werkvolgorde,
 direct onder de regels. ⑧ Volgorde-principe als norm: invoer die de mens raakt bovenaan in werkvolgorde; alles
-passiefs/groens onderaan als inklap — zelfde regel voor toekomstige schermen.</p>
+passiefs/groens onderaan als inklap — zelfde regel voor toekomstige schermen.
+⑨ <b>Activum aanmaken? (Activa / MVA fase 1, akkoord Peter 21-09):</b> een boekvoorstelregel op een activarekening
+(RLZ <code>IsFixedAssetAccount</code> ∧ AccountType 3 ∧ 0xxx; Odoo <code>asset_fixed</code>) mét netto ≥ de activeringsgrens
+(€ 450 excl. btw; RLZ <code>FixedAssetAlertAmount</code> wint als gevuld) krijgt een VOORSTEL-kaart (norm bank-voorstel-kaart)
+direct ná de offerte-match: chip "wordt activum", voorgevuld aanschafwaarde (regelnetto) · aanschafdatum (factuurdatum) ·
+omschrijving (regeltekst) · categorie uit de rekeningnaam (onbekend = chip "controleer") · termijn (instelling per categorie,
+default lineair; steigermateriaal 5 jr, restwaarde 0) · afschrijvingsrekening (combobox, voorgevuld) · fiscale signalen als
+oranje chips (getoetst, nooit gerekend: > 20 %/jr, bodemwaarde WOZ, KIA/MIA). Knoppen: "Activum aanmaken" (nog niet geboekt
+→ "Aanmaken ná boeken" = gepland; de motor maakt het activum aan zodra de boeking staat) en "Niet activeren…" mét verplichte
+reden. Stand ná de handeling als chip: gepland / aangemaakt in RLZ · nr N (groen = status) / niet geactiveerd + reden /
+mislukt + reden + "Opnieuw aanmaken" / beoordelen ná storno (nooit verwijderd). Onder de grens op een activarekening = één
+oranje regel. Register niet leesbaar (403) = oranje regel + knop uit. Géén check-rij: boeken blokkeert nooit.
+Automatisch aanmaken ná boeken = opt-in per administratie (Instellingen › ‹BV› › Boeken & AI › Activa, default UIT).</p>
 </body>
 </html>

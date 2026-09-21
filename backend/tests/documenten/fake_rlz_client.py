@@ -34,6 +34,27 @@ class FakeBoekClient:
         # TaxDeclarations-seed voor de aangifte-poort (tegenboek-pad) — default leeg: geen
         # ingediende aangiften, storno vrij.
         self.aangiften = aangiften or []
+        # Activa fase 1 (21-09): register-seeds. `fixed_assets` = {id: RLZ-rij}, `depreciation_methods` default
+        # "Lineair 5 jaar" (60) + "Lineair 3 jaar" (36), `administration_settings` = één rij mét FixedAssetAlertAmount,
+        # `fixed_assets_403` = recht ontbreekt (casus Universal). Opname van élke PUT in `fixed_asset_puts`.
+        self.fixed_assets: dict[str, dict[str, Any]] = {}
+        self.depreciation_methods: list[dict[str, Any]] = [
+            {
+                "id": "aaaaaaaa-1111-4111-8111-000000000060",
+                "Description": "Lineair 5 jaar",
+                "NumberOfMonths": 60,
+                "DepreciationBaseMethod": 1,
+            },
+            {
+                "id": "aaaaaaaa-1111-4111-8111-000000000036",
+                "Description": "Lineair 3 jaar",
+                "NumberOfMonths": 36,
+                "DepreciationBaseMethod": 1,
+            },
+        ]
+        self.administration_settings: list[dict[str, Any]] = [{"FixedAssetAlertAmount": 450.0}]
+        self.fixed_assets_403 = False
+        self.fixed_asset_puts: list[dict[str, Any]] = []
 
     def __enter__(self) -> FakeBoekClient:
         return self
@@ -154,6 +175,49 @@ class FakeBoekClient:
         self.geboekte_acties.append(invoice_id)
         self._invoices[str(invoice_id)]["Status"] = 2
         return SimpleNamespace(status_code=204)
+
+    # --- activa / MVA (fase 1, 21-09) ---------------------------------------------------------------------------
+
+    def get_fixed_assets(self, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        if self.fixed_assets_403:
+            raise RlzApiError(403, "GET", "FixedAssets", "Forbidden (simulatie: recht 'Vaste activa' ontbreekt)")
+        if self.faal_op == "fixed_assets":
+            raise RlzApiError(500, "GET", "FixedAssets", "FixedAssets mislukt (simulatie)")
+        rijen = list(self.fixed_assets.values())
+        top = int((params or {}).get("$top", len(rijen) or 1))
+        skip = int((params or {}).get("$skip", 0))
+        return rijen[skip : skip + top]
+
+    def get_fixed_asset(self, asset_id: uuid.UUID | str) -> dict[str, Any] | None:
+        if self.faal_op == "fixed_asset_readback":
+            return None
+        return self.fixed_assets.get(str(asset_id))
+
+    def put_fixed_asset(self, asset_id: uuid.UUID, body: dict[str, Any]) -> SimpleNamespace:
+        if self.fixed_assets_403:
+            raise RlzApiError(403, "PUT", "FixedAssets", "Forbidden (simulatie: recht 'Vaste activa' ontbreekt)")
+        if self.faal_op == "fixed_asset_put":
+            raise RlzApiError(400, "PUT", "FixedAssets", "PUT FixedAssets mislukt (simulatie)")
+        rij = {**body, "id": str(asset_id)}
+        self.fixed_asset_puts.append(rij)
+        methode = next((m for m in self.depreciation_methods if m["id"] == (body.get("DepreciationMethod") or {}).get("id")), None)
+        self.fixed_assets[str(asset_id)] = {
+            **rij,
+            "ReceiptNumber": str(len(self.fixed_assets) + 1),
+            "Status": 2,
+            "CurrentBookValue": body.get("TotalAmountPurchase"),
+            "CurrentDepreciationValue": 0.0,
+            "DepreciationMethod": methode,
+        }
+        return SimpleNamespace(status_code=204)
+
+    def get_depreciation_method_headers(self) -> list[dict[str, Any]]:
+        if self.faal_op == "depreciation_methods":
+            raise RlzApiError(500, "GET", "DepreciationMethodHeaders", "mislukt (simulatie)")
+        return list(self.depreciation_methods)
+
+    def get_administration_settings(self) -> list[dict[str, Any]]:
+        return list(self.administration_settings)
 
     def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         if self.faal_op == "bank_relations" and path.endswith("/BankRelations"):

@@ -736,6 +736,9 @@ class Grootboekrekening(Base):
     # rekening (voorstel-lijst), nooit stil aangezet. De sync raakt deze kolommen niet (`_grootboek_waarden`).
     btw_aftrek_uitgesloten: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
     btw_aftrek_uitgesloten_op: Mapped[datetime | None] = mapped_column(default=None)
+    # Migratie 0168 (activa fase 1, akkoord Peter 21-09): MVA-rekening uit de BRON — RLZ `IsFixedAssetAccount` ÉN AccountType 3
+    # ÉN code 0xxx (STAP-0 a9: de vlag alleen is te breed); Odoo `account_type == asset_fixed`. De sync schrijft 'm bij élke run.
+    is_activa: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
 
 
 class RlzCredential(Base):

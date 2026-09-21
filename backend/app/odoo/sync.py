@@ -52,6 +52,8 @@ MODEL_PARTNER = "res.partner"
 MODEL_ANALYTIC = "account.analytic.account"
 MODEL_MOVE = "account.move"
 MODEL_PRODUCT = "product.product"
+#: Activa fase 1 (21-09): Odoo `account.account.account_type` voor materiële vaste activa → `grootboekrekening.is_activa`.
+ACCOUNT_TYPE_ASSET_FIXED = "asset_fixed"
 
 _SOORT_PER_PREFIX: tuple[tuple[str, int], ...] = (
     ("income", 1),
@@ -317,6 +319,8 @@ def _grootboek_waarden(record: dict[str, Any]) -> dict[str, Any]:
         "soort": record["soort"],
         "is_totaalrekening": False,
         "standaard_taxrate_id": record.get("standaard_taxrate_id"),
+        # Activa fase 1 (Peter 21-09, migratie 0168): Odoo `account_type == asset_fixed` = MVA-rekening.
+        "is_activa": record.get("account_type") == ACCOUNT_TYPE_ASSET_FIXED,
     }
 
 

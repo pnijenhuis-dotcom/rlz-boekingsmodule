@@ -6,6 +6,17 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-21 — Activa: een aanschaf op een activarekening wordt een activum in Reeleezee
+
+<!-- activa-fase1-21-09 -->
+
+- **Op het controlescherm verschijnt de kaart "Activum aanmaken?" zodra een factuurregel op een activarekening staat en de activeringsgrens haalt (standaard € 450 excl. btw; de grens uit Reeleezee gaat vóór).** De kaart staat al klaar met aanschafwaarde, aanschafdatum, omschrijving, categorie (bijvoorbeeld inventaris, vervoermiddelen, computers, steigermateriaal), afschrijvingstermijn en afschrijvingsrekening; u controleert en kiest "Aanmaken ná boeken". Zodra de factuur geboekt is, staat het activum in het register van Reeleezee, dat de afschrijving verzorgt. De module rekent zelf niets en verwijdert nooit iets.
+- **Fiscale aandachtspunten worden gesignaleerd, niet toegepast:** een termijn korter dan vijf jaar (meer dan 20 % per jaar), een gebouw (afschrijven tot de bodemwaarde) en mogelijke investeringsaftrek verschijnen als oranje aanwijzing — de adviseur beslist.
+- **"Niet activeren…" vraagt altijd een reden** en blijft zichtbaar in de tijdlijn; later alsnog aanmaken kan. Een kleine aanschaf onder de grens die tóch op een activarekening staat, krijgt een oranje aanwijzing. Mislukt het aanmaken (bijvoorbeeld zonder afschrijvingsrekening), dan staat dat rood op de kaart met "Opnieuw aanmaken" — nooit stil.
+- **Wordt een factuur met activum gestorneerd, dan wordt het activum niet verwijderd** maar gemarkeerd "beoordelen in Reeleezee"; verwijderen doet alleen een mens in Reeleezee.
+- **Instellingen › Administraties › ‹administratie› › Boeken & AI › Activa:** schakelaar "Activum automatisch aanmaken ná boeken" (standaard uit — aan betekent dat het systeem elk activum zelf aanmaakt zodra de boeking staat), activeringsgrens met de waarde uit Reeleezee als hint, afschrijvingstermijn en -rekening per categorie, de lijst activarekeningen en de stand van het register (leesbaar, of "recht ontbreekt" als de webservice-login het recht Vaste activa nog mist).
+- **De dagelijkse controle krijgt een blok Activa** (start in de meetstand): een geboekte aanschaf zonder activum, een activum zonder boeking, een afschrijving die na een jaar nog niet gelopen is en een mislukte aanmaak worden gemeld met een handeling erbij.
+
 ## 2026-09-21 — Een goedgekeurd rekeningnummer telt direct mee in de controles
 
 <!-- iban-wissel-checks-cache-21-09 -->

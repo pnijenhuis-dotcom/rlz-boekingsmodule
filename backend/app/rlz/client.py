@@ -661,6 +661,37 @@ class RlzClient:
     def correct_manual_journal(self, journal_id: uuid.UUID) -> httpx.Response:
         return self.post_action(f"ManualJournals/{journal_id}", ACTION_CORRECT)
 
+    # --- activa / MVA (fase 1, akkoord Peter 21-09; STAP-0 21-09 Pilates Bloom, api-verkenning "Activa-module") -----
+
+    def get_fixed_assets(self, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Activaregister-collectie (`$expand=DepreciationMethod` werkt op de collectie; `JournalEntryList`/
+        `BalanceAccount` niet — record-vorm is fase-2-STAP-0). 403 = recht 'Vaste activa' ontbreekt op de login
+        (Universal, Rubicon) — de aanroeper (`app/activa/register.py`) maakt daar een zichtbare uitkomst van."""
+        return self.get("FixedAssets", params=params).get("value", [])
+
+    def get_fixed_asset(self, asset_id: uuid.UUID | str) -> dict[str, Any] | None:
+        """Record-GET ná de PUT (204 zonder body): None bij 404 = aanmaken mislukt."""
+        try:
+            return self.get(f"FixedAssets/{asset_id}")
+        except RlzApiError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
+
+    def put_fixed_asset(self, asset_id: uuid.UUID, body: dict[str, Any]) -> httpx.Response:
+        """Activum aanmaken mét client-GUID (Help a2: id, Description, PurchaseDate, TotalAmountPurchase,
+        LiquidationValue, BalanceAccount{id}, DepreciationAccount{id}, DepreciationMethod{id}, NumberOfMonths,
+        FirstDepreciationMonth/Year, Type 1, InvoiceReference). Idempotent op het GUID; respons 204 → terug-lezen."""
+        return self.put(f"FixedAssets/{asset_id}", {**body, "id": str(asset_id)})
+
+    def get_depreciation_method_headers(self) -> list[dict[str, Any]]:
+        """Afschrijvingsmethodes "Lineair N jaar" (NumberOfMonths 12…600, DepreciationBaseMethod 1)."""
+        return self.get("DepreciationMethodHeaders", params={"$expand": "DepreciationBaseMethod"}).get("value", [])
+
+    def get_administration_settings(self) -> list[dict[str, Any]]:
+        """Eén rij per administratie (`$top=1`) — draagt o.a. `FixedAssetAlertAmount` (activeringsgrens, 450.0)."""
+        return self.get("AdministrationSettings", params={"$top": "1"}).get("value", [])
+
     def find_manual_journals_by_reference(self, *, reference: str) -> list[dict[str, Any]]:
         """RLZ-side duplicaatcheck voor de omzet-periode: de ManualJournals-collectie is (anders
         dan SalesInvoices) wél vers en behoudt onze eigen Reference (STAP 0 §2/§3)."""

@@ -389,6 +389,12 @@ def opnieuw_boeken_na_verdwijnen(
             actor_id=actor_id,
             reden=f"extern document verdwenen — opnieuw boeken: {reden}",
         )
+        # Activa fase 1 (21-09): aangemaakt activum → `beoordelen` (nooit verwijderen).
+        from app.activa import service as activa_service
+
+        activa_service.markeer_beoordelen_bij_storno(
+            session, document_id=document_id, actor_id=actor_id, reden=f"extern document verdwenen — opnieuw boeken: {reden}"
+        )
         # Autoboeken per administratie (blok A bundel 10-09): een verdwenen AUTOMATISCHE boeking die opnieuw langs de
         # mens gaat = correctie → leverancier terug op "leert 0/N" (ín deze transactie; lazy import, geen kring).
         from app.documenten import autoboeken as autoboeken_service

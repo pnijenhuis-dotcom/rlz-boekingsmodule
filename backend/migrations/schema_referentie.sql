@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0167
+-- Migratie-head bij deze dump: 0168
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -527,6 +527,65 @@ CREATE TABLE boekhouding.accordering_stap (
 );
 
 ALTER TABLE ONLY boekhouding.accordering_stap FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: activa_instelling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.activa_instelling (
+    administratie_id uuid NOT NULL,
+    automatisch_aanmaken_ingeschakeld boolean DEFAULT false NOT NULL,
+    activeringsgrens numeric(12,2) DEFAULT 450.00 NOT NULL,
+    grens_rlz numeric(12,2),
+    grens_rlz_gelezen_op timestamp with time zone,
+    termijnen jsonb DEFAULT '{}'::jsonb NOT NULL,
+    afschrijving_ledgers jsonb DEFAULT '{}'::jsonb NOT NULL,
+    register_leesbaar boolean,
+    register_geprobeerd_op timestamp with time zone,
+    register_fout text,
+    gewijzigd_door uuid,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.activa_instelling FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: activum_koppeling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.activum_koppeling (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    regel_volgnummer integer NOT NULL,
+    boek_cyclus integer DEFAULT 0 NOT NULL,
+    status text NOT NULL,
+    herkomst text DEFAULT 'mens'::text NOT NULL,
+    rlz_fixed_asset_id uuid,
+    rlz_receipt_number text,
+    categorie text NOT NULL,
+    termijn_maanden integer NOT NULL,
+    methode_id uuid,
+    methode_naam text,
+    aanschafwaarde numeric(14,2) NOT NULL,
+    restwaarde numeric(14,2) DEFAULT 0.00 NOT NULL,
+    aanschafdatum date NOT NULL,
+    omschrijving text NOT NULL,
+    balans_ledger_id uuid NOT NULL,
+    afschrijving_ledger_id uuid,
+    reden text,
+    door uuid,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_activum_koppeling_aanschafwaarde CHECK ((aanschafwaarde >= (0)::numeric)),
+    CONSTRAINT ck_activum_koppeling_herkomst CHECK ((herkomst = ANY (ARRAY['mens'::text, 'automatisch'::text]))),
+    CONSTRAINT ck_activum_koppeling_status CHECK ((status = ANY (ARRAY['gepland'::text, 'aangemaakt'::text, 'overgeslagen'::text, 'mislukt'::text, 'beoordelen'::text]))),
+    CONSTRAINT ck_activum_koppeling_termijn CHECK ((termijn_maanden > 0))
+);
+
+ALTER TABLE ONLY boekhouding.activum_koppeling FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -4162,7 +4221,8 @@ CREATE TABLE platform.grootboekrekening (
     historie_taxrate_aandeel numeric(5,4),
     historie_berekend_op timestamp with time zone,
     btw_aftrek_uitgesloten boolean DEFAULT false NOT NULL,
-    btw_aftrek_uitgesloten_op timestamp with time zone
+    btw_aftrek_uitgesloten_op timestamp with time zone,
+    is_activa boolean DEFAULT false NOT NULL
 );
 
 ALTER TABLE ONLY platform.grootboekrekening FORCE ROW LEVEL SECURITY;
@@ -5082,6 +5142,22 @@ ALTER TABLE ONLY boekhouding.payment_item_cache
 
 
 --
+-- Name: activa_instelling pk_activa_instelling; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.activa_instelling
+    ADD CONSTRAINT pk_activa_instelling PRIMARY KEY (administratie_id);
+
+
+--
+-- Name: activum_koppeling pk_activum_koppeling; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.activum_koppeling
+    ADD CONSTRAINT pk_activum_koppeling PRIMARY KEY (id);
+
+
+--
 -- Name: project_afsluit_uitstel pk_project_afsluit_uitstel; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5575,6 +5651,14 @@ ALTER TABLE ONLY boekhouding.uren_herinnering
 
 ALTER TABLE ONLY boekhouding.uren_project_toewijzing
     ADD CONSTRAINT uren_project_toewijzing_pkey PRIMARY KEY (administratie_id, gebruiker_id, project_id);
+
+
+--
+-- Name: activum_koppeling ux_activum_koppeling_document_regel_cyclus; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.activum_koppeling
+    ADD CONSTRAINT ux_activum_koppeling_document_regel_cyclus UNIQUE (document_id, regel_volgnummer, boek_cyclus);
 
 
 --
@@ -6308,6 +6392,20 @@ CREATE INDEX ix_accordering_leverancier_route_vendor_route_id ON boekhouding.acc
 --
 
 CREATE INDEX ix_accordering_stap_accordering_id ON boekhouding.accordering_stap USING btree (accordering_id);
+
+
+--
+-- Name: ix_activum_koppeling_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_activum_koppeling_administratie_id ON boekhouding.activum_koppeling USING btree (administratie_id);
+
+
+--
+-- Name: ix_activum_koppeling_status; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_activum_koppeling_status ON boekhouding.activum_koppeling USING btree (administratie_id, status);
 
 
 --
@@ -8801,6 +8899,46 @@ ALTER TABLE ONLY boekhouding.factuurmatch
 
 
 --
+-- Name: activa_instelling fk_activa_instelling_administratie; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.activa_instelling
+    ADD CONSTRAINT fk_activa_instelling_administratie FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: activa_instelling fk_activa_instelling_gewijzigd_door; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.activa_instelling
+    ADD CONSTRAINT fk_activa_instelling_gewijzigd_door FOREIGN KEY (gewijzigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: activum_koppeling fk_activum_koppeling_administratie; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.activum_koppeling
+    ADD CONSTRAINT fk_activum_koppeling_administratie FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: activum_koppeling fk_activum_koppeling_document; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.activum_koppeling
+    ADD CONSTRAINT fk_activum_koppeling_document FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: activum_koppeling fk_activum_koppeling_door; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.activum_koppeling
+    ADD CONSTRAINT fk_activum_koppeling_door FOREIGN KEY (door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: doorbelasting_run fk_doorbelasting_run_verdeelsleutel; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -11253,6 +11391,32 @@ CREATE POLICY accordering_stap_verplaatsing ON boekhouding.accordering_stap USIN
   WHERE ((a.id = accordering_stap.accordering_id) AND (a.document_id = platform.verplaatsing_document_id())))) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((EXISTS ( SELECT 1
    FROM boekhouding.document_accordering a
   WHERE ((a.id = accordering_stap.accordering_id) AND (a.document_id = platform.verplaatsing_document_id())))) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+
+
+--
+-- Name: activa_instelling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.activa_instelling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: activa_instelling activa_instelling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY activa_instelling_scope ON boekhouding.activa_instelling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: activum_koppeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.activum_koppeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: activum_koppeling activum_koppeling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY activum_koppeling_scope ON boekhouding.activum_koppeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

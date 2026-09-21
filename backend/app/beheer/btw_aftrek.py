@@ -169,3 +169,67 @@ def zet(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, ledger_ids: list[uu
             )
         session.flush()
         return naar_dto(_stand(session, administratie_id))
+
+
+class VoegToeResultaat(BaseModel):
+    """Uitkomst van `voeg_toe`: welke codes aangingen, welke al aan stonden, en de nieuwe stand."""
+
+    toegevoegd: list[str]
+    al_aan: list[str]
+    stand: BtwAftrekDto
+
+
+def voeg_toe(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ledger_ids: list[uuid.UUID], bron: str | None = None
+) -> VoegToeResultaat:
+    """Bestaande set ∪ `ledger_ids` (CLI `bua-kenmerk-zetten`, opdracht Peter 21-09): alleen AANzetten, nooit iets uit —
+    `zet` blijft de exacte-set-variant voor het scherm. Zelfde audit-actie oud→nieuw, uitsluitend bij een wijziging;
+    `bron` komt als `nieuwe_waarde["bron"]` mee (herkenbaar als bulk-stap naast de Beheerder-knop). Idempotent."""
+    gewenst = set(ledger_ids)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        if session.get(Administratie, administratie_id) is None:
+            raise BtwAftrekFout(f"Onbekende administratie {administratie_id}")
+        rijen = session.scalars(
+            select(Grootboekrekening).where(
+                Grootboekrekening.administratie_id == administratie_id,
+                Grootboekrekening.verdwenen_uit_bron_op.is_(None),
+            )
+        ).all()
+        per_id = {r.ledger_id: r for r in rijen}
+        onbekend = gewenst - set(per_id)
+        if onbekend:
+            raise BtwAftrekOnbekendeRekening(
+                f"Onbekende grootboekrekening(en) voor deze administratie: {', '.join(sorted(map(str, onbekend)))}"
+            )
+        oud = sorted(r.code for r in rijen if r.btw_aftrek_uitgesloten)
+        nu = datetime.now(UTC)
+        toegevoegd: list[str] = []
+        al_aan: list[str] = []
+        for ledger_id in gewenst:
+            r = per_id[ledger_id]
+            if r.btw_aftrek_uitgesloten:
+                al_aan.append(r.code)
+                continue
+            r.btw_aftrek_uitgesloten = True
+            r.btw_aftrek_uitgesloten_op = nu
+            toegevoegd.append(r.code)
+        if toegevoegd:
+            nieuw: dict = {"codes": sorted(r.code for r in rijen if r.btw_aftrek_uitgesloten)}
+            if bron:
+                nieuw["bron"] = bron
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="beheer",
+                tabel="platform.grootboekrekening",
+                record_id=administratie_id,
+                actie="btw_aftrek_uitgesloten_gewijzigd",
+                correlatie_id=uuid.uuid4(),
+                oude_waarde={"codes": oud},
+                nieuwe_waarde=nieuw,
+                administratie_id=administratie_id,
+            )
+        session.flush()
+        return VoegToeResultaat(
+            toegevoegd=sorted(toegevoegd), al_aan=sorted(al_aan), stand=naar_dto(_stand(session, administratie_id))
+        )

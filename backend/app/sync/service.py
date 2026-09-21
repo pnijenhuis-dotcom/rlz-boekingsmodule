@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.activa.categorie import is_mva_rekening
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
@@ -139,6 +140,8 @@ def _grootboek_waarden(record: dict[str, Any]) -> dict[str, Any]:
         "is_totaalrekening": bool(record["IsTotalAccount"]),
         # Opdracht Peter 14-09: btw-default uit de grootboekrekening (migratie 0142) — elke sync herschrijft 'm.
         "standaard_taxrate_id": standaard_taxrate_uit_ledger(record),
+        # Activa fase 1 (Peter 21-09, migratie 0168): MVA = IsFixedAssetAccount ÉN AccountType 3 ÉN code 0xxx (STAP-0 a9).
+        "is_activa": is_mva_rekening(record),
     }
 
 
@@ -299,6 +302,10 @@ def sync_alles_voor_administratie(*, administratie_id: uuid.UUID, client: RlzCli
                 id_kolom="id", kolom_waarden=_project_waarden,
             ),
         )
+        # Activa fase 1 (Peter 21-09): ná de Ledgers-sync — heeft de administratie ≥ 1 MVA-rekening, dan de RLZ-grens
+        # (`AdministrationSettings.FixedAssetAlertAmount`) verversen en het register proben (403 = recht ontbreekt,
+        # zichtbaar op de instelling + reconciliatieblok `activa`). Nooit blokkerend voor de sync.
+        _activa_na_ledgers_sync(administratie_id=administratie_id, client=client)
         # Administratienaam volgt de bron (Peter 15-09, 0144): dezelfde login, root-vorm `Administrations`; een
         # leesfout maakt de sync nooit rood (uitkomst 'onbekend', zichtbaar in de sync-regel).
         from app.beheer import administratienaam
@@ -307,6 +314,22 @@ def sync_alles_voor_administratie(*, administratie_id: uuid.UUID, client: RlzCli
     finally:
         if eigen_client:
             client.close()
+
+
+def _activa_na_ledgers_sync(*, administratie_id: uuid.UUID, client: RlzClient) -> None:
+    """Activa fase 1: grens + register-probe, alleen als er MVA-rekeningen zijn; élke fout gelogd, nooit een stop."""
+    try:
+        from app.activa import instelling as activa_instelling
+
+        with scoped_session(administratie_id) as session:
+            if not activa_instelling.heeft_mva_rekeningen(session, administratie_id):
+                return
+            activa_instelling.ververs_rlz_grens(session, client, administratie_id)
+            activa_instelling.probe_register(session, client, administratie_id)
+    except Exception:  # noqa: BLE001 — zichtbaar in de log, de sync loopt door
+        import logging
+
+        logging.getLogger(__name__).exception("activa: grens/register-probe mislukt voor %s", administratie_id)
 
 
 def lijst_grootboek(*, administratie_id: uuid.UUID) -> list[Grootboekrekening]:

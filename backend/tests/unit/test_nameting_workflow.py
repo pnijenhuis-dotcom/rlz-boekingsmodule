@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -296,3 +296,69 @@ def test_bot_commit_blijft_op_main_en_wacht_niet_op_een_deploy() -> None:
         "DEZELFDE provider als deploy.yml", ""
     ), "geen wacht-op-deploy-constructie"
     assert t.count("--rebase") == 1, "één rebase: alleen de bot's eigen commit op origin/main"
+
+
+# ---- (9) onderdeel bua-kandidaten (BUA 21-09) + élk niet-VGG-onderdeel buiten de VGG-tak -----------------------------
+
+
+def _vgg_uitsluitingen() -> set[str]:
+    """De `!=`-lijst vóór `vgg_blok7_nameting.sh "$ONDERDEEL"`: élk onderdeel dat dáár niet staat gaat als KEUZE naar
+    het VGG-script, dat alleen a|b|c|d|e|alles kent en anders exit 2 geeft → workflow rood vóór de eigen tak."""
+    meet = next(r for r in _run_stappen() if "vgg_blok7_nameting.sh" in r)
+    regel = next(
+        r for r in meet.splitlines() if 'vgg_blok7_nameting.sh "$ONDERDEEL"' not in r and '!= "reconciliatie"' in r
+    )
+    return set(re.findall(r'"\$ONDERDEEL" != "([a-z-]+)"', regel))
+
+
+def test_elk_niet_vgg_onderdeel_is_uitgesloten_van_de_vgg_tak() -> None:
+    """21-09: `groep-saldi` (toegevoegd 21-09 ochtend) ontbrak in de uitsluitingslijst — `gh workflow run nameting -f
+    onderdeel=groep-saldi` liep eerst in `vgg_blok7_nameting.sh groep-saldi` (exit 2, "gebruik: … [a|b|c|d|e|alles]")
+    en de workflow werd rood vóór de groep-saldi-tak. Regel: options minus {alles, a…e} ⊆ uitsluitingen."""
+    m = re.search(r"options: \[([^\]]+)\]", _tekst())
+    assert m
+    opties = {o.strip() for o in m.group(1).split(",")}
+    niet_vgg = opties - {"alles", "a", "b", "c", "d", "e"}
+    ontbrekend = niet_vgg - _vgg_uitsluitingen()
+    assert ontbrekend == set(), f"onderdelen die de VGG-tak (exit 2) in lopen: {sorted(ontbrekend)}"
+
+
+def test_onderdeel_bua_kandidaten_alleen_op_verzoek_en_lees_only(tmp_path: Path) -> None:
+    """BUA 21-09: kantoorbrede lees-only meting (`bua-kandidaten --jaar 2026 --detail`) alleen op verzoek (niet in
+    'alles'), uitsluitend via nameting.sh, uitkomst in verkenning/nameting-bua-kandidaten-<dd-mm>.txt mét eigen
+    oordeelregel."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "bua-kandidaten" ]]; then' in meet
+    assert "scripts/gcp/nameting.sh bua-kandidaten --jaar 2026 --detail" in meet
+    assert 'UIT="verkenning/nameting-bua-kandidaten-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "bua-kandidaten"' not in meet, "niet in 'alles'"
+    assert "bua-kenmerk-zetten" not in "\n".join(_code_regels()), (
+        "de schrijvende zetting hoort nooit in de nameting-workflow"
+    )
+    assert 'OORDEEL_BRON="verkenning/nameting-bua-kandidaten-$DATUM.txt"' in meet
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "bua-kandidaten",
+        {
+            "nameting-bua-kandidaten-14-09.txt": (
+                "kop\nOordeel: TOTAAL 297 kandidaat-rekening(en) in 75 van 79 administratie(s) · 0 mét kenmerk aan · "
+                "advies zetten: 149 · 0 fout(en) — job-exit 0\n"
+            ),
+            "nameting-vgg-replay-14-09.txt": REPLAY,
+        },
+    )
+    assert oordeel.startswith("Oordeel: TOTAAL 297 kandidaat-rekening(en)"), oordeel
+
+
+def test_nameting_sh_bua_kandidaten_in_allowlist_en_zetten_geweigerd() -> None:
+    """scripts/gcp/nameting.sh: `bua-kandidaten` in de lees-only ALLOWLIST + via_gh_onderdeel; `bua-kenmerk-zetten` in
+    de schrijvende weigerlijst (ook --dry-run is geen nameting)."""
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    allow = re.search(r'^ALLOWLIST="([^"]+)"', sh, flags=re.M)
+    assert allow and "bua-kandidaten" in allow.group(1).split()
+    assert "bua-kenmerk-zetten" not in allow.group(1).split()
+    weiger = re.search(r"^for schrijvend in ([^;]+); do", sh, flags=re.M)
+    assert weiger and "bua-kenmerk-zetten" in weiger.group(1).split()
+    assert re.search(r"^\s*bua-kandidaten\) echo bua-kandidaten ;;", sh, flags=re.M), (
+        "via_gh_onderdeel mist bua-kandidaten"
+    )

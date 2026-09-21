@@ -53,6 +53,25 @@ class BoekMetDoorbelastingResultaat:
     doorbelasting: dict[str, str] | None
     # Zichtbare fout van de doorbelasting-stap ná een geslaagde inkoopboeking (nooit stil)
     doorbelasting_fout: str | None
+    # Activa fase 1 (Peter 21-09): tellers van `app.activa.service.verwerk_na_boeken` ná de geslaagde boeking —
+    # {aangemaakt, mislukt, gepland_verwerkt, automatisch}; None = niets te doen / stap niet bereikt. Additief.
+    activa: dict[str, int] | None = None
+
+
+def _verwerk_activa_na_boeken(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID) -> dict[str, int] | None:
+    """Activum aanmaken ná een GESLAAGDE boeking — BUITEN de GEBOEKT-transactie (RLZ-write), in try/except: een fout
+    hier is een `mislukt`-koppeling (zichtbaar op de kaart + reconciliatieblok `activa`), nooit een exception die de
+    geslaagde boeking verhult. Lazy import: geen kring op moduleniveau."""
+    try:
+        from app.activa import service as activa_service
+
+        uit = activa_service.verwerk_na_boeken(administratie_id=administratie_id, document_id=document_id, actor_id=actor_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("activa ná boeken: verwerking viel om (document %s)", document_id)
+        return None
+    if not (uit.aangemaakt or uit.mislukt or uit.gepland_verwerkt or uit.automatisch):
+        return None
+    return uit.als_dict()
 
 
 def _registreer_run_fout(*, administratie_id: uuid.UUID, run_id: uuid.UUID, fout: str) -> None:
@@ -165,7 +184,11 @@ def boek_document_met_doorbelasting(
             timing=timing,
         )
         return BoekMetDoorbelastingResultaat(
-            boek=boek, doorbelasting_run_id=None, doorbelasting=None, doorbelasting_fout=None
+            boek=boek,
+            doorbelasting_run_id=None,
+            doorbelasting=None,
+            doorbelasting_fout=None,
+            activa=_verwerk_activa_na_boeken(administratie_id=administratie_id, document_id=document_id, actor_id=actor_id),
         )
 
     toets_klaargezette_doorbelasting(administratie_id=administratie_id, document_id=document_id, actor_id=actor_id)
@@ -229,5 +252,9 @@ def boek_document_met_doorbelasting(
     elif doorbelasting and any(v in ("mislukt", "half_geboekt") for v in doorbelasting.values()):
         fout = "Doorbelasting deels mislukt — zie het resultaat per doelentiteit (herstel via Doorbelasten…)"
     return BoekMetDoorbelastingResultaat(
-        boek=boek, doorbelasting_run_id=run.id, doorbelasting=doorbelasting, doorbelasting_fout=fout
+        boek=boek,
+        doorbelasting_run_id=run.id,
+        doorbelasting=doorbelasting,
+        doorbelasting_fout=fout,
+        activa=_verwerk_activa_na_boeken(administratie_id=administratie_id, document_id=document_id, actor_id=actor_id),
     )

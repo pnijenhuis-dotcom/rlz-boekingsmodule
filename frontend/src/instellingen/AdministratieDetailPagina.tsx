@@ -18,6 +18,7 @@ import { AfdelingenBeheer } from './AfdelingenBeheer'
 import { IntakeRegels } from './IntakeRegels'
 import { BtwDefaultRij } from './BtwDefaultRij'
 import { BtwAftrekUitgeslotenBlok } from './BtwAftrekUitgeslotenBlok'
+import { ActivaInstellingenBlok } from './ActivaInstellingenBlok'
 import { AutoboekenLerenRij } from './AutoboekenLerenRij'
 import { OmzetBronnenBlok } from './OmzetBronnenBlok'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
@@ -334,6 +335,9 @@ export function AdministratieDetailPagina({
           </div>
           {/* 18-09 (Peter, casus Rituals — BUA, migratie 0163): btw niet aftrekbaar per grootboekrekening; anker `btw-aftrek`. */}
           <BtwAftrekUitgeslotenBlok administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />
+          {/* Activa / MVA fase 1 (akkoord Peter 21-09, migratie 0168): opt-in automatisch aanmaken ná boeken, activeringsgrens,
+              termijn + afschrijvingsrekening per categorie, registerstand; anker `activa` (registry-entry 'activa'). */}
+          <ActivaInstellingenBlok administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />
           <div className="panel inst-paneel" style={{ marginTop: 12 }}>
             {a.afdelingen_ingeschakeld && (
               <div style={{ padding: '4px 16px 12px' }}>

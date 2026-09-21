@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.accordering.router import router as accordering_router
+from app.activa.router import router as activa_router
 from app.afdelingen.router import router as afdelingen_router
 from app.appupdate.router import router as appupdate_router
 from app.auth.privacy_pagina import router as privacy_pagina_router
@@ -275,6 +276,7 @@ app.include_router(beheer_router)
 app.include_router(odoo_router)
 app.include_router(intercompany_router)
 app.include_router(appupdate_router)  # OTA (Peter 16-09): manifest, bundels, Beheerder-blok App-updates
+app.include_router(activa_router)  # Activa / MVA fase 1 (Peter 21-09): kaart "Activum aanmaken?" + Instellingen › Activa
 
 
 @app.exception_handler(Exception)

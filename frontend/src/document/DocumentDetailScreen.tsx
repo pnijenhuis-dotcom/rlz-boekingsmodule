@@ -42,6 +42,7 @@ import { BoekvoorstelPanel, type ChecksStand, type GeboektInfo, type ToeTeVoegen
 import { MatchSectie } from './MatchSectie'
 import { MateriaalMatchSectie } from './MateriaalMatchSectie'
 import { OfferteMatchMelding } from './OfferteMatchMelding'
+import { ActivaVoorstelKaart } from './ActivaVoorstelKaart'
 import { IbanAccorderingSectie } from './IbanAccorderingSectie'
 import { SOORT_LABELS } from './ibanAccorderingApi'
 import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/ReviewSplitter'
@@ -1733,6 +1734,19 @@ export function DocumentDetailScreen() {
               geen verplichting). Nooit een blokkade: boeken kan altijd. */}
           {!achtergrondBezig && (
             <OfferteMatchMelding
+              administratieId={administratieId}
+              documentId={documentId}
+              status={detail.status}
+              soort={detail.soort}
+              boekvoorstelVersie={boekvoorstelVersie}
+            />
+          )}
+
+          {/* Activum aanmaken? (Activa / MVA fase 1, akkoord Peter 21-09, mockup controlescherm-v2 ⑨): voorstel-kaart
+              per boekvoorstelregel op een activarekening ≥ de activeringsgrens — de component gate zichzelf (alleen
+              inkoopfacturen; stil zonder kandidaten). Nooit een blokkade: boeken kan altijd. */}
+          {!achtergrondBezig && (
+            <ActivaVoorstelKaart
               administratieId={administratieId}
               documentId={documentId}
               status={detail.status}

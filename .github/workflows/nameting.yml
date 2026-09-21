@@ -30,7 +30,7 @@ on:
         description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -76,7 +76,9 @@ jobs:
           DATUM="$(TZ=Europe/Amsterdam date +%d-%m)"
           echo "onderdeel=$ONDERDEEL datum=$DATUM"
           rc_vgg=0
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" ]]; then
+          # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
+          # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -234,6 +236,28 @@ jobs:
             echo "Oordeel: ${TOTAAL:-geen totaalregel} · ${NIET_OK:-alle leden in het totaal} · ${FOUT:-0} regel(s) status fout — job-exit $rc_gs" >> "$UIT"
             echo "STATUS groep-saldi: rapport in $UIT (job-exit $rc_gs = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "bua-kandidaten" ]]; then
+            # BUA 21-09 (opdracht Peter): kantoorbrede lees-only meting van de BUA-kandidaat-rekeningen (kenmerk-stand,
+            # RLZ-/historie-default, module- en bank-geboekt 2026, advies per rekening) — alleen op verzoek, geen RLZ-call.
+            # Meetrecept "werkt in productie": TOTAAL-regel mét 0 fouten; ná `bua-kenmerk-zetten` (aparte job-stap ná Peters
+            # "ja") toont dezelfde meting "N mét kenmerk aan" = het aantal gezette rekeningen.
+            UIT="verkenning/nameting-bua-kandidaten-$DATUM.txt"
+            rc_bua=0
+            {
+              echo "== bua-kandidaten --jaar 2026 --detail (lees-only, kantoorbreed) =="
+              scripts/gcp/nameting.sh bua-kandidaten --jaar 2026 --detail 2> nameting-bua.stderr || rc_bua=$?
+            } > "$UIT"
+            cat nameting-bua.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-bua.stderr; then
+              echo "::error::bua-kandidaten kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_bua)" >> "$UIT"
+            TOTAAL="$(grep -m1 -o 'TOTAAL [0-9]* kandidaat-rekening(en) in [0-9]* van [0-9]* administratie(s) · [0-9]* mét kenmerk aan · advies zetten: [0-9]*' "$UIT" || true)"
+            FOUTEN="$(grep -m1 -o '[0-9]* fout(en)' "$UIT" || true)"
+            echo "Oordeel: ${TOTAAL:-geen totaalregel} · ${FOUTEN:-fouten onbekend} — job-exit $rc_bua" >> "$UIT"
+            echo "STATUS bua-kandidaten: rapport in $UIT (job-exit $rc_bua = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
             # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
@@ -268,6 +292,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-projecten-afgesloten-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "groep-saldi" ]]; then
             OORDEEL_BRON="verkenning/nameting-groep-saldi-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "bua-kandidaten" ]]; then
+            OORDEEL_BRON="verkenning/nameting-bua-kandidaten-$DATUM.txt"
           else
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           fi

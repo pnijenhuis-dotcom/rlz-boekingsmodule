@@ -226,7 +226,23 @@ def _onderwerp_rekening_courant(d: dict) -> Segmenten:
     return [a or "", f"↔ {b}" if b else ""]
 
 
+def _onderwerp_activa(d: dict) -> Segmenten:
+    """Activa fase 1 (21-09): omschrijving/leverancier · activumnummer · administratie."""
+    nr = _s(d, "rlz_receipt_number")
+    return [
+        x
+        for x in (
+            _s(d, "omschrijving", "leverancier_naam"),
+            f"nr {nr}" if nr else None,
+            _s(d, "administratie_naam"),
+        )
+        if x
+    ]
+
+
 def _onderwerp(blok: str, d: dict) -> Segmenten:
+    if blok == "activa":
+        return _onderwerp_activa(d)
     if blok == "documenten":
         return _onderwerp_documenten(d)
     if blok == "rlz_dubbel":
@@ -1012,7 +1028,55 @@ def _projecten(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
     )
 
 
+def _activa(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
+    """Blok `activa` (fase 1, 21-09): aansluiting module-boekingen ↔ RLZ-activaregister; elke soort draagt een handeling."""
+    onderwerp = _onderwerp_activa(d)
+    adm = _s(d, "administratie_naam") or "deze administratie"
+    bedrag = euro(d.get("bedrag"))
+    if soort == "activa_register_niet_leesbaar":
+        return (
+            _titel("Activaregister niet leesbaar", adm),
+            f"De webservice-login van {adm} mag het activaregister (FixedAssets) in Reeleezee niet lezen (403) — activa "
+            "aanmaken en de aansluiting controleren kan daardoor niet.",
+            "Zet in Reeleezee het recht 'Vaste activa' op de webservice-login; de volgende sync meet opnieuw.",
+        )
+    if soort == "mva_boeking_zonder_activum":
+        lev = _s(d, "leverancier_naam") or "onbekende leverancier"
+        nr = _s(d, "factuurnummer")
+        rek = " ".join(x for x in (_s(d, "ledger_code"), _s(d, "ledger_naam")) if x)
+        return (
+            _titel("Boeking op activarekening zonder activum", onderwerp),
+            f"Factuur {lev}{f' {nr}' if nr else ''} is op {rek or 'een activarekening'} geboekt voor {bedrag or '?'} "
+            "maar er staat geen activum met dat bedrag in het Reeleezee-register.",
+            "Open het controlescherm en klik 'Activum aanmaken' (of 'Niet activeren…' met reden als het geen activum is).",
+        )
+    if soort == "activum_zonder_boeking":
+        return (
+            _titel("Activum zonder module-boeking", onderwerp),
+            f"Activum nr {_s(d, 'rlz_receipt_number') or '?'} '{_s(d, 'omschrijving') or '?'}' ({bedrag or '?'}, "
+            f"aanschaf {datum(d.get('aanschafdatum')) or '?'}) staat in het Reeleezee-register zonder inkoopboeking uit de module.",
+            "Controleer de boeking in Reeleezee (handmatig ingevoerd? dubbel?); klopt het, accepteer met reden.",
+        )
+    if soort == "afschrijving_niet_gelopen":
+        return (
+            _titel("Afschrijving niet gelopen", onderwerp),
+            f"Activum nr {_s(d, 'rlz_receipt_number') or '?'} '{_s(d, 'omschrijving') or '?'}' is ouder dan een jaar "
+            f"(aanschaf {datum(d.get('aanschafdatum')) or '?'}) maar er is nog niets afgeschreven (boekwaarde {bedrag or '?'}).",
+            "Controleer in Reeleezee de afschrijvingsmethode en de startmaand van dit activum en boek de afschrijving.",
+        )
+    if soort == "activum_aanmaken_mislukt":
+        return (
+            _titel("Activum aanmaken mislukt", onderwerp),
+            f"Het activum '{_s(d, 'omschrijving') or '?'}' ({bedrag or '?'}) is niet in Reeleezee aangemaakt: "
+            f"{_s(d, 'reden') or 'onbekende reden'}.",
+            "Herstel de oorzaak (afschrijvingsrekening kiezen, RLZ-recht, methode) en klik 'Opnieuw aanmaken' op het "
+            "controlescherm.",
+        )
+    return (_titel("Afwijking activa", onderwerp), _terugval_wat(tekst), f"Beoordeel de afwijking; {_DOE_ACCEPTEER}")
+
+
 _BLOK_AFWIJKING = {
+    "activa": _activa,
     "projecten": _projecten,
     "documenten": _documenten,
     "doorbelasting_aansluiting": _doorbelasting_aansluiting,

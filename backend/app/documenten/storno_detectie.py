@@ -163,6 +163,15 @@ def detecteer_en_meld_gestorneerd(*, administratie_id: uuid.UUID, client: RlzCli
                     actor_id=SYSTEEM_ACTOR_ID,
                     reden="storno gedetecteerd in de RLZ-UI (actie 19)",
                 )
+                # Activa fase 1 (21-09): aangemaakt activum → `beoordelen` (nooit verwijderen).
+                from app.activa import service as activa_service
+
+                activa_service.markeer_beoordelen_bij_storno(
+                    session,
+                    document_id=document_id,
+                    actor_id=SYSTEEM_ACTOR_ID,
+                    reden="storno gedetecteerd in de RLZ-UI (actie 19)",
+                )
                 record_audit_event(
                     session,
                     actor_id=SYSTEEM_ACTOR_ID,

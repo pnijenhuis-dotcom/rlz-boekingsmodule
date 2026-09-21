@@ -417,6 +417,12 @@ def herboek_als_omzet(
             actor_id=actor_id,
             reden=f"omzet als inkoop geboekt — herboekt als omzet: {reden}",
         )
+        # Activa fase 1 (21-09): aangemaakt activum → `beoordelen` (nooit verwijderen).
+        from app.activa import service as activa_service
+
+        activa_service.markeer_beoordelen_bij_storno(
+            session, document_id=document_id, actor_id=actor_id, reden=f"omzet als inkoop geboekt — herboekt als omzet: {reden}"
+        )
         autoboeken_service.reset_na_correctie_in_sessie(
             session, administratie_id=administratie_id, document_id=document_id, reden="correctie", actor_id=actor_id
         )

@@ -136,6 +136,34 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
       }),
     )
   }
+  // 21-09 (Activa / MVA-blok op de tab Boeken & AI): volledige stand mét zeven categorieën, één activarekening en een
+  // 403-registerstand — zodat de sweep de categorie-tabel (Select + combobox per rij) op élke breedte meet.
+  if (url.endsWith('/activa-instelling')) {
+    const cat = (code: string, label: string, default_maanden: number) => ({ code, label, default_maanden })
+    return Promise.resolve(
+      jsonResponse({
+        automatisch_aanmaken_ingeschakeld: false,
+        activeringsgrens: '450.00',
+        grens_rlz: '450.00',
+        grens_rlz_gelezen_op: '2026-09-21T06:30:00Z',
+        effectieve_grens: '450.00',
+        grens_bron: 'rlz',
+        termijnen: { computers_software: 36 },
+        afschrijving_ledgers: { inventaris: 'gb-0108' },
+        register_leesbaar: false,
+        register_geprobeerd_op: '2026-09-21T06:30:00Z',
+        register_fout: 'HTTP 403 op FixedAssets',
+        categorieen: [
+          cat('gebouwen', 'Gebouwen en terreinen', 360), cat('inventaris', 'Inventaris', 60), cat('vervoermiddelen', 'Vervoermiddelen', 60),
+          cat('computers_software', 'Computers / software', 36), cat('machines', 'Machines', 60), cat('steigermateriaal', 'Steigermateriaal', 60),
+          cat('onbekend', 'Onbekend — controleer', 60),
+        ],
+        mva_rekeningen: [{ ledger_id: 'gb-0107', code: '0107', naam: 'Inventaris' }],
+        afschrijving_ledger_opties: [{ ledger_id: 'gb-0108', code: '0108', naam: 'Afschrijving inventaris' }],
+        koppelingen_tellers: { gepland: 0, aangemaakt: 0, overgeslagen: 0, mislukt: 0, beoordelen: 0 },
+      }),
+    )
+  }
   // 18-09: laadAlles() van InstellingenScreen wacht op álle vijf instellingen-calls — zonder deze drie mocks toonde élke
   // sectie mét administraties (accordering, doorbelasting) "backend niet bereikbaar" in het harnas.
   if (url === '/instellingen/duplicaat-autoafvoer') return Promise.resolve(jsonResponse({ ingeschakeld: true }))

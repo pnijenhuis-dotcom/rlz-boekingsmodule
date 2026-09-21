@@ -647,6 +647,12 @@ def voer_tegenboeking_uit(
             actor_id=actor_id,
             reden=f"tegengeboekt ({soort}): {reden.strip()}",
         )
+        # Activa fase 1 (21-09): een aangemaakt activum wordt NOOIT verwijderd — koppeling → `beoordelen`, tijdlijn + audit.
+        from app.activa import service as activa_service
+
+        activa_service.markeer_beoordelen_bij_storno(
+            session, document_id=document_id, actor_id=actor_id, reden=f"tegengeboekt ({soort}): {reden.strip()}"
+        )
         # Autoboeken per administratie (blok A bundel 10-09): was dit document AUTOMATISCH geboekt, dan is deze
         # tegenboeking een correctie van het systeem → leverancier terug op "leert 0/N" (opt-in uit, reset-moment,
         # audit + tijdlijnregel) — ín deze transactie. Lazy import: geen kring (autoboeken importeert boeken).

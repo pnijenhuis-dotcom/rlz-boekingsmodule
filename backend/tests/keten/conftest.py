@@ -306,7 +306,10 @@ def rlz(monkeypatch: pytest.MonkeyPatch) -> FakeBoekClient:
     """Dé RLZ-kant voor de hele keten (checks, duplicaatsignaal, boeken, tegenboeken) — één instantie per test,
     zodat een test `rlz.duplicaten = [...]` kan zetten en `rlz.puts` kan lezen."""
     client = FakeBoekClient()
-    for module in (boekvoorstel, duplicaatsignaal, boeken, tegenboeken):
+    # Activa fase 1 (21-09): de RLZ-schrijver van het activum (`app.activa.service.maak_aan_in_rlz`) opent via dezelfde seam.
+    from app.activa import service as activa_service
+
+    for module in (boekvoorstel, duplicaatsignaal, boeken, tegenboeken, activa_service):
         monkeypatch.setattr(module, "client_voor_rlz_admin_id", lambda rlz_admin_id, _c=client: _c)
     return client
 
