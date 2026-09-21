@@ -18,7 +18,7 @@ export function redenNietVerplaatsbaar(status: string, soort: string): string | 
   if (VERPLAATS_STATUSSEN.has(status)) return null
   switch (status) {
     case 'geboekt':
-      return 'Geboekt — draai de boeking eerst terug (storno in RLZ of "Tegenboeken…"), daarna kan het document verplaatst worden.'
+      return 'Geboekt — draai de boeking eerst terug via storno ("Corrigeren…" hieronder, of "Tegenboeken…" ná een ingediende aangifte), daarna kan het document verplaatst worden.'
     case 'ter_accordering':
       return 'Ligt bij de klant ter accordering — trek de accordering eerst in.'
     case 'wacht_op_iban_accordering':

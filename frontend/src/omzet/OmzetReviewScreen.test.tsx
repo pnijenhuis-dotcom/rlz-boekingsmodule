@@ -374,7 +374,9 @@ describe('OmzetReviewScreen', () => {
     installFetchMock({ detail: { status: 'geboekt' } })
     renderScherm()
 
-    expect(await screen.findByText(/geboekt in RLZ\. Wijzigen kan alleen via stornering/)).toBeInTheDocument()
+    expect(await screen.findByText(/geboekt in RLZ\. Wijzigen =/)).toBeInTheDocument()
+    // Corrigeren… (Peter 21-09): het ⋯-menu mét de storno-route staat naast de geboekt-regel.
+    expect(screen.getByRole('button', { name: 'Meer acties' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Boeken in RLZ/ })).not.toBeInTheDocument()
   })
 })

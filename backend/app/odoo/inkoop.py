@@ -51,6 +51,7 @@ from app.backends.port import (
     CrediteurNietGekoppeld,
     NietOndersteund,
     OrigineelStand,
+    StornoUitkomst,
     TegenboekUitkomst,
     ToetsMislukt,
     ToetsUitkomst,
@@ -830,6 +831,14 @@ class OdooInkoopPort:
             extern_document_id=odoo_uuid(self.client.company_id, MODEL_MOVE, move_id),
             boekstuknummer=move.get("name") or None,
             detail=detail,
+        )
+
+    def storneer(self, *, document_id: uuid.UUID, boek_cyclus: int) -> StornoUitkomst:
+        """Capability-contract 0016 §4: Odoo kent geen storno op hetzelfde document (`button_draft` wordt bewust
+        nooit gebruikt, besluit Peter 02-09) — zichtbaar `NietOndersteund`, de aanroeper biedt het tegenboek-pad
+        (reversal mét kruisverwijzing)."""
+        raise NietOndersteund(
+            "Odoo kent geen storno op hetzelfde document — corrigeren = creditnota (reversal) via 'Tegenboeken…'"
         )
 
     def origineel_stand(self, *, document_id: uuid.UUID, boek_cyclus: int) -> OrigineelStand:

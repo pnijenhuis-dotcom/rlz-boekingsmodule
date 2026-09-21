@@ -10,6 +10,7 @@ import type {
   VerkoopVoorstelInputDto,
 } from '../api/types'
 import { GeboektInRlzRegel } from '../document/GeboektInRlz'
+import { CorrectieBalk, CorrigerenDialog, CorrigerenMenu, corrigerenMogelijk, useCorrigerenDialoog } from '../document/CorrigerenActie'
 import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { formatteerXml } from '../document/DocumentDetailScreen'
 import { SearchableCombobox } from '../document/SearchableCombobox'
@@ -112,6 +113,9 @@ export function VerkoopReviewScreen() {
   const wijzigingsVersieRef = useRef(0)
   const [popupChecks, setPopupChecks] = useState<{ melding: string | null; checks: CheckRapportDto } | null>(null)
 
+  // Corrigeren… (Peter 21-09): storno + opnieuw klaarzetten; ná de actie het detail opnieuw laden.
+  const corrigeren = useCorrigerenDialoog()
+  const [herlaadTeller, setHerlaadTeller] = useState(0)
   const markeerGewijzigd = useCallback(() => {
     setChecksActueel(false)
     wijzigingsVersieRef.current += 1
@@ -174,7 +178,7 @@ export function VerkoopReviewScreen() {
     return () => {
       actief = false
     }
-  }, [administratieId, documentId, neemVoorstelOver])
+  }, [administratieId, documentId, neemVoorstelOver, herlaadTeller])
 
   useEffect(() => {
     if (!administratieId || !documentId) return
@@ -660,6 +664,8 @@ export function VerkoopReviewScreen() {
             )}
           </div>
 
+          {/* Gele balk ná "Corrigeren…" (Peter 21-09) — uit de tijdlijnregel, tot het document opnieuw geboekt is. */}
+          <CorrectieBalk tijdlijn={detail.tijdlijn} status={detail.status} />
           <div className="panel">
             {opslaanFout && <div className="fout">{opslaanFout}</div>}
             {boekenFout && <div className="fout">{boekenFout}</div>}
@@ -677,21 +683,34 @@ export function VerkoopReviewScreen() {
             )}
             {isGeboekt && !boekResultaat && detail.geboekt_in_rlz && <GeboektInRlzRegel stand={detail.geboekt_in_rlz} />}
             {isGeboekt && !boekResultaat && (
-              <p className="hint" style={{ marginTop: 0 }}>
-                {detail.geboekt_in_rlz ? 'Wijzigen' : (
-                  <>
-                    Deze verkoopfactuur is geboekt in RLZ
-                    {voorstel.rlz_boekstuknummer ? (
-                      <>
-                        {' '}
-                        als <b>{voorstel.rlz_boekstuknummer}</b>
-                      </>
-                    ) : null}
-                    . Wijzigen
-                  </>
-                )}{' '}
-                kan alleen via stornering in Reeleezee (actie 19).
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <p className="hint" style={{ margin: 0, flex: 1 }}>
+                  {detail.geboekt_in_rlz ? 'Wijzigen' : (
+                    <>
+                      Deze verkoopfactuur is geboekt in RLZ
+                      {voorstel.rlz_boekstuknummer ? (
+                        <>
+                          {' '}
+                          als <b>{voorstel.rlz_boekstuknummer}</b>
+                        </>
+                      ) : null}
+                      . Wijzigen
+                    </>
+                  )}{' '}
+                  = &ldquo;Corrigeren…&rdquo; in het ⋯-menu (storno + opnieuw klaarzetten, met reden).
+                </p>
+                {corrigerenMogelijk(detail.status, detail.soort) && <CorrigerenMenu onKies={() => corrigeren.setOpen(true)} />}
+              </div>
+            )}
+            {corrigerenMogelijk(detail.status, detail.soort) && (
+              <CorrigerenDialog
+                administratieId={administratieId}
+                documentId={documentId}
+                soort={detail.soort}
+                open={corrigeren.open}
+                onClose={() => corrigeren.setOpen(false)}
+                onGecorrigeerd={() => setHerlaadTeller((n) => n + 1)}
+              />
             )}
             {!isGeboekt && (
               <div className="actions">

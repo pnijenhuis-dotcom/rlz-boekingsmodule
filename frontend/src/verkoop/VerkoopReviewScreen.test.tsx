@@ -439,6 +439,7 @@ describe('VerkoopReviewScreen', () => {
     const regel = await screen.findByTestId('geboekt-in-rlz-regel')
     expect(regel).toHaveTextContent('Geboekt in RLZ · boekstuk RLZ-01-00000442 · J.G.M. Elissen Holding BV')
     expect(regel).toHaveTextContent('níét in Verkopen → Facturen')
-    expect(screen.getByText(/Wijzigen kan alleen via stornering/)).toBeInTheDocument()
+    expect(screen.getByText(/Wijzigen = “Corrigeren…” in het ⋯-menu/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Meer acties' })).toBeInTheDocument()
   })
 })

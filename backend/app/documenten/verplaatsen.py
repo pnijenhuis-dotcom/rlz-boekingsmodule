@@ -88,8 +88,8 @@ VERPLAATSBARE_STATUSSEN = frozenset(
 
 _REDEN_PER_STATUS: dict[DocumentStatus, str] = {
     DocumentStatus.GEBOEKT: (
-        "Een geboekt document verplaats je niet — draai de boeking eerst terug (storno in RLZ of "
-        '"Tegenboeken…"); daarna kan het document verplaatst worden.'
+        'Een geboekt document verplaats je niet — draai de boeking eerst terug via storno ("Corrigeren…" in het ⋯-menu, of '
+        '"Tegenboeken…" ná een ingediende aangifte); daarna kan het document verplaatst worden.'
     ),
     DocumentStatus.TER_ACCORDERING: (
         "Het document ligt bij de klant ter accordering — trek de accordering eerst in, dan kan het verplaatst worden."

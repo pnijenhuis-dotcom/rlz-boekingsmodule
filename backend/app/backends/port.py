@@ -58,6 +58,20 @@ class TegenboekUitkomst:
 
 
 @dataclass(frozen=True)
+class StornoUitkomst:
+    """Uitkomst van `InkoopPort.storneer` (Corrigeren vanuit de module, Peter 21-09): actie 19 op het externe
+    document van de actieve boek_cyclus. `al_concept` = het stuk stond al op concept (in de RLZ-UI gestorneerd) —
+    er is dan niets geschreven; `verdwenen` = het stuk bestaat niet meer (404) — óók niets geschreven, de
+    aanroeper beslist (de herstelroute is dan "Opnieuw boeken" vanuit de reconciliatie)."""
+
+    extern_document_id: uuid.UUID
+    gestorneerd: bool
+    al_concept: bool = False
+    verdwenen: bool = False
+    detail: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class OrigineelStand:
     """Stand van het origineel vóór een tegenboeking: de storno-toets (aangifte-/lock-poort), de
     betaalstatus en of het origineel nog geboekt staat."""
@@ -154,3 +168,12 @@ class InkoopPort(Protocol):
         bestand: bytes,
         bestandsnaam: str,
     ) -> TegenboekUitkomst: ...
+
+    def storneer(self, *, document_id: uuid.UUID, boek_cyclus: int) -> StornoUitkomst:
+        """Corrigeren vanuit de module (Peter 21-09, `app/documenten/corrigeren.py`): zet het externe document van
+        deze boek_cyclus terug naar concept — RLZ = actie 19 op het herboeking-GUID (hetzelfde document, geen
+        creditstuk; api-verkenning "Actie 19 Correct"); Odoo kent geen storno op hetzelfde document
+        (besluit Peter 02-09: corrigeren = reversal) en raise-t `NietOndersteund` — de aanroeper biedt dan het
+        tegenboek-pad. Idempotent: al concept = niets schrijven, 404 = `verdwenen`, elke andere backend-fout =
+        `BackendBoekFout` mét leesbare reden (er is dan niets lokaal gewijzigd)."""
+        ...

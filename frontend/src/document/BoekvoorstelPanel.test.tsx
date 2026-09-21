@@ -347,7 +347,7 @@ describe('BoekvoorstelPanel', () => {
     expect(screen.queryByRole('button', { name: 'Boeken in RLZ ✓' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Referentie / factuurnummer' })).not.toBeInTheDocument()
     expect(
-      screen.getByText('Wijzigen kan alleen via stornering in Reeleezee (actie 19); daarna komt het document hier terug als concept.'),
+      screen.getByText('Wijzigen: kies “Corrigeren…” in het ⋯-menu bovenaan (storno + opnieuw klaarzetten, met reden), of “Tegenboeken…” als de btw-aangifte al is ingediend.'),
     ).toBeInTheDocument()
   })
 

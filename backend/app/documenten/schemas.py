@@ -1119,6 +1119,64 @@ class TegenboekenResponse(BaseModel):
     rlz_boekstuknummer: str | None = None
 
 
+class CorrigeerBlokkadeDto(BaseModel):
+    """Eén poort die corrigeren blokkeert + de route die dan wél geldt (`actie`: tegenboeken | bank |
+    opnieuw_boeken)."""
+
+    code: str
+    melding: str
+    actie: Literal["tegenboeken", "bank", "opnieuw_boeken"] | None = None
+    actie_pad: str | None = None
+
+
+class CorrigeerStukDto(BaseModel):
+    label: str
+    extern_id: uuid.UUID
+    bestaat: bool
+    nog_geboekt: bool
+    boekstuknummer: str | None = None
+    betaald_bedrag: Decimal | None = None
+
+
+class CorrigeerDoorbelastingDto(BaseModel):
+    boeking_id: uuid.UUID
+    doelentiteit: str
+    toegestaan: bool
+    reden: str | None = None
+
+
+class CorrigeerToetsResponse(BaseModel):
+    """Leesroute "Corrigeren…" (Peter 21-09): `beschikbaar` = geen enkele poort blokkeert; anders `blokkades` mét route.
+    `tegenboeken_beschikbaar` = het tegenboek-pad is de aangewezen route (aangifte/Odoo op een inkoopfactuur)."""
+
+    document_id: uuid.UUID
+    soort: str
+    backend: str
+    beschikbaar: bool
+    blokkades: list[CorrigeerBlokkadeDto] = []
+    oud_boekstuknummer: str | None = None
+    stukken: list[CorrigeerStukDto] = []
+    doorbelasting: list[CorrigeerDoorbelastingDto] = []
+    tegenboeken_beschikbaar: bool = False
+
+
+class CorrigerenInput(StrikteInvoer):
+    reden: str
+
+
+class CorrigerenResponse(BaseModel):
+    document_id: uuid.UUID
+    status: str
+    soort: str
+    boek_cyclus: int | None = None
+    oud_boekstuknummer: str | None = None
+    oud_extern_id: str | None = None
+    gestorneerd: list[str] = []
+    al_concept: list[str] = []
+    doorbelasting_gestorneerd: int = 0
+    doel_pad: str
+
+
 class VerplaatsInput(StrikteInvoer):
     """Addendum kantoor-run 27-08 punt 5: "Verplaats naar andere administratie…" — alleen het doel;
     de bron staat in het pad. Reden is bewust niet verplicht (de verhuizing zelf is de correctie

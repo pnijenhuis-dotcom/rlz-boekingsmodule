@@ -31,6 +31,7 @@ from app.documenten import (
     boeken,
     boekvoorstel,
     checks_extern,
+    corrigeren,
     duplicaat_afvoer,
     iban_accordering,
     leverancier_iban,
@@ -1533,6 +1534,99 @@ def document_tegenboeken(
         status=resultaat.status.value,
         rlz_tegenboeking_id=resultaat.rlz_tegenboeking_id,
         rlz_boekstuknummer=resultaat.rlz_boekstuknummer,
+    )
+
+
+def _naar_corrigeer_toets_response(data: corrigeren.CorrigeerToets) -> schemas.CorrigeerToetsResponse:
+    return schemas.CorrigeerToetsResponse(
+        document_id=data.document_id,
+        soort=data.soort,
+        backend=data.backend,
+        beschikbaar=data.beschikbaar,
+        blokkades=[schemas.CorrigeerBlokkadeDto(**b.als_dict()) for b in data.blokkades],
+        oud_boekstuknummer=data.oud_boekstuknummer,
+        stukken=[
+            schemas.CorrigeerStukDto(
+                label=s.label,
+                extern_id=s.extern_id,
+                bestaat=s.bestaat,
+                nog_geboekt=s.nog_geboekt,
+                boekstuknummer=s.boekstuknummer,
+                betaald_bedrag=s.betaald_bedrag,
+            )
+            for s in data.stukken
+        ],
+        doorbelasting=[
+            schemas.CorrigeerDoorbelastingDto(
+                boeking_id=k.boeking_id, doelentiteit=k.doelentiteit, toegestaan=k.toegestaan, reden=k.reden
+            )
+            for k in data.doorbelasting
+        ],
+        tegenboeken_beschikbaar=data.tegenboeken_beschikbaar,
+    )
+
+
+@router.get(
+    "/administraties/{administratie_id}/documenten/{document_id}/corrigeer-toets",
+    response_model=schemas.CorrigeerToetsResponse,
+)
+def document_corrigeer_toets(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.CorrigeerToetsResponse:
+    """Leesroute "Corrigeren…" (opdracht Peter 21-09, `app/documenten/corrigeren.py`): welke poorten blokkeren
+    (aangifte → tegenboeken, afgeletterd → bank, doorbelasting, verdwenen → opnieuw boeken, Odoo) en de stand van de
+    externe stukken — de dialoog toont de route in plaats van een knop die pas server-side faalt."""
+    try:
+        data = corrigeren.toets(administratie_id=administratie_id, document_id=document_id)
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except corrigeren.CorrigerenFout as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except GeenRlzCredentials as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return _naar_corrigeer_toets_response(data)
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/corrigeren",
+    response_model=schemas.CorrigerenResponse,
+)
+def document_corrigeren(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    invoer: schemas.CorrigerenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.CorrigerenResponse:
+    """"Corrigeren…" op een GEBOEKT inkoop-/verkoop-/kassarapport-document: storno (actie 19) + opnieuw klaarzetten
+    in één handeling mét verplichte reden — 409 mét `{code, bericht, blokkades}` als een poort blokkeert, 409
+    `al_gecorrigeerd` bij een tweede klik, 502 als de backend de storno weigerde (niets lokaal gewijzigd)."""
+    try:
+        resultaat = corrigeren.corrigeer(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id, reden=invoer.reden
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (corrigeren.CorrigerenNietToegestaan, corrigeren.AlGecorrigeerd) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.als_detail()) from exc
+    except corrigeren.CorrigerenMislukt as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    except corrigeren.CorrigerenFout as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except GeenRlzCredentials as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return schemas.CorrigerenResponse(
+        document_id=resultaat.document_id,
+        status=resultaat.status.value,
+        soort=resultaat.soort,
+        boek_cyclus=resultaat.boek_cyclus,
+        oud_boekstuknummer=resultaat.oud_boekstuknummer,
+        oud_extern_id=resultaat.oud_extern_id,
+        gestorneerd=resultaat.gestorneerd,
+        al_concept=resultaat.al_concept,
+        doorbelasting_gestorneerd=resultaat.doorbelasting_gestorneerd,
+        doel_pad=resultaat.doel_pad,
     )
 
 

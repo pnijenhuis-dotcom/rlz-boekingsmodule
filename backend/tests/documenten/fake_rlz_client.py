@@ -169,6 +169,16 @@ class FakeBoekClient:
         self.uploads.append({"entity_id": entity_id, "upload_id": upload_id, "filename": filename})
         return SimpleNamespace(status_code=204)
 
+    def correct_purchase_invoice(self, invoice_id: uuid.UUID) -> SimpleNamespace:
+        """Actie 19 (Corrigeren vanuit de module, 21-09): hetzelfde document terug naar concept (Status 1)."""
+        if self.faal_op == "correct":
+            raise RlzApiError(500, "POST", "Actions", "Storno mislukt (simulatie)")
+        if str(invoice_id) not in self._invoices:
+            raise RlzApiError(404, "POST", "Actions", "Niet gevonden (simulatie)")
+        self.correcties = [*getattr(self, "correcties", []), invoice_id]
+        self._invoices[str(invoice_id)]["Status"] = 1
+        return SimpleNamespace(status_code=204)
+
     def book_purchase_invoice(self, invoice_id: uuid.UUID) -> SimpleNamespace:
         if self.faal_op == "book":
             raise RlzApiError(500, "POST", "Actions", "Boeken mislukt (simulatie)")

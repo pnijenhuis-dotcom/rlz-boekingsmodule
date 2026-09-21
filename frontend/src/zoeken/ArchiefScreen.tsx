@@ -402,6 +402,24 @@ export function ArchiefScreen() {
                         >
                           PDF openen
                         </button>
+                        {/* Corrigeren… (Peter 21-09): opent het controlescherm mét de corrigeer-dialoog (storno + opnieuw
+                            klaarzetten); de dialoog toetst server-side de poorten en wijst anders de route. */}
+                        {(doc.status ?? 'geboekt') === 'geboekt' &&
+                          ['inkoopfactuur', 'verkoopfactuur', 'kassarapport'].includes(doc.soort) &&
+                          !doc.tegengeboekt &&
+                          !doc.afgevoerd_als_duplicaat_van && (
+                            <button
+                              type="button"
+                              className="linkbtn"
+                              role="menuitem"
+                              onClick={() => {
+                                setMenuOpen(null)
+                                navigate(`${reviewPad(doc.soort, doc.administratie_id, doc.document_id)}?corrigeren=1`)
+                              }}
+                            >
+                              Corrigeren…
+                            </button>
+                          )}
                         {/* Tegenboek-ingang (mockup 22-08): opent het controlescherm mét de tegenboek-flow
                             open; alleen zinvol op inkoopfacturen — de sectie zelf toetst server-side of
                             storno écht geblokkeerd is. */}

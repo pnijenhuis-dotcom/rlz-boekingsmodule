@@ -166,8 +166,11 @@ class FakeOmzetClient:
         collectie_max_nummer: int = 371,
         memoriaal_duplicaten: list[dict[str, Any]] | None = None,
         receipt_duplicaten: list[dict[str, Any]] | None = None,
+        aangiften: list[dict[str, Any]] | None = None,
     ) -> None:
         self.faal_op = faal_op
+        # TaxDeclarations-seed voor de aangiftepoort (Corrigeren vanuit de module, 21-09) — default leeg: storno vrij.
+        self.aangiften = aangiften or []
         self.nummer_botsing = nummer_botsing
         self.collectie_max_nummer = collectie_max_nummer
         self.memoriaal_duplicaten = memoriaal_duplicaten or []
@@ -346,6 +349,11 @@ class FakeOmzetClient:
         if self.faal_op == f"upload_{entity_path}":
             raise RlzApiError(500, "PUT", f"{entity_path}/{entity_id}/Uploads", "Upload mislukt (simulatie)")
         self.uploads.append({"pad": entity_path, "entity_id": str(entity_id), "upload_id": str(upload_id)})
+
+    def list_tax_declarations(self) -> list[dict[str, Any]]:
+        if self.faal_op == "aangiften":
+            raise RlzApiError(500, "GET", "TaxDeclarations", "Aangiften mislukt (simulatie)")
+        return self.aangiften
 
     def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Voor de reconciliatie (raw GET op SalesInvoices/{id} / ManualJournals/{id})."""

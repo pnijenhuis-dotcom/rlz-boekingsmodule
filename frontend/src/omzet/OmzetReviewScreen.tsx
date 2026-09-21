@@ -11,6 +11,7 @@ import type {
   OmzetVoorstelInputDto,
 } from '../api/types'
 import { GeboektInRlzRegel } from '../document/GeboektInRlz'
+import { CorrectieBalk, CorrigerenDialog, CorrigerenMenu, corrigerenMogelijk, useCorrigerenDialoog } from '../document/CorrigerenActie'
 import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { anderModus, brutoNaarNetto, rondCenten, useBedragModus } from '../document/bedragModus'
 import { BedragModusInput } from '../document/BedragModusInput'
@@ -135,6 +136,9 @@ export function OmzetReviewScreen() {
   // Blok E (Peter 16-09): kopje "Omzet netto/bruto" klikbaar — voorkeur per gebruiker, geen tegenwaarde onder de cel.
   const [bedragModus, wisselBedragModus] = useBedragModus()
 
+  // Corrigeren… (Peter 21-09): storno van Receipt + kostprijsmemoriaal en opnieuw klaarzetten; daarna herladen.
+  const corrigeren = useCorrigerenDialoog()
+  const [herlaadTeller, setHerlaadTeller] = useState(0)
   const markeerGewijzigd = useCallback(() => {
     setChecksActueel(false)
     wijzigingsVersieRef.current += 1
@@ -189,7 +193,7 @@ export function OmzetReviewScreen() {
     return () => {
       actief = false
     }
-  }, [administratieId, documentId, neemVoorstelOver])
+  }, [administratieId, documentId, neemVoorstelOver, herlaadTeller])
 
   useEffect(() => {
     if (!administratieId || !documentId) return
@@ -991,6 +995,8 @@ export function OmzetReviewScreen() {
             )}
           </div>
 
+          {/* Gele balk ná "Corrigeren…" (Peter 21-09) — uit de tijdlijnregel, tot het document opnieuw geboekt is. */}
+          <CorrectieBalk tijdlijn={detail.tijdlijn} status={detail.status} />
           <div className="panel">
             {opslaanFout && <div className="fout">{opslaanFout}</div>}
             {boekenFout && <div className="fout">{boekenFout}</div>}
@@ -1008,10 +1014,24 @@ export function OmzetReviewScreen() {
             )}
             {isGeboekt && !boekResultaat && detail.geboekt_in_rlz && <GeboektInRlzRegel stand={detail.geboekt_in_rlz} />}
             {isGeboekt && !boekResultaat && (
-              <p className="hint" style={{ marginTop: 0 }}>
-                {detail.geboekt_in_rlz ? 'Wijzigen' : 'Deze omzetboeking is geboekt in RLZ. Wijzigen'} kan alleen via
-                stornering in Reeleezee (actie 19) — de omzet-reconciliatie signaleert dat dan.
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <p className="hint" style={{ margin: 0, flex: 1 }}>
+                  {detail.geboekt_in_rlz ? 'Wijzigen' : 'Deze omzetboeking is geboekt in RLZ. Wijzigen'} =
+                  &ldquo;Corrigeren…&rdquo; in het ⋯-menu: verkoopboeking én kostprijsmemoriaal worden gestorneerd (actie 19)
+                  en het rapport komt terug als klaar om te boeken.
+                </p>
+                {corrigerenMogelijk(detail.status, detail.soort) && <CorrigerenMenu onKies={() => corrigeren.setOpen(true)} />}
+              </div>
+            )}
+            {corrigerenMogelijk(detail.status, detail.soort) && (
+              <CorrigerenDialog
+                administratieId={administratieId}
+                documentId={documentId}
+                soort={detail.soort}
+                open={corrigeren.open}
+                onClose={() => corrigeren.setOpen(false)}
+                onGecorrigeerd={() => setHerlaadTeller((n) => n + 1)}
+              />
             )}
             {!isGeboekt && (
               <div className="actions">

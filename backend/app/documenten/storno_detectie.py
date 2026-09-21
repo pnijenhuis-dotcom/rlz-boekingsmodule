@@ -1,9 +1,10 @@
 """Detectie van RLZ-UI-storno's op geboekte inkoopfacturen → `factuur_gestorneerd`-event
 (koppelcontract §3 v1.14, kostenflow-randvraag c — harde eis vóór vastgoeds auto-bevestiging S2).
 
-Een geboekte inkoopfactuur heeft in deze module géén storno-knop (GEBOEKT is lokaal terminaal,
-statusmachine): een storno gebeurt dáár uitsluitend via actie 19 in de RLZ-UI. Dit is dus de
-detectie-bron met LATENTIE — het event ontstaat pas bij de eerstvolgende run (nu de dagelijkse
+Sinds 21-09 (opdracht Peter, `app/documenten/corrigeren.py`) heeft een geboekte inkoopfactuur in de module
+WÉL een uitweg: "Corrigeren…" = storno (actie 19) + opnieuw klaarzetten, dat vuurt het gestorneerd-event
+DIRECT (bron `module_storno`). Dit bestand blijft de detectie-bron voor storno's die iemand tóch rechtstreeks in
+de RLZ-UI uitvoert (bron `rlz_ui_detectie`) — met LATENTIE — het event ontstaat pas bij de eerstvolgende run (nu de dagelijkse
 reconciliatie-cadans via `make reconciliatie`; frequenter zodra de GCP-schedulers draaien).
 Die latentie staat expliciet in het contract; de module-storno's (doorbelasting-spiegel) vuren
 wél direct bij de actie (app/doorbelasting/boeken.py::_meld_spiegel_gestorneerd).

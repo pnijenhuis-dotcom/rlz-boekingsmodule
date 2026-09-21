@@ -2095,6 +2095,56 @@ export interface TegenboekenResponseDto {
   rlz_boekstuknummer: string | null
 }
 
+/** "Corrigeren…" op een geboekt document (Peter 21-09) — spiegelt `schemas.CorrigeerToetsResponse`. */
+export interface CorrigeerBlokkadeDto {
+  code: string
+  melding: string
+  /** Route die dan wél geldt: tegenboeken (aangifte/Odoo), bank (afgeletterd), opnieuw_boeken (verdwenen). */
+  actie: 'tegenboeken' | 'bank' | 'opnieuw_boeken' | null
+  actie_pad: string | null
+}
+
+export interface CorrigeerStukDto {
+  label: string
+  extern_id: string
+  bestaat: boolean
+  nog_geboekt: boolean
+  boekstuknummer: string | null
+  betaald_bedrag: string | null
+}
+
+export interface CorrigeerDoorbelastingDto {
+  boeking_id: string
+  doelentiteit: string
+  toegestaan: boolean
+  reden: string | null
+}
+
+export interface CorrigeerToetsDto {
+  document_id: string
+  soort: string
+  backend: string
+  beschikbaar: boolean
+  blokkades: CorrigeerBlokkadeDto[]
+  oud_boekstuknummer: string | null
+  stukken: CorrigeerStukDto[]
+  doorbelasting: CorrigeerDoorbelastingDto[]
+  tegenboeken_beschikbaar: boolean
+}
+
+export interface CorrigerenResponseDto {
+  document_id: string
+  status: string
+  soort: string
+  boek_cyclus: number | null
+  oud_boekstuknummer: string | null
+  oud_extern_id: string | null
+  gestorneerd: string[]
+  al_concept: string[]
+  doorbelasting_gestorneerd: number
+  doel_pad: string
+}
+
 /** Antwoord op POST …/documenten/{id}/verplaats (addendum kantoor-run 27-08 punt 5). `status` is
  * de eindstatus ná de her-extractie in het doel; `leerregels_gecorrigeerd` leeg = de toewijzing
  * kwam niet uit het geheugen (alleen verplaatst). */

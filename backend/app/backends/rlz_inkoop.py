@@ -15,6 +15,7 @@ from app.backends.port import (
     BackendBoekFout,
     BoekUitkomst,
     OrigineelStand,
+    StornoUitkomst,
     TegenboekUitkomst,
     ToetsMislukt,
     ToetsUitkomst,
@@ -306,6 +307,45 @@ class RlzInkoopPort:
             extern_id=str(rlz_document_id),
             extern_state=None if status is None else str(status),
             ruw=invoice,
+        )
+
+    def storneer(self, *, document_id: uuid.UUID, boek_cyclus: int) -> StornoUitkomst:
+        """Actie 19 op het herboeking-GUID van deze cyclus (Corrigeren vanuit de module, 21-09). Eerst één GET:
+        Status 1 = al concept (in de RLZ-UI gestorneerd) → niets schrijven; 404 = verdwenen → niets schrijven;
+        Status 2/3 → actie 19 en terug-lezen dat het stuk op Status 1 staat (fail-closed: niet 1 = fout)."""
+        rlz_document_id = rlz_herboeking_id(document_id, boek_cyclus)
+        try:
+            bestaand = self.client.get(f"PurchaseInvoices/{rlz_document_id}")
+        except RlzApiError as exc:
+            if exc.status_code == 404:
+                return StornoUitkomst(extern_document_id=rlz_document_id, gestorneerd=False, verdwenen=True)
+            raise BackendBoekFout(f"Inkoopfactuur in Reeleezee niet leesbaar ({exc.status_code}) — niets gewijzigd") from exc
+        status = bestaand.get("Status") if isinstance(bestaand, dict) else None
+        if status not in _RLZ_GEBOEKT:
+            return StornoUitkomst(
+                extern_document_id=rlz_document_id,
+                gestorneerd=False,
+                al_concept=True,
+                detail={"status_voor": status, "boekstuknummer": bestaand.get("ReceiptNumber")},
+            )
+        try:
+            self.client.correct_purchase_invoice(rlz_document_id)
+            na = self.client.get(f"PurchaseInvoices/{rlz_document_id}")
+        except RlzApiError as exc:
+            raise BackendBoekFout(
+                f"Storno (actie 19) van de inkoopfactuur in Reeleezee mislukte ({exc.status_code}): "
+                f"{vertaal_rlz_boekfout(exc)} — niets lokaal gewijzigd"
+            ) from exc
+        status_na = na.get("Status") if isinstance(na, dict) else None
+        if status_na != 1:
+            raise BackendBoekFout(
+                f"Reeleezee meldt ná actie 19 status {status_na!r} in plaats van concept (1) — storno niet bevestigd, "
+                "niets lokaal gewijzigd"
+            )
+        return StornoUitkomst(
+            extern_document_id=rlz_document_id,
+            gestorneerd=True,
+            detail={"status_voor": status, "status_na": status_na, "boekstuknummer": bestaand.get("ReceiptNumber")},
         )
 
     def toets_btw_periode(self, *, boekdatum: date) -> KantToets:

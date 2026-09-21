@@ -305,6 +305,22 @@ def boek_verkoop_document(
                     geboekt_door=actor_id,
                 )
             )
+        else:
+            # Corrigeren vanuit de module (21-09): ná een storno staat de registratie op `gestorneerd` — de herboeking
+            # op hetzelfde GUID maakt 'm weer de actieve, geboekte rij (nummer/boekstuk/debiteur kunnen gewijzigd zijn).
+            bestaande_registratie.factuurnummer = voorstel.factuurnummer
+            bestaande_registratie.is_creditnota = voorstel.is_creditnota
+            bestaande_registratie.totaalbedrag_incl = voorstel.totaalbedrag_incl or Decimal(0)
+            bestaande_registratie.debiteur_customer_id = customer_id
+            bestaande_registratie.debiteur_naam = voorstel.debiteur_naam
+            bestaande_registratie.verkoop_invoice_number = invoice_number
+            bestaande_registratie.verkoop_referentie = referentie
+            bestaande_registratie.verkoop_boekstuknummer = boekstuknummer
+            bestaande_registratie.status = VerkoopBoekingStatus.GEBOEKT.value
+            bestaande_registratie.storno_reden = None
+            bestaande_registratie.gestorneerd_op = None
+            bestaande_registratie.gestorneerd_door = None
+            bestaande_registratie.geboekt_door = actor_id
         _schrijf_overgang(
             session,
             document=document,

@@ -2681,8 +2681,8 @@ export function BoekvoorstelPanel({
               Geboekt in RLZ — boekstuknummer <b>{boekstuknummer ?? '—'}</b>
             </p>
             <p className="hint">
-              Wijzigen kan alleen via stornering in Reeleezee (actie 19); daarna komt het document hier terug als
-              concept.
+              Wijzigen: kies &ldquo;Corrigeren…&rdquo; in het ⋯-menu bovenaan (storno + opnieuw klaarzetten, met reden), of
+              &ldquo;Tegenboeken…&rdquo; als de btw-aangifte al is ingediend.
             </p>
           </>
         )}

@@ -8,8 +8,8 @@ class OngeldigeStatusovergang(Exception):
 
 
 # Enige bron van waarheid voor toegestane overgangen — geen losse status-updates elders in de
-# app. GEBOEKT is de enige echt terminale status (bewaarplicht: nooit verwijderd, zie
-# VERWIJDERD hieronder). Elke andere status — óók AFGEWEZEN — mag naar VERWIJDERD (design-pass
+# app. GEBOEKT wordt nooit verwijderd (bewaarplicht, zie VERWIJDERD hieronder) maar is sinds 21-09 niet meer
+# terminaal-zonder-uitweg: "Corrigeren…" (storno + opnieuw klaarzetten) zet 'm terug naar klaar_om_te_boeken. Elke andere status — óók AFGEWEZEN — mag naar VERWIJDERD (design-pass
 # taak 4, "documenten verwijderen": alléén niet-geboekte documenten). VERWIJDERD zelf mag terug
 # naar precies de statussen die er ook naartoe mogen — herstellen (service.py::herstel_document)
 # zet het document terug op de status van vóór de verwijdering, uit de tijdlijn.
@@ -261,8 +261,10 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     # Tegenboek-pad (migratie 0061, mockup tegenboek-mockup.html): "tegenboeken én opnieuw
     # boeken" zet het document terug in de werkvoorraad — de ENIGE uitgang uit GEBOEKT, en
     # uitsluitend gebruikt door app/documenten/tegenboeken.py ná een geslaagde tegenboeking in
-    # RLZ (aangifte-poort geblokkeerd, verplichte reden, audit). Een kale storno kent het
-    # inkooppad nog steeds niet (dat blijft actie 19 in de RLZ-UI + detectie).
+    # RLZ (aangifte-poort geblokkeerd, verplichte reden, audit). Een kale storno vanuit de module bestaat sinds
+    # 21-09 óók: "Corrigeren…" (app/documenten/corrigeren.py) = actie 19 op het externe stuk + terug naar
+    # klaar_om_te_boeken mét boek_cyclus +1 — achter dezelfde aangifte-poort (geblokkeerd → tegenboek-pad),
+    # plus de afgeletterd-poort en de doorbelasting beide-kanten-of-geen-poort.
     # Opnieuw boeken ná een VERDWENEN extern document (A11, fixrun 07-09; casus BOOT/Kempen): de reconciliatie
     # meldt `ontbreekt_in_rlz`/`ontbreekt_in_odoo`, de kantoormens kiest "Opnieuw boeken" — terug naar
     # klaar_om_te_boeken mét boek_cyclus +1 (vers GUID), GEEN tegenboeking (er is niets om tegen te boeken);

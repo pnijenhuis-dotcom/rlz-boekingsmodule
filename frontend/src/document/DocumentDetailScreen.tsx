@@ -28,6 +28,7 @@ import { DoorbelastenNaBoeken, type KlaargezetteDoorbelasting } from '../doorbel
 import { DoorbelastenSectie } from '../doorbelasting/DoorbelastenSectie'
 import { ProjectverdelingBlok } from './ProjectverdelingBlok'
 import { TegenboekSectie } from './TegenboekSectie'
+import { CorrectieBalk, CorrigerenDialog, CorrigerenMenuItem, correctieTijdlijnTekst, corrigerenMogelijk, useCorrigerenDialoog } from './CorrigerenActie'
 import { AfwijsModal } from './AfwijsModal'
 import { metViewerOpties } from './pdfWeergaveUrl'
 import { DuplicaatAfvoerSectie } from './DuplicaatAfvoer'
@@ -488,6 +489,8 @@ export function DocumentDetailScreen() {
   const navKnopVolgende = useRef<HTMLButtonElement | null>(null)
   const [navTip, setNavTip] = useState<'vorige' | 'volgende' | null>(null)
   const [verplaatsModalOpen, setVerplaatsModalOpen] = useState(false)
+  // Corrigeren… (Peter 21-09): storno + opnieuw klaarzetten vanuit het ⋯-menu; `?corrigeren=1` opent direct.
+  const corrigeren = useCorrigerenDialoog()
   const { administraties } = useAdministraties()
   // Aanbetaling-verrekenregel (deel 4 punt 3): brug van het signaal naar het boekvoorstel — elke
   // klik levert een nieuw volgnummer, het paneel voegt de regel dan één keer toe.
@@ -898,6 +901,16 @@ export function DocumentDetailScreen() {
                       {reden}
                     </div>
                   )}
+                  {/* Corrigeren… (Peter 21-09): alleen op een GEBOEKT document — storno (actie 19) + opnieuw klaarzetten,
+                      de server toetst aangifte/afgeletterd/doorbelasting en wijst anders de route (tegenboeken/bank). */}
+                  {corrigerenMogelijk(detail.status, detail.soort) && (
+                    <CorrigerenMenuItem
+                      onKies={() => {
+                        setActieMenuOpen(false)
+                        corrigeren.setOpen(true)
+                      }}
+                    />
+                  )}
                   <button
                     type="button"
                     className="linkbtn"
@@ -1024,6 +1037,32 @@ export function DocumentDetailScreen() {
             naamVoor={naamVoor}
             onGewijzigd={laadDetail}
           />
+
+          {/* Gele balk ná "Corrigeren…" (Peter 21-09): reden + vorige boeking, tot het document opnieuw geboekt is. */}
+          <CorrectieBalk tijdlijn={detail.tijdlijn} status={detail.status} />
+          {corrigerenMogelijk(detail.status, detail.soort) && (
+            <CorrigerenDialog
+              administratieId={administratieId}
+              documentId={documentId}
+              soort={detail.soort}
+              open={corrigeren.open}
+              onClose={() => corrigeren.setOpen(false)}
+              onGecorrigeerd={(r) => {
+                meld(
+                  r
+                    ? `Gecorrigeerd — vorige boeking ${r.oud_boekstuknummer ?? ''} gestorneerd; het document staat weer klaar om te boeken.`
+                    : 'Het document was al gecorrigeerd en staat klaar om te boeken.',
+                )
+                laadDetail()
+              }}
+              onTegenboeken={() => {
+                const p = new URLSearchParams(searchParams)
+                p.delete('corrigeren')
+                p.set('tegenboeken', '1')
+                navigate({ search: `?${p.toString()}` }, { replace: true })
+              }}
+            />
+          )}
 
           {detail.status === 'afgewezen' && (
             <div className="panel">
@@ -1635,6 +1674,11 @@ export function DocumentDetailScreen() {
                       {g.detail && Array.isArray(g.detail.btw_override) && g.detail.btw_override.length > 0 && (
                         <div className="hint" style={{ marginTop: 2, color: 'var(--orange)' }} data-testid="tijdlijn-btw-override">
                           <span className="chip afwijking">btw-cent-override</span> Btw-cent-override toegepast (± € 0,02 per tarief) — zie boeking
+                        </div>
+                      )}
+                      {g.detail && 'gecorrigeerd' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2, color: 'var(--orange)' }} data-testid="tijdlijn-gecorrigeerd">
+                          {correctieTijdlijnTekst(g.detail, naamVoor(g.actor_id))}
                         </div>
                       )}
                       {g.detail && 'tegenboeking' in g.detail && (
