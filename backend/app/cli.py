@@ -1013,9 +1013,10 @@ def _sync_alles(args: argparse.Namespace) -> int:
 
 
 def _groep_saldi(args: argparse.Namespace) -> int:
-    """Lees-only CLI (nameting-allowlist): live meting van één groep, tabel + totalen. Onbekende groep = leesbare
-    melding + exit 2 (nooit stil leeg); een rode administratie (webfilter/fout/geen rekening) staat in de statuskolom
-    en de exit blijft 0 — het rapport ís de uitkomst."""
+    """Lees-only CLI (nameting-allowlist): live meting van één groep, tabel + totalen; `--stand` = de nachtelijke
+    cache-stand i.p.v. live (21-09). Onbekende groep = leesbare melding + exit 2 (nooit stil leeg); een rode
+    administratie (webfilter/fout/geen rekening) staat in de statuskolom en de exit blijft 0 — het rapport ís de
+    uitkomst."""
     from datetime import date as _date
 
     from app.groepen import saldi
@@ -1025,6 +1026,12 @@ def _groep_saldi(args: argparse.Namespace) -> int:
     except saldi.GroepOnbekend as exc:
         print(f"groep-saldi: {exc}", file=sys.stderr)
         return 2
+    if getattr(args, "stand", False):
+        uit = saldi.lees_stand_systeem(groep)
+        print(saldi.rapport_tekst(uit))
+        if uit.zonder_stand:
+            print(f"LET OP: {uit.zonder_stand} administratie(s) zonder nachtelijke stand (nog geen sync-alles gelopen).")
+        return 0
     datum = _date.fromisoformat(args.datum) if args.datum else None
     print(saldi.rapport_tekst(saldi.meet_groep_live(groep, datum=datum)))
     return 0
@@ -3595,6 +3602,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     groep_saldi_parser.add_argument(
         "--datum", default=None, help="Peildatum JJJJ-MM-DD (NL-kalenderdag); leeg = per vandaag zonder datumfilter."
+    )
+    groep_saldi_parser.add_argument(
+        "--stand",
+        action="store_true",
+        help="21-09: niet live meten maar de NACHTELIJKE stand (cache groep_saldo_stand, gevuld door sync-alles) tonen — "
+        "dezelfde tabel, bron 'stand'; leden zonder stand worden geteld. Combineert niet met --datum.",
     )
 
     acceptaties_parser = subparsers.add_parser(

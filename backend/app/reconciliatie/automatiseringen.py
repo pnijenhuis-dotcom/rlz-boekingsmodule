@@ -149,7 +149,12 @@ HARDE_VOORWAARDEN = frozenset(
 #:   actiemail.
 #: SPOED 17-09: een bevindingssoort die in één run > 50 afwijkingen produceert (soort_stand.EXPLOSIE_CATEGORIE) — bug-signaal.
 BEVINDINGSSOORT_EXPLODEERT = "bevindingssoort_explodeert"
-REGRESSIE_CATEGORIEEN = frozenset({GEEN_EIGENAAR, BEVINDINGSSOORT_EXPLODEERT})
+#: 21-09 (BUG groepssaldi 16→21-09: 35/35 leden `fout` vijf dagen zonder signaal): ≥ 1 lid van een actieve groep mét
+#: status `fout` in zijn laatste nachtelijke groepssaldi-stand (`groep_saldo_stand`) = regressie (bron-/codefout in de
+#: motor — een webfilter is `ongeldig`, een ontbrekende rekening `geen_rekening`; die zijn geen regressie). Direct
+#: LET-OP + systeemmail + audit `automatisering_regressie` (regel reconciliatie 1), niet via `meten`.
+GROEP_SALDO_FOUT = "groep_saldo_fout"
+REGRESSIE_CATEGORIEEN = frozenset({GEEN_EIGENAAR, BEVINDINGSSOORT_EXPLODEERT, GROEP_SALDO_FOUT})
 #: Blok 1 nametingen-run 10-09 (§F7 route A): jaarlijkse rotatie van de key van het nameting-serviceaccount — beheer-signaal
 #: (systeemmail), 30 dagen vóór 12 maanden ná `settings.nameting_sa_aangemaakt_op`.
 SA_KEY_ROTATIE = "nameting_sa_key_rotatie"
@@ -173,6 +178,7 @@ REDEN_LABEL: dict[str, str] = {
     RECHTEN_ONDERWEG: "RLZ zet rechten door — wordt herprobeerd",
     RECHTEN_NA_24U: "na 24 uur herproberen weigert RLZ nog steeds (403)",
     GEEN_EIGENAAR: "geen eigenaar/toewijzing",
+    GROEP_SALDO_FOUT: "groepssaldi-stand mét status fout (bron-/codefout in de nachtelijke meting)",
     VOLUMEREM: "volumerem bereikt",
     VOORVERWARMEN_UIT: "voorverwarmen staat uit (instelling CHECKS_VOORVERWARMEN)",
     VOORVERWARMEN_BEZIG: "al een voorverwarming bezig (max 1 tegelijk) of document niet leesbaar",
@@ -1837,6 +1843,64 @@ def rls_weigering_bevindingen(*, nu: datetime) -> list[dict[str, Any]]:
     return uit
 
 
+def groep_saldi_bevinding(*, nu: datetime, fouten=None) -> dict[str, Any] | None:  # noqa: ANN001
+    """21-09: één platformbrede regressie-LET-OP zodra ≥ 1 lid van een actieve groep in zijn LAATSTE nachtelijke
+    groepssaldi-stand status `fout` draagt (`app/groepen/saldi.py::standen_met_fout`). Aanleiding: de kaart
+    "Groepssaldi" en `groep-saldi` leverden van 16-09 tot 21-09 niets (RLZ-Ledgers-filter mét een int-literal op het
+    enum-veld AccountType = 400; Odoo `deprecated` bestaat niet in Odoo 19) en het enige signaal was een grijze kaart
+    die niemand las. Tekst: aantal
+    leden, groepen, eerste vijf "naam: melding", deeplink naar de klantenlijst mét Groep-filter. Vingerafdruk stabiel
+    per SET falende leden (mailt één keer per nieuwe set, blijft op /reconciliatie tot de stand groen is). `fouten` =
+    al gelezen `StandFout`-rijen (tests); anders wordt de cache hier gelezen."""
+    if fouten is None:
+        from app.groepen import saldi
+
+        fouten = saldi.standen_met_fout()
+    if not fouten:
+        return None
+    fouten = sorted(fouten, key=lambda f: (f.groep.naam.lower(), f.naam.lower()))
+    groepen = sorted({f.groep.naam for f in fouten}, key=str.lower)
+    voorbeelden = [f"{f.naam}: {(f.detail or 'geen melding')[:160]}" for f in fouten[:5]]
+    jongste = max(f.datum for f in fouten)
+    sleutel = "|".join(sorted(str(f.administratie_id) for f in fouten))
+    tekst = (
+        f"LET-OP     automatisering groepssaldi: {len(fouten)} administratie(s) in {len(groepen)} groep(en) "
+        f"({', '.join(groepen)}) hebben in de nachtelijke groepssaldi-stand van {jongste:%d-%m-%Y} status fout — "
+        f"voorbeelden: {'; '.join(voorbeelden)}"
+        + (f"; en {len(fouten) - 5} andere" if len(fouten) > 5 else "")
+        + f" — de kaart Groepssaldi en `groep-saldi` tonen voor deze leden geen saldo — {REGRESSIE_TEKST}"
+    )[:1000]
+    return {
+        "soort": "let_op",
+        "administratie_id": None,
+        "blok": BLOK,
+        "vingerafdruk": vingerafdruk_automatisering(
+            sleutel=f"groep_saldi|{hashlib.sha256(sleutel.encode()).hexdigest()[:16]}",
+            categorie=GROEP_SALDO_FOUT,
+            administratie_id=None,
+        ),
+        "tekst": tekst,
+        "detail": {
+            "automatisering": "groep_saldi",
+            "automatisering_label": "Groepssaldi debiteuren/crediteuren (nachtelijke stand)",
+            "reden": GROEP_SALDO_FOUT,
+            "aantal": len(fouten),
+            "groepen": groepen,
+            "stand_datum": jongste.isoformat(),
+            "leden": [
+                {
+                    "administratie_id": str(f.administratie_id),
+                    "naam": f.naam,
+                    "groep": f.groep.naam,
+                    "detail": (f.detail or "")[:300],
+                }
+                for f in fouten[:50]
+            ],
+            "doel_pad": f"/?groep={fouten[0].groep.id}",
+        },
+    }
+
+
 WERKVOORRAAD_TELLERS = "werkvoorraad_tellers"
 
 
@@ -1911,6 +1975,9 @@ def registreer(verzamelaar, *, nu: datetime | None = None, stdout=None) -> dict:
         verzamelaar.bevinding(**tellers_cache)
     for kw in rls_weigering_bevindingen(nu=nu):
         verzamelaar.bevinding(**kw)
+    groep_saldi = groep_saldi_bevinding(nu=nu)  # 21-09: regressie-detector groepssaldi
+    if groep_saldi is not None:
+        verzamelaar.bevinding(**groep_saldi)
     if stdout is not None:
         for regel in regels(tellers):
             stdout(regel)

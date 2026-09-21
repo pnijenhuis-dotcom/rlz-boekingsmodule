@@ -83,9 +83,16 @@ class NepClient:
         self.calls.append((pad, params))
         if pad == "Ledgers":
             assert "SystemAccountList" in params["$expand"]
+            # Productie 16→21-09: `AccountType eq 3` in $filter = 400 (enum vs Edm.Int32) — RLZ's gedrag nagespeeld.
+            assert "AccountType" not in params["$filter"], params["$filter"]
+            assert params["$filter"] == "IsTotalAccount eq false" and "$skip" in params
+            if int(params["$skip"]) > 0:
+                return {"value": []}
             return {
                 "value": [
                     _ledger("d1", "1300", "Debiteuren", 3, rgs="BVorDebHad"),
+                    _ledger("x0", "0100", "Gebouwen", 3, rgs="BMvaBegBeg"),  # activa zonder deb-RGS: telt niet
+                    _ledger("o1", "8000", "Omzet", 1),  # geen balans: client-side weg
                     _ledger("c1", "1600", "Crediteuren", 4, rgs="BSchCreHac"),
                 ]
             }
@@ -248,7 +255,11 @@ class NepOdooClient:
     def search_read(self, model: str, domain: list, fields: list, **kw) -> list[dict]:  # noqa: ANN003
         self.calls.append((model, domain))
         if model == "account.account":
-            soort = domain[0][2]
+            velden = [d[0] for d in domain]
+            # Odoo 19: `deprecated` bestaat niet (500 "Invalid field") — productie 16→21-09.
+            assert "deprecated" not in velden, domain
+            assert ["company_ids", "in", [6]] in domain and ["active", "=", True] in domain, domain
+            soort = next(d[2] for d in domain if d[0] == "account_type")
             return (
                 [{"id": 41, "code": "130000", "name": "Debiteuren"}]
                 if soort == "asset_receivable"
@@ -366,3 +377,197 @@ class TestStandEnScope:
         groepen.zet_administratie_groep(actor_id=beheerder_id, administratie_id=administratie_id, groep_id=kg.id)
         stand = saldi.lees_stand_voor_groep(kg.id, actor_id=beheerder_id)
         assert (stand.aantal_leden, stand.aantal_in_scope, stand.zonder_stand, stand.rijen) == (1, 1, 1, [])
+
+
+class TestRlzLedgersFilter:
+    """BUG 21-09: RLZ weigert `AccountType eq 3` (enum vs int, 400) — de balanszijde wordt client-side getoetst en de
+    Ledgers-collectie wordt gepagineerd gelezen ($top/$skip), niet meer met een aangenomen `$top=500`."""
+
+    def test_filter_zonder_accounttype_en_paginering_over_meer_dan_een_pagina(self) -> None:
+        class GepagineerdeClient:
+            def __init__(self) -> None:
+                self.calls: list[dict] = []
+                # 2,5 pagina's rekeningen; de debiteurenrekening staat op de LAATSTE pagina.
+                self.rijen = [_ledger(f"k{i}", f"{4000 + i}", f"Kosten {i}", 2) for i in range(saldi.PAGINA * 2 + 3)]
+                self.rijen.append(_ledger("d1", "1300", "Debiteuren", 3, rgs="BVorDebHad"))
+                self.rijen.append(_ledger("c1", "1600", "Crediteuren", 4, rgs="BSchCreHac"))
+
+            def get(self, pad: str, params: dict | None = None) -> dict:
+                assert pad == "Ledgers"
+                params = params or {}
+                self.calls.append(params)
+                assert params["$filter"] == "IsTotalAccount eq false", params["$filter"]
+                assert "AccountType" not in params["$filter"]
+                top, skip = int(params["$top"]), int(params["$skip"])
+                return {"value": self.rijen[skip : skip + top]}
+
+        client = GepagineerdeClient()
+        bron = saldi.RlzBron(client)
+        assert [r.code for r in bron.rekeningen("debiteuren")] == ["1300"]
+        assert [r.code for r in bron.rekeningen("crediteuren")] == ["1600"]
+        assert len(client.calls) == 3, "drie pagina's (200/200/5), daarna gecachet"
+        assert [int(c["$skip"]) for c in client.calls] == [0, saldi.PAGINA, 2 * saldi.PAGINA]
+
+    def test_rlz_400_op_ledgers_blijft_zichtbaar_als_fout(self, administratie_id: uuid.UUID) -> None:
+        class Weigert:
+            def get(self, pad: str, params: dict | None = None) -> dict:
+                raise RuntimeError(
+                    "400 A binary operator with incompatible types was detected. Found operand types "
+                    "'Reeleezee.DTO.AccountTypeEnum' and 'Edm.Int32'"
+                )
+
+            def close(self) -> None:
+                return None
+
+        rij = saldi.meet_administratie(
+            administratie_id, "X", groepsleden=[], tot_en_met=None, bron=saldi.RlzBron(Weigert())
+        )
+        assert rij.status == "fout" and "AccountTypeEnum" in (rij.detail or "")
+
+
+class TestOdooDomein:
+    """Guard (opdracht 21-09 C): het Odoo-domein van `OdooBron.rekeningen` gebruikt geen velden buiten de velden die
+    `app/odoo/sync.py::lees_grootboek` live bewezen gebruikt op `account.account` (Odoo 19: geen `deprecated`)."""
+
+    @staticmethod
+    def _velden_sync() -> set[str]:
+        import re as _re
+        from pathlib import Path
+
+        bron = Path(saldi.__file__).resolve().parents[1] / "odoo" / "sync.py"
+        tekst = bron.read_text(encoding="utf-8")
+        start = tekst.index("def lees_grootboek(")
+        eind = tekst.index("\ndef ", start + 1)
+        blok = tekst[start:eind]
+        velden = set(_re.findall(r'"([a-z_]+)"', blok))
+        assert "active" in velden and "company_ids" in velden and "account_type" in velden, velden
+        assert "deprecated" not in velden
+        return velden
+
+    def test_domein_en_leesvelden_binnen_de_sync_veldenlijst(self) -> None:
+        class Opnemer:
+            company_id = 6
+
+            def __init__(self) -> None:
+                self.aanroepen: list[tuple[list, list]] = []
+
+            def search_read(self, model: str, domain: list, fields: list, **kw) -> list[dict]:  # noqa: ANN003
+                assert model == "account.account"
+                self.aanroepen.append((domain, fields))
+                return []
+
+        client = Opnemer()
+        bron = saldi.OdooBron(uuid.uuid4(), client)
+        assert bron.rekeningen("debiteuren") == [] and bron.rekeningen("crediteuren") == []
+        toegestaan = self._velden_sync()
+        for domain, fields in client.aanroepen:
+            gebruikt = {d[0] for d in domain} | set(fields)
+            assert gebruikt <= toegestaan, f"velden buiten odoo/sync.py: {sorted(gebruikt - toegestaan)}"
+            assert ["active", "=", True] in domain and "deprecated" not in gebruikt
+
+
+class TestStandSysteemEnDetector:
+    """21-09: `groep-saldi --stand` (nachtelijke cache zonder lezer-scope) en de regressie-detector
+    `groep_saldo_fout`."""
+
+    def test_lees_stand_systeem_en_cli_stand(
+        self,
+        beheerder_id: uuid.UUID,
+        administratie_id: uuid.UUID,
+        admin_engine: Engine,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from app import cli as app_cli
+
+        b = maak_administratie(admin_engine, "Zonder Stand B.V.")
+        kg = groepen.maak_groep(actor_id=beheerder_id, naam="Kempen groep")
+        groepen.zet_groep_bulk(actor_id=beheerder_id, groep_id=kg.id, toevoegen=[administratie_id, b], verwijderen=[])
+        saldi.schrijf_stand(
+            saldi.AdministratieSaldo(
+                administratie_id,
+                "A",
+                "ok",
+                None,
+                debiteuren=D("10.00"),
+                crediteuren=D("5.00"),
+                ic_debiteuren=D("1.00"),
+                ic_crediteuren=D("0.00"),
+                debiteuren_rekening="1300 Debiteuren",
+                crediteuren_rekening="1600 Crediteuren",
+            ),
+            datum=date(2026, 9, 21),
+        )
+        uit = saldi.lees_stand_systeem(saldi.zoek_groep("Kempen groep"))
+        assert uit.bron == "stand" and uit.aantal_leden == 2 and uit.zonder_stand == 1
+        assert [r.status for r in uit.rijen] == ["ok"] and uit.totalen.debiteuren == D("10.00")
+        assert saldi.standen_met_fout() == []
+        # CLI-vorm uit het meetrecept letterlijk via argparse (les 19-09): `groep-saldi --groep "Kempen groep" --stand`.
+        assert app_cli.main(["groep-saldi", "--groep", "Kempen groep", "--stand"]) == 0
+        tekst = capsys.readouterr().out
+        assert "bron: stand" in tekst and "1 van 2 administraties" in tekst
+        assert "1 administratie(s) zonder nachtelijke stand" in tekst
+        assert app_cli.main(["groep-saldi", "--groep", "Kempen groepje", "--stand"]) == 2
+
+    def test_fout_in_de_stand_is_een_regressie_let_op_met_audit_categorie(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from app.reconciliatie import automatiseringen, run
+
+        b = maak_administratie(admin_engine, "Bonte Hoeve B.V.")
+        kg = groepen.maak_groep(actor_id=beheerder_id, naam="Kempen groep")
+        groepen.zet_groep_bulk(actor_id=beheerder_id, groep_id=kg.id, toevoegen=[administratie_id, b], verwijderen=[])
+        # Oude rode stand (16-09) + jongere groene stand: de LAATSTE rij telt → geen fout voor A.
+        saldi.schrijf_stand(
+            saldi.AdministratieSaldo(administratie_id, "A", "fout", "400 AccountTypeEnum"), datum=date(2026, 9, 16)
+        )
+        saldi.schrijf_stand(
+            saldi.AdministratieSaldo(administratie_id, "A", "ok", None, debiteuren=D("1"), crediteuren=D("1")),
+            datum=date(2026, 9, 21),
+        )
+        saldi.schrijf_stand(
+            saldi.AdministratieSaldo(b, "B", "fout", "500 Invalid field account.account.deprecated"),
+            datum=date(2026, 9, 21),
+        )
+        fouten = saldi.standen_met_fout()
+        assert [f.naam for f in fouten] == ["Bonte Hoeve B.V."] and fouten[0].groep.id == kg.id
+        nu = datetime(2026, 9, 21, 4, 30, tzinfo=UTC)
+        kw = automatiseringen.groep_saldi_bevinding(nu=nu)
+        assert kw is not None and kw["soort"] == "let_op" and kw["administratie_id"] is None
+        assert "1 administratie(s) in 1 groep(en) (Kempen groep)" in kw["tekst"]
+        assert "Bonte Hoeve B.V.: 500 Invalid field account.account.deprecated" in kw["tekst"]
+        assert automatiseringen.REGRESSIE_TEKST in kw["tekst"]
+        assert kw["detail"]["reden"] == automatiseringen.GROEP_SALDO_FOUT
+        assert kw["detail"]["doel_pad"] == f"/?groep={kg.id}"
+        assert kw["vingerafdruk"] == automatiseringen.groep_saldi_bevinding(nu=nu)["vingerafdruk"]
+        # Regressie-classificatie: systeemmail + audit `automatisering_regressie` (run.is_regressie).
+        bev = run.Bevinding(
+            soort=run.BevindingSoort.LET_OP,
+            administratie_id=None,
+            blok=kw["blok"],
+            vingerafdruk=kw["vingerafdruk"],
+            tekst=kw["tekst"],
+            detail=kw["detail"],
+        )
+        assert run.is_regressie(bev) and run.is_beheer_signaal(bev)
+        # Groen ná herstel: de LET-OP verdwijnt.
+        saldi.schrijf_stand(
+            saldi.AdministratieSaldo(b, "B", "ok", None, debiteuren=D("0"), crediteuren=D("0")), datum=date(2026, 9, 22)
+        )
+        assert automatiseringen.groep_saldi_bevinding(nu=nu) is None
+
+    def test_detector_zonder_groepen_is_stil_en_webfilter_is_geen_regressie(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from app.reconciliatie import automatiseringen
+
+        assert automatiseringen.groep_saldi_bevinding(nu=datetime.now(UTC)) is None
+        kg = groepen.maak_groep(actor_id=beheerder_id, naam="Kempen groep")
+        groepen.zet_groep_bulk(actor_id=beheerder_id, groep_id=kg.id, toevoegen=[administratie_id], verwijderen=[])
+        saldi.schrijf_stand(
+            saldi.AdministratieSaldo(administratie_id, "A", "ongeldig", "webfilter"), datum=date(2026, 9, 21)
+        )
+        assert automatiseringen.groep_saldi_bevinding(nu=datetime.now(UTC)) is None

@@ -175,14 +175,26 @@ class RlzBron(Bron):
         self._ledgers: list[dict[str, Any]] | None = None
 
     def _alle_ledgers(self) -> list[dict[str, Any]]:
+        """Álle niet-totaalrekeningen mét `SystemAccountList`, gepagineerd (`$top/$skip`, begrensd). De balanszijde
+        (`AccountType` 3/4) wordt CLIENT-SIDE getoetst in `vind_rekeningen_rlz` — `AccountType` is in RLZ's OData-model
+        een enum (`Reeleezee.DTO.AccountTypeEnum`) en een int-literal in `$filter` geeft 400 "A binary operator with
+        incompatible types was detected" (productie 16→21-09: alle 33 RLZ-leden van Kempen groep `fout`). Guard:
+        `tests/unit/test_rlz_filter_enum_guard.py`."""
         if self._ledgers is None:
-            params = {
-                "$filter": f"IsTotalAccount eq false and (AccountType eq {ACTIVA} or AccountType eq {PASSIVA})",
-                "$expand": "SystemAccountList",
-                "$top": "500",
-            }
-            antwoord = self.client.get("Ledgers", params=params)
-            self._ledgers = list(antwoord.get("value", [])) if isinstance(antwoord, dict) else []
+            rijen: list[dict[str, Any]] = []
+            for pagina in range(MAX_PAGINAS):
+                params = {
+                    "$filter": "IsTotalAccount eq false",
+                    "$expand": "SystemAccountList",
+                    "$top": str(PAGINA),
+                    "$skip": str(pagina * PAGINA),
+                }
+                antwoord = self.client.get("Ledgers", params=params)
+                deel = list(antwoord.get("value", [])) if isinstance(antwoord, dict) else []
+                rijen.extend(deel)
+                if len(deel) < PAGINA:
+                    break
+            self._ledgers = rijen
         return self._ledgers
 
     def rekeningen(self, soort: str) -> list[Rekening]:
@@ -253,9 +265,17 @@ class OdooBron(Bron):
 
     def rekeningen(self, soort: str) -> list[Rekening]:
         account_type = "asset_receivable" if soort == "debiteuren" else "liability_payable"
+        # Zelfde domein-vorm als `app/odoo/sync.py::lees_grootboek`: Odoo 19 kent op account.account geen `deprecated`
+        # meer (500 "Invalid field account.account.deprecated" — productie 16→21-09, beide Odoo-leden van Kempen groep
+        # `fout`); rekeningen zijn bedrijfsgedeeld (`company_ids`). Guard: `tests/groepen/test_saldi.py::
+        # TestOdooDomein` toetst de velden tegen de veldenlijst van odoo/sync.py.
         rijen = self.client.search_read(
             "account.account",
-            [["account_type", "=", account_type], ["deprecated", "=", False]],
+            [
+                ["company_ids", "in", [int(self.client.company_id)]],
+                ["account_type", "=", account_type],
+                ["active", "=", True],
+            ],
             ["code", "name"],
         )
         return [Rekening(str(r["id"]), r.get("code"), r.get("name")) for r in rijen if r.get("id") is not None]
@@ -612,6 +632,99 @@ def meet_en_schrijf_alle(*, datum: date | None = None) -> NachtRapport:
             else:
                 rapport.niet_ok.append(f"{naam}: {rij.status}{' — ' + rij.detail if rij.detail else ''}")
     return rapport
+
+
+def lees_laatste_stand(administratie_id: uuid.UUID) -> tuple[AdministratieSaldo, date] | None:
+    """Laatste cache-rij van één administratie, gelezen in de eigen administratie-scope (systeem, geen actor — de
+    RLS-policy van `groep_saldo_stand` laat de eigen scope altijd door). None = nog geen stand."""
+    with scoped_session(administratie_id) as session:
+        s = session.scalar(
+            select(GroepSaldoStand)
+            .where(GroepSaldoStand.administratie_id == administratie_id)
+            .order_by(GroepSaldoStand.datum.desc())
+            .limit(1)
+        )
+        if s is None:
+            return None
+        return AdministratieSaldo(
+            s.administratie_id,
+            "?",
+            s.status,
+            s.detail,
+            debiteuren=s.debiteuren,
+            crediteuren=s.crediteuren,
+            ic_debiteuren=s.ic_debiteuren,
+            ic_crediteuren=s.ic_crediteuren,
+            debiteuren_rekening=s.debiteuren_rekening,
+            crediteuren_rekening=s.crediteuren_rekening,
+        ), s.datum
+
+
+def lees_stand_systeem(groep: GroepInfo) -> GroepSaldi:
+    """De NACHTELIJKE stand van een groep zonder lezer-scope (CLI `groep-saldi --stand`, reconciliatie-detector): per
+    actief lid de laatste cache-rij in de eigen administratie-scope; leden zonder rij tellen als `zonder_stand`."""
+    ids_namen = leden(groep.id)
+    rijen: list[AdministratieSaldo] = []
+    datum: date | None = None
+    for aid, naam in ids_namen:
+        uit = lees_laatste_stand(aid)
+        if uit is None:
+            continue
+        rij, rij_datum = uit
+        datum = rij_datum if datum is None or rij_datum > datum else datum
+        rijen.append(
+            AdministratieSaldo(
+                rij.administratie_id,
+                naam,
+                rij.status,
+                rij.detail,
+                debiteuren=rij.debiteuren,
+                crediteuren=rij.crediteuren,
+                ic_debiteuren=rij.ic_debiteuren,
+                ic_crediteuren=rij.ic_crediteuren,
+                debiteuren_rekening=rij.debiteuren_rekening,
+                crediteuren_rekening=rij.crediteuren_rekening,
+            )
+        )
+    return GroepSaldi(
+        groep=groep,
+        datum=datum or vandaag_nl(),
+        rijen=rijen,
+        aantal_leden=len(ids_namen),
+        bron="stand",
+        totalen=totalen(rijen),
+        aantal_in_scope=len(ids_namen),
+        zonder_stand=max(0, len(ids_namen) - len(rijen)),
+    )
+
+
+@dataclass(frozen=True)
+class StandFout:
+    """Eén lid mét status `fout` in zijn laatste nachtelijke stand (regressie-detector reconciliatie, 21-09)."""
+
+    groep: GroepInfo
+    administratie_id: uuid.UUID
+    naam: str
+    datum: date
+    detail: str | None
+
+
+def standen_met_fout() -> list[StandFout]:
+    """Over álle actieve groepen: leden waarvan de LAATSTE cache-rij status `fout` draagt (een bron-/codefout, geen
+    webfilter en geen ontbrekende rekening). Leeg = geen signaal. Voer voor `automatiseringen.groep_saldi_bevinding`."""
+    with scoped_session(None) as session:
+        groepen = list(session.scalars(select(Groep).where(Groep.actief.is_(True)).order_by(Groep.naam)).all())
+        infos = [GroepInfo(g.id, g.naam, g.code, g.actief) for g in groepen]
+    uit: list[StandFout] = []
+    for groep in infos:
+        for aid, naam in leden(groep.id):
+            gelezen = lees_laatste_stand(aid)
+            if gelezen is None:
+                continue
+            rij, datum = gelezen
+            if rij.status == "fout":
+                uit.append(StandFout(groep, aid, naam, datum, rij.detail))
+    return uit
 
 
 def _leden_in_scope(actor_id: uuid.UUID, ids: Sequence[uuid.UUID]) -> int:
