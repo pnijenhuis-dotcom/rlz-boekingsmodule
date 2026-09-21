@@ -260,6 +260,54 @@
   /uren/beheer/herinnering-tijd/{aid}`, chip "standaard", "terug naar standaard" = null → 16:30, validatie 06:00–18:59 (server 422; 409 zonder uren-opt-in leesbaar),
   `instellingen/HerinneringTijdRij.tsx`). Motor, job, migratie 0162 en reconciliatie-tellers: blok 5B.
 
+<!-- toegevoegd 21-09-2026, opdracht "planning-conflictenbalk-onleesbaar-oude-week-dubbele-veldwerkers-zonder-handeling" -->
+- **Planning — conflictenPANEEL mét handeling + dubbele veldwerkers op harde sleutels (Peter 21-09, Universal /planning: "17
+  conflicten deze week — ma 7-9: M. Demir op 25137 Bergeijk én 26082 Eindhoven … ik kan er niet uithalen wat het conflict is";
+  migratie 0169 = `boekhouding.planning_conflict_akkoord`; BESLISSINGEN "PLANNING — CONFLICTENPANEEL MÉT HANDELING + DUBBELE
+  VELDWERKERS (Peter 21-09)"):** (A) De conflictenbalk (`ConflictenBalk.tsx`, inline `linkbtn`-lap) is VERVANGEN door
+  `planning/ConflictenPaneel.tsx`: kop "N conflicten in week 39" — de GETOONDE week; "deze week" alleen als dat de huidige is
+  (`conflictWeekLabel`) —, gegroepeerd per dag (`groepeerConflictenPerDag`), per rij persoon · projecten · SOORT ("dubbel gepland" /
+  "afwezig" / "> 5 op kaart" / "ZZP'er zonder dossier", `CONFLICT_SOORT_LABEL`) · HANDELING (Kernprincipe 7.2: signalering zonder
+  handeling is niet af): dubbel → **"Houd ‹A›"** / **"Houd ‹B›"** (de andere kaart(en) van die persoon-dag weg via de bestaande
+  bulkroute `POST /uren/kantoor/planning/bulk` mét `verwijderen: true` en nieuwe bron `conflict` — audit `planning_verwijderd` mét
+  `bron`, toast "Ongedaan maken" plaatst exact de verwijderde set terug via bron `ongedaan`) en **"Beide (halve dagen)…"** = bewust
+  gehouden mét VERPLICHTE reden (≥ 3 tekens): `POST /uren/kantoor/planning/conflict-akkoord` (`planning.bevestig_conflict`) zet álle
+  kaartjes van die persoon × dag op dagdeel `half` (audit `planning_dagdeel_gezet` mét `bron: conflict_akkoord`) en schrijft een rij
+  `planning_conflict_akkoord` mét de planningsstand (`project_ids` = gesorteerde project-id's als tekst) + reden + audit
+  `planning_conflict_akkoord`; afwezig → **"Van planning halen"** (bulkroute) / **"Tóch plannen…"** (akkoord soort `afwezig`, geen
+  dagdeel-wijziging); > 5 → **"Ploeg aanpassen"** (kaart + paneel); dossier → **"Dossier openen →"** (`/veldwerkers`); élke rij
+  óók "Toon in grid". **De rij verdwijnt tot de planning wijzigt:** `zonderAkkoord` verbergt een dubbel-/afwezig-conflict alleen zolang
+  de huidige stand (gesorteerde project-id's van persoon × dag) exact gelijk is aan `project_ids` van een akkoord van dezelfde soort;
+  een extra of verdwenen kaart maakt het conflict weer zichtbaar. Akkoorden zijn idempotent op dezelfde stand (zelfde rij terug),
+  nooit DELETE (RLS FORCE, grants zonder DELETE), 404 zonder planning die dag, 422 zonder dubbel bij soort `dubbel`; `PlanningWeekDto`
+  draagt `conflict_akkoorden`. Ingeklapt 3 rijen, "Alle N tonen" = tabel — altijd in `.tabel-scroll` (óók ingeklapt; sweep 768 px
+  liep op de acties-kolom), nooit een inline lap tekst. Nooit blokkerend — kantoor beslist. (B) **Alleen huidige + toekomstige
+  dagen tellen als conflict** (`conflictenVanaf(conflicten, vandaag)`): een conflict op een verstreken dag is geen planningsconflict
+  maar historie (hoogstens een urenstaat-toets) — het paneel meldt "N op verstreken dagen niet getoond (zie Per project)";
+  kaart-chips en de "Per project"-weergave tonen álle conflicten onverkort. **Waarom het grid op week 37 stond:** géén bug in de
+  weekkeuze — `?week=` is een bewuste deeplink (planning-signaal "geplande week zonder weekstaat", projectdetail) en de URL draagt
+  de week; alleen de balk-tekst "deze week" was fout. De subkop draagt nu een weekchip **"verstreken week" / "lopende week"**
+  (`weekStand`, data-testid `week-stand`) zodat een oude week nooit voor de huidige doorgaat; de laatst bekeken week wordt NIET
+  onthouden buiten de URL. (C) **Dubbele veldwerkers — alleen HARDE sleutels, nooit naamgelijkenis of planningspatroon (correctie
+  Peter 21-09: "V. Ponchev"/"Z.V. Panchev" en "M. Demir"/"R. Demir" zijn broers die als ploeg samen gepland staan; Cowork las
+  "zelfde projecten, zelfde dagen" verkeerd als dubbele records):** lees-only CLI `veldwerkers-dubbelen (--administratie X |
+  --alles)` (`app/uren/dubbelen.py` + `dubbelen_cli.py`) — per administratie de veldwerkers mét scope (ZZP'er/uitvoerder/
+  detacheerder), sleutels KvK (`veldwerker_dossier.kvk_nummer`), IBAN (via `veldwerker_crediteur.vendor_id` → `leverancier_iban`,
+  genormaliseerd) en e-mail (`gebruiker.e_mail`, lower/trim — de kolom is uniek, dus in de praktijk 0; de toets staat er voor het
+  geval een import of pseudonimisering dat doorbreekt); telefoon = "niet toetsbaar" (geen veld op `platform.gebruiker`) en wordt
+  als zodanig gemeld; ≥ 2 personen mét dezelfde waarde = KANDIDAAT (beoordelen), nooit samenvoegen, géén UI-chip; guard-test
+  `test_puur_alleen_harde_sleutels_nooit_naam` (broers = 0, identieke naam mét eigen sleutels = 0). In de nameting-allowlist en als
+  dispatch-onderdeel `veldwerkers-dubbelen` in `nameting.yml` (meetrecept: TOTAAL-regel mét 0 fouten; Universal verwacht 0 clusters).
+  (D) Guards: `tests/uren/test_planning_conflicten_21_09.py` (halve dagen + akkoord + idempotent + nieuwe stand = nieuwe rij +
+  historie blijft, afwezig-pad, 404/422, route rolpoort/scope/200/422, "Houd" via bulk bron `conflict` + ongedaan, dubbelen puur/
+  normalisatie/DB-rapport/CLI lees-only), `planning/dagEerst.test.ts` (paneel vanaf vandaag + groepering + weeklabel; akkoord
+  verbergt alleen bij exact dezelfde stand), `PlanningScreen.test.tsx` (paneel-rij mét handelingen, Houd → bulk `conflict`
+  `verwijderen` + ongedaan = zelfde set, Beide → akkoord mét reden + rij weg, verstreken dag = tekstregel + weekchip "lopende week",
+  deeplink oude week = "verstreken week"; vaste `Date` via `vi.useFakeTimers({ toFake: ['Date'] })`), rolpoort-matrix, workflow-
+  guard `test_onderdeel_veldwerkers_dubbelen_alleen_op_verzoek_en_lees_only`; harnas `harness-planning.html` mét vaste "vandaag"
+  (di 15-9-2026) in de overflow-sweep (24/24). Mockup `planning-v3-dag-eerst.html` notitie "Conflictenbalk" + balk-voorbeeld 1-op-1
+  bijgewerkt (UX-review: zelfde plek boven het grid, geen nieuwe route of tegel — past in de IA).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-signaal "geplande week zonder weekstaat" (CLAUDE.md `ed6d176` r. 675–682)

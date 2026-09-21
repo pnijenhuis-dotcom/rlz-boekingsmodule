@@ -12221,3 +12221,29 @@ bank alleen GEBOEKT in het jaar; `advies_voor` alle takken + terugval; élke CLI
 dry-run schrijft niets; echt zetten = audit mét bron + idempotent; kapotte administratie stopt de rest niet; `voeg_toe` laat
 bestaande aan staan, verdwenen rekening = onbekend), `tests/unit/test_nameting_workflow.py` (options, bua-tak lees-only, nooit
 `bua-kenmerk-zetten` in de workflow, nameting.sh-lijsten, VGG-uitsluiting generiek).
+
+## PLANNING — CONFLICTENPANEEL MÉT HANDELING + DUBBELE VELDWERKERS (Peter 21-09) — balk → paneel per dag mét soort + handeling, alleen huidige/toekomstige dagen, "deze week" alleen als het zo is, dubbelen alleen op harde sleutels; migratie 0169
+
+**Status: GEBOUWD + GETEST 21-09-2026 (opdracht `opdrachten/gedaan/2026-09-21-planning-conflictenbalk-onleesbaar-oude-week-dubbele-veldwerkers-zonder-handeling.md`,
+rapport `docs/rapporten/2026-09-21-planning-conflictenpaneel-dubbele-veldwerkers.md`). Canonieke regeltekst:
+`docs/regels/uren-planning-veldwerkers.md` alinea "Planning — conflictenPANEEL mét handeling + dubbele veldwerkers op harde sleutels" +
+`docs/regels/kantoor-frontend.md` alinea "Signaalbalk → paneel-tabel (21-09)". Mockup `planning-v3-dag-eerst.html` notitie "Conflictenbalk"
+bijgewerkt (UX-review: zelfde plek, geen nieuwe route/tegel). Werkt in productie: niet gemeten — meetrecept in het rapport.**
+
+**Feit (Peter 21-09, Universal /planning):** "17 conflicten deze week — ma 7-9: M. Demir op 25137 Bergeijk (van Stiphout) én 26082 Eindhoven
+(Wijnen Bouw) … vr 11-9: M. Sanli op 26019 Bennekom (Boon) én 26030 Scherpenzeel én 26129 Hilversum … ik kan er niet uithalen wat het
+conflict is." **Correctie Peter 21-09:** "V. Ponchev"/"Z.V. Panchev" en "M. Demir"/"R. Demir" zijn broers in één ploeg — géén dubbele
+records; planningspatroon ≠ identiteit.
+
+| Onderdeel | Besluit / gebouwd |
+|---|---|
+| A. Balk → paneel | `planning/ConflictenPaneel.tsx` vervangt `ConflictenBalk.tsx`: kop "N conflicten in week 39" (getoonde week; "deze week" alleen als huidig), per dag, per rij persoon · projecten · soort (`Badge warn`) · handeling; ingeklapt 3, "Alle N tonen" = tabel in `.tabel-scroll` (óók ingeklapt). Handelingen: dubbel → "Houd ‹A›"/"Houd ‹B›" (bulkroute `verwijderen` mét nieuwe bron `conflict`, audit, toast "Ongedaan maken" = exact de set terug via bron `ongedaan`) + "Beide (halve dagen)…" (reden verplicht → `POST /uren/kantoor/planning/conflict-akkoord`: alle kaartjes van persoon × dag → `half` + akkoord-rij mét planningsstand); afwezig → "Van planning halen" / "Tóch plannen…"; > 5 → "Ploeg aanpassen"; dossier → "Dossier openen →"; élke rij "Toon in grid". Nooit blokkerend. |
+| A. Akkoord-tabel (0169) | `boekhouding.planning_conflict_akkoord` (persoon × dag × soort `dubbel`\|`afwezig`, `project_ids` JSONB = gesorteerde stand, reden ≥ 3, aangemaakt_door/op; RLS FORCE, grants zonder DELETE). Het paneel verbergt een conflict alleen zolang de huidige stand EXACT gelijk is aan een akkoord-stand — wijzigt de planning, dan is het conflict weer zichtbaar. Idempotent op dezelfde stand; oude akkoorden blijven (historie). Audit `planning_conflict_akkoord` + `planning_dagdeel_gezet` (`bron: conflict_akkoord`). `PlanningWeekDto.conflict_akkoorden`. |
+| B. Alleen vanaf vandaag | `conflictenVanaf`: verstreken dagen tellen niet als planningsconflict (historie); paneel meldt "N op verstreken dagen niet getoond (zie Per project)"; kaart-chips + Per project tonen alles. Oorzaak week 37: geen bug — `?week=` is een bewuste deeplink (planning-signaal, projectdetail); alleen het label was fout. Nieuw: weekchip "verstreken week"/"lopende week" in de subkop. |
+| C. Dubbele veldwerkers | Lees-only CLI `veldwerkers-dubbelen (--administratie X \| --alles)` (`app/uren/dubbelen.py`): zelfde administratie én zelfde KvK (dossier), IBAN (crediteur-koppeling → leverancier_iban) of e-mail (uniek → praktisch 0); telefoon = niet toetsbaar (geen veld), zichtbaar gemeld. Naam/planning NOOIT een signaal (guard). Geen UI-chip, geen samenvoegen. Nameting-allowlist + dispatch-onderdeel `veldwerkers-dubbelen` (Universal: verwacht 0). |
+| D. Guards | `tests/uren/test_planning_conflicten_21_09.py` (9), `dagEerst.test.ts` (+2), `PlanningScreen.test.tsx` (+4, vaste `Date`), rolpoort-matrix, `test_nameting_workflow` (+1), harnas mét vaste "vandaag" in de overflow-sweep (24/24). |
+
+**Keuzes zonder Peter (rapport "Keuzes"):** (1) "Beide (halve dagen)" zet écht beide kaartjes op ½ (niet alleen een vinkje) — de planning
+klopt dan mét de afspraak; (2) het akkoord verloopt op STAND-wijziging, niet op tijd; (3) dubbelen-CLI toetst óók e-mail en meldt telefoon
+als niet toetsbaar i.p.v. het stil weg te laten (KP 7.6); (4) geen "laatst bekeken week onthouden" — de URL is de bron, de weekchip maakt
+een oude week eerlijk.

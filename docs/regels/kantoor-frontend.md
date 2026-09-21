@@ -53,6 +53,17 @@
   (`harness-werkvoorraad.html?projecten=1&tab=afsluiten`) — zie BESLISSINGEN "PROJECTEN — TAB AFSLUITEN? MÉT BULK-AFSLUITEN EN
   NIET-AFSLUITEN (Peter 19-09)".
 
+<!-- toegevoegd 21-09-2026, opdracht "planning-conflictenbalk-onleesbaar-oude-week-dubbele-veldwerkers-zonder-handeling" -->
+- **Signaalbalk → paneel-tabel (21-09, Planning › conflicten; Peter: "ik kan er niet uithalen wat het conflict is"):** een
+  signaalregel mét meer dan een handvol items is nooit een inline rij `linkbtn`s achter elkaar — dat wordt uitgeklapt één lap tekst.
+  Patroon: kop mét teller + CONTEXT die klopt (de getoonde week/periode, niet "deze week" als dat niet zo is), rijen gegroepeerd
+  (per dag), per rij wat/wie/waar · SOORT als `Badge variant="warn"` · HANDELING(EN) als `linkbtn`s (Kernprincipe 7.2), ingeklapt N
+  rijen + "Alle N tonen", de tabel ALTIJD in `.tabel-scroll` (óók ingeklapt — de sweep op 768 px liep anders op de acties-kolom;
+  overflow-les 18-09), acties-cel `display:flex; flex-wrap` i.p.v. `white-space: nowrap`. Een "bewust zo laten"-besluit is een
+  `linkbtn` mét dialoog en verplichte reden (patroon "Niet afsluiten…" 19-09). Een deeplink die bewust op een oude periode landt,
+  toont dat als chip ("verstreken week") naast de periodekop. Referentie: `planning/ConflictenPaneel.tsx` — zie BESLISSINGEN
+  "PLANNING — CONFLICTENPANEEL MÉT HANDELING + DUBBELE VELDWERKERS (Peter 21-09)".
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-frontend-modernisering (IA klant-centrisch, Instellingen v3, gebruikersbeheer, blokkeren/archiveren, nazorg controls-review) (CLAUDE.md `ed6d176` r. 295–353)
