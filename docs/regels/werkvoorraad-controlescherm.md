@@ -345,3 +345,24 @@
   `tests/omzet/test_corrigeren.py`, vitest `CorrigerenActie.test.tsx`, gouden-set-casus **ah** `tests/keten/test_ah_corrigeren_geboekt_document.py`
   (BDO boeken → corrigeren → herboeken op het nieuwe GUID, oud concept blijft; poging 2 21-09). Werkt in productie: niet gemeten (nameting-opdracht
   `2026-09-22-nameting-corrigeren-testadministratie.md`, TEST-referentie op de RLZ-testadministratie).
+
+<!-- toegevoegd 21-09-2026, opdracht "BUG-rlz-boek-wachtrij-job-zonder-command-python-exec-failed-deploy-yml" -->
+- **"Wordt geboekt…" is nooit een eeuwige stip — loopt-vast-label, trigger-reden op de tijdlijn, "Opnieuw indienen" (BUG 21-09,
+  casus Administratiekantoor Nijenhuis C.V. Shine Employes € 480,13 + Reeleezee € 2.711,61 ingediend 12:46, om 13:02 nog
+  `wordt_geboekt`; geen migratie; BESLISSINGEN "F3-JOBS — COMMAND PYTHON IN DEPLOY.YML + JOB-SMOKETEST + WORDT_GEBOEKT LET-OP (21-09)"):** (1) de rij in de documentenlijst
+  toont ná `WORDT_GEBOEKT_VAST_MINUTEN` (5) "Wordt geboekt… (loopt vast — N min)" mét oranje dot (`StatusChip` leest
+  `laatst_gewijzigd_op`; `werkvoorraad/status.ts::wordtGeboektLabel`), de lijst blijft pollen; (2) het controlescherm draagt bij
+  status wordt_geboekt de balk `WordtGeboektBalk` (minuten meelopend; ná 5 min oranje "loopt vast" + primaire knop **"Opnieuw
+  indienen"**); (3) `POST …/documenten/{id}/boek-wachtrij/opnieuw-indienen` (`boek_wachtrij.dien_opnieuw_in`) = géén nieuwe
+  boeking en geen statuswissel — dezelfde sleutel/claim (idempotent, een gestrande claim wordt door de verwerker hervat), alleen
+  de achtergrond-schrijver wordt opnieuw gestart; tijdlijnregel "Opnieuw ingediend …" (mens-actor) + audit
+  `boek_wachtrij_opnieuw_ingediend`; het antwoord draagt `trigger_uitkomst` geslaagd | mislukt (mét `trigger_fout`; het
+  scheduler-vangnet volgt) | lokaal en de toast noemt die letterlijk; niet op wordt_geboekt = 409 (nooit stil opnieuw indienen wat
+  al geboekt/mislukt is); (4) een MISLUKTE job-trigger bij het indienen staat sinds 21-09 óók als systeemregel op de tijdlijn
+  ("achtergrond-schrijver starten mislukt (job rlz-boek-wachtrij): <fout> — het scheduler-vangnet (elke 2 min) pakt de boeking op;
+  … 'Opnieuw indienen'") — tot 21-09 alleen in het audit `boek_wachtrij_trigger`; een geslaagde trigger blijft alleen audit (geen
+  ruis). Deze tijdlijnregels hebben van = naar = wordt_geboekt: `_wachtrij_detail` en het indienmoment (`_wordt_geboekt_documenten`)
+  lezen uitsluitend de échte overgang (van ≠ wordt_geboekt), anders verloor de verwerker de actor/bevestigingsvlaggen en
+  verschoof "sinds". Tests `tests/documenten/test_boek_wachtrij.py::TestNietsStil21_09`,
+  `test_router_boeken.py::TestBoekWachtrijOpnieuwIndienenRoute`, vitest `status.wordtGeboekt.test.ts`, `WordtGeboektBalk.test.tsx`.
+  Werkt in productie: niet gemeten (vervolg-opdracht `2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md`). Rapport `docs/rapporten/2026-09-21-f3-jobs-command-python-job-smoketest-wordt-geboekt-let-op.md`.

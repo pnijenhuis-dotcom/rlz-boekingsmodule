@@ -189,3 +189,28 @@
   deeplink, "Nu draaien" (Beheerder, 202 + poll, on-demand job — klikpunt f3_jobs.sh stap 11).
   Opruimlijst dedupliceert per RLZ-concept (blok D). De lokale dagelijkse `make reconciliatie-alles`
   is per 06-09 vervallen als vangnet (GCP_UITROL §F3.7). `app/reconciliatie/{run,kantoorbreed}.py`.
+
+<!-- toegevoegd 21-09-2026, opdracht "BUG-rlz-boek-wachtrij-job-zonder-command-python-exec-failed-deploy-yml" -->
+- **`wordt_geboekt_verouderd` gepromoveerd: boeking > herstelgrens op wordt_geboekt = REGRESSIE-LET-OP `boek_wachtrij_gestrand`
+  mét actie "Opnieuw indienen" + kwartier-probe (21-09; geen migratie; BESLISSINGEN "F3-JOBS — COMMAND PYTHON IN DEPLOY.YML + JOB-SMOKETEST + WORDT_GEBOEKT LET-OP (21-09)"):**
+  de bevindingssoort stond sinds 18-09 als `afwijking` in `meten` (facet "in meting", nooit een mail) en de systeemmail is in
+  productie `uitgeschakeld` — vijf hangende boekingen (18→21-09) gaven daardoor nul signaal. Sinds 21-09: (1)
+  `automatiseringen.boek_wachtrij_gestrand_bevindingen` (in `registreer`) maakt per document dat langer dan
+  `BOEK_WACHTRIJ_HERSTEL_MINUTEN` (10) op wordt_geboekt staat één LET-OP op blok `automatisering` mét administratie, categorie
+  `BOEK_WACHTRIJ_GESTRAND` ∈ `REGRESSIE_CATEGORIEEN` → `is_regressie` → systeemmail + audit `automatisering_regressie` +
+  bewakingsprobe `automatisering_regressie` (die alert mailt naar `bewaking_alert_ontvanger`, ook als de systeemmail uit staat);
+  de tekst draagt de reden uit het jongste `boek_wachtrij_trigger`-audit ("trigger mislukt: <fout>" | "trigger geslaagd maar de job
+  rondde de boeking niet af" | "geen trigger-spoor"); detail `afwijking_soort: wordt_geboekt_verouderd`, `document_id`, `sinds`,
+  `minuten`, `trigger_*`, `doel_pad` = het document; vingerafdruk per document × indienmoment (één mail per hangende boeking);
+  bewust NIET via `meten` (detector op een infra-/codefout, geen nieuwe domeinbevinding — zelfde lijn als `groep_saldo_fout`).
+  Het documenten-blok produceert de `afwijking` niet meer (alleen nog een informatieve CLI-regel); de registry-entry blijft
+  (`gepromoveerd_op` 21-09, tekst-guard). (2) Frontend: `OpnieuwIndienenActie` (blok automatisering + `detail.reden ==
+  boek_wachtrij_gestrand` + `document_id`) = primaire knop op de rij, roept de documentroute `…/boek-wachtrij/opnieuw-indienen` aan,
+  toont de trigger-uitkomst; deeplink "Naar het document →". (3) **Snelle weg:** bewakingsprobe `boek_wachtrij_gestrand`
+  (`app/bewaking/service.py`, elk kwartier): ≥ 1 document > herstelgrens = 'fout' → alert ná twee metingen (~30 min) mét per
+  document minuten + trigger-reden, herstelmelding zodra leeg. (4) Teller `boek_wachtrij` in de reconciliatiemail telt
+  `opnieuw_ingediend_24u`. Tests `tests/documenten/test_boek_wachtrij.py::TestNietsStil21_09::
+  test_gestrande_boeking_is_regressie_let_op_met_trigger_reden_en_probe_fout`, vitest `OpnieuwIndienenActie.test.tsx`.
+  Feit productie (leesreplica 21-09, per administratie): 5 boekingen ingediend 19-09 06:55 (Nijenhuis 75b35516), 21-09 07:20
+  (Belastingbutler), 07:53 ×2 (Old Dutch), 10:46 (Nijenhuis) → alle vijf `afgerond geboekt` door verwerker `job` 21-09 15:31
+  ná Peters `--command python`; 140 trigger-audits `geslaagd`, 0 `mislukt`. Rapport `docs/rapporten/2026-09-21-f3-jobs-command-python-job-smoketest-wordt-geboekt-let-op.md`.

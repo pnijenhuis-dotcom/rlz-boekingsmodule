@@ -193,3 +193,28 @@
   in het reconciliatieblok (LET-OP mét systeemmail + audit), zodat "kapot" een handeling wordt en geen kleur; (3) een test-stub voor een
   externe bron speelt het bewezen gedrag van die bron na (assert op de letterlijke query/het domein) — een stub die alles accepteert
   bewijst niets over de query. Les in `Platform/registers/verbeteringen.md` (21-09).
+
+<!-- toegevoegd 21-09-2026, opdracht "BUG-rlz-boek-wachtrij-job-zonder-command-python-exec-failed-deploy-yml" -->
+- **Een job die door de deploy wordt aangemaakt erft niets van het bootstrap-script — élke eigenschap die de start bepaalt staat in de
+  deploy zelf (BUG 21-09; BESLISSINGEN "F3-JOBS — COMMAND PYTHON IN DEPLOY.YML + JOB-SMOKETEST + WORDT_GEBOEKT LET-OP (21-09)"):** job `rlz-boek-wachtrij` (18-09) was de
+  eerste job die `deploy.yml` zélf aanmaakte; de F3-lus gaf alleen `--args`, de Dockerfile heeft bewust geen ENTRYPOINT en
+  `f3_jobs.sh` zag 'm daarna als "bestaat al — overgeslagen" → `command: leeg`, élke executie "Application exec likely failed"
+  zonder één regel Python-uitvoer (Cloud Logging job-kant: honderden mislukte starts 18→21-09), vijf boekingen van 19-09 06:55
+  tot 21-09 15:31 op `wordt_geboekt` (leesreplica: 140 trigger-audits `geslaagd`, 0 `mislukt` — de trigger werkte, de
+  executie startte niet). Regels: (1) élke `gcloud run jobs deploy` in `deploy.yml` draagt een expliciet `--command`
+  (F3-lus `python`, rlz-migratie `alembic`, rlz-smoketest `python`); GEEN `ENTRYPOINT ["python"]` in de Dockerfile — dat maakt
+  de service-CMD `sh -c exec uvicorn …` tot `python sh -c …`; guard `tests/unit/test_deploy_yml_jobs_command.py`. (2)
+  **Job-smoketest ná de F3-lus:** élke job uit de lus start één keer als `python -m app.cli --smoketest <cli>` (`execute --wait`,
+  parallel; `app/cli.py::_job_smoketest` = argparse + imports + settings + `SELECT 1`, géén werk) — een job die niet start maakt
+  de deploy rood en mailt het beheer (`if: failure()`); les 10-09 "service en jobs uit de pas" geldt ook voor start-baarheid;
+  guard `tests/unit/test_cli_smoketest.py` roept élke CLI-vorm uit de lus letterlijk aan. (3) **`f3_jobs.sh`:** stap 4 "bestaat al"
+  toetst het startcommando (`spec.template.spec.template.spec.containers[0].command`) en zet `--command python` bij als het
+  ontbreekt; stap 6 zet de VANGNET-schedulers (`rlz-boek-wachtrij`, `rlz-extractie-wachtrij`, `rlz-bank-sync`, `rlz-bewaking`,
+  `rlz-webhook-afleveraar`) op ENABLED (resume alleen bij PAUSED, notificatie-cadansen houden hun bewuste pauze); stap 12 eindigt
+  LUID mét "GEPAUZEERD: …" + resume-commando en "ZONDER STARTCOMMANDO: …" + update-commando; guard
+  `tests/unit/test_f3_jobs_sh.py` (incl. `bash -n`). (4) **Meetlat ná deploy:** nameting-onderdeel `jobs-start` (`gh workflow run
+  nameting -f onderdeel=jobs-start`): startcommando per job, laatste executies rlz-boek-wachtrij, scheduler-stand vangnetten
+  (nameting@ zonder cloudscheduler.viewer = "niet leesbaar", geen fout), `db-lezen boek-wachtrij` (querybibliotheek:
+  wordt_geboekt_nu + ingediend/trigger/afgerond/opnieuw 7 dagen); oordeelregel "alle jobs dragen command python".
+  Vervolg-opdracht `opdrachten/inbox/2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md` (`niet vóór:`). Les in
+  `Platform/registers/verbeteringen.md` (21-09). Rapport `docs/rapporten/2026-09-21-f3-jobs-command-python-job-smoketest-wordt-geboekt-let-op.md`.

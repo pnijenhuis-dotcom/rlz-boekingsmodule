@@ -12316,3 +12316,62 @@ fetch vangt geen vorm-fout in de `then`.
 **Beslispunt (open, Peter):** een kassarapport-correctie zet de registratie op `gestorneerd` en laat het oude concept in RLZ staan tot
 de herboeking het overschrijft; blijft de herboeking uit, dan meldt de omzet-reconciliatie het concept (bestaand gedrag) — akkoord dat
 dat de zichtbaarheid is, of wil Peter een aparte werkvoorraad-teller "gecorrigeerd, nog niet herboekt"?
+
+## F3-JOBS — COMMAND PYTHON IN DEPLOY.YML + JOB-SMOKETEST + WORDT_GEBOEKT LET-OP (21-09) — job `rlz-boek-wachtrij` startte 18→21-09 niet (geen `--command`), "Boeken in RLZ" bleef op "Wordt geboekt…"; deploy draagt het commando zelf + start élke job ná deploy, f3_jobs.sh toetst/hervat luid, hangende boeking = regressie-LET-OP + probe + "Opnieuw indienen"; geen migratie
+
+**Status:** GEBOUWD + GETEST (21-09, inbox-run); **werkt in productie: niet gemeten** (de fix deployt ná deze run; nameting = vervolg-opdracht
+`opdrachten/inbox/2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md` mét `niet vóór:`, onderdeel `jobs-start` in `nameting.yml`).
+Opdracht `opdrachten/gedaan/2026-09-21-BUG-rlz-boek-wachtrij-job-zonder-command-python-exec-failed-deploy-yml.md`; rapport `docs/rapporten/2026-09-21-f3-jobs-command-python-job-smoketest-wordt-geboekt-let-op.md`.
+Volledige regeltekst: `docs/regels/werkloop-productie.md` (deploy/f3_jobs/smoketest/meetlat), `werkvoorraad-controlescherm.md` (lijstlabel,
+balk, Opnieuw indienen, tijdlijn), `reconciliatie.md` (LET-OP + probe). Les: `Platform/registers/verbeteringen.md` 21-09.
+
+**Feiten (Peter + Cowork 21-09; leesreplica + Cloud Logging in deze run):**
+- Job `rlz-boek-wachtrij` (18-09, boeken sneller) werd als eerste job door `deploy.yml` zélf aangemaakt; de F3-lus gaf alleen `--args`, de
+  Dockerfile heeft geen ENTRYPOINT → `command: leeg` → élke executie "Application exec likely failed / Application failed to start", nul
+  regels Python. Cloud Logging job-kant: **2.237 mislukte starts** (18-09: 190, 19-09: 732, 20-09: 722, 21-09: 593; laatste 15:30:10 UTC),
+  eerste geslaagde verwerking 21-09 15:31:40 UTC "5 boeking(en) afgerond" ná Peters `gcloud run jobs update … --command python`.
+- Leesreplica (per administratie, audit `boek_wachtrij_*`): 5 boekingen ingediend — Administratiekantoor Nijenhuis C.V. 19-09 06:55 en
+  21-09 10:46, Belastingbutler 21-09 07:20, Old Dutch 21-09 07:53 ×2 — alle vijf `afgerond geboekt` (verwerker `job`) 21-09 15:31:28–15:31:40.
+  **140 trigger-audits, allemaal `geslaagd`, 0 `mislukt`**: de opdrachttekst ("de trigger vanuit de service faalde sinds 18-09") klopt
+  níet — `run.jobs.run` slaagde élke keer (27–41 triggers per document door het startup-vangnet bij élke service-start), de EXECUTIE
+  startte niet. De invoker-binding van stap 8b was dus niet de oorzaak; het ontbrekende commando wél.
+- Signalering: `wordt_geboekt_verouderd` stond in `meten` (nooit een mail), de systeemmail is in productie `uitgeschakeld`, de
+  `vangnet_scheduler`-LET-OP telt alleen MISLUKTE triggers (die er niet waren) → drie dagen nul signaal. De */2-scheduler stond volgens
+  Peter gepauzeerd (f3_jobs zei alleen "verse cadansen starten gepauzeerd"); de job-logs tonen executies elke 2 min op 18-09 17:40–17:52 en
+  daarna onregelmatig — het vangnet draaide dus deels wél maar kon niets: een gepauzeerd vangnet én een vangnet dat niet start zijn beide stil.
+
+**Besluiten/keuzes (CC, Peter keek niet mee):**
+1. **`deploy.yml` F3-lus draagt `--command python`** (rlz-migratie `alembic`, rlz-smoketest al `python`); de lus is een bash-array `F3_JOBS`
+   zodat de job-smoketest dezelfde lijst gebruikt. **GEEN `ENTRYPOINT ["python"]` in de Dockerfile:** de service-CMD is `sh -c exec uvicorn …`;
+   met een python-ENTRYPOINT wordt dat `python sh -c …` en start de service niet — het jobcommando hoort in de deploy, niet in het beeld.
+   Guard `tests/unit/test_deploy_yml_jobs_command.py` (élke `jobs deploy` heeft `--command`, Dockerfile zonder ENTRYPOINT, smoketest-lus aanwezig).
+2. **Job-smoketest ná de F3-lus:** `python -m app.cli --smoketest <cli>` (root-vlag; `_job_smoketest` = argparse + imports + settings +
+   `SELECT 1`, géén werk, geen RLZ, geen mail) per job via `gcloud run jobs execute … --args="^|^-m|app.cli|--smoketest|<cli>" --wait`,
+   parallel gestart en gewacht; één niet-startende job = stap rood + `if: failure()`-mail. rlz-migratie/rlz-smoketest bewijzen zichzelf
+   al in de workflow. Guard `tests/unit/test_cli_smoketest.py` roept élke CLI-vorm uit de lus letterlijk aan (les 19-09).
+3. **`f3_jobs.sh`:** stap 4 "bestaat al" leest `containers[0].command` en zet `--command python` bij als het leeg is (Peters herstel als vast
+   onderdeel); stap 6 zet de vangnet-schedulers (`rlz-boek-wachtrij`, `rlz-extractie-wachtrij`, `rlz-bank-sync`, `rlz-bewaking`,
+   `rlz-webhook-afleveraar`) op ENABLED (resume alleen bij PAUSED — notificatie-cadansen houden hun bewuste pauze); nieuwe stap 12 eindigt
+   LUID mét "GEPAUZEERD: …" + resume-commando en "ZONDER STARTCOMMANDO: …" + update-commando. Guard `tests/unit/test_f3_jobs_sh.py` (incl. `bash -n`).
+4. **Niets stil (kernprincipe 4):** (a) `wordt_geboekt_verouderd` is geen `afwijking` in `meten` meer maar een **regressie-LET-OP**
+   `boek_wachtrij_gestrand` (blok automatisering, `REGRESSIE_CATEGORIEEN` → systeemmail + audit `automatisering_regressie` + bewakingsprobe
+   `automatisering_regressie`, die alert mailt naar `bewaking_alert_ontvanger` óók als de systeemmail uit staat) per document > 10 min mét
+   de trigger-reden ("trigger mislukt: <fout>" | "trigger geslaagd maar de job rondde de boeking niet af" | "geen trigger-spoor"),
+   `doel_pad` = document, actie **"Opnieuw indienen"** op de rij (`OpnieuwIndienenActie`); bewust niet via `meten` (detector op een
+   infra-/codefout, geen domeinbevinding — lijn `groep_saldo_fout`); (b) **kwartier-probe `boek_wachtrij_gestrand`** in `rlz-bewaking`
+   (alert ná 2 metingen ≈ 30 min, herstelmelding) — de reconciliatie draait pas 06:30; (c) **tijdlijn:** een mislukte job-trigger schrijft
+   een systeemregel op de tijdlijn ("achtergrond-schrijver starten mislukt (job …): <fout> — het scheduler-vangnet … 'Opnieuw indienen'");
+   (d) **lijst:** ná 5 min "Wordt geboekt… (loopt vast — N min)" mét oranje dot (`StatusChip` op `laatst_gewijzigd_op`); (e) **controlescherm:**
+   `WordtGeboektBalk` mét minuten en ná 5 min de knop "Opnieuw indienen"; (f) **route** `POST …/boek-wachtrij/opnieuw-indienen`
+   (`dien_opnieuw_in`): zelfde sleutel/claim, geen statuswissel, tijdlijn + audit `boek_wachtrij_opnieuw_ingediend`, trigger-uitkomst direct
+   terug, 409 als het document niet meer op wordt_geboekt staat. **Bijvangst:** `_wachtrij_detail` en het indienmoment lezen alleen de échte
+   overgang (van ≠ wordt_geboekt) — anders verloor de verwerker actor/bevestigingsvlaggen en verschoof "sinds" door de nieuwe tijdlijnregels.
+5. **Meetlat:** nameting-onderdeel `jobs-start` (startcommando per job, executies rlz-boek-wachtrij, scheduler-stand, `db-lezen boek-wachtrij`
+   — nieuwe querybibliotheek-query, scope administratie). Het trigger-pad (klik in de service → job binnen 2 min) is alleen meetbaar mét
+   een echte indiening; de vervolg-opdracht leest de audits ná deploy en zegt "niet gemeten — vraagt één klik van Peter op de
+   RLZ-testadministratie" als er geen indiening was. Gouden-set-casus **ai** `tests/keten/test_ai_wordt_geboekt_loopt_vast.py`.
+
+**Regel (woordelijk, ook in `Platform/registers/verbeteringen.md`):** een job die door de deploy wordt aangemaakt erft niets van het
+bootstrap-script — élke eigenschap die de start bepaalt staat in de deploy zelf; "start hij?" is een aparte toets naast "draait hij op het
+juiste beeld?"; een vangnet-cadans start nooit gepauzeerd; werk dat "op de achtergrond loopt" krijgt een tijdgrens mét handeling.
+
