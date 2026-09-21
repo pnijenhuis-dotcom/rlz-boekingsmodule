@@ -559,3 +559,53 @@ class TestBoekenIngediend:
                 {"id": document_id},
             ).scalar_one()
         assert n == 1
+
+
+class TestBoekWachtrijOpnieuwIndienenRoute:
+    """21-09: `POST …/boek-wachtrij/opnieuw-indienen` — alleen op wordt_geboekt (anders 409), scope-poort,
+    trigger-uitkomst
+    in het antwoord."""
+
+    def test_opnieuw_indienen_route(
+        self, gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from app.documenten import boek_wachtrij
+
+        beheer_service.zet_boeken_ingeschakeld(actor_id=beheerder_id, administratie_id=administratie_id,
+        ingeschakeld=True)
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: FakeBoekClient())
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = _upload(headers, administratie_id)
+        # Nog niet ingediend → 409, nooit stil.
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boek-wachtrij/opnieuw-indienen", headers=headers
+        )
+        assert resp.status_code == 409 and "Wordt geboekt" in resp.json()["detail"]
+        # Op wordt_geboekt (statusrij direct gezet, zoals ná een indiening) → 200 mét trigger-uitkomst.
+        opgevangen: list[uuid.UUID] = []
+
+        class _Wachtrij:
+            def enqueue(self, *, administratie_id, document_id):  # noqa: ANN001, ANN202
+                opgevangen.append(document_id)
+                return None
+
+        monkeypatch.setattr(boek_wachtrij, "_standaard_wachtrij", lambda: _Wachtrij())
+        with admin_engine.begin() as conn:
+            conn.execute(text("UPDATE boekhouding.document SET status = 'wordt_geboekt' WHERE id = :id"), {"id": document_id})
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boek-wachtrij/opnieuw-indienen", headers=headers
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "wordt_geboekt" and body["trigger_uitkomst"] == "lokaal" and body["trigger_fout"] is None
+        assert opgevangen == [uuid.UUID(document_id)]
+        # Buiten de scope: 403 (bestaande poort).
+        vreemde = _bearer(uuid.uuid4(), rol="boekhouding")
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boek-wachtrij/opnieuw-indienen", headers=vreemde
+        )
+        assert resp.status_code in (401, 403)

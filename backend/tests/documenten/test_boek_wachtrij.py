@@ -18,6 +18,7 @@ from sqlalchemy import Engine, text
 
 from app.beheer import service as beheer_service
 from app.config import settings
+from app.db.session import scoped_session
 from app.documenten import boek_wachtrij, boeken, boekvoorstel, service
 from app.documenten.models import DocumentStatus
 from app.documenten.statusmachine import _TOEGESTANE_OVERGANGEN
@@ -297,3 +298,171 @@ def test_statusmachine_wordt_geboekt() -> None:
     )
     # Niet bewerkbaar, niet verwijderbaar, niet nog eens te boeken vanuit de UI.
     assert DocumentStatus.VERWIJDERD not in _TOEGESTANE_OVERGANGEN[DocumentStatus.WORDT_GEBOEKT]
+
+
+class TestNietsStil21_09:
+    """BUG 21-09 (rlz-boek-wachtrij zonder `--command python`: drie dagen 'Wordt geboekt…' zonder signaal): de trigger-
+    uitkomst staat op de tijdlijn, 'Opnieuw indienen' start de verwerker opnieuw zonder dubbel te boeken, en een boeking
+    > herstelgrens is een regressie-LET-OP (blok automatisering) + een 'fout' van de kwartier-probe."""
+
+    def _hangend(self, administratie_id, actor, opslag, admin_engine, monkeypatch, *, referentie: str) -> uuid.UUID:
+        fake = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake)
+        monkeypatch.setattr(boekvoorstel, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake)
+        document_id = _klaar(administratie_id, actor, opslag, referentie=referentie)
+        boek_wachtrij.dien_boeking_in(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor, wachtrij=_Verzamelaar()
+        )
+        oud = datetime.now(UTC) - timedelta(minutes=settings.boek_wachtrij_herstel_minuten + 3)
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE boekhouding.document_gebeurtenis SET tijdstip = :t WHERE document_id = :id AND naar_status = 'wordt_geboekt'"),
+                {"t": oud, "id": document_id},
+            )
+        return document_id
+
+    def test_mislukte_trigger_staat_op_de_tijdlijn_en_in_het_audit(
+        self, gescoopte_gebruiker, administratie_id, opslag, admin_engine, boeken_aan, monkeypatch
+    ) -> None:
+        fake = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake)
+        monkeypatch.setattr(boekvoorstel, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake)
+        document_id = _klaar(administratie_id, gescoopte_gebruiker, opslag, referentie="F-21a")
+
+        def _kapot(resource: str) -> None:
+            raise PermissionError("403 run.jobs.run ontbreekt op rlz-boek-wachtrij")
+
+        cloud = boek_wachtrij.CloudRunJobBoekWachtrij(
+            job_resource="projects/p/locations/l/jobs/rlz-boek-wachtrij", trigger=_kapot
+        )
+        boek_wachtrij.dien_boeking_in(
+            administratie_id=administratie_id, document_id=document_id, actor_id=gescoopte_gebruiker, wachtrij=cloud
+        )
+        trigger = boek_wachtrij.laatste_trigger(administratie_id, document_id)
+        assert trigger is not None and trigger["uitkomst"] == "mislukt"
+        assert "403 run.jobs.run" in trigger["fout"] and trigger["job"] == "rlz-boek-wachtrij"
+        with admin_engine.connect() as conn:
+            redenen = conn.execute(
+                text(
+                    "SELECT detail->>'reden' FROM boekhouding.document_gebeurtenis WHERE document_id = :id "
+                    "AND van_status = 'wordt_geboekt' AND naar_status = 'wordt_geboekt' ORDER BY tijdstip"
+                ), {"id": document_id},
+            ).scalars().all()
+        assert len(redenen) == 1 and "starten mislukt (job rlz-boek-wachtrij): PermissionError: 403" in redenen[0]
+        assert "Opnieuw indienen" in redenen[0]
+        # Geslaagde trigger = alleen audit, geen tijdlijnregel (geen ruis).
+        ok = boek_wachtrij.CloudRunJobBoekWachtrij(job_resource="projects/p/locations/l/jobs/rlz-boek-wachtrij", trigger=lambda r: None)
+        assert ok.enqueue(administratie_id=administratie_id, document_id=document_id) is None
+        assert boek_wachtrij.laatste_trigger(administratie_id, document_id)["uitkomst"] == "geslaagd"
+        with admin_engine.connect() as conn:
+            n = conn.execute(
+                text("SELECT count(*) FROM boekhouding.document_gebeurtenis WHERE document_id = :id AND van_status = 'wordt_geboekt' AND naar_status = 'wordt_geboekt'"),
+                {"id": document_id},
+            ).scalar_one()
+        assert n == 1
+
+    def test_opnieuw_indienen_start_de_verwerker_zonder_dubbel_te_boeken(
+        self, gescoopte_gebruiker, administratie_id, opslag, admin_engine, boeken_aan, monkeypatch
+    ) -> None:
+        document_id = self._hangend(administratie_id, gescoopte_gebruiker, opslag, admin_engine, monkeypatch, referentie="F-21b")
+        wachtrij = _Verzamelaar()
+        uit = boek_wachtrij.dien_opnieuw_in(
+            administratie_id=administratie_id, document_id=document_id, actor_id=gescoopte_gebruiker, wachtrij=wachtrij
+        )
+        assert uit.trigger_uitkomst == "lokaal" and uit.sleutel == boek_wachtrij.sleutel(document_id, 0)
+        assert wachtrij.items == [(administratie_id, document_id)]
+        assert _status(admin_engine, document_id) == "wordt_geboekt"
+        with admin_engine.connect() as conn:
+            reden = conn.execute(
+                text("SELECT detail->>'reden' FROM boekhouding.document_gebeurtenis WHERE document_id = :id AND detail ? 'boek_wachtrij_opnieuw'"),
+                {"id": document_id},
+            ).scalar_one()
+            audits = conn.execute(
+                text("SELECT count(*) FROM platform.audit_event WHERE record_id = :id AND actie = 'boek_wachtrij_opnieuw_ingediend'"),
+                {"id": document_id},
+            ).scalar_one()
+        assert "Opnieuw ingediend" in reden and audits == 1
+        # Cloud-wachtrij mét kapotte trigger: de fout gaat direct terug naar de mens.
+        cloud = boek_wachtrij.CloudRunJobBoekWachtrij(
+            job_resource="projects/p/locations/l/jobs/rlz-boek-wachtrij",
+            trigger=lambda r: (_ for _ in ()).throw(RuntimeError("job start niet")),
+        )
+        uit2 = boek_wachtrij.dien_opnieuw_in(
+            administratie_id=administratie_id, document_id=document_id, actor_id=gescoopte_gebruiker, wachtrij=cloud
+        )
+        assert uit2.trigger_uitkomst == "mislukt" and "job start niet" in (uit2.trigger_fout or "")
+        #  De tijdlijnregels (van = naar = wordt_geboekt) verschuiven het indienmoment niet en verbergen de indiening
+        # niet.
+        with admin_engine.connect() as conn, scoped_session(administratie_id) as session:
+            detail = boek_wachtrij._wachtrij_detail(session, document_id)
+        assert detail.get("actor_id") == str(gescoopte_gebruiker)
+        assert [d for _, d, _ in boek_wachtrij.verouderde_boekingen()] == [document_id]
+        # De verwerker rondt 'm daarna precies één keer af (zelfde sleutel/claim).
+        fake = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake)
+        monkeypatch.setattr(boekvoorstel, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake)
+        assert boek_wachtrij.verwerk_boek_wachtrij(verwerker="test-job") == 1
+        assert _status(admin_engine, document_id) == "geboekt" and len(fake.puts) == 1
+        # Niet meer op wordt_geboekt = 409-waardig, nooit stil opnieuw.
+        with pytest.raises(boeken.OngeldigeBoekpoging):
+            boek_wachtrij.dien_opnieuw_in(
+                administratie_id=administratie_id, document_id=document_id, actor_id=gescoopte_gebruiker,
+                wachtrij=_Verzamelaar()
+            )
+
+    def test_gestrande_boeking_is_regressie_let_op_met_trigger_reden_en_probe_fout(
+        self, gescoopte_gebruiker, administratie_id, opslag, admin_engine, boeken_aan, monkeypatch
+    ) -> None:
+        from app.bewaking import service as bewaking
+        from app.reconciliatie import automatiseringen as auto
+        from app.reconciliatie.run import Bevinding, BevindingSoort, is_beheer_signaal, is_regressie
+
+        assert bewaking._probe_boek_wachtrij_gestrand(datetime.now(UTC)).status == "ok"
+        document_id = self._hangend(administratie_id, gescoopte_gebruiker, opslag, admin_engine, monkeypatch, referentie="F-21c")
+        # Trigger-spoor "geslaagd" (zoals in productie 18→21-09: run.jobs.run lukte, de executie startte niet).
+        ok = boek_wachtrij.CloudRunJobBoekWachtrij(job_resource="projects/p/locations/l/jobs/rlz-boek-wachtrij", trigger=lambda r: None)
+        ok.enqueue(administratie_id=administratie_id, document_id=document_id)
+
+        gestrand = boek_wachtrij.gestrande_boekingen()
+        assert [(g.administratie_id, g.document_id) for g in gestrand] == [(administratie_id, document_id)]
+        assert gestrand[0].minuten >= settings.boek_wachtrij_herstel_minuten and gestrand[0].trigger_uitkomst == "geslaagd"
+
+        kws = auto.boek_wachtrij_gestrand_bevindingen(nu=datetime.now(UTC))
+        assert len(kws) == 1
+        kw = kws[0]
+        assert kw["soort"] == "let_op" and kw["blok"] == auto.BLOK and kw["administratie_id"] == administratie_id
+        assert kw["detail"]["reden"] == auto.BOEK_WACHTRIJ_GESTRAND
+        assert kw["detail"]["afwijking_soort"] == "wordt_geboekt_verouderd"
+        assert kw["detail"]["document_id"] == str(document_id)
+        assert kw["detail"]["doel_pad"] == f"/?administratie={administratie_id}&document={document_id}"
+        assert "trigger geslaagd maar de job rondde de boeking niet af" in kw["tekst"]
+        assert auto.REGRESSIE_TEKST in kw["tekst"]
+        b = Bevinding(
+            blok=kw["blok"], soort=BevindingSoort.LET_OP, administratie_id=kw["administratie_id"],
+            vingerafdruk=kw["vingerafdruk"], tekst=kw["tekst"], detail=kw["detail"],
+        )
+        assert is_regressie(b) and is_beheer_signaal(b)
+        # Vingerafdruk stabiel per document × indienmoment (één mail per hangende boeking).
+        assert auto.boek_wachtrij_gestrand_bevindingen(nu=datetime.now(UTC) + timedelta(minutes=5))[0]["vingerafdruk"] == kw["vingerafdruk"]
+
+        # Mét een mislukte trigger draagt de tekst de letterlijke fout.
+        kapot = boek_wachtrij.CloudRunJobBoekWachtrij(
+            job_resource="projects/p/locations/l/jobs/rlz-boek-wachtrij",
+            trigger=lambda r: (_ for _ in ()).throw(PermissionError("403 invoker")),
+        )
+        kapot.enqueue(administratie_id=administratie_id, document_id=document_id)
+        kw2 = auto.boek_wachtrij_gestrand_bevindingen(nu=datetime.now(UTC))[0]
+        assert "trigger mislukt: PermissionError: 403 invoker" in kw2["tekst"]
+        assert kw2["detail"]["trigger_fout"].startswith("PermissionError: 403 invoker")
+
+        probe = bewaking._probe_boek_wachtrij_gestrand(datetime.now(UTC))
+        assert probe.status == "fout" and str(document_id) in (probe.detail or "")
+        assert "403 invoker" in (probe.detail or "")
+
+        # De verwerker rondt af → geen bevinding, probe ok.
+        fake = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake)
+        monkeypatch.setattr(boekvoorstel, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake)
+        assert boek_wachtrij.verwerk_boek_wachtrij(verwerker="test-job") == 1
+        assert auto.boek_wachtrij_gestrand_bevindingen(nu=datetime.now(UTC)) == []
+        assert bewaking._probe_boek_wachtrij_gestrand(datetime.now(UTC)).status == "ok"
