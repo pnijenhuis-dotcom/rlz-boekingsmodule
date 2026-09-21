@@ -30,7 +30,7 @@ on:
         description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -208,6 +208,32 @@ jobs:
             echo "Oordeel: ${TOT:-geen totaalregel} · ${KAND:-geen kandidatenregel} — job-exit $rc_pa" >> "$UIT"
             echo "STATUS projecten-afgesloten: rapport in $UIT (job-exit $rc_pa = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "groep-saldi" ]]; then
+            # BUG 21-09 (groepssaldi 16→21-09: 35/35 leden `fout` — RLZ-enumfilter + Odoo `deprecated`): alleen op verzoek.
+            # Lees-only CLI op de job-image, twee vormen uit het meetrecept: (1) LIVE meting van "Kempen groep" (het antwoord op
+            # Peters vraag van 16-09: bruto / IC / zonder IC per lid + totaal, geen debiteur-/crediteurnamen), (2) de NACHTELIJKE
+            # stand (`--stand`, cache uit sync-alles) van de volgende ochtend. Oordeelregel: de TOTAAL-regel + het aantal
+            # niet-ok-leden; verwacht 35 × ok (of geen_rekening/overgeslagen mét reden), 0 × fout.
+            UIT="verkenning/nameting-groep-saldi-$DATUM.txt"
+            rc_gs=0
+            {
+              echo "== groep-saldi --groep 'Kempen groep' (LIVE, lees-only) =="
+              scripts/gcp/nameting.sh groep-saldi --groep "Kempen groep" 2> nameting-gs.stderr || rc_gs=$?
+              echo "== groep-saldi --groep 'Kempen groep' --stand (nachtelijke stand uit sync-alles) =="
+              scripts/gcp/nameting.sh groep-saldi --groep "Kempen groep" --stand 2>> nameting-gs.stderr || rc_gs=$?
+            } > "$UIT"
+            cat nameting-gs.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-gs.stderr; then
+              echo "::error::groep-saldi kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_gs)" >> "$UIT"
+            TOTAAL="$(grep -m1 -o 'TOTAAL ([0-9]* geldig)' "$UIT" || true)"
+            NIET_OK="$(grep -m1 -o 'LET OP: [0-9]* administratie(s) niet in het totaal' "$UIT" || true)"
+            FOUT="$(grep -c '  fout' "$UIT" || true)"
+            echo "Oordeel: ${TOTAAL:-geen totaalregel} · ${NIET_OK:-alle leden in het totaal} · ${FOUT:-0} regel(s) status fout — job-exit $rc_gs" >> "$UIT"
+            echo "STATUS groep-saldi: rapport in $UIT (job-exit $rc_gs = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
             # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
@@ -240,6 +266,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-app-bundels-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "projecten-afgesloten" ]]; then
             OORDEEL_BRON="verkenning/nameting-projecten-afgesloten-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "groep-saldi" ]]; then
+            OORDEEL_BRON="verkenning/nameting-groep-saldi-$DATUM.txt"
           else
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           fi

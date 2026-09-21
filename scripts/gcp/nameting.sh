@@ -8,7 +8,7 @@
 #   scripts/gcp/nameting.sh reconciliatie-alles --alleen rekening_courant --lees-only   # Peter 16-09: RC-aansluiting (meetlat)
 #   scripts/gcp/nameting.sh reconciliatie-alles --alleen doorbelasting_aansluiting --lees-only   # 19-09: aansluitingsblok los (keuzelijst = run.BLOKKEN sinds 19-09)
 #   scripts/gcp/nameting.sh activa-nulmeting [--administratie <naamdeel>]                 # 16-09: STAP-0 activa, lees-only
-#   scripts/gcp/nameting.sh groep-saldi --groep "Kempen groep"                                    # 16-09: groepssaldi deb/cred (lees-only, live)
+#   scripts/gcp/nameting.sh groep-saldi --groep "Kempen groep" [--stand]                          # 16-09: groepssaldi deb/cred (lees-only, live; --stand = nachtelijke cache, 21-09)
 #   scripts/gcp/nameting.sh rlz-lezen --administratie "Kempen Facilities" --pad AssetTypes --root   # 16-09: RLZ-brede enumeraties
 #   scripts/gcp/nameting.sh btw-default-rapport --administratie "L.H.G. Holding"   # lees-only, 14-09 (0143)
 #   scripts/gcp/nameting.sh bank-voorstellen-lezen --administratie "Administratiekantoor Nijenhuis" --met-ai-toets
@@ -83,6 +83,7 @@ via_gh_onderdeel() {
     doorbelasting-aansluiting) echo doorbelasting-aansluiting ;;
     facturen-zonder-project|projectverdeling-afgesloten-rapport|projecten-afsluit-kandidaten) echo projecten-afgesloten ;;
     app-bundels) echo app-bundels ;;
+    groep-saldi) echo groep-saldi ;;
     reconciliatie-alles) echo reconciliatie ;;
     btw-default-rapport) echo btw-default ;;
     migratie-schoonlijst) echo a ;;
