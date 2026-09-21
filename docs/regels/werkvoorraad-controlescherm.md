@@ -295,3 +295,25 @@
   RLZ-projectmotor; ná aanmaken direct geselecteerd); projecten AANMAKEN mag élke kantoorrol incl. Boekhouding (`app/projecten/kantoor.py::
   _vereis_aanmaakrol`, frontend-spiegel `auth/rollen.ts::magProjectAanmaken`), overige projectmutaties blijven Beheerder + B+P. BESLISSINGEN
   "UI-FIXES 04-09 BLOK C".**
+
+<!-- toegevoegd 21-09-2026, opdracht "BUG-iban-wissel-blijft-blokkerend-na-vier-ogen-akkoord-checks-cache" -->
+- **Checks-cache — invalidatie op de bron, niet op tijd (BUG Peter 21-09, screenshot Beleggingsmaatschappij Meyer B.V.,
+  Belastingdienst voorlopige aanslag Vpb 2025 0015.21.664.V.51.0112: "IBAN-wissel" Blokkerend "gecontroleerd 09:15 (ongewijzigd)"
+  terwijl het paneel eronder live zei "Dit IBAN staat al in de vertrouwde set"; geen migratie; BESLISSINGEN "CHECKS-CACHE —
+  INVALIDATIE OP DE BRON (IBAN-akkoord) 21-09"):** het gecachte externe rapport (0165, ≤ 15 min) draagt de vertrouwde IBAN-set van
+  het controlemoment; élke handeling die die set verandert maakt de cache in DEZELFDE transactie ongeldig
+  (`checks_extern.maak_ongeldig_voor_vendor`: álle documenten van de crediteur + identiteitscluster, prefix `ongeldig:` op de
+  vingerafdruk — geen DELETE-grant): het vier-ogen-akkoord (`iban_accordering.accordeer`), `leverancier_iban._voeg_toe` (bevestig,
+  seed, baseline) en crediteur-samenvoegen (`verhuis_ibans`). Tweede slot: de vingerafdruk zelf bevat een hash van de gesorteerde
+  vertrouwde set (lokale query) — een verouderd rapport matcht nooit meer, ook als een invalidatie-pad ooit vergeten wordt; de
+  cache-rij krijgt de vingerafdruk van de stand ná de verse run. De IBAN-wissel toetst in `voer_checks_uit` ALTIJD tegen de live set
+  (∪ seed-uitkomst); alleen de RLZ-seed en de duplicaatquery's komen uit de cache — dat geldt ook voor het boeken-pad (modus AUTO).
+  **Scherm:** een check-rij en het paneel eronder mogen elkaar nooit tegenspreken — een 409 "staat al in de vertrouwde set" bij het
+  aanbieden draait de checks vers (`POST …/boekvoorstel/checks?extern=vers`, melding "intussen vertrouwd — de controles worden opnieuw
+  uitgevoerd") en de regel "Reeleezee/Odoo geraadpleegd om HH:MM (ongewijzigd …)" onder de controles-tabel draagt een `linkbtn`
+  "Opnieuw controleren" (modus VERS) zodat een mens nooit op de klok van de cache wacht. **Nazorg:** CLI `checks-cache-legen
+  --administratie <id>|--alles [--dry-run]` (schrijvend, eenmalig via `gcloud run jobs execute` op de job-image) markeert bestaande
+  stale rapporten ongeldig. Guards: `tests/unit/test_leverancier_iban_invalidatie_guard.py` (élke `LeverancierIban(`-schrijver roept
+  de invalidatie aan), `tests/documenten/test_checks_cache_invalidatie.py`, vitest `BoekvoorstelPanel.ibanCache.test.tsx`,
+  gouden-set-casus af `tests/keten/test_af_iban_akkoord_checks_cache.py` (BDO-UBL mét andere baseline → akkoord → direct OK + boeken). Les
+  (Platform `registers/verbeteringen.md` 21-09): bij élke nieuwe cache eerst de lijst "welke handelingen maken dit ongeldig".

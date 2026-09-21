@@ -117,3 +117,13 @@
   default gevuld; de default vult uitsluitend velden waarvoor scan én geheugen niets hadden.** (F) **Bugfix Huvanco**: kortingsregels als negatieve regel (prompt +
   UBL `AllowanceCharge`), regeltelling via één gedeelde beslisboom `documenten/regelsom.py` (netto-vs-excl,
   netto+btw-vs-incl, nooit stil excl-vs-incl; lege btw = 0 alleen op een gesynct 0%-tarief).
+
+<!-- toegevoegd 21-09-2026, opdracht "BUG-iban-wissel-blijft-blokkerend-na-vier-ogen-akkoord-checks-cache" -->
+- **Crediteur-samenvoegen maakt de externe checks-cache ongeldig (BUG Peter 21-09; geen migratie; BESLISSINGEN "CHECKS-CACHE —
+  INVALIDATIE OP DE BRON (IBAN-akkoord) 21-09"):** `crediteuren/service.verhuis_ibans` kopieert de vertrouwde IBAN's van de verliezer
+  naar de voorkeur en roept in dezelfde transactie `checks_extern.maak_ongeldig_voor_vendor` aan voor voorkeur én bron — de
+  vertrouwde set van de voorkeur is veranderd, dus een gecacht extern rapport (0165) van een document op die crediteur mag niet meer
+  gelezen worden. De invalidatie raakt álle documenten van het identiteitscluster (`duplicaat_module.identiteit_vendor_ids`: zelfde
+  vendor/voorkeur-cluster, KvK- óf btw-nummer). Guard `tests/unit/test_leverancier_iban_invalidatie_guard.py`: élke module die een
+  `LeverancierIban(`-rij construeert (leverancier_iban, iban_accordering, crediteuren/service) draagt de invalidatie; een nieuwe
+  schrijver moet daar bewust worden toegevoegd.

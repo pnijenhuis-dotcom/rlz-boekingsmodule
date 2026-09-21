@@ -11980,3 +11980,61 @@ Rapport: `docs/rapporten/2026-09-21-groepssaldi-fix.md`. Geen migratie, geen RLZ
 | 7 | **Les (Platform/registers/verbeteringen.md 21-09):** een feature mét "werkt in productie: niet gemeten" is niet af — een fout-status in een cache die alleen een grijze kaart voedt is een stil signaal; élke nachtelijke stand mét `fout` = LET-OP mét handeling in het reconciliatieblok (systeemmail), en het meetrecept van een bouwrapport wordt een dispatch-onderdeel + vervolg-opdracht mét `niet vóór:` in dezelfde run. | VASTGELEGD 21-09 |
 
 **Canoniek:** `app/groepen/saldi.py` (`RlzBron._alle_ledgers`, `OdooBron.rekeningen`, `lees_laatste_stand`/`lees_stand_systeem`/`standen_met_fout`), `app/reconciliatie/automatiseringen.py::groep_saldi_bevinding` + `GROEP_SALDO_FOUT`, `app/cli.py::_groep_saldi --stand`, `.github/workflows/nameting.yml` onderdeel `groep-saldi`, `scripts/gcp/nameting.sh`, tests `tests/unit/test_rlz_filter_enum_guard.py` + `tests/groepen/test_saldi.py`, regels `docs/regels/administraties-instellingen.md` + `reconciliatie.md` + `werkloop-productie.md`.
+
+## CHECKS-CACHE — INVALIDATIE OP DE BRON (IBAN-akkoord) 21-09 — een vier-ogen-akkoord, bevestiging, seed/baseline of crediteur-samenvoeging maakt het gecachte externe rapport (0165) direct ongeldig; vingerafdruk draagt de vertrouwde IBAN-set; IBAN-wissel toetst altijd live; geen migratie
+
+**Status:** GEBOUWD + GETEST (21-09, inbox-run); **werkt in productie: niet gemeten** (deploy volgt ná de run; nazorg-CLI + meetrecept
+hieronder). Opdracht `opdrachten/gedaan/2026-09-21-BUG-iban-wissel-blijft-blokkerend-na-vier-ogen-akkoord-checks-cache.md`; rapport
+`docs/rapporten/2026-09-21-iban-wissel-cache.md`. Volledige regeltekst: `docs/regels/werkvoorraad-controlescherm.md` (alinea 21-09),
+`autoboeken-ai.md` (cache-regel aangescherpt), `duplicaten-crediteuren.md` (samenvoegen).
+
+**Feit (screenshot Peter 21-09 ~09:30, Beleggingsmaatschappij Meyer B.V., Belastingdienst voorlopige aanslag Vpb 2025
+0015.21.664.V.51.0112, € 34, IBAN NL04RABO0200112244):** check "IBAN-wissel" = **Blokkerend** "wijkt af van de vertrouwde
+rekening(en) … · gecontroleerd 09:15 (ongewijzigd)" terwijl het aanbieden eronder LIVE zei "Dit IBAN staat al in de vertrouwde set van
+deze crediteur". Het IBAN was ná 09:15 via de vier-ogen-accordering goedgekeurd; het scherm sprak zichzelf tegen en "Ter accordering →"
+bleef de enige knop.
+
+**Oorzaak:** `checks_extern.vingerafdruk` hashte crediteur/cluster, referentie, datum, bedrag, factuur-IBAN, boek_cyclus, backend — de
+VERTROUWDE IBAN-SET niet. Het gecachte `ExternRapport` droeg `vertrouwde_ibans` van 09:15 en bleef 15 min geldig. `iban_accordering.
+accordeer` voegde het IBAN toe en herstelde de status; de docstring zei "de harde checks draaien bij de boekactie sowieso opnieuw" — waar
+vóór 0165, sinds 18-09 hergebruikt óók `boeken` (modus AUTO) het rapport. Zelfde gat voor `bevestig_iban`, seed/baseline en
+crediteur-samenvoegen. Een cache op tijd zonder invalidatie op de muterende handelingen maakt élk mens-akkoord tijdelijk onzichtbaar.
+
+**Besluiten/keuzes:**
+1. **Invalidatie op de bron:** `checks_extern.maak_ongeldig_voor_vendor(session, administratie_id, vendor_id)` markeert de
+   `check_extern_cache`-rijen van álle documenten van die crediteur + identiteitscluster (`duplicaat_module.identiteit_vendor_ids`)
+   ongeldig — prefix `ongeldig:` op de vingerafdruk (de tabel heeft bewust geen DELETE-grant; het rapport blijft leesbaar voor
+   diagnose, de volgende verse run overschrijft de rij). Aangeroepen in DEZELFDE transactie als de mutatie: `iban_accordering.accordeer`
+   (audit `leverancier_iban_toegevoegd` draagt `checks_cache_ongeldig` = aantal), `leverancier_iban._voeg_toe` (dekt `bevestig_iban`,
+   `seed_uit_rlz`, `leg_baseline_vast`) en `crediteuren/service.verhuis_ibans` (voorkeur én bron). Een lopende boekactie leest de cache
+   ná onze commit en ziet de oude stand nooit meer.
+2. **Tweede slot in de vingerafdruk:** `vingerafdruk(…, vertrouwde_ibans=)` neemt de gesorteerde, genormaliseerde vertrouwde set op
+   (lokale query `vertrouwde_ibans()`, geen RLZ-call). Een verouderd rapport is per definitie ongeldig, ook als een invalidatie-pad ooit
+   vergeten wordt. De cache-rij wordt geschreven met de vingerafdruk van de stand NÁ de verse run (`_vingerafdruk_na_run`): een
+   seed/baseline die de set net vulde geeft dan geen tweede externe run.
+3. **Boeken-pad = live toets:** `voer_checks_uit` leest de live set vóór de vingerafdruk en toetst `check_iban_wissel` tegen
+   live ∪ seed-uitkomst; alleen de RLZ-seed en de duplicaatquery's komen uit de cache. Regel aangescherpt in `autoboeken-ai.md`:
+   "extern gecachet = RLZ-roundtrips; álle lokale toetsen (IBAN-set, duplicaat module, btw) draaien vers". `boeken.py` ongewijzigd.
+4. **Scherm — één bron:** een 409 "staat al in de vertrouwde set" bij het aanbieden draait de checks VERS (`?extern=vers`,
+   `IbanAanbiedenVorm.onAlVertrouwd` → `checksVers`) en toont "intussen vertrouwd — de controles worden opnieuw uitgevoerd"; de check-rij
+   wordt groen en het paneel verdwijnt. De regel "Reeleezee/Odoo geraadpleegd om HH:MM (ongewijzigd …)" onder de controles-tabel draagt
+   een `linkbtn` **"Opnieuw controleren"** (modus VERS; "Loopt…" tijdens de run) — een mens wacht nooit op de klok.
+5. **Nazorg productie (ná deploy, job-image):** CLI `checks-cache-legen --administratie <UUID|NAAMDEEL> | --alles [--dry-run]`
+   (schrijvend, één keer via `gcloud run jobs execute rlz-reconciliatie --args="-m,app.cli,checks-cache-legen,--alles"`) markeert álle
+   nog geldige rijen ongeldig — stale rapporten van vóór de fix zijn dan weg. Idempotent; `--dry-run` telt alleen.
+6. **Guards/tests:** `tests/unit/test_leverancier_iban_invalidatie_guard.py` (élke module die `LeverancierIban(` construeert roept
+   `maak_ongeldig_voor_vendor(` aan; bekende schrijvers expliciet; set-hash aanwezig), `tests/documenten/test_checks_cache_invalidatie.py`
+   (akkoord → ongeldig → volgende run OK én daarna weer gecachet; bevestig_iban idem; oude geldige rij + live set wint; alleen documenten
+   van die crediteur; boeken direct ná bevestiging slaagt binnen 15 min; CLI dry-run/echt/idempotent/exit 2), vitest
+   `BoekvoorstelPanel.ibanCache.test.tsx` (409 → vers → OK + paneel weg; linkbtn → `extern=vers`), gouden-set-casus **af**
+   `tests/keten/test_af_iban_akkoord_checks_cache.py` (BDO-UBL mét andere baseline: Blokkerend uit de cache → akkoord → direct OK →
+   boeken slaagt; toegevoegd in poging 2 omdat `test_keten_guard` de keten-wijziging zonder gouden-set-aanraking rood zette).
+
+**Meetrecept (ná deploy):** (1) Meyer-document 0015.21.664.V.51.0112 openen → "IBAN-wissel" = OK, "Boeken in RLZ" beschikbaar (vóór de
+nazorg-CLI: "Opnieuw controleren" klikken of de cache is ≥ 15 min oud); (2) `checks-cache-legen --alles --dry-run` op de job-image →
+aantal geldige rijen, daarna echt → "N ongeldig gemaakt", tweede run 0; (3) request-log: `POST …/boekvoorstel/checks?extern=vers`
+verschijnt ná een klik op "Opnieuw controleren"; (4) audit `leverancier_iban_toegevoegd` mét `checks_cache_ongeldig` ≥ 1 bij het
+eerstvolgende vier-ogen-akkoord.
+
+**Beslispunt (open):** de 15-min-tijdsgeldigheid blijft als bovengrens staan (beslispunt 2 van "BOEKEN SNELLER"); mét invalidatie op de
+bron kan die veilig omhoog — pas ná een week meten van `checks.extern` in de Server-Timing.

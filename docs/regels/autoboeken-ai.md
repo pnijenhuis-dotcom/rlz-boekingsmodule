@@ -120,3 +120,15 @@
   omzet-autoboeken (GO Peter 01-09, zie "Omzetboekingen"); doorbelasting-spiegels blijven
   gedocumenteerd-geparkeerd in BESLISSINGEN ("Autoboek-afweging overige deterministische
   paden") — bouw vergt apart akkoord.**
+
+<!-- toegevoegd 21-09-2026, opdracht "BUG-iban-wissel-blijft-blokkerend-na-vier-ogen-akkoord-checks-cache" -->
+- **Cache-regel aangescherpt — extern gecachet = RLZ-roundtrips, álle lokale toetsen draaien vers (BUG Peter 21-09; geen migratie;
+  BESLISSINGEN "CHECKS-CACHE — INVALIDATIE OP DE BRON (IBAN-akkoord) 21-09"):** wat per document op vingerafdruk gecachet wordt
+  (≤ 15 min) zijn uitsluitend de RLZ-/Odoo-roundtrips: de IBAN-seed (`BankRelations`) en de duplicaatquery's (referentie per
+  crediteurrecord, kandidaten ± 60 d, over crediteuren heen). Álle lokale toetsen — de IBAN-wissel tegen de vertrouwde set, het
+  module-duplicaat, btw/regeltelling/verplichte velden — draaien bij élke checks-run én op het boekmoment vers tegen de eigen database;
+  de IBAN-wissel gebruikt de live set ∪ de seed-uitkomst uit de cache. Een mutatie van de vertrouwde set (vier-ogen-akkoord,
+  bevestiging, seed/baseline, crediteur-samenvoegen) maakt de cache in dezelfde transactie ongeldig én verandert de vingerafdruk
+  (set-hash), zodat boeken direct ná een akkoord binnen de 15 min slaagt zonder `boeken_mislukt`-retry of autoboek-markering. Retry
+  ná boeken_mislukt en het autoboek-pad blijven ALTIJD vers (`boeken.extern_checks_modus`); een storing wordt nooit gecachet.
+  Regel voor élke volgende cache in dit domein: eerst de lijst "welke handelingen maken dit ongeldig", dan pas de tijdsgeldigheid.

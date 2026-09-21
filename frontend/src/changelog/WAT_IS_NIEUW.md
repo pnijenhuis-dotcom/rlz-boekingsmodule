@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-21 — Een goedgekeurd rekeningnummer telt direct mee in de controles
+
+<!-- iban-wissel-checks-cache-21-09 -->
+
+- **Na het vier-ogen-akkoord op een nieuw rekeningnummer staat de controle "IBAN-wissel" meteen op OK.** Tot nu toe kon die tot een kwartier op "Blokkerend" blijven staan met de tekst "gecontroleerd 09:15 (ongewijzigd)", terwijl het aanbieden eronder al zei dat het rekeningnummer vertrouwd was; boeken lukte dan pas na het kwartier. Een akkoord, een bevestiging of het samenvoegen van dubbele crediteuren maakt die verouderde stand nu direct ongeldig, ook voor de knop "Boeken in RLZ".
+- **Onder de controles staat wanneer Reeleezee of Odoo voor het laatst is geraadpleegd, met "Opnieuw controleren".** Zo hoeft niemand op de klok te wachten als er buiten het scherm iets veranderd is.
+- **Een melding "dit rekeningnummer is al vertrouwd" bij het aanbieden voert nu vanzelf de controles opnieuw uit,** zodat het scherm zichzelf niet meer kan tegenspreken.
+
 ## 2026-09-21 — Groepssaldi debiteuren/crediteuren werken weer
 
 <!-- groepssaldi-fix-21-09 -->
