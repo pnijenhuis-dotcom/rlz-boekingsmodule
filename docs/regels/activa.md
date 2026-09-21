@@ -28,3 +28,10 @@
   STAP-0); root-enumeraties `AssetTypes` 1 Fixed / 2 Stock, `AssetMutationTypes` 1 Purchase / 3 Sale / 4 Revaluate / 5 Depreciate / 6 Manual —
   zie api-verkenning "Activa — STAP-0 21-09".
 
+<!-- toegevoegd 21-09-2026, opdracht "corrigeren-knop-geboekt-document-storno-plus-opnieuw-klaarzetten" (bijvangst poging 2) -->
+- **Activa-kaart is verrijking en valideert de vorm van haar antwoord (21-09; geen migratie; BESLISSINGEN "CORRIGEREN VANUIT DE MODULE — STORNO +
+  OPNIEUW KLAARZETTEN (Peter 21-09)", alinea "Bijvangst poging 2"):** `ActivaVoorstelKaart` toont niets als het antwoord van `GET …/activa-voorstel`
+  geen `kandidaten`- én `onder_grens`-lijst draagt; tot 21-09 gooide `neemOver` op zo'n antwoord een `TypeError` in een render-effect en trok
+  daarmee het HELE controlescherm leeg (gouden-set-sweep 5/5 detail-casussen rood op het keten-harnas). Het keten-harnas (`visueelHarnasKeten.tsx`)
+  mockt de route sinds 21-09 mét een leeg voorstel; guard `ActivaVoorstelKaart.test.tsx` ("toont niets en crasht niet bij een antwoord zonder
+  kandidaten-lijst"). Regel voor élke voorstel-/verrijkingskaart: vorm toetsen vóór itereren — een `catch` op de fetch vangt geen vorm-fout in de `then`.

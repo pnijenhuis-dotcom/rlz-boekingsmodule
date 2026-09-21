@@ -60,6 +60,17 @@
   rijen vallen mee onder die stand (soort als geheel), de 6 andere `da_*` blijven `actie`. Klikpunt Molenhof Beheer (worden KF-verkopen daar buiten
   de KF-crediteurrecords geboekt?) staat open — pas ná dat antwoord mag `da_ontbreekt_in_doel` terug naar `actie`.**
 
+<!-- toegevoegd 21-09-2026, opdracht "corrigeren-knop-geboekt-document-storno-plus-opnieuw-klaarzetten" -->
+- **Correctie van een doorbelaste bron-inkoopfactuur neemt de spiegels mee (21-09; geen migratie; BESLISSINGEN "CORRIGEREN VANUIT DE
+  MODULE — STORNO + OPNIEUW KLAARZETTEN (Peter 21-09)"):** "Corrigeren…" op een geboekte inkoopfactuur mét niet-gestorneerde
+  doorbelasting-boekingen leest éérst `storno_toets_voor_document` (aangiftepoort op bron-verkoop én spiegel-inkoop, fail-closed) —
+  één geblokkeerde kant blokkeert de hele correctie ("beide kanten of geen", nooit half); is alles vrij, dan draait per boeking de
+  bestaande motor `storno_doorbelasting_boeking` (spiegel → bron-verkoop, eigen transacties, `doorbelasting_gestorneerd`-tijdlijn en
+  `_meld_spiegel_gestorneerd`) VÓÓR de storno van het eigen stuk; mislukt een spiegel-storno, dan stopt de correctie mét een fout die
+  benoemt welke doelen al terug zijn (audit `document_correctie_mislukt`) en blijft de bron lokaal GEBOEKT. De run gaat via de motor
+  naar `gestorneerd`; de mens zet de doorbelasting ná de herboeking opnieuw klaar ("Boeken + doorbelasten"). De gele balk en de
+  tijdlijnregel `gecorrigeerd` noemen de teruggedraaide doelentiteiten.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kempen-doorbelasting (motor, spiegel, storno-blokkade, tegenboek-pad, factuur-PDF, projecten) (CLAUDE.md `ed6d176` r. 829–936)

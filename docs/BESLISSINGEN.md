@@ -36,6 +36,7 @@
 | Werkvoorraad = klantenlijst met tellers → klantpagina → controlescherm | goedgekeurd; UI gebouwd | mockup `#werkvoorraad`/`#klantpagina`/`#review`; BOUWPLAN fase 1 punt 8 |
 | Sync-laag per administratie (Ledgers/TaxRates/Vendors/Projects) | gebouwd + getest (2026-07-08) | BOUWPLAN fase 1 punt 4 |
 | Document-pipeline / statusmachine | gebouwd + getest (2026-07-08) | BOUWPLAN fase 1 punt 5; `backend/app/documenten/statusmachine.py` |
+| Corrigeren vanuit de module (storno actie 19 + opnieuw klaarzetten op een geboekt inkoop-/verkoop-/kassarapport-document; aangifte → tegenboek-pad, afgeletterd → bank, doorbelasting beide kanten of geen) | **gebouwd + getest (21-09)**; werkt in productie: niet gemeten (nameting-opdracht in de inbox) | BESLISSINGEN "CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW KLAARZETTEN (Peter 21-09)"; `backend/app/documenten/corrigeren.py`; `frontend/src/document/CorrigerenActie.tsx` |
 | Boeken (PUT+client-GUID, actie 17, idempotentie, failsafes) | gebouwd + getest (2026-07-09) | BOUWPLAN fase 1 punt 6; `backend/app/documenten/boeken.py` |
 | Controlescherm (kopgegevens + regels + harde checks + boekactie) | gebouwd (2026-07-09); geheugen-UI erbij (2026-07-14) | BOUWPLAN fase 1 punt 8; `frontend/src/document/BoekvoorstelPanel.tsx` |
 | Webhook "factuur geboekt" (outbox + vastgoed-scope-filter + afleveraar) | **gebouwd + getest (2026-08-02)** — outbox 2026-07-09, scope 2026-07-13, afleveraar + HMAC-per-verzendpoging 2026-08-02 (OPEN_ITEMS actiepunt 2 afgehandeld): payload ongetekend in de outbox, tekenen per poging (wire-formaat ongewijzigd), status openstaand/afgeleverd/mislukt + retry/backoff/dead-letter + re-drive (mislukt → openstaand als expliciete admin-actie, CLI `webhook-redrive`), audit per poging én per re-drive, toggle default UIT + config-failsafe (geen doel-URL → openstaand, geen fout); aanzetten wacht op de URL/secret-uitwisseling bij de hosting-fase — **de ontvanger zelf bestaat sinds 2026-08-02** (`POST /webhooks/rlz`, vastgoed-migratie 0066; drift-correctie 2026-08-07) | BOUWPLAN fase 1 punt 7; migraties 0018/0025; `app/documenten/webhook_afleveraar.py`; koppelcontract §3 (implementatienotitie 2026-08-02) |
@@ -12247,3 +12248,71 @@ records; planningspatroon ≠ identiteit.
 klopt dan mét de afspraak; (2) het akkoord verloopt op STAND-wijziging, niet op tijd; (3) dubbelen-CLI toetst óók e-mail en meldt telefoon
 als niet toetsbaar i.p.v. het stil weg te laten (KP 7.6); (4) geen "laatst bekeken week onthouden" — de URL is de bron, de weekchip maakt
 een oude week eerlijk.
+## CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW KLAARZETTEN (Peter 21-09) — "Corrigeren…" in het ⋯-menu op een geboekt inkoop-/verkoop-/kassarapport-document: actie 19 op het externe stuk + terug naar klaar_om_te_boeken mét gele balk; aangifte → tegenboek-pad, afgeletterd → bank, doorbelasting beide kanten of geen; geen migratie
+
+**Status:** GEBOUWD + GETEST (21-09, inbox-run; poging 2 ná WIP-branch `wip/2026-09-21-corrigeren-knop-geboekt-document-storno-plus-opnieuw-klaarzetten`
+25be9fb — poging 1 eindigde vóór de suites klaar waren, rij j3; de branch blijft ter controle staan); **werkt in productie: niet gemeten** (deploy volgt ná de run; nameting = vervolg-opdracht
+`opdrachten/inbox/2026-09-22-nameting-corrigeren-testadministratie.md`, TEST-referentie op de RLZ-testadministratie, `niet vóór:
+2026-09-22 09:00`). Opdracht `opdrachten/gedaan/2026-09-21-corrigeren-knop-geboekt-document-storno-plus-opnieuw-klaarzetten.md`; rapport
+`docs/rapporten/2026-09-21-corrigeren-geboekt-document.md`. Volledige regeltekst: `docs/regels/werkvoorraad-controlescherm.md` (alinea
+21-09 "Corrigeren…"), `doorbelasting-intercompany.md` (spiegels mee), `reconciliatie.md` (bron `module_storno`, verdwenen = andere route).
+
+**Aanleiding (Peter 21-09):** twee BLOW-boekingen met een fout btw-bedrag (RLZ-04-00000357 Fac-25-023465 btw 48,18 i.p.v. 56,93;
+RLZ-04-00000358 "cb" 3,37 i.p.v. 7,87) moesten in de RLZ-UI gecorrigeerd worden — "ik kan de storno-knop niet meer vinden". Die knop
+bestond niet: GEBOEKT was lokaal terminaal-zonder-uitweg (`storno_detectie.py`). Gat tegen kernprincipe 7 (minimale mens). Peter:
+"laten we die terugboeken meenemen".
+
+**Besluiten/keuzes (CC, Peter keek niet mee):**
+1. **Eén handeling, één rijvergrendeling.** `app/documenten/corrigeren.py::corrigeer` doet in één transactie mét `SELECT … FOR NO KEY
+   UPDATE` op de documentrij: poorten → doorbelasting-spiegels terug (bestaande motor `storno_doorbelasting_boeking`, spiegel → bron-
+   verkoop) → storno eigen stuk (`InkoopPort.storneer` = nieuwe port-methode; verkoop `correct_sales_invoice`; kassarapport memoriaal
+   éérst, dan Receipt) mét terug-lezen Status 1 → lokaal het bestaande herboek-mechanisme (inkoop `boek_cyclus += 1`, boekstuknummer
+   leeg, GEBOEKT → KLAAR_OM_TE_BOEKEN, verplichting-verbruik/mini-voorraad/autoboek-leren terug, `factuur_gestorneerd` bron
+   `module_storno` voor vastgoed, tijdlijnregel `gecorrigeerd`, audit `document_gecorrigeerd` mét reden/oud extern id/oud boekstuk).
+   Twee keer klikken = één storno: de tweede wacht op de rijlock en krijgt 409 `al_gecorrigeerd`. `FOR NO KEY UPDATE` (niet `FOR
+   UPDATE`) omdat de doorbelasting-motor in eigen transacties tijdlijn-/webhookrijen mét FK op het document schrijft — `FOR UPDATE`
+   zou dáár op deadlocken.
+2. **Poorten vóór de eerste externe write, alles-of-niets, mét route:** aangifte (`AangiftePoort`, fail-closed) → blokkade `aangifte`
+   mét knop "Tegenboeken…" (inkoop; verkoop/kassarapport = creditnota in RLZ, geen knop); (deels) betaald (`BasePaidAmount` ≠ 0) →
+   `afgeletterd` mét link `/bank/{administratie}?zoek=<referentie>` ("eerst afletteren terugdraaien"); doorbelasting-kant geblokkeerd
+   (`storno_toets_voor_document`) → `doorbelasting` ("beide kanten of geen"); 404 → `verdwenen` mét link `/reconciliatie` ("Opnieuw
+   boeken" is dáár de route); Odoo → `niet_ondersteund` (adapter raise-t `NietOndersteund`, capability-contract 0016 §4) mét
+   "Tegenboeken…". Een kassarapport heeft géén afgeletterd-poort (entity-loze Receipt mét tegenzijde: geen open post, geen
+   PaymentItem). Al concept (storno al in de RLZ-UI gedaan) = niets schrijven, lokaal wél klaarzetten.
+3. **Verkoop/kassarapport her-PUTten op hetzelfde GUID** (geen boek_cyclus in die motoren; her-PUT op een concept vervangt de regels —
+   api-verkenning "Her-PUT op een bestaand concept"; beide motoren sluiten hun eigen GUID al uit van de duplicaatcheck). Registratierij
+   → `gestorneerd` (+ `gestorneerd_op/door`, DB-CHECK); `verkoop/boeken.py` maakt een bestaande registratie bij herboeking weer de
+   actieve geboekte rij (was: alleen INSERT als er nog geen rij was). Faalt de Receipt-storno ná het memoriaal → registratie
+   `HALF_GEBOEKT` mét `half_geboekt_detail.bron = correctie` (de omzet-reconciliatie meldt 'm), fout benoemt wat al terug is, audit
+   `document_correctie_mislukt`.
+4. **Klant-accordering:** géén nieuwe ronde (het akkoord gold de factuur, niet de boekingsregels — regel accordering 1); de tijdlijn
+   draagt de correctie. **Rechten:** élke kantoorrol (router-brede poort + administratie-scope), geen Beheerder-stap.
+5. **Scherm:** menu-item "Corrigeren…" in het ⋯-menu van het inkoop-controlescherm en het archief (`?corrigeren=1`); verkoop-/
+   omzet-reviewscherm krijgen een eigen ⋯-menu mét dit item naast de geboekt-regel. Dialoog (`CorrigerenActie.tsx`) haalt de
+   toets op en toont per blokkade de route i.p.v. een knop die pas server-side faalt; reden ≥ 5 tekens; gele balk `CorrectieBalk`
+   ("Gecorrigeerd — reden … · vorige boeking … gestorneerd (actie 19)") uit de tijdlijnregel tot het document opnieuw geboekt is.
+   Teksten "wijzigen kan alleen via stornering in Reeleezee" op inkoop/verkoop/omzet vervangen; verplaatsen-reden verwijst naar
+   "Corrigeren…".
+6. **Casus 357/358 (BLOW, Fac-25-023465):** niet gemeten in deze run (geen productietoegang). Regel: is de factuurdatum (= BookDate)
+   2025 en de aangifte over die periode ingediend, dan biedt de dialoog "Tegenboeken…" (bestaande knop) — niet corrigeren; valt de
+   boekdatum in een open periode, dan corrigeren. Beide paden staan; de nameting toetst het op de RLZ-testadministratie mét
+   TEST-referentie, nooit op BLOW.
+
+**Sweep:** `storno_detectie.py` (docstring: module-storno vuurt direct, detectie blijft voor RLZ-UI-storno's), `statusmachine.py`
+(GEBOEKT niet meer terminaal-zonder-uitweg), `verplaatsen.py` + `verplaatsen.ts`, `BoekvoorstelPanel.tsx`, `VerkoopReviewScreen.tsx`,
+`OmzetReviewScreen.tsx`. **Tests:** `tests/documenten/test_corrigeren.py` (statusmachine, storno + klaarzetten, herboeking op nieuw
+GUID, aangifte → tegenboeken, niet leesbaar fail-closed, afgeletterd → bank, verdwenen, RLZ-fout laat alles staan, idempotentie, al
+concept, Odoo-stub + échte adapter `NietOndersteund`, doorbelasting mee/geblokkeerd/mislukt, webhook vastgoed, HTTP 200/409),
+`tests/verkoop/test_corrigeren.py`, `tests/omzet/test_corrigeren.py`, vitest `CorrigerenActie.test.tsx`.
+
+**Bijvangst poging 2 — gouden set stond rood door de activa-kaart (21-09):** de keten-sweep gaf op álle vijf detail-casussen een LEEG controlescherm
+(≈ 51 % pixelverschil): `ActivaVoorstelKaart.neemOver` itereerde `v.kandidaten` op het harnas-antwoord `{}` voor de (toen) onbekende route
+`activa-voorstel` → `TypeError` in een render-effect → React ontkoppelt de hele root. Fix: de kaart toetst het antwoord (twee lijsten aanwezig,
+anders geen kaart — precies wat de kop-commentaar "een fout bij het laden blokkeert het scherm nooit" al beloofde), het keten-harnas mockt
+`activa-voorstel` mét een leeg voorstel, vitest-guard in `ActivaVoorstelKaart.test.tsx`; sweep daarna 11/11 groen zonder baseline-verversing.
+Les (ook `docs/regels/activa.md`): een verrijkingskaart valideert de vorm van zijn antwoord vóór hij erover itereert — een `catch` op de
+fetch vangt geen vorm-fout in de `then`.
+
+**Beslispunt (open, Peter):** een kassarapport-correctie zet de registratie op `gestorneerd` en laat het oude concept in RLZ staan tot
+de herboeking het overschrijft; blijft de herboeking uit, dan meldt de omzet-reconciliatie het concept (bestaand gedrag) — akkoord dat
+dat de zichtbaarheid is, of wil Peter een aparte werkvoorraad-teller "gecorrigeerd, nog niet herboekt"?

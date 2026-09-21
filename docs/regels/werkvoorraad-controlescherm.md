@@ -317,3 +317,31 @@
   de invalidatie aan), `tests/documenten/test_checks_cache_invalidatie.py`, vitest `BoekvoorstelPanel.ibanCache.test.tsx`,
   gouden-set-casus af `tests/keten/test_af_iban_akkoord_checks_cache.py` (BDO-UBL mét andere baseline → akkoord → direct OK + boeken). Les
   (Platform `registers/verbeteringen.md` 21-09): bij élke nieuwe cache eerst de lijst "welke handelingen maken dit ongeldig".
+
+<!-- toegevoegd 21-09-2026, opdracht "corrigeren-knop-geboekt-document-storno-plus-opnieuw-klaarzetten" -->
+- **"Corrigeren…" op een geboekt document — storno (actie 19) + opnieuw klaarzetten vanuit de module (Peter 21-09 "laten we die
+  terugboeken meenemen", casus BLOW RLZ-04-00000357/358 fout btw-bedrag, "ik kan de storno-knop niet meer vinden"; geen migratie;
+  BESLISSINGEN "CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW KLAARZETTEN (Peter 21-09)"):** GEBOEKT is niet meer terminaal-zonder-
+  uitweg. Op een geboekt inkoop-, verkoop- of kassarapport-document biedt het ⋯-menu (inkoop-controlescherm, archief `?corrigeren=1`,
+  verkoop-/omzet-reviewscherm mét eigen ⋯) **"Corrigeren…"** = dialoog mét verplichte reden (≥ 5 tekens) → in één handeling en één
+  rijvergrendeling (`app/documenten/corrigeren.py`, `FOR NO KEY UPDATE`; twee keer klikken = één storno, tweede = 409 `al_gecorrigeerd`):
+  (1) poorten vóór de eerste externe write, alles-of-niets, élk mét route: aangifte (`app/rlz/aangifte.py`, fail-closed) → géén storno
+  maar "Tegenboeken…" (inkoop; verkoop/kassarapport = creditnota in RLZ); (deels) betaald/afgeletterd (`BasePaidAmount` ≠ 0) → "eerst
+  afletteren terugdraaien in de bankmodule" + link `/bank/{administratie}?zoek=<referentie>` (kassarapport = entity-loze Receipt zonder
+  open post: geen afgeletterd-poort); doorbelasting-bron mét spiegel → beide kanten of geen (`storno_toets_voor_document`); verdwenen
+  (404) → "Opnieuw boeken" vanuit Inzicht › Reconciliatie; Odoo → `NietOndersteund` zichtbaar mét "Tegenboeken…"; (2) storno extern:
+  eerst de doorbelasting-spiegels (bestaande motor), dan het eigen stuk via `InkoopPort.storneer` (verkoop `correct_sales_invoice`;
+  kassarapport memoriaal éérst, dan Receipt), terug-lezen Status 1; al concept = niets schrijven, lokaal wél klaarzetten; (3) lokaal het
+  bestaande herboek-mechanisme: inkoop `boek_cyclus += 1` (vers GUID; de duplicaatcheck kent de hele keten als uitgezonderd),
+  `rlz_boekstuknummer` leeg, GEBOEKT → KLAAR_OM_TE_BOEKEN, verplichting-verbruik/mini-voorraad/autoboek-leren terug, webhook
+  `factuur_gestorneerd` (bron `module_storno`) voor vastgoed, tijdlijnregel `gecorrigeerd`, audit `document_gecorrigeerd` (reden, oud
+  extern id, oud boekstuknummer); verkoop/kassarapport: registratierij → `gestorneerd`, kop-boekstuknummer leeg, herboeking her-PUT op
+  hetzelfde GUID en maakt de registratie weer actief; (4) het document blijft/opent in het controlescherm mét gele balk "Gecorrigeerd —
+  reden … · vorige boeking … gestorneerd (actie 19)" (`CorrectieBalk`, uit de tijdlijnregel, weg ná de herboeking), regels zoals ze
+  waren, harde checks vers (vingerafdruk draagt de boek_cyclus). Klant-accordering: géén nieuwe ronde (het akkoord gold de factuur).
+  Een mislukte externe stap laat lokaal álles staan en benoemt wat wél al terug is (audit `document_correctie_mislukt`; kassarapport:
+  memoriaal terug, Receipt niet → registratie `HALF_GEBOEKT`). Rechten: élke kantoorrol. `storno_detectie.py` blijft de detectie voor
+  storno's die tóch in de RLZ-UI gebeuren. Tests `tests/documenten/test_corrigeren.py`, `tests/verkoop/test_corrigeren.py`,
+  `tests/omzet/test_corrigeren.py`, vitest `CorrigerenActie.test.tsx`, gouden-set-casus **ah** `tests/keten/test_ah_corrigeren_geboekt_document.py`
+  (BDO boeken → corrigeren → herboeken op het nieuwe GUID, oud concept blijft; poging 2 21-09). Werkt in productie: niet gemeten (nameting-opdracht
+  `2026-09-22-nameting-corrigeren-testadministratie.md`, TEST-referentie op de RLZ-testadministratie).

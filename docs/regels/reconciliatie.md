@@ -144,6 +144,17 @@
   deploy: de run van 22-09 06:30 leest nog de stand van 21-09 (oude image) en meldt de LET-OP precies één keer mét audit; de `sync-alles`
   van 22-09 07:00 schrijft de eerste groene stand en op 23-09 is de LET-OP weg.** Test `tests/groepen/test_saldi.py::TestStandSysteemEnDetector`.
 
+<!-- toegevoegd 21-09-2026, opdracht "corrigeren-knop-geboekt-document-storno-plus-opnieuw-klaarzetten" -->
+- **Storno vanuit de module ≠ verdwenen document (21-09; geen migratie; BESLISSINGEN "CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW
+  KLAARZETTEN (Peter 21-09)"):** "Corrigeren…" vuurt het `factuur_gestorneerd`-event DIRECT mét bron `module_storno` in dezelfde
+  boekstand-reeks als het geboekt-event (vastgoed-administraties; inkoop én Vastly-verkoop); `storno_detectie.py` (bron
+  `rlz_ui_detectie`, latentie tot de volgende run) blijft alleen voor storno's die iemand tóch rechtstreeks in de RLZ-UI doet. De routes
+  blijven gescheiden: een extern stuk dat NIET meer bestaat (404) is `ontbreekt_in_rlz/odoo` → "Opnieuw boeken" achter de aangiftepoort
+  (herboeken.py); de corrigeer-dialoog wijst dan naar Inzicht › Reconciliatie en storneert niets. Een gecorrigeerd document staat op
+  `klaar_om_te_boeken` mét een concept in RLZ; blijft de herboeking uit, dan meldt de bestaande opruimlijst/omzet-reconciliatie dat
+  concept (geen nieuwe bevindingssoort). Een kassarapport-correctie die ná het memoriaal strandt zet de registratie op `HALF_GEBOEKT`
+  (`half_geboekt_detail.bron = correctie`) — de omzet-reconciliatie rapporteert die rijen al.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Synthetische bewaking + alerting (CLAUDE.md `ed6d176` r. 632–644)

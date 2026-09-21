@@ -25,6 +25,13 @@
 - **Wordt een factuur met activum gestorneerd, dan wordt het activum niet verwijderd** maar gemarkeerd "beoordelen in Reeleezee"; verwijderen doet alleen een mens in Reeleezee.
 - **Instellingen › Administraties › ‹administratie› › Boeken & AI › Activa:** schakelaar "Activum automatisch aanmaken ná boeken" (standaard uit — aan betekent dat het systeem elk activum zelf aanmaakt zodra de boeking staat), activeringsgrens met de waarde uit Reeleezee als hint, afschrijvingstermijn en -rekening per categorie, de lijst activarekeningen en de stand van het register (leesbaar, of "recht ontbreekt" als de webservice-login het recht Vaste activa nog mist).
 - **De dagelijkse controle krijgt een blok Activa** (start in de meetstand): een geboekte aanschaf zonder activum, een activum zonder boeking, een afschrijving die na een jaar nog niet gelopen is en een mislukte aanmaak worden gemeld met een handeling erbij.
+## 2026-09-21 — Een geboekt document corrigeren kan nu vanuit de module
+
+<!-- corrigeren-geboekt-document-21-09 -->
+
+- **"Corrigeren…" in het ⋯-menu van een geboekt document.** Een inkoopfactuur, verkoopfactuur of kassarapport met een fout (bijvoorbeeld een verkeerd btw-bedrag) hoefde tot nu toe in Reeleezee zelf teruggedraaid te worden. Nu kies je "Corrigeren…", geef je een reden, en zet de module de boeking in Reeleezee terug naar concept en het document weer klaar om te boeken — met de regels zoals ze waren. Je past alleen de fout aan en boekt opnieuw; de controles draaien opnieuw. Er wordt niets verwijderd.
+- **De dialoog zegt vooraf of het kan, en zo niet, wat dan de weg is.** Is de btw-aangifte over die periode al ingediend, dan biedt de dialoog "Tegenboeken…"; is de factuur al (deels) betaald, dan wijst hij naar de bankmodule om het afletteren eerst terug te draaien; bij een doorbelasting gaan beide kanten mee terug of geen van beide.
+- **Een gele balk boven het document toont de reden en de vorige boeking** tot het opnieuw geboekt is. Twee keer klikken doet niets extra.
 
 ## 2026-09-21 — Een goedgekeurd rekeningnummer telt direct mee in de controles
 
