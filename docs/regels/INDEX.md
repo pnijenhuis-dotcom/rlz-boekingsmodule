@@ -24,5 +24,5 @@ dan leidt CC de domeinen af uit de geraakte paden via deze tabel en noemt dat ex
 | Kempen-doorbelasting en intercompany | `docs/regels/doorbelasting-intercompany.md` | `backend/app/doorbelasting/**`, `backend/app/intercompany/**`, `frontend/src/doorbelasting/**` |
 | Klant-accordering, accordeur-/veldwerker-app, native store-apps en OTA | `docs/regels/accordering-native-app.md` | `backend/app/accordering/**`, `backend/app/afdelingen/**`, `backend/app/appupdate/**`, `frontend/src/accordering/**`, `frontend/src/accordeur/**`, `frontend/src/afdelingen/**`, `native/**` |
 | Vastgoedgroep Nederland → Odoo (run 1 + run 2) en het pandenregister | `docs/regels/vgg-odoo-migratie.md` | `backend/app/migratie/**`, `backend/app/panden/**`, `scripts/gcp/vgg_*.sh` |
-| Activa / MVA | `docs/regels/activa.md` | `backend/app/activa/**` |
+| Activa / MVA | `docs/regels/activa.md` | `backend/app/activa/**`, `frontend/src/activa/**` |
 | Werkloop, nametingen, deploy en productie-toegang | `docs/regels/werkloop-productie.md` | `backend/app/db/**`, `backend/app/lezen/**`, `backend/app/cli.py`, `backend/app/main.py`, `backend/app/config.py`, `backend/migrations/**`, `scripts/**`, `.github/**`, `opdrachten/**`, `docs/rapporten/**` |

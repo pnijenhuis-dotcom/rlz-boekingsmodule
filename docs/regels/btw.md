@@ -128,6 +128,52 @@
   (`/documenten/<administratie>/<id>`) in het batchblok. Guards: `tests/documenten/test_upload_al_aanwezig.py`,
   `test_service.py`/`test_router.py` (aangepast), vitest `uploadWachtrij.test.ts`.
 
+<!-- toegevoegd 21-09-2026, opdracht "activa-mva-akkoord-fase-1-plus-bua-rekeningen-meting" blok B -->
+- **BUA-kenmerk — lees-only meting + bulk-voorstel (Peter 21-09; geen migratie; BESLISSINGEN "BUA-KENMERK — LEES-ONLY METING +
+  BULK-VOORSTEL (Peter 21-09)"):** vervolg op regel (4) van 18-09 (kenmerk `btw_aftrek_uitgesloten`, 0163). Meting 21-09 op de
+  leesreplica (78 actieve administraties, per administratie in RLS-scope): het kenmerk staat nergens aan; alle 297 kandidaten zijn
+  de vier RLZ-standaardrekeningen 4014 Kantinekosten (74), 4503 Kosten promotie/sponsoring (74), 4508 Relatiegeschenken (beperkt
+  aftrekbaar) (75), 4510 Representatiekosten (beperkt aftrekbaar) (74); nergens een RLZ-/historie-default; module-geboekt 2026
+  alleen 4510: 2 regels € 34,45 / btw € 0,00 (T&J Hoveniers). (1) **Meting = CLI `bua-kandidaten [--administratie <uuid|naamdeel>]
+  [--jaar 2026] [--detail] [--json-uit]`** (`app/beheer/bua_cli.py`, LEES-ONLY, nameting-allowlist, dispatch-onderdeel
+  `bua-kandidaten` mét oordeelregel uit de TOTAAL-regel): administraties platformbreed (`scoped_session(None)` → `Administratie.
+  actief`), daarna élke administratie in haar EIGEN `scoped_session(aid)` (RLS op `grootboekrekening`/`document`/`boekvoorstel*`/
+  `bank_boeking*` — één cross-administratie-query in `scoped_session(None)` geeft in productie stil 0 rijen; patroon
+  `grootboek_btw_historie.herbereken_alle`); selectie = niet-verdwenen 4xxx-kostenrekening (AccountType 2) waarvan de naam een woord
+  uit `BUA_NAAMDELEN` bevat (representatie, relatiegeschenk, geschenk, kantine, consumptie, eten en drinken, lunch, diner, horeca,
+  personeelsfeest, personeelsuitje, bedrijfsuitje, giften, sponsoring — breder dan het scherm-voorstel `VOORSTEL_NAAMDELEN`, dat
+  ongewijzigd blijft); per rekening kenmerk-stand, RLZ-default (naam + %), historie-default, module-geboekt in het jaar (boekvoorstel-
+  regels van GEBOEKTE inkoopfacturen op factuurdatum — kassarapporten, niet-geboekt en andere jaren tellen niet) en apart bank-direct-
+  geboekt (`bank_boeking_regel` van GEBOEKTE `bank_boeking` op `geboekt_op`; gestorneerd telt niet); GEEN RLZ-call — voettekst
+  "RLZ-kant niet gemeten (lees-only, geen RLZ-call) — een RLZ-kant-meting is een aparte `--rlz`-stap (niet gebouwd)"; een kapotte
+  administratie = FOUT-regel, de rest loopt door. (2) **Advies per rekening is een pure functie `advies_voor(code, naam) →
+  (zetten | niet_zetten | beoordelen, reden)`**, volgorde bindend: representatie/relatiegeschenk/geschenk → zetten (BUA: niet
+  aftrekbaar boven € 227 per begunstigde per jaar; horeca-deel nooit, art. 15 lid 5 Wet OB); horeca/lunch/diner/eten en drinken/
+  consumptie → zetten (art. 15 lid 5); kantine → beoordelen (kantineregeling: aftrek wél, jaareinde-correctie bij bevoordeling
+  > € 227 — het kenmerk is te conservatief); personeelsfeest/-uitje/bedrijfsuitje/giften → beoordelen (aftrekbaar tot € 227 p.p.);
+  sponsoring/promotie → niet_zetten (reclame, aftrekbaar; alleen het geschenkdeel is BUA); geen categorie → beoordelen. (3) **Zetting
+  = CLI `bua-kenmerk-zetten (--administratie <uuid|naamdeel> | --alles) [--codes 4508,4510] [--dry-run]`** (SCHRIJVEND, zelfde
+  bestand, in de schrijvende weigerlijst van `nameting.sh` — ook de dry-run is geen nameting): per administratie de rekeningen met
+  die codes (soort 2, niet verdwenen) via `btw_aftrek.voeg_toe(actor_id, administratie_id, ledger_ids, bron)` = bestaande set ∪
+  nieuw (`zet` blijft de exacte-set-variant van het scherm), actor `SYSTEEM_ACTOR_ID`, audit `btw_aftrek_uitgesloten_gewijzigd`
+  oud→nieuw mét `nieuwe_waarde["bron"] = "cli bua-kenmerk-zetten (opdracht Peter 21-09)"` uitsluitend bij een wijziging; al aan =
+  "al aan (ongewijzigd)", code afwezig in de administratie = "niet gevonden" (zichtbaar, geen fout), tweede run = 0 wijzigingen;
+  `--dry-run` telt en toont "zou zetten: …" zonder te schrijven; exit 2 bij ongeldige `--codes`/onbekende administratie. Productie
+  uitsluitend op de job-image: `gcloud run jobs execute rlz-reconciliatie --args="^|^-m|app.cli|bua-kenmerk-zetten|--alles|--dry-run"`
+  ná deploy, zonder `--dry-run` pas ná Peters "ja"; terugdraaien per administratie via het bestaande Beheerder-blok (`zet`).
+  (4) **Bulk-voorstel: 4508 + 4510 kantoorbreed in één stap (default `--codes`); 4014 en 4503 niet** — 74–75 van 78 administraties
+  dragen exact dezelfde standaardrekeningen, nergens een default die overschreven wordt, het kenmerk raakt alleen de prefill van
+  nieuwe boekingen (niets wordt herboekt); per administratie klikken is 75 × dezelfde handeling zonder criterium (principe 7
+  "minimale mens"). Fiscale nuance (Peter): het kenmerk zet 100 % van de btw in de kosten en is daarmee conservatief — exact voor
+  het horeca-deel, te ruim voor representatie/geschenken onder de € 227-drempel per begunstigde; voor kantine (aftrek is het
+  uitgangspunt, correctie aan het jaareinde) en sponsoring (reclame) zou het structureel te veel btw wegzetten. Een drempel-variant
+  vraagt de begunstigde per regel (niet uit een inkoopfactuur te lezen) → bewust niet gebouwd; `bua-kandidaten --jaar` is het
+  jaareinde-overzicht Σ 4508/4510 per administratie voor een eventuele BUA-correctie/suppletie. (5) **Procesles nameting.yml:** élk
+  niet-VGG-onderdeel staat in de `!=`-uitsluitingslijst vóór `vgg_blok7_nameting.sh "$ONDERDEEL"` (dat script kent alleen a…e/alles
+  en geeft anders exit 2 → workflow rood vóór de eigen tak; `groep-saldi` van 21-09 ochtend ontbrak en is meegefixt); guard
+  `test_nameting_workflow.py::test_elk_niet_vgg_onderdeel_is_uitgesloten_van_de_vgg_tak`. Guards: `tests/beheer/test_bua_cli.py`,
+  `tests/unit/test_nameting_workflow.py` (9).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Btw-tarief buitenland (CLAUDE.md `ed6d176` r. 354–360)

@@ -73,7 +73,7 @@
 |---|---|---|
 | Vragenworkflow (vraag blokkeert boeken, eigenaar per administratie, antwoord voedt geheugen, status in werkvoorraad — geen apart menu) | **gebouwd + getest, backend + UI** (PART A 2026-07-14: record + endpoints + eigenaar-instelling + afdwinging, herkomst-herstel via `vraag.status_voor_vraag`; PART B 2026-07-14: vragen-view met beantwoorden/intrekken en grijze historie, vraagmodal met eigenaar-default + medewerkers-select, "Vraag stellen…"-knop op het controlescherm, open-vraag-banner, vraagchip + Toegewezen-kolom + open-vragen-teller in de werkvoorraad, tijdlijn-entries gesteld/beantwoord/ingetrokken, weesvraag op verwijderd document niet actief, Instellingen-kolom "Eigenaar (krijgt vragen)"; prereq `GET .../medewerkers` scope-gecontroleerd). "Antwoord voedt geheugen" v1 via de boek-leerlus, doorzoekbare Q&A-kennisbank per crediteur = genoteerde latere verrijking. **PART A = gebouwd+getest, PART B (UI) = gebouwd+getest; visuele browserreview nog open (volgende sessie)**. **⚠️ HERZIEN 25-08: het één-antwoord-model ("beantwoorden herstelt het document") is VERVALLEN — een vraag is een dialoog en alleen "Afgehandeld" door de vraagsteller deblokkeert; zie sectie "RLZ-FEEDBACKRONDE 25-08" punt B** | mockup `#vragen` + `#vraagmodal`; CLAUDE.md "Vragenworkflow"; BOUWPLAN fase 1 punt 6 checkstatus + punt 8; `app/documenten/vragen.py`; `frontend/src/vragen/` |
 | — **Bewuste uitbreidingen op de goedgekeurde mockup** (akkoord Peter 2026-07-14): (1) **vraag intrekken** (status `ingetrokken`, reden optioneel, document terug naar herkomst) — zonder intrekken dwingt een per ongeluk gestelde vraag een pro-forma nep-antwoord af dat als échte kennis in de historie zou staan; (2) **vraag stellen vanuit `klaar_om_te_boeken`** (statusmachine-uitbreiding, incl. herstel terug naar `klaar_om_te_boeken`) — ook uit een boekklaar document kan een vraag rijzen, anders moest de controleur kunstmatig terug naar te_controleren. Boeken blijft vanuit `vraag_open` geblokkeerd | **gebouwd + getest** (2026-07-14) | `app/documenten/vragen.py`; `statusmachine.py`; migratie 0022; `tests/documenten/test_vragen.py` |
-| **ACTIVA / MVA — STAP-0 + ONTWERP (Peter 16-09), status ONTWERP TER AKKOORD:** RLZ `FixedAssets` = volwaardig register (document-DTO mét BalanceAccount/DepreciationAccount/DepreciationMethod "Lineair N jaar"/LiquidationValue/FirstDepreciationMonth-Year/JournalEntryList/FixedAssetMutationList, actie-route, PUT met client-GUID; géén regel-koppeling naar de inkoopfactuur; enumeraties root-only → `rlz-lezen --root`; `IsFixedAssetAccount` te breed → MVA = vlag ÉN AccountType 3 ÉN 0xxx; Universal 403 = probe verplicht; `AdministrationSettings.FixedAssetAlertAmount` 450 = activeringsdrempel al in RLZ); Odoo `account_asset` geïnstalleerd maar ongebruikt (0 activa/modellen, `create_asset='no'`); ontwerp: register in RLZ/Odoo (KP1), detectie + voorvullen bij boeken (auto-first, opt-in aanmaken), fiscale toetsing (20 %/goodwill 10 %/WOZ-bodemwaarde/KIA-MIA signaal), reconciliatieblok `activa`, fasering 1–3; lees-only meetinstrument `activa-nulmeting` (nameting-allowlist). Geen bouw, geen migratie. **Besluit Peter 16-09 avond (capture): steigermateriaal 5 jaar lineair, restwaarde 0 — fiscale ondergrens = default (ONTWERP §3 termijnentabel + §8 punt 3); één parameter, het ontwerp blijft TER AKKOORD** | **ONTWERP TER AKKOORD (16-09)** — bouw in aparte opdracht ná akkoord Peter (UX-review controlescherm-v2) | `docs/ONTWERP_ACTIVA_MVA.md`; `docs/rapporten/2026-09-16-activa-stap0.md`; api-verkenning "Activa-module — STAP-0 16-09"; odoo-verkenning §13; `app/activa/nulmeting.py` |
+| **ACTIVA / MVA — STAP-0 + ONTWERP (Peter 16-09), status ONTWERP TER AKKOORD:** RLZ `FixedAssets` = volwaardig register (document-DTO mét BalanceAccount/DepreciationAccount/DepreciationMethod "Lineair N jaar"/LiquidationValue/FirstDepreciationMonth-Year/JournalEntryList/FixedAssetMutationList, actie-route, PUT met client-GUID; géén regel-koppeling naar de inkoopfactuur; enumeraties root-only → `rlz-lezen --root`; `IsFixedAssetAccount` te breed → MVA = vlag ÉN AccountType 3 ÉN 0xxx; Universal 403 = probe verplicht; `AdministrationSettings.FixedAssetAlertAmount` 450 = activeringsdrempel al in RLZ); Odoo `account_asset` geïnstalleerd maar ongebruikt (0 activa/modellen, `create_asset='no'`); ontwerp: register in RLZ/Odoo (KP1), detectie + voorvullen bij boeken (auto-first, opt-in aanmaken), fiscale toetsing (20 %/goodwill 10 %/WOZ-bodemwaarde/KIA-MIA signaal), reconciliatieblok `activa`, fasering 1–3; lees-only meetinstrument `activa-nulmeting` (nameting-allowlist). Geen bouw, geen migratie. **Besluit Peter 16-09 avond (capture): steigermateriaal 5 jaar lineair, restwaarde 0 — fiscale ondergrens = default (ONTWERP §3 termijnentabel + §8 punt 3); één parameter, het ontwerp blijft TER AKKOORD** | **AKKOORD Peter 21-09 ("activa, JA", alle defaults §8) → FASE 1 GEBOUWD 21-09 (migratie 0168)** — sectie "ACTIVA / MVA — FASE 1 GEBOUWD (Peter 21-09)"; werkt in productie: niet gemeten (vervolg-opdracht `niet vóór: 2026-09-22 09:00`) | `docs/ONTWERP_ACTIVA_MVA.md`; `docs/rapporten/2026-09-16-activa-stap0.md`; api-verkenning "Activa-module — STAP-0 16-09"; odoo-verkenning §13; `app/activa/nulmeting.py` |
 | Afwijzen = verplichte reden, blijft zichtbaar | goedgekeurd; gebouwd + getest (2026-07-15) — zie regel "Afwijzen-met-verplichte-reden" | mockup `#afwijsmodal`; CLAUDE.md |
 | Verzamelbak "Niet toegewezen" (tenaamstelling leidend, leert, nooit auto-toewijzen bij twijfel) | goedgekeurd → **GEBOUWD + GETEST (2026-08-07)**, zie "E-mail-intake + verzamelbak — GEBOUWD + GETEST" hieronder | mockup `#tenaamstellingmodal`/`#verdeelmodal`; CLAUDE.md |
 | E-mail intake (één adres, multi-factuur-PDF splitsen) | goedgekeurd → **GEBOUWD + GETEST (2026-08-07)**, zie hieronder; **live IMAP-fetch = bewuste seam tot de GCP-uitrol** | CLAUDE.md; BOUWPLAN fase 3 |
@@ -11599,7 +11599,7 @@ n.v.t. (lees-only) — module-kant gemeten op de leesreplica, RLZ-kant NIET geme
 - **Beslispunten Peter (open):** (1) bulk-herstel of laten staan — pas ná de RLZ-kant-meting (`nameting.sh facturen-zonder-project
   --administratie "Universal Steigerbouw" --jaar 2026 --rlz`); (2) reconciliatie-soort "regel zonder project op een project-verplichte
   administratie" als RLZ-kant-toets in stand `meten` — alleen ná GO; (3) OVH-project voor Universal (overhead gaat nu via de
-  omzetsleutel óók naar projecten met naam "Afgesloten …") en of de pro-rato-sleutel afgesloten projecten mag overslaan.
+  omzetsleutel óók naar projecten met naam "Afgesloten …") en of de pro-rato-sleutel afgesloten projecten mag overslaan. **→ (3) BESLIST 21-09: géén OVH-project voor Universal, omzetsleutel blijft (zie "UNIVERSAL — OVERHEAD VIA DE OMZETSLEUTEL, GEEN OVH-PROJECT (Peter 21-09)"); de sleutel slaat afgesloten projecten sinds 19-09 over.**
 
 ## PROJECTVERDELING SLUIT AFGESLOTEN PROJECTEN UIT + RLZ-KANT-METING FACTUREN ZONDER PROJECT (19-09) — omzetsleutel volgt de projectstatus (0160), herberekening bij afsluiten mét tijdlijnregel, LET-OP "naam zegt afgesloten" in blok projecten, lees-only rapport + CLI, Universal RLZ-kant 2026 = 0 zonder project; geen migratie
 
@@ -11650,7 +11650,7 @@ alleen een nummer aan het begin van de naam, dus "Afgesloten 26064 Apeldoorn" na
   eerst de 8 actieve "Afgesloten"-projecten afsluiten via Projecten › Afsluiten… (dan valt het uit de sleutel), geboekte rijen laten
   staan (immaterieel, Q3 open maar storno + her-PUT van 5 documenten voor € 1.239 is meer werk dan waarde); (2) OVH-project Universal
   aanmaken via de Projecten-module (synct naar RLZ) zodat telecom/management fee/advies (€ 12.229 tot nu) bewust op overhead landen
-  i.p.v. omzet-gewogen over lopende projecten — de module maakt 'm nooit zelf; (3) bulk-herstel RLZ-kant: NIET nodig (0).
+  i.p.v. omzet-gewogen over lopende projecten — de module maakt 'm nooit zelf; (3) bulk-herstel RLZ-kant: NIET nodig (0). **→ (2) BESLIST 21-09: NEE — Universal verdeelt overhead bewust via de omzetsleutel (zie "UNIVERSAL — OVERHEAD VIA DE OMZETSLEUTEL, GEEN OVH-PROJECT (Peter 21-09)").**
 - Tests `tests/projectverdeling/test_afgesloten.py` (8: naam-detectie, status-filter ook bij bron-actief, naam blijft in sleutel + LET-OP,
   afsluiten herrekent voorstel mét tijdlijn/audit + heropenen spiegelt, geen regel zonder raakvlak, geboekt blijft + rapport-voorstel,
   reconciliatieblok LET-OP zonder exit 1 + soort in meten + leesbare tekst, overhead-rapport + CLI). Les werkloop: een shell-script
@@ -12038,3 +12038,186 @@ eerstvolgende vier-ogen-akkoord.
 
 **Beslispunt (open):** de 15-min-tijdsgeldigheid blijft als bovengrens staan (beslispunt 2 van "BOEKEN SNELLER"); mét invalidatie op de
 bron kan die veilig omhoog — pas ná een week meten van `checks.extern` in de Server-Timing.
+
+## ACTIVA / MVA — FASE 1 GEBOUWD (Peter 21-09)
+
+**Status: AKKOORD Peter 21-09 ("activa, JA") op `docs/ONTWERP_ACTIVA_MVA.md` mét alle defaults §8 → FASE 1 GEBOUWD 21-09 (migratie 0168);
+werkt in productie: niet gemeten** — de sync van 22-09 07:00 vult `is_activa`/grens/probe op de nieuwe image; vervolg-opdracht
+`opdrachten/inbox/2026-09-22-nameting-activa-fase1-en-bua-kandidaten-na-deploy.md` (`niet vóór: 2026-09-22 09:00`). Canonieke vindplaats:
+`docs/regels/activa.md` (alinea 21-09), ontwerp `docs/ONTWERP_ACTIVA_MVA.md`, rapport `docs/rapporten/2026-09-21-activa-fase1-bua-vgg-toewijzing-universal-overhead.md` sectie A,
+api-verkenning "Activa — STAP-0 21-09". Herziet de registerrij "ACTIVA / MVA — STAP-0 + ONTWERP (Peter 16-09)" (status ONTWERP TER AKKOORD → gebouwd).
+
+**Defaults §8 (akkoord, allemaal):** activeringsgrens € 450 excl. btw — RLZ `AdministrationSettings.FixedAssetAlertAmount` wint als gevuld; lineair,
+restwaarde 0; termijnen inventaris 60 / vervoermiddelen 60 / computers-software 36 / machines 60 / gebouwen 360 (tot bodemwaarde WOZ) /
+steigermateriaal 60 mnd (besluit 16-09); automatisch aanmaken = opt-in per administratie, default UIT; bijkomende kosten = voorstel + mens;
+RLZ vóór Odoo (Odoo-administraties zichtbaar overgeslagen). Geen eigen fiscale rekenregels: toetsen en signaleren (§3).
+
+**Nulmeting 21-09** (`activa-nulmeting`, executie `rlz-reconciliatie-hrtzq`, `verkenning/nameting-activa-nulmeting-21-09.txt`): 78 administraties,
+75 mét MVA-rekeningen (344), 51 activa in 7 registers — Pilates Bloom B.V. 20 (rijkste → fase 1 eerst hier), Zilver Beheer 13, Mantelzorgwoningen
+Midden Nederland 11, Belastingbutler 3, Beauty by Tessa Elst 2, Dimo Living & Styles 1, L.H.G. Holding 1; Universal Steigerbouw en Rubicon
+Investments 403 "recht ontbreekt"; 1 module-regel op een MVA-rekening (€ 45,67, onder de grens). STAP-0: RLZ schrijft zelf af
+(`CurrentBookValue`/`CurrentDepreciationValue`), `DepreciationMethod` via `$expand` op de collectie; root-enumeraties `AssetTypes` 1 Fixed / 2 Stock,
+`AssetMutationTypes` 1 Purchase / 3 Sale / 4 Revaluate / 5 Depreciate / 6 Manual.
+
+**Gebouwd (ontwerp §7 fase 1):**
+1. **Datamodel (0168, schema-only):** `platform.grootboekrekening.is_activa` (RLZ `IsFixedAssetAccount` ÉN AccountType 3 ÉN 0xxx via
+   `activa/categorie.is_mva_rekening` in `sync/service._grootboek_waarden`; Odoo `account_type == asset_fixed`), `boekhouding.activa_instelling`
+   (PK administratie: opt-in, `activeringsgrens`, `grens_rlz` + `_gelezen_op`, `termijnen`/`afschrijving_ledgers` JSONB, register-probe
+   `register_leesbaar`/`_geprobeerd_op`/`_fout`) en `boekhouding.activum_koppeling` (document × regel × boek_cyclus ↔ RLZ-activum; statussen
+   `gepland` | `aangemaakt` | `overgeslagen` | `mislukt` | `beoordelen`, herkomst `mens` | `automatisch`, geen DELETE-grant). RLS op administratie
+   (0167-patroon). Referentiedump ververst.
+2. **Register-lezer + probe** (`activa/register.py`, `RlzClient.get_fixed_assets/get_fixed_asset/put_fixed_asset/get_depreciation_method_headers/
+   get_administration_settings`): `lees_activa` gepagineerd mét `$expand=DepreciationMethod`, `methode_voor_termijn` (Lineair N jaar), `lees_grens`;
+   `instelling.probe_register` + `ververs_rlz_grens` draaien in `sync_alles_voor_administratie` ná de ledgers-sync voor élke administratie mét
+   ≥ 1 `is_activa`-rekening (try/except, nooit blokkerend) — 403 = `register_leesbaar=false` + `register_fout` "recht ontbreekt (403)", zichtbaar
+   op de instelling en in het reconciliatieblok, nooit stil.
+3. **Detectie bij boeken** (`activa/voorstel.py`, geen RLZ-call): kandidaat = OPGESLAGEN boekvoorstelregel op een `is_activa`-rekening mét netto
+   ≥ effectieve grens (RLZ-grens > instelling); negatieve/0-regels tellen niet; regel onder de grens = `onder_grens`-signaal (oranje). Categorie
+   deterministisch op de REKENINGNAAM (`categorie.bepaal_categorie`: steiger → steigermateriaal, gebouw/pand/… → gebouwen, auto/… → vervoermiddelen,
+   computer/ict/software/… → computers_software, machine/installatie/verhuurmateriaal → machines, inventaris/kantoor → inventaris, anders `onbekend`
+   mét chip "controleer"); termijn = instelling > default; fiscale signalen (`fiscale_signalen`): `afschrijving_boven_20pct` (< 60 mnd, art. 3.30 Wet IB),
+   `bodemwaarde_woz` (gebouwen), `kia_mia_mogelijk` (≥ grens), `categorie_onbekend` — tekst, nooit een berekening.
+4. **Kaart "Activum aanmaken?"** (`frontend/src/document/ActivaVoorstelKaart.tsx`, gemount ná `OfferteMatchMelding`, alleen inkoopfactuur, leesfout =
+   stil, leeg = niets): per kandidaat omschrijving · rekening · aanschafwaarde · -datum · categorie · termijn (`methode_naam`) · restwaarde ·
+   `SearchableCombobox` afschrijvingsrekening (voorgevuld uit instelling per categorie, mens wint) · signalen als chips; `btn` "Activum aanmaken" /
+   "Aanmaken ná boeken", `linkbtn` "Niet activeren…" (dialoog, reden VERPLICHT). Standen: gepland (info, "Toch niet") · aangemaakt (groen mét stip,
+   "nr ‹ReceiptNumber›") · overgeslagen (stil + reden, "Toch aanmaken") · mislukt (rood + reden, `btn secondary` "Opnieuw aanmaken") · beoordelen
+   (oranje). Register niet leesbaar → oranje regel, RLZ-schrijvende knoppen uit mét de tekst als `title`; "Niet activeren…" blijft aan. Chip
+   "wordt activum" is info-blauw (teal = actie, groen = status). Mockup `controlescherm-v2.html` notitie ⑨ + voorbeeldkaart.
+5. **API** (`activa/router.py`, kantoorrol + scope, mutaties ook Boekhouding, instelling-PUT Beheerder; in de rolpoort-sweep):
+   `GET …/documenten/{did}/activa-voorstel`, `POST …/activa-voorstel/{n}/aanmaken` (body optioneel `afschrijving_ledger_id`, `termijn_maanden`
+   12..600 veelvoud van 12; niet geboekt → `gepland`, geboekt → direct RLZ; 422 geen kandidaat, 409 al aangemaakt), `POST …/overslaan` (reden leeg =
+   422, `aangemaakt` = 409), `GET/PUT /administraties/{aid}/activa-instelling` (audit `activa_instelling_gewijzigd` oud→nieuw). Bedragen als
+   strings, de client rekent niets.
+6. **Schrijven in RLZ ná boeken** (`activa/service.py`): client-GUID `uuid5(NAMESPACE_URL, "rlz-activum:{document}:{regel}:{boek_cyclus}")`
+   (idempotent), `PUT FixedAssets/{guid}` mét Description, PurchaseDate, TotalAmountPurchase, LiquidationValue 0, BalanceAccount, DepreciationAccount,
+   DepreciationMethod (Lineair N jaar uit `DepreciationMethodHeaders`), NumberOfMonths, FirstDepreciationMonth/Year, Type 1, InvoiceReference →
+   204 → ALTIJD terug-lezen `GET FixedAssets/{id}` → `aangemaakt` mét `rlz_fixed_asset_id`/`rlz_receipt_number`, tijdlijn + audit
+   `activum_aangemaakt`; élke fout (geen methode voor N maanden, geen afschrijvingsrekening, RLZ 4xx/5xx, 404 ná PUT) → `mislukt` mét reden + audit
+   `activum_aanmaken_mislukt`, nooit een exception naar de boekflow. `verwerk_na_boeken` hangt in `doorbelasting/orkestratie.boek_document_met_
+   doorbelasting` NÁ de geslaagde boeking (beide takken, buiten de GEBOEKT-transactie; resultaat `BoekMetDoorbelastingResultaat.activa`
+   = aangemaakt/mislukt/gepland_verwerkt/automatisch): (a) `gepland` → aanmaken; (b) opt-in `automatisch_aanmaken_ingeschakeld` → élke kandidaat
+   zonder koppeling → aanmaken herkomst `automatisch` (ontbrekende rekening = `mislukt`, zichtbaar — geen stille no-op; guard-test afwezig-pad
+   `@pytest.mark.afwezig_pad("activa_instelling.automatisch_aanmaken_ingeschakeld")`). **Storno/tegenboeken** (`markeer_beoordelen_bij_storno`,
+   gehaakt naast `mini_voorraad.instroom.registreer_storno` in tegenboeken/storno_detectie/herboeken/omzet-inkoopstroom): `aangemaakt` →
+   `beoordelen` + tijdlijn "factuur gestorneerd — activum beoordelen in RLZ (niet verwijderd)". Kernprincipe 3: de module verwijdert nooit een activum.
+7. **Instellingen › administratie › Boeken & AI › Activa** (`ActivaInstellingenBlok.tsx`, registry `activa`, anker `activa`, Beheerder muteert,
+   anderen lezen): switch automatisch aanmaken (default uit, uitleg autoboek-patroon), grens mét RLZ-hint "bron wint", tabel categorie × termijn
+   (1–50 jaar) × afschrijvingsrekening, activarekeningen als chips, registerstand (leesbaar / recht ontbreekt (403) — gemeten … / nog niet gemeten),
+   tellers koppelingen; één "Opslaan" LINKS onder het blok (overflow-les 18-09). Visueel harnas mockt `/activa-instelling`.
+8. **Reconciliatieblok `activa`** (`activa/reconciliatie.py`, in `run.BLOKKEN` + `reconciliatie-alles`; alle soorten `soort_stand` default `meten`,
+   `sinds 2026-09-21`, teksten in `teksten.py`): per RLZ-administratie mét ≥ 1 `is_activa`-rekening — `activa_register_niet_leesbaar` (actie:
+   RLZ-recht "Vaste activa" op de webservice-login), `mva_boeking_zonder_activum` (module-geboekte regel ≥ grens, factuurdatum ≥ 2026-01-01, zonder
+   `aangemaakt`-koppeling én zonder register-activum mét gelijk bedrag ± 30 d; actie: kaart), `activum_zonder_boeking` (register-activum ≥ 2026-01-01
+   zonder koppeling/module-regel ± 30 d; actie: boeking controleren in RLZ), `afschrijving_niet_gelopen` (`CurrentDepreciationValue` 0 én
+   PurchaseDate ≤ vandaag − 12 mnd én boekwaarde > 0 — RLZ's eigen cijfer, geen berekening), `activum_aanmaken_mislukt` (actie "Opnieuw aanmaken").
+   Odoo-administraties zichtbaar overgeslagen. Fase 2 (afschrijving triggeren/bewaken, record-vorm `FixedAssets/{id}?$expand=JournalEntryList`)
+   en Odoo volgen ná de productiemeting.
+
+**Guards:** `tests/activa/` (categorie 12, voorstel 8, service 16, instelling 7, router 5, reconciliatie 17, sync is_activa 2), gouden-set-casus
+**ag** `tests/keten/test_ag_activum_mva_rekening.py` (inkoopfactuur mét regel op 0107 ≥ 450 → kandidaat → aanmaken → boeken → één `PUT FixedAssets`
+mét BalanceAccount 0107 en "Lineair 5 jaar" → `aangemaakt`), rolpoort-sweep `test_rol_endpoint_gates.py` (+5 routes), `FakeBoekClient` seeds
+`fixed_assets`/`depreciation_methods`/`administration_settings`/`fixed_assets_403`; vitest `ActivaVoorstelKaart.test.tsx` (10),
+`ActivaInstellingenBlok.test.tsx` (6), registry/changelog/contrast. Live-200 dev 21-09: `GET …/activa-instelling` 200, `GET …/activa-voorstel` 200.
+
+**Klikpunt Peter:** RLZ-recht "Vaste activa" op de webservice-logins van Universal Steigerbouw en Rubicon Investments (tot dan register "niet
+leesbaar", bevinding `activa_register_niet_leesbaar` in `meten`).
+
+## UNIVERSAL — OVERHEAD VIA DE OMZETSLEUTEL, GEEN OVH-PROJECT (Peter 21-09) — capture; sluit beslispunt "OVH-project Universal" (rapporten 18-09/19-09); geen code, geen migratie
+
+**Besluit Peter 21-09 (letterlijk):** "Universal moet juist overhead verdelen over projecten, zo houden." Opdracht
+`opdrachten/gedaan/2026-09-21-activa-mva-akkoord-fase-1-plus-bua-rekeningen-meting-plus-vgg-toewijzing-schrijf-c.md` blok D; rapport
+`docs/rapporten/2026-09-21-activa-fase1-bua-vgg-toewijzing-universal-overhead.md`. Volledige regeltekst: `docs/regels/verplichtingen-projecten-voorraad.md`
+(alinea 21-09).
+
+- De regel "overhead → intern OVH-project (uitgesloten van bewaking)" (projectenmodule 2026-08) is een KLANTKEUZE, geen systeemnorm. Voor
+  Universal Steigerbouw geldt: overhead (telecom, management fee, advies — € 12.229,32 geboekt tot 19-09) wordt omzet-gewogen pro rato verdeeld
+  over de actieve, niet-afgesloten projecten (`app/projectverdeling/omzet.py`, 19-09-regel). Er komt GEEN OVH-project; de module maakt 'm nooit
+  zelf en stelt 'm voor Universal ook niet meer voor. CLAUDE.md verplichtingen-projecten regel 1 luidt sindsdien "overhead → intern OVH-project
+  óf pro rato over de actieve projecten per klantkeuze".
+- Beslispunten GESLOTEN: rapport 18-09 aanbeveling 3 ("OVH-project voor Universal aanmaken") en rapport 19-09 beslispunt 2 → nee. Beslispunt 1
+  van 19-09 (€ 1.239,05 op twee "Afgesloten"-projecten) blijft open als klikpunt (eerst afsluiten via Projecten › Afsluiten?).
+- Guard `backend/tests/projecten/test_zonder_project_universal_overhead.py`: `facturen-zonder-project` telt overhead mét bevroren pro-rato-verdeling
+  (DCTE 4499 € 599,32, Floor Beheer 4003 € 11.000, Kader 4606 € 630 over twee projecten) niet als bevinding; dezelfde factuur zónder verdeling wél;
+  het rapport vraagt nergens om een OVH-project. Bevestigt het bestaande gedrag (`zonder_project.module_kant`), geen codewijziging.
+
+## VGG — BESLISPUNT 1 BESLIST: TOEWIJZING PAND + SOORT VERKOOP RLZ-01-00000082 (Peter 21-09)
+
+**Status: GEBOUWD 21-09 (CLI + tests), productie: niet uitgevoerd — recept in `docs/rapporten/2026-09-21-activa-fase1-bua-vgg-toewijzing-universal-overhead.md` sectie C.**
+
+**Besluit Peter 21-09:** beslispunt 1 uit "VGG — CONCEPT → AUTO-POSTEN NÁ GROENE TOETS (Peter 17-09)" alinea "Plan + zesde meting 17-09 avond" is
+beslist als **Toewijzing pand + soort `verkoop`** (het advies), niet als expliciete mapping 8000. Het bewijspaar RLZ-01-00000082 (Receipt,
+€ 400.000,00, 19-03-2026, relatie "O.N." = Ouwerkerk Notariaat, RLZ-id `8b079e5c…`) wordt als mens-toewijzing aan het pand
+**Schoffelstraat 29, Purmerend** gekoppeld mét soort `verkoop`, zodat `vertaling.pand_telt` (herkomst `mens`) de 8000-regel herclassificeert
+naar de RJ-220-rol `opbrengst_panden` (803100) en het paar vertaalbaar wordt voor SCHRIJF c.
+
+**Deterministisch pand-bewijs (geen AI, geen gok):** het Receipt is afgeletterd tegen bankmutatie TransactionId `00112` = 20-03-2026
+€ 52.142,09 van Ouwerkerk Notariaat mét omschrijving "Betreft: schoffelstraat 29 te Purmerend, ons dossier: 2026.079950.01" — één adres,
+één dossiernummer, één notaris; de afleiding kon dit niet zelf (het Receipt draagt alleen "171384"), daarom mens.
+
+**Gebouwd:** CLI `pand-toewijzen` (`backend/app/panden/toewijzen_cli.py`, registratie in `app/cli.py` naast `register_panden`) — het eerste
+mens-toewijzingspad van het pandenregister (`herkomst='mens'` werd nergens geschreven). `--administratie --boekstuk --soort --adres [--plaats
+--postcode --dossier --reden --actor --schrijf --json-uit]`. RLZ uitsluitend gelezen (`Receipts?$filter=ReceiptNumber eq '…'&$top=2`, terugval
+SalesInvoices/PurchaseInvoices; 0 = STOP "niet gevonden", 2 = STOP "meerduidig"); pand-code = dezelfde normalisatie als de afleiding
+(`AdresVoorstel.code`, `schoffelstraat-29`), nooit een tweede; pand bestaand → hergebruikt, anders nieuw herkomst `mens`, status `verkocht`
+(verkoop, verkoopdatum = documentdatum) / `bevestigd`; `pand_boeking` upsert (soort, herkomst `mens`, zekerheid `hoog`, reden, datum/bedrag
+uit RLZ, `bevestigd_door`/`bevestigd_op`), zelfde stand = "ongewijzigd" (idempotent), hetzelfde document op een ÁNDER pand = STOP exit 2
+(nooit stil overschrijven); audit `pand_toegewezen_mens` + `pand_boeking_toegewezen_mens` oud→nieuw mét `nieuwe_waarde["opdracht"]` en bij de
+systeem-actor `namens` = "P. Nijenhuis (opdracht 21-09)"; default DRY-RUN (zelfde stappen, teruggedraaid), `--schrijf` voert uit; exit 0/2.
+`scripts/gcp/nameting.sh` weigert het commando hard (schrijvende weigerlijst). Tests `tests/panden/test_toewijzen_cli.py` (20): FakeRlz
+één/geen/twee treffers, dry-run schrijft niets, `--schrijf` + audits, idempotent, ander pand = STOP, actor per e-mail, en de vertaling-toets
+(`pand_per_document(aid)` → verkoop/hoog/mens, `pand_telt` True).
+
+**Productierecept (ná deploy, alleen op de job-image):** (0) deploy-check service én job zelfde image; (1) `gcloud run jobs execute
+rlz-reconciliatie … --args="^|^-m|app.cli|pand-toewijzen|--administratie|Vastgoedgroep Nederland|--boekstuk|RLZ-01-00000082|--soort|verkoop|
+--adres|Schoffelstraat 29|--plaats|Purmerend|--dossier|2026.079950.01|--actor|p.nijenhuis@kempengroep.nl"` (dry-run) → uitvoer controleren
+(Receipt 8b079e5c…, pand `schoffelstraat-29` → nieuw); (2) idem mét `--schrijf`; (3) `scripts/gcp/vgg_blok7_odoo_writes.sh plan` → het
+bewijspaar moet "vertaalbaar" tonen mét `pand schoffelstraat-29 (verkoop, hoog/mens)` en `regel N → opbrengst_panden`, anders STOP mét de
+exacte blokkade uit het rapport (een andere ongemapte ledger = beslispunt 2, geen tweede toewijzing); (4) `vgg_blok7_odoo_writes.sh "SCHRIJF c"`,
+GO Peter op dat rapport vóór SCHRIJF d.
+
+## BUA-KENMERK — LEES-ONLY METING + BULK-VOORSTEL (Peter 21-09)
+
+**Status:** GEBOUWD 21-09 (blok B run activa/BUA/pand); werkt in productie: niet gemeten — vervolg-opdracht ná deploy. Canonieke
+vindplaats: `docs/regels/btw.md` alinea "BUA-kenmerk — lees-only meting + bulk-voorstel (Peter 21-09)"; rapport
+`docs/rapporten/2026-09-21-activa-fase1-bua-vgg-toewijzing-universal-overhead.md` sectie B.
+
+**Aanleiding.** Het kenmerk `btw_aftrek_uitgesloten` (18-09, migratie 0163) stond op 21-09 in productie nergens aan: meting op de
+leesreplica over 78 actieve administraties (per administratie in RLS-scope) — 297 kandidaat-rekeningen, allemaal de vier
+RLZ-standaardrekeningen 4014 Kantinekosten (74), 4503 Kosten promotie/sponsoring (74), 4508 Relatiegeschenken (beperkt
+aftrekbaar) (75), 4510 Representatiekosten (beperkt aftrekbaar) (74); 0 × kenmerk aan, 0 × RLZ-/historie-default; module-geboekt
+2026 alleen 4510: 2 regels € 34,45 netto / € 0,00 btw (T&J Hoveniers — niet BLOW, zoals het contract aannam). De Beheerder-knop
+"Voorstel overnemen" per administratie is bij 75 administraties invulwerk zonder onderscheidend criterium.
+
+**Besluit/bouw.**
+1. Lees-only CLI `bua-kandidaten [--administratie <uuid|naamdeel>] [--jaar 2026] [--detail] [--json-uit]` (`app/beheer/bua_cli.py`;
+   nameting-allowlist; dispatch-onderdeel `bua-kandidaten` in `nameting.yml` mét eigen oordeelregel): per administratie in haar
+   eigen `scoped_session(aid)` de 4xxx-kostenrekeningen mét een BUA-woord in de naam (`BUA_NAAMDELEN`, 14 woorden), kenmerk-stand,
+   RLZ-/historie-default, module-geboekt (GEBOEKTE inkoopfacturen op factuurdatum) en apart bank-direct-geboekt (GEBOEKTE
+   bank_boekingen op boekmoment); GEEN RLZ-call ("RLZ-kant niet gemeten", een `--rlz`-stap is niet gebouwd). Advies per
+   rekening = pure functie `advies_voor(code, naam)`: representatie/relatiegeschenk/geschenk → zetten; horeca/lunch/diner/eten en
+   drinken/consumptie → zetten (art. 15 lid 5 Wet OB); kantine → beoordelen (kantineregeling, jaareinde-correctie); personeels-
+   feest/-uitje/bedrijfsuitje/giften → beoordelen (€ 227 p.p.); sponsoring/promotie → niet_zetten (reclame, aftrekbaar).
+2. Schrijvende CLI `bua-kenmerk-zetten (--administratie | --alles) [--codes 4508,4510] [--dry-run]` — NIET via nameting.sh
+   (schrijvende weigerlijst): per administratie `btw_aftrek.voeg_toe` (bestaande set ∪ nieuw; `zet` blijft de exacte set voor het
+   scherm), systeem-actor, audit `btw_aftrek_uitgesloten_gewijzigd` oud→nieuw mét `nieuwe_waarde["bron"] = "cli bua-kenmerk-zetten
+   (opdracht Peter 21-09)"`, alleen bij wijziging; al aan = ongewijzigd, code afwezig = "niet gevonden", kapotte administratie stopt
+   de rest niet; idempotent. Productie: `gcloud run jobs execute rlz-reconciliatie --args="^|^-m|app.cli|bua-kenmerk-zetten|--alles|
+   --dry-run"` ná deploy, zonder `--dry-run` pas ná Peters "ja".
+3. **Bulk-voorstel: 4508 + 4510 kantoorbreed in één data-stap; 4014 en 4503 NIET.** Het kenmerk is fiscaal conservatief (100 % btw
+   in de kosten, terwijl het BUA onder € 227 per begunstigde per jaar aftrek toelaat en alleen het horeca-deel nooit aftrekbaar
+   is) — voor representatie/relatiegeschenken de verdedigbare keuze omdat de begunstigde niet uit een inkoopfactuur te lezen is en
+   de jaareinde-correctie in de praktijk niet gebeurt; voor kantine (kantineregeling gaat juist uit van aftrek) en sponsoring
+   (reclame, aftrekbaar) zou het kenmerk structureel te veel btw wegzetten. Een drempel-variant "€ 227 per begunstigde" is niet
+   deterministisch te bouwen zonder mensinvoer per regel → niet bouwen; het jaareinde-overzicht Σ 4508/4510 per administratie
+   levert `bua-kandidaten --jaar` al.
+4. **Procesfix onderweg (gedeeld bestand):** `groep-saldi` (dispatch-onderdeel van 21-09 ochtend) ontbrak in de VGG-uitsluitingslijst
+   van `nameting.yml` → `vgg_blok7_nameting.sh groep-saldi` exit 2 → workflow rood vóór de eigen tak; `groep-saldi` én
+   `bua-kandidaten` toegevoegd + generieke guard `test_elk_niet_vgg_onderdeel_is_uitgesloten_van_de_vgg_tak` (options minus
+   {alles, a…e} ⊆ uitsluitingen).
+
+**Guards:** `tests/beheer/test_bua_cli.py` (twee administraties in eigen scope zonder lek; alleen GEBOEKT + jaar + inkoopfactuur;
+bank alleen GEBOEKT in het jaar; `advies_voor` alle takken + terugval; élke CLI-vorm uit het meetrecept letterlijk via `cli.main`;
+dry-run schrijft niets; echt zetten = audit mét bron + idempotent; kapotte administratie stopt de rest niet; `voeg_toe` laat
+bestaande aan staan, verdwenen rekening = onbekend), `tests/unit/test_nameting_workflow.py` (options, bua-tak lees-only, nooit
+`bua-kenmerk-zetten` in de workflow, nameting.sh-lijsten, VGG-uitsluiting generiek).

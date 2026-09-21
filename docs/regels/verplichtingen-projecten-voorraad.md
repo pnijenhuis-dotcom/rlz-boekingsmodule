@@ -279,6 +279,18 @@
   (drie regels op één datum mét de eindfactuurregel als tweede ingevoegd → reden; de 25017-casus → geen reden; tegenproef zónder fix rood).
   Rapport `docs/rapporten/2026-09-19-nameting-projecten-afsluiten-tab-na-deploy.md`.
 
+<!-- toegevoegd 21-09-2026, opdracht "activa-mva-akkoord-fase-1-plus-bua-rekeningen-meting-plus-vgg-toewijzing-schrijf-c" blok D (capture-at-acceptance) -->
+- **Universal Steigerbouw — overhead via de omzetsleutel over de actieve projecten, GÉÉN OVH-project (besluit Peter 21-09: "Universal moet
+  juist overhead verdelen over projecten, zo houden"; geen migratie, geen code-wijziging; BESLISSINGEN "UNIVERSAL — OVERHEAD VIA DE
+  OMZETSLEUTEL, GEEN OVH-PROJECT (Peter 21-09)"):** de regel "overhead → intern OVH-project (uitgesloten van bewaking)" is een KLANTKEUZE, geen
+  systeemnorm: een OVH-project bestaat alleen waar de klant dat wil; voor Universal is het patroon de omzet-gewogen pro-rato-verdeling
+  (`app/projectverdeling/omzet.py`) over de actieve, niet-afgesloten projecten (19-09-regel). De module maakt nooit zelf een OVH-project aan,
+  stelt het voor Universal ook niet meer voor, en het lees-only rapport `facturen-zonder-project` telt overhead mét bevroren verdeling niet
+  als bevinding (was al zo; guard `tests/projecten/test_zonder_project_universal_overhead.py`: DCTE 4499/Floor Beheer 4003/Kader 4606
+  gedekt → 0 bevindingen, dezelfde factuur zónder verdeling = wél bevinding). Beslispunt "(2) OVH-project Universal aanmaken" uit de
+  rapporten 18-09 en 19-09 is hiermee GESLOTEN: nee. De € 1.239,05 op de twee "Afgesloten"-projecten (beslispunt 1, 19-09) blijft een
+  apart klikpunt (eerst de 8 actieve "Afgesloten"-projecten afsluiten via Projecten › Afsluiten?).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)
