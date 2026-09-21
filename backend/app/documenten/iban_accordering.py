@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.db.audit import record_audit_event
 from app.db.models import Gebruiker, GebruikerAdministratie, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
+from app.documenten import checks_extern
 from app.documenten.leverancier_iban import OngeldigIban, vertrouwde_ibans
 from app.documenten.models import (
     Boekvoorstel,
@@ -390,7 +391,10 @@ def _controleer_vier_ogen(
 def accordeer(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID, actor_id: uuid.UUID) -> AccorderingData:
     """Vier-ogen-akkoord: IBAN naar de vertrouwde set (bron=bevestigd, besluter als
     bevestiger), document terug naar exact de herkomst-status — boeken weer bereikbaar via de
-    normale route (de harde checks draaien bij de boekactie sowieso opnieuw)."""
+    normale route. De harde checks draaien bij de boekactie opnieuw, maar sinds 0165 (18-09) mét het
+    EXTERNE rapport uit de cache — daarom maakt dit akkoord in dezelfde transactie de checks-cache
+    van álle documenten van deze crediteur ongeldig (BUG Peter 21-09: "IBAN-wissel" bleef 15 min
+    Blokkerend terwijl het IBAN al vertrouwd was)."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         accordering, document = _open_accordering_met_document(
             session, administratie_id=administratie_id, accordering_id=accordering_id
@@ -424,6 +428,9 @@ def accordeer(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID, actor_i
                 bevestigd_door=actor_id,
             )
         )
+        cache_ongeldig = checks_extern.maak_ongeldig_voor_vendor(
+            session, administratie_id=administratie_id, vendor_id=accordering.vendor_id
+        )
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -436,6 +443,7 @@ def accordeer(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID, actor_i
                 "iban": accordering.nieuw_iban,
                 "bron": LeverancierIbanBron.BEVESTIGD.value,
                 "via_accordering": str(accordering.id),
+                "checks_cache_ongeldig": cache_ongeldig,
             },
             administratie_id=administratie_id,
         )

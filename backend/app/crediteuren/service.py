@@ -31,6 +31,7 @@ from app.crediteuren.models import SLEUTEL_SOORTEN, CrediteurDubbelAfmelding, co
 from app.db.audit import record_audit_event
 from app.db.models import GebruikerRol
 from app.db.session import scoped_session
+from app.documenten import checks_extern
 from app.documenten.crediteur_kenmerk import DubbelGroep, dubbele_crediteuren
 from app.documenten.models import Boekvoorstel, CrediteurKenmerk, Document, DocumentStatus, LeverancierIban
 from app.extractie.btw_nummer import normaliseer_kvk_nummer
@@ -589,7 +590,9 @@ def verhuis_ibans(
     correlatie: uuid.UUID,
 ) -> list[str]:
     """Vertrouwde IBAN's van de bron óók op de voorkeur (anders geeft de eerste factuur op de voorkeur een valse
-    IBAN-wissel-blokkade). Kopie per record mét audit; bron blijft staan. Retourneert de gekopieerde IBAN's."""
+    IBAN-wissel-blokkade). Kopie per record mét audit; bron blijft staan. Retourneert de gekopieerde IBAN's.
+    21-09: de externe checks-cache van de documenten van bron én voorkeur wordt in dezelfde transactie ongeldig
+    gemaakt (`checks_extern.maak_ongeldig_voor_vendor`) — de set van de voorkeur is veranderd."""
     bron_rijen = list(
         session.scalars(
             select(LeverancierIban).where(
@@ -623,6 +626,9 @@ def verhuis_ibans(
             administratie_id=administratie_id,
         )
         gekopieerd.append(rij.iban)
+    if gekopieerd:
+        checks_extern.maak_ongeldig_voor_vendor(session, administratie_id=administratie_id, vendor_id=voorkeur)
+        checks_extern.maak_ongeldig_voor_vendor(session, administratie_id=administratie_id, vendor_id=bron_vendor_id)
     return gekopieerd
 
 

@@ -19,6 +19,15 @@ Regel (`docs/regels/autoboeken-ai.md` + `duplicaten-crediteuren.md`, BESLISSINGE
   gecachet zoals elke uitkomst.
 - De drie externe calls lopen PARALLEL (ThreadPool, max 3 — één RlzClient, httpx.Client is thread-safe; de
   client-throttling blijft gerespecteerd).
+- **Invalidatie op de bron, niet op tijd (BUG Peter 21-09, Meyer/Belastingdienst):** het gecachte rapport draagt de
+  vertrouwde IBAN-set van het controlemoment; een vier-ogen-akkoord, een menselijke bevestiging, een seed/baseline of
+  een crediteur-samenvoeging VERANDERT die set — tot 15 min lang zag het scherm (en het boeken-pad) het akkoord niet.
+  Twee sloten: (1) élk schrijfpad naar `leverancier_iban` roept in dezelfde transactie `maak_ongeldig_voor_vendor` aan
+  (markeert de cache-rijen van álle documenten van die crediteur + identiteitscluster ongeldig — geen DELETE-grant, dus
+  een prefix op de vingerafdruk); (2) de vingerafdruk zelf bevat een hash van de gesorteerde vertrouwde set (lokale
+  query, geen RLZ-call) — een verouderd rapport is dan per definitie ongeldig, ook als een invalidatie-pad ooit
+  vergeten wordt. Daarnaast toetst `voer_checks_uit` de IBAN-wissel ALTIJD tegen de live set; alleen de RLZ-seed komt
+  uit de cache. Guard: `tests/unit/test_leverancier_iban_invalidatie_guard.py`.
 
 Puur waar het kan: `ExternRapport` is JSON-rond (cache), `vingerafdruk` is een pure hash; alleen `lees_cache`/
 `schrijf_cache` raken de database.
@@ -30,13 +39,15 @@ import hashlib
 import logging
 import time
 import uuid
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import scoped_session
@@ -60,6 +71,10 @@ MODI = (AUTO, VERS, CACHE)
 #: (blokkerend, maar nooit cachen: de volgende run probeert opnieuw).
 STORING_PREFIX = "Duplicaatcheck kon niet uitgevoerd worden"
 NOG_NIET_MELDING = "Externe controle loopt nog — Reeleezee/Odoo wordt geraadpleegd"
+#: Prefix waarmee `maak_ongeldig_voor_vendor`/`maak_alles_ongeldig` een cache-rij ongeldig markeert: de tabel heeft
+#: bewust geen DELETE-grant (migratie 0165), dus invalidatie = een vingerafdruk die nooit meer kan matchen. Het rapport
+#: blijft leesbaar staan (diagnose); de volgende verse run overschrijft de rij.
+ONGELDIG_PREFIX = "ongeldig:"
 
 
 class StapTiming:
@@ -103,9 +118,14 @@ def vingerafdruk(
     factuur_iban: str | None,
     boek_cyclus: int = 0,
     backend: str = "",
+    vertrouwde_ibans: Iterable[str] = (),
 ) -> str:
     """sha256 over de externe invoer. Referentie genormaliseerd (spaties tussen cijfergroepen = groepering, zelfde
-    normalisatie als de duplicaatpoort), bedrag cent-exact, identiteitscluster gesorteerd."""
+    normalisatie als de duplicaatpoort), bedrag cent-exact, identiteitscluster gesorteerd.
+
+    `vertrouwde_ibans` (21-09, tweede slot): de gesorteerde vertrouwde IBAN-set van de crediteur op het moment van
+    toetsen — een akkoord/bevestiging/seed/samenvoeging verandert de set en dus de vingerafdruk, zodat een ouder
+    rapport nooit meer als geldig gelezen kan worden (ook zonder expliciete invalidatie)."""
     delen = [
         str(vendor_id or ""),
         ",".join(sorted(str(v) for v in identiteit_vendor_ids if v is not None and v != vendor_id)),
@@ -115,6 +135,7 @@ def vingerafdruk(
         (factuur_iban or "").replace(" ", "").upper(),
         str(boek_cyclus),
         backend,
+        ",".join(sorted({(i or "").replace(" ", "").upper() for i in vertrouwde_ibans if i})),
     ]
     return hashlib.sha256("|".join(delen).encode()).hexdigest()
 
@@ -248,6 +269,65 @@ def schrijf_cache(
                 rij.backend = backend
     except Exception:  # noqa: BLE001 — cache is een versneller, nooit een poort
         logger.exception("check_extern_cache niet geschreven voor document %s", document_id)
+
+
+def maak_ongeldig_voor_vendor(session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID) -> int:
+    """Invalidatie op de bron (BUG Peter 21-09): markeert de `check_extern_cache`-rij van élk document van deze
+    crediteur (boekvoorstel.vendor_id in het identiteitscluster: zelfde vendor/voorkeur-cluster, KvK- óf btw-nummer)
+    ongeldig — in DEZELFDE sessie/transactie als de mutatie van de vertrouwde set, zodat een lopende boekactie die de
+    cache ná onze commit leest de oude stand nooit meer ziet. Geen DELETE-grant → prefix op de vingerafdruk. Retourneert
+    het aantal gemarkeerde rijen (al-ongeldige rijen tellen niet opnieuw)."""
+    from app.documenten import duplicaat_module  # lokaal: houdt de importgraaf klein (duplicaat_module → checks)
+    from app.documenten.models import Boekvoorstel
+
+    cluster = set(
+        duplicaat_module.identiteit_vendor_ids(session, administratie_id=administratie_id, vendor_id=vendor_id)
+    )
+    cluster.add(vendor_id)
+    documenten = select(Boekvoorstel.document_id).where(Boekvoorstel.vendor_id.in_(sorted(cluster, key=str)))
+    resultaat = session.execute(
+        update(CheckExternCache)
+        .where(
+            CheckExternCache.administratie_id == administratie_id,
+            CheckExternCache.document_id.in_(documenten),
+            CheckExternCache.vingerafdruk.not_like(f"{ONGELDIG_PREFIX}%"),
+        )
+        .values(vingerafdruk=ONGELDIG_PREFIX + CheckExternCache.vingerafdruk)
+        .execution_options(synchronize_session=False)
+    )
+    return int(resultaat.rowcount or 0)
+
+
+def maak_alles_ongeldig(session: Session, *, administratie_id: uuid.UUID) -> int:
+    """Nazorg (CLI `checks-cache-legen`): álle nog geldige cache-rijen van één administratie ongeldig markeren — voor
+    rapporten die vóór de invalidatie-fix van 21-09 zijn geschreven. Retourneert het aantal gemarkeerde rijen."""
+    resultaat = session.execute(
+        update(CheckExternCache)
+        .where(
+            CheckExternCache.administratie_id == administratie_id,
+            CheckExternCache.vingerafdruk.not_like(f"{ONGELDIG_PREFIX}%"),
+        )
+        .values(vingerafdruk=ONGELDIG_PREFIX + CheckExternCache.vingerafdruk)
+        .execution_options(synchronize_session=False)
+    )
+    return int(resultaat.rowcount or 0)
+
+
+def tel_geldig(session: Session, *, administratie_id: uuid.UUID) -> int:
+    """Aantal (nog niet gemarkeerde) cache-rijen van een administratie — voor `checks-cache-legen --dry-run`."""
+    from sqlalchemy import func
+
+    return int(
+        session.scalar(
+            select(func.count())
+            .select_from(CheckExternCache)
+            .where(
+                CheckExternCache.administratie_id == administratie_id,
+                CheckExternCache.vingerafdruk.not_like(f"{ONGELDIG_PREFIX}%"),
+            )
+        )
+        or 0
+    )
 
 
 def voer_parallel_uit(*, taken: dict[str, Any], max_workers: int = 3) -> tuple[dict[str, Any], dict[str, float]]:

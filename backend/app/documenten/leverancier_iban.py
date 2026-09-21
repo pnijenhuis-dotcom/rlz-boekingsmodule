@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
+from app.documenten import checks_extern
 from app.documenten.models import LeverancierIban, LeverancierIbanBron
 from app.extractie.iban import is_geldig_iban, normaliseer_iban
 from app.rlz.client import RlzApiError, RlzClient
@@ -41,7 +42,11 @@ def _voeg_toe(
     bevestigd_door: uuid.UUID | None = None,
 ) -> bool:
     """Idempotente insert + audit_event. False = bestond al (geen tweede audit-rij: een herhaalde
-    vastlegging van hetzelfde IBAN is geen nieuwe handeling op de set)."""
+    vastlegging van hetzelfde IBAN is geen nieuwe handeling op de set).
+
+    21-09 (BUG Meyer): élke wijziging van de vertrouwde set maakt in dezelfde transactie de externe checks-cache van
+    álle documenten van deze crediteur ongeldig (`checks_extern.maak_ongeldig_voor_vendor`) — anders werkt een
+    bevestiging/seed/baseline tot 15 min lang nergens door (controlescherm én boeken-pad)."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         bestaand = session.get(LeverancierIban, (administratie_id, vendor_id, iban))
         if bestaand is not None:
@@ -55,6 +60,7 @@ def _voeg_toe(
                 bevestigd_door=bevestigd_door,
             )
         )
+        checks_extern.maak_ongeldig_voor_vendor(session, administratie_id=administratie_id, vendor_id=vendor_id)
         record_audit_event(
             session,
             actor_id=actor_id,

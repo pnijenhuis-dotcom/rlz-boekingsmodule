@@ -1461,6 +1461,30 @@ export function BoekvoorstelPanel({
     }
   }
 
+  /** 21-09 (BUG Meyer): "Opnieuw controleren" — de externe checks VERS draaien (POST …/checks?extern=vers), zodat een
+   * mens nooit op de 15-min-klok van de cache hoeft te wachten. Óók de route ná een 409 "IBAN staat al in de vertrouwde
+   * set" bij het aanbieden: check-rij en paneel eronder komen dan uit één verse bron en spreken elkaar nooit tegen. */
+  const [versBezig, setVersBezig] = useState(false)
+  const checksVers = async () => {
+    const versieBijStart = wijzigingsVersieRef.current
+    setVersBezig(true)
+    setControlerenFout(null)
+    try {
+      const rapport = await apiJson<CheckRapportDto>(
+        `/administraties/${administratieId}/documenten/${documentId}/boekvoorstel/checks?extern=vers`,
+        { method: 'POST' },
+      )
+      if (wijzigingsVersieRef.current === versieBijStart && rapport && Array.isArray(rapport.resultaten)) {
+        setCheckRapport(rapport)
+        setChecksActueel(true)
+      }
+    } catch (err) {
+      setControlerenFout(err instanceof ApiError ? err.message : 'Opnieuw controleren mislukt.')
+    } finally {
+      setVersBezig(false)
+    }
+  }
+
   useEffect(() => {
     let actief = true
     apiJson<{ ingeschakeld: boolean }>(`/administraties/${administratieId}/accordering/instellingen`)
@@ -2548,7 +2572,7 @@ export function BoekvoorstelPanel({
           const groen = checkRapport ? checkRapport.resultaten.filter((r) => r.ok && !r.signaal).length : 0
           // Boeken sneller (18-09): de externe rijen tonen "Loopt…" zolang de externe run bezig is en daarna wanneer
           // RLZ/Odoo écht geraadpleegd is ("gecontroleerd 14:02", ongewijzigd = uit de cache).
-          const externLoopt = externBezig || checkRapport?.extern_nog_niet === true
+          const externLoopt = externBezig || versBezig || checkRapport?.extern_nog_niet === true
           const externHint =
             !externLoopt && checkRapport?.extern_gecontroleerd_op
               ? ` · gecontroleerd ${new Date(checkRapport.extern_gecontroleerd_op).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}${checkRapport.extern_uit_cache ? ' (ongewijzigd)' : ''}`
@@ -2619,6 +2643,19 @@ export function BoekvoorstelPanel({
                         ))}
                       </tbody>
                     </table>
+                    {/* 21-09: de "gecontroleerd HH:MM (ongewijzigd)"-regel draagt een handeling — een mens wacht nooit
+                        op de klok van de cache; het akkoord zelf maakt de cache al ongeldig (server), dit is het vangnet. */}
+                    {checkRapport.extern_gecontroleerd_op && (
+                      <div className="hint" data-testid="externe-controle-regel">
+                        {externLoopt
+                          ? 'Reeleezee/Odoo wordt geraadpleegd…'
+                          : `Reeleezee/Odoo geraadpleegd om ${new Date(checkRapport.extern_gecontroleerd_op).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}${checkRapport.extern_uit_cache ? ' (ongewijzigd sinds de vorige controle)' : ''}`}
+                        {' · '}
+                        <button type="button" className="linkbtn" disabled={externLoopt} onClick={() => void checksVers()}>
+                          Opnieuw controleren
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -2701,6 +2738,7 @@ export function BoekvoorstelPanel({
                     initieelIban={typeof veldvoorstel?.iban === 'string' ? veldvoorstel.iban : ''}
                     knopTekst="Rekening ter accordering aanbieden"
                     onAangeboden={onIbanAangeboden!}
+                    onAlVertrouwd={checksVers}
                   />
                 </div>
               )}

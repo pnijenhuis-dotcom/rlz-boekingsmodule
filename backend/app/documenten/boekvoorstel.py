@@ -4,9 +4,11 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -2540,7 +2542,15 @@ def voer_checks_uit(
         backend_naam = backend_voor(administratie_id).value
     except Exception:  # noqa: BLE001 — onbekende backend is geen reden om de checks te laten crashen
         backend_naam = ""
-    vf = checks_extern.vingerafdruk(
+    # 21-09 (BUG Meyer): de LIVE vertrouwde IBAN-set (lokale query) zit in de vingerafdruk — een akkoord, bevestiging,
+    # seed of samenvoeging verandert de set en maakt een ouder extern rapport per definitie ongeldig — én de IBAN-wissel
+    # toetst hieronder ALTIJD tegen deze live set (alleen de RLZ-seed komt uit de cache).
+    vertrouwd_live: set[str] = (
+        leverancier_iban.vertrouwde_ibans(administratie_id=administratie_id, vendor_id=voorstel.vendor_id)
+        if voorstel.vendor_id is not None
+        else set()
+    )
+    vf_basis: dict[str, Any] = dict(
         vendor_id=voorstel.vendor_id,
         identiteit_vendor_ids=sorted(identiteit_vendor_ids, key=str),
         referentie=voorstel.referentie,
@@ -2550,6 +2560,20 @@ def voer_checks_uit(
         boek_cyclus=voorstel.boek_cyclus,
         backend=backend_naam,
     )
+    vf = checks_extern.vingerafdruk(**vf_basis, vertrouwde_ibans=vertrouwd_live)
+
+    def _vingerafdruk_na_run() -> str:
+        # De seed/baseline in de verse run kán de set net gevuld hebben: de cache-rij draagt de vingerafdruk van de
+        # stand NÁ de run, zodat de volgende run (die de live set leest) 'm als geldig herkent.
+        if voorstel.vendor_id is None:
+            return vf
+        return checks_extern.vingerafdruk(
+            **vf_basis,
+            vertrouwde_ibans=leverancier_iban.vertrouwde_ibans(
+                administratie_id=administratie_id, vendor_id=voorstel.vendor_id
+            ),
+        )
+
     keten = frozenset(
         {rlz_herboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
         | {rlz_tegenboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
@@ -2567,6 +2591,7 @@ def voer_checks_uit(
         identiteit_vendor_ids=sorted(identiteit_vendor_ids, key=str),
         keten=keten,
         vingerafdruk=vf,
+        vingerafdruk_na_run=_vingerafdruk_na_run,
         backend_naam=backend_naam,
         client=client,
         extern=extern,
@@ -2609,7 +2634,8 @@ def voer_checks_uit(
         uitgezonderde_rlz_document_ids=keten,
         project_verplicht=_project_verplicht_per_regel(project_verplicht, voorstel),
         factuur_iban=factuur_iban,
-        vertrouwde_ibans=set(ext.vertrouwde_ibans),
+        # Live set ∪ seed-uitkomst van de verse run: een akkoord ná het cachen telt direct mee (21-09).
+        vertrouwde_ibans=vertrouwd_live | set(ext.vertrouwde_ibans),
         iban_baseline_vastgelegd=ext.baseline_vastgelegd,
         iban_seed_mislukt=ext.seed_mislukt,
         eigen_btw_nummer=factuur_btw_nummer,
@@ -2670,9 +2696,11 @@ def _extern_rapport(
     client: RlzClient | None,
     extern: str,
     timing: checks_extern.StapTiming,
+    vingerafdruk_na_run: Callable[[], str] | None = None,
 ) -> checks_extern.ExternRapport:
     """Het externe deel van de checks: cache (AUTO/CACHE) of een verse, PARALLELLE run (AUTO zonder geldige cache,
-    VERS). Sluit een zelf geopende verbinding altijd; een storing bij het openen = storings-tak (nooit gecachet)."""
+    VERS). Sluit een zelf geopende verbinding altijd; een storing bij het openen = storings-tak (nooit gecachet).
+    `vingerafdruk_na_run` (21-09): herberekent de vingerafdruk mét de vertrouwde set ná de run vóór het cachen."""
     if extern not in checks_extern.MODI:
         raise ValueError(f"Onbekende extern-modus {extern!r}")
     nu = datetime.now(UTC)
@@ -2788,7 +2816,7 @@ def _extern_rapport(
             checks_extern.schrijf_cache(
                 administratie_id=administratie_id,
                 document_id=document_id,
-                vingerafdruk=vingerafdruk,
+                vingerafdruk=vingerafdruk_na_run() if vingerafdruk_na_run is not None else vingerafdruk,
                 rapport=ext,
                 backend=backend_naam,
             )

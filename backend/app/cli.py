@@ -581,6 +581,53 @@ def _kassarapport_autotype_nazorg(args: argparse.Namespace) -> int:
     return 0
 
 
+def _checks_cache_legen(args: argparse.Namespace) -> int:
+    """Nazorg (BUG Peter 21-09, checks-cache-invalidatie op de bron; eenmalig ná deploy via de job-image): álle nog
+    geldige rijen in `boekhouding.check_extern_cache` ongeldig markeren (prefix op de vingerafdruk — de tabel heeft geen
+    DELETE-grant), zodat rapporten van vóór de fix niet tot 15 min lang een verouderde vertrouwde IBAN-set dragen. De
+    volgende checks-run per document draait dan gewoon vers en cachet opnieuw. --dry-run = 0 writes; idempotent."""
+    from app.db.models import Administratie
+    from app.db.session import scoped_session
+    from app.documenten import checks_extern
+
+    if not args.administratie and not args.alles:
+        print("checks-cache-legen: geef --administratie <UUID|NAAMDEEL> óf --alles", file=sys.stderr)
+        return 2
+    if args.administratie:
+        treffers = _zoek_administraties(args.administratie)
+        if len(treffers) != 1:
+            print(
+                f"--administratie {args.administratie!r}: {len(treffers)} treffer(s) — precies één vereist: "
+                + ", ".join(f"{n} ({i})" for i, n in treffers),
+                file=sys.stderr,
+            )
+            return 2
+        administraties = treffers
+    else:
+        with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+            administraties = [
+                (a.id, a.naam)
+                for a in session.scalars(
+                    select(Administratie).where(Administratie.actief.is_(True)).order_by(Administratie.naam)
+                ).all()
+            ]
+    label = " [dry-run — 0 writes]" if args.dry_run else ""
+    totaal_geldig = totaal_gedaan = 0
+    for aid, naam in administraties:
+        with scoped_session(aid, actor_id=SYSTEEM_ACTOR_ID) as session:
+            geldig = checks_extern.tel_geldig(session, administratie_id=aid)
+            gedaan = 0 if args.dry_run else checks_extern.maak_alles_ongeldig(session, administratie_id=aid)
+        totaal_geldig += geldig
+        totaal_gedaan += gedaan
+        if geldig:
+            print(f"{naam}: {geldig} geldig, {gedaan} ongeldig gemaakt")
+    print(
+        f"checks-cache-legen{label}: {len(administraties)} administratie(s), {totaal_geldig} geldig, "
+        f"{totaal_gedaan} ongeldig gemaakt"
+    )
+    return 0
+
+
 def _duplicaat_status_backfill(args: argparse.Namespace) -> int:
     """Blok 3 (fixrun 08-09, feedback Peter): eenmalige data-stap ná migratie 0122 — legacy-rijen die vóór deze
     deploy als duplicaat naar `afgewezen` zijn afgevoerd (open afwijzing mét kruisverwijzing, exact het
@@ -3339,6 +3386,19 @@ def main(argv: list[str] | None = None) -> int:
         "--administratie", default=None, metavar="UUID|NAAMDEEL", help="Beperk tot één administratie."
     )
 
+    cache_legen_parser = subparsers.add_parser(
+        "checks-cache-legen",
+        help="21-09 (BUG IBAN-wissel ná vier-ogen-akkoord): álle nog geldige externe-checks-cache-rijen "
+        "(boekhouding.check_extern_cache) ongeldig markeren — rapporten van vóór de invalidatie-fix dragen anders "
+        "tot 15 min een verouderde vertrouwde IBAN-set. Volgende checks-run draait vers. --dry-run telt alleen; "
+        "idempotent.",
+    )
+    cache_legen_parser.add_argument("--dry-run", action="store_true", help="Alleen tellen, niets wijzigen.")
+    cache_legen_parser.add_argument(
+        "--administratie", default=None, metavar="UUID|NAAMDEEL", help="Beperk tot één administratie."
+    )
+    cache_legen_parser.add_argument("--alles", action="store_true", help="Alle actieve administraties.")
+
     status_backfill_parser = subparsers.add_parser(
         "duplicaat-status-backfill",
         help="Blok 3 08-09: legacy duplicaat-afvoer-rijen (status afgewezen mét een open afwijzing die een "
@@ -3981,6 +4041,8 @@ def main(argv: list[str] | None = None) -> int:
         return _duplicaten_backfill(args)
     if args.commando == "duplicaat-status-backfill":
         return _duplicaat_status_backfill(args)
+    if args.commando == "checks-cache-legen":
+        return _checks_cache_legen(args)
     if args.commando == "referentie-norm-backfill":
         return _referentie_norm_backfill(args)
     if args.commando == "duplicaat-extern-rapport":
