@@ -11,10 +11,10 @@
 ..    regels: 1000/1146 documenten (1000 document-vorm, 0 via /Lines, 0 zonder regels)
 ..    regels: 1100/1146 documenten (1100 document-vorm, 0 via /Lines, 0 zonder regels)
 ..    regels: 1146/1146 documenten (1146 document-vorm, 0 via /Lines, 0 zonder regels)
-### VGG-replay Vastgoedgroep Nederland B.V. (RLZ f6d4770f-53fe-41fa-8b35-b675f406841c, DRY-RUN — niets geschreven, tot 2026-09-22, 2026-09-22T12:03:04+00:00)
+### VGG-replay Vastgoedgroep Nederland B.V. (RLZ f6d4770f-53fe-41fa-8b35-b675f406841c, DRY-RUN — niets geschreven, tot 2026-09-22, 2026-09-22T19:08:29+00:00)
 **Oordeel: ROOD** — 3 verschil(len), 906 niet vertaalbaar, 0 leesfout(en), 0 document(en) zonder leesbare regels, 0 regelsom ≠ totaal, memoriaal uit balans 0, resultaatposten sluiten, betalingsverschillen 1, geblokkeerd (partner) 2.
 Gelezen: JournalEntryLines 3809, Ledgers 341, ManualJournals 229, PaymentAccounts 8, PaymentAccounts/055ad4bc-f9e1-4fda-aa5e-34c3c1ececa7/Statements 1, PaymentAccounts/178b2485-6cd0-48c0-b1a1-3cf53688c6e8/Statements 1, PaymentAccounts/33f82534-4a00-4337-854b-aad5cd4fee77/Statements 0, PaymentAccounts/3e506870-e3b5-47f0-968d-1b6a8a3e268b/Statements 0, PaymentAccounts/4526f136-58da-4e3e-8836-896cf54bc8fe/Statements 2, PaymentAccounts/6612f68f-e781-46a5-8171-8de96eeafd80/Statements 1, PaymentAccounts/d3ed7e4e-33e4-4112-8bdd-65fa0be311ff/Statements 1, PaymentAccounts/e7f43cd2-9520-4f9e-8524-132d046a9d36/Statements 2, PaymentTransactions 1034, PurchaseInvoices 851, Receipts 1183, SalesInvoices 4, TaxRates 22.
-RLZ-calls: 1198 (webfilter-treffers hervat: 0, gewacht 250.2 s); regels per document: 1146 calls — 1146 via de document-vorm (kop mét BookDate + DocumentLineList), 0 via /Lines-terugval, 0 zonder regels. BookDate: 1146 documenten uit het document, 0 terugval op Date.
+RLZ-calls: 1198 (webfilter-treffers hervat: 0, gewacht 267.5 s); regels per document: 1146 calls — 1146 via de document-vorm (kop mét BookDate + DocumentLineList), 0 via /Lines-terugval, 0 zonder regels. BookDate: 1146 documenten uit het document, 0 terugval op Date.
 Doel: company_id 6, journal_sale_id 48, journal_purchase_id 49, journal_general_id 50, journal_bank_id 53.
 - LET OP Odoo-rekeningen gelezen uit company 6 via de doelkoppeling: 361 (lees-only; --odoo-rekeningen niet nodig)
 - LET OP RLZ 1012 Betalingen onderweg → outstanding payments: gevonden op dagboek BNK1: 135000 Payments in transit (id 132) via account.journal.outbound_payment_method_line_ids.payment_account_id (2 uitgaande betaalmethode-regel(s))
