@@ -236,3 +236,20 @@
   `wordt_geboekt_verouderd` / `afwijking` / blok `documenten` / aantal 1, `samenvatting.delta.verdwenen_afwijkingen` 13. **Werkt in productie: JA
   (afwezig-pad + auto-sluiting); aanwezig-pad niet gemeten.** Meetles: `automatisering_regressie=fout` in de bewakingsregel is een
   verzamelsignaal (hier `groep_saldo_fout`) — lees de categorie in `reconciliatie_bevinding`/audit vóór je 'm aan een feature toeschrijft.
+
+<!-- toegevoegd 22-09-2026, opdracht "ter-accordering-dagelijkse-rlz-bestaanscheck-intussen-buiten-de-module-geboekt" -->
+- **Blok `documenten` — hercontrole open documenten + bevindingssoort `intussen_extern_geboekt` DIRECT in `actie` (Peter 22-09; geen
+  migratie; BESLISSINGEN "TER ACCORDERING — DAGELIJKSE BESTAANSCHECK 'INTUSSEN BUITEN DE MODULE GEBOEKT' (Peter 22-09)"):**
+  `reconcilieer_administratie` toetst ná de geboekte documenten ook élk open document (`HERCONTROLE_STATUSSEN`, klaar_om_te_boeken >
+  `HERCONTROLE_KLAAR_MINIMUM` = 1 dag) op "intussen buiten de module geboekt" met de bestaanscheck (zie `duplicaten-crediteuren.md`); een
+  administratie zonder geboekte documenten maar mét open werk loopt óók mee. Rapportvelden `hercontrole_getoetst`/`hercontrole_overgeslagen`
+  → CLI-regels `HERCONTROLE <adm>: N open document(en) vers getoetst …, K overgeslagen` + `OVERGESLAGEN document=…: reden` (storing/geen
+  credential = géén bevinding, nooit stil — principe 4). **Uitzondering op regel 2 ("élke nieuwe bevindingssoort start in `meten`"), besluit Peter
+  in de opdracht ("start in meten? NEE"):** `SoortDefinitie.direct_actie_reden` — een soort die een BESTAANDE harde check herhaalt en een bestaand
+  boekstuk als bewijs draagt mag direct in `actie` (actiemail) starten; de guard `test_soort_stand.py` eist een reden ≥ 20 tekens en pint de lijst
+  van zulke soorten (nu exact `intussen_extern_geboekt`); de explosie-rem (> 50/run → meten + systeemfout-LET-OP) geldt onverkort. Urgentie 1
+  (direct onder "verdwenen"). De rij draagt twee handelingen (routes `POST /reconciliatie/documenten/{id}/extern-geboekt/afwijzen|toch-verschillend`,
+  élke kantoorrol; frontend `ExternGeboektActies`); "Toch verschillend" door een Beheerder accepteert de bevinding in dezelfde handeling, door een
+  andere rol niet — dan verdwijnt ze bij de volgende run als `reconciliatie_auto_gesloten`. Meetlat ná deploy: nameting-onderdeel `reconciliatie`
+  (`reconciliatie-alles --lees-only`) → `HERCONTROLE`-regels per administratie + `intussen_extern_geboekt`-regels; verwacht op de stand van 22-09:
+  Bouwadvies 8, Molenhof Beheer 1, Rubicon 1 (RLZ-kant) + de Odoo-kant van Universal Steigerbouw (43 open, vooraf niet meetbaar).

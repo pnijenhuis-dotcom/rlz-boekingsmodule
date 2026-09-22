@@ -175,6 +175,33 @@
   (08-09) beslispunt 2 vroeg dit al ("bestaande lagen behouden en hem eraan toevoegen — nieuw gedrag, niet gebouwd"); nu gebouwd
   als default-gedrag.
 
+<!-- toegevoegd 22-09-2026, opdracht "ter-accordering-dagelijkse-rlz-bestaanscheck-intussen-buiten-de-module-geboekt" -->
+- **Intussen buiten de module geboekt — dagelijkse hercontrole, banner en "Wachten op kantoor" (Peter 22-09, casus Bouwadvies Oost Nederland /
+  Beter Assemblage F/2026/01235 → RLZ-04-00000518; geen migratie; BESLISSINGEN "TER ACCORDERING — DAGELIJKSE BESTAANSCHECK 'INTUSSEN BUITEN DE
+  MODULE GEBOEKT' (Peter 22-09)"):** het dagelijkse reconciliatieblok `documenten` toetst élk document op `ter_accordering`,
+  `wacht_op_iban_accordering` of `klaar_om_te_boeken` (langer dan een dag stil) VERS tegen RLZ/Odoo met dezelfde bestaanscheck als de harde
+  check Duplicaatcheck (`extern_bestaan.zoek_extern_bestaand`; nooit uit de checks-cache). Treffer buiten de module = bevinding
+  `intussen_extern_geboekt` (direct `actie`, actiemail) mét boekstuk, bedrag en datum en twee knoppen: **"Afwijzen — al geboekt als ‹boekstuk›"**
+  (open vragen aan de accordeur sluiten, ronde vervalt mét de tijdlijnregel "niet meer nodig: al geboekt in Reeleezee (‹boekstuk›)" — marker
+  `accordering_vervallen_extern_geboekt`, géén "opnieuw aanbieden"-banner —, daarna de bestaande afwijs-route mét voorgevulde reden en
+  kruisverwijzing; `wacht_op_iban_accordering` = 409 mét route "IBAN-accordering eerst") en **"Toch verschillend — doorgaan"** (reden ≥ 5,
+  tijdlijn + audit, het externe stuk telt niet meer als treffer; Beheerder accepteert ook de bevinding). **Accordeur-app:** het wachtrij-item
+  draagt `extern_geboekt` (banner letterlijk "Al geboekt in Reeleezee (RLZ-04-…) — kantoor beoordeelt; akkoord niet nodig"; RLZ-concept: "Staat al
+  als concept in …"), verdwijnt uit "te accorderen" (teller, "N van M", doorloop) en staat zichtbaar onder **"Wachten op kantoor · N"** (kaart mét
+  banner, review zonder Akkoord/Afwijzen; BV-kaart-chip "N wacht(en) op kantoor") — nooit stil weg. De server is de poort: akkoord en afwijzing
+  van de accordeur = 409 `WachtOpKantoor`, de 09:00-herinnering en de nieuwe-facturen-bundelmelding slaan het document over
+  (`documenten_aan_de_beurt` leest dezelfde bron `intussen_extern_geboekt.open_treffers`), de handmatige herinnerknop = 409 mét de banner-tekst.
+  **Boeken ná het laatste akkoord** blijft geblokkeerd (regel 1), maar de boekfout draagt de kern van het externe stuk
+  (`boek_fout_extern_geboekt`) en het controlescherm toont dezelfde twee knoppen i.p.v. "Los de oorzaak op en boek opnieuw"; het woord "bug" komt
+  in geen klanttekst voor (guard `tests/unit/test_geen_bug_in_klanttekst.py`). Guards: `tests/reconciliatie/test_intussen_extern_geboekt.py`
+  (hercontrole treffer/geen treffer/storing overgeslagen/geen credential/klaar > 1 dag/afgemeld; app-banner + herinneringsbron + 409's; boekfout-
+  kern; beide handelingen + poorten), vitest `GoedkeurenFlow.externGeboekt.test.tsx`, `administraties.externGeboekt.test.ts`,
+  `AccorderingSectie.externGeboekt.test.tsx`, `ExternGeboektActies.test.tsx`, `ReconciliatieScreen.test.tsx`, gouden-set-casus **aj**
+  `tests/keten/test_aj_ter_accordering_intussen_extern_geboekt.py` (intake → ter accordering → laag 1 akkoord → stuk in RLZ → dagelijkse run →
+  bevinding, banner, `WachtOpKantoor`, afwijzen trekt de ronde in; poging 2 22-09). Werkt in productie: niet gemeten
+  (meetlat = nameting-onderdeel `reconciliatie`, `HERCONTROLE`-regels + bevindingen `intussen_extern_geboekt`; vervolg-opdracht 23-09). Meting
+  22-09 vooraf (lees-only): 82 open documenten, 39 in RLZ-administraties getoetst, 10 al in RLZ (Bouwadvies 8/13, Molenhof 1/1, Rubicon 1/6).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Accordeur-app koude start + niet-geactiveerd account (CLAUDE.md `ed6d176` r. 690–699)

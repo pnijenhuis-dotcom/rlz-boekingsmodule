@@ -64,6 +64,20 @@
   boeken_mislukt en het autoboek-pad toetsen altijd vers tegen RLZ/Odoo. Een RLZ-fout in de query ("Duplicaatcheck kon niet
   uitgevoerd worden") blijft blokkerend en wordt nooit gecachet.
 
+<!-- toegevoegd 22-09-2026, opdracht "ter-accordering-dagelijkse-rlz-bestaanscheck-intussen-buiten-de-module-geboekt" -->
+- **De RLZ-/Odoo-bestaanscheck loopt sinds 22-09 óók dagelijks over élk OPEN document (Peter 22-09, casus Bouwadvies F/2026/01235; geen
+  migratie; BESLISSINGEN "TER ACCORDERING — DAGELIJKSE BESTAANSCHECK 'INTUSSEN BUITEN DE MODULE GEBOEKT' (Peter 22-09)"):** dezelfde motor
+  `extern_bestaan.zoek_extern_bestaand` (alle crediteurrecords van de identiteit, ± 60 d, genormaliseerde referentie) draait in het
+  reconciliatieblok `documenten` voor ter_accordering / wacht_op_iban / klaar_om_te_boeken > 1 dag — bewust ZONDER de checks-cache van 0165
+  (dít is de vers-toets, één client per administratie, één keer per document per dag). Een blokkerende treffer buiten de module (zelfde
+  genormaliseerde referentie, met of zonder gelijk bedrag, ook een RLZ-concept) = bevinding `intussen_extern_geboekt`; een bedrag-datum-signaal
+  niet. **"Toch verschillend — doorgaan"** is de mens-uitzondering op de EXTERNE check (naast "Geen duplicaat — afmelden" op de module-check):
+  tijdlijnregel `extern_duplicaat_toch_verschillend` mét de externe id's, audit, checks-cache van de crediteur ongeldig; de id reist daarna als
+  uitgezonderde id mee in `check_duplicaat` (via `keten` in `boekvoorstel._extern_rapport`, `intussen_extern_geboekt.afgemelde_extern_ids`) en
+  telt niet meer in de hercontrole — een NIEUW extern stuk blokkeert weer. `CheckResultaat.data["extern_geboekt"]` draagt sinds 22-09 de kern
+  van de eerste treffer buiten de module (extern_id, boekstuk, referentie, stand, bedrag, datum) voor de accordering-boekfout. Storing in de
+  hercontrole = géén bevinding, wél zichtbaar overgeslagen (`HERCONTROLE`-/`OVERGESLAGEN`-regels in de run).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Crediteur-dedup + duplicaat over crediteuren heen (CLAUDE.md `ed6d176` r. 374–386)

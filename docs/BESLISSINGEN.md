@@ -12588,3 +12588,82 @@ juiste beeld?"; een vangnet-cadans start nooit gepauzeerd; werk dat "op de achte
   `via_gh_onderdeel` + `OORDEEL_BRON`-tak — vier plekken. Beslispunt Peter: `roles/cloudscheduler.viewer` voor `nameting@` (owner-binding) zodat
   `jobs-start` de vangnetten zelf leest.
 
+## TER ACCORDERING — DAGELIJKSE BESTAANSCHECK 'INTUSSEN BUITEN DE MODULE GEBOEKT' (Peter 22-09) — élk open document (ter_accordering / wacht_op_iban / klaar_om_te_boeken > 1 dag) dagelijks vers tegen RLZ/Odoo; treffer = actie-bevinding `intussen_extern_geboekt` mét twee handelingen, accordeur-app-banner "kantoor beoordeelt; akkoord niet nodig", herinneringen onderdrukt, boekfout ná laatste akkoord = dezelfde knoppen; geen migratie
+
+**Status:** GEBOUWD + GETEST (22-09, inbox-run poging 2 — poging 1 haalde de poort niet en staat als WIP-branch
+`wip/2026-09-22-ter-accordering-dagelijkse-rlz-bestaanscheck-intussen-buiten-de-module-geboekt` ter controle; Peter keek niet mee — keuzes
+hieronder); **werkt in productie: niet gemeten** (deploy volgt
+ná de run; meetlat = het bestaande nameting-onderdeel `reconciliatie` (`reconciliatie-alles --lees-only`) → regels `HERCONTROLE <adm>: N open
+document(en) vers getoetst …, K overgeslagen` + bevindingen `intussen_extern_geboekt`; vervolg-opdracht `opdrachten/inbox/2026-09-23-nameting-
+ter-accordering-bestaanscheck-na-deploy.md`, `niet vóór: 2026-09-23 09:00`). Opdracht `opdrachten/gedaan/2026-09-22-ter-accordering-dagelijkse-
+rlz-bestaanscheck-intussen-buiten-de-module-geboekt.md`; rapport `docs/rapporten/2026-09-22-ter-accordering-bestaanscheck-intussen-extern-geboekt.md`.
+Volledige regeltekst: `docs/regels/accordering-native-app.md` (alinea 22-09), `duplicaten-crediteuren.md` (hercontrole = dezelfde bestaanscheck,
+"toch verschillend" = uitzondering), `reconciliatie.md` (soort direct in `actie` — expliciete uitzondering mét reden).
+
+**Aanleiding (Peter 21-09 19:15, Bouwadvies Oost Nederland B.V. / Beter Assemblage B.V. F/2026/01235 € 173,84, document 8c558b35):** harde
+checks doorstaan 16-09 09:13 → drie lagen akkoord (Peter N. 16-09, Sophia Gerritsen 21-09 10:52, Kempen 21-09 19:15) → boeken geblokkeerd:
+RLZ-04-00000518 zelfde crediteur + referentie, buiten de module. De factuur was tussen 16-09 en 21-09 rechtstreeks in Reeleezee geboekt (RLZ:
+Date 26-08, Status 2 Open, Origin 1, Entity "B.A.B." = tweede crediteurrecord). De module deed het juiste (geen dubbele boeking) maar drie
+accordeurs klikten voor niets en het signaal kwam vijf dagen te laat als "Bug"-melding ná het laatste akkoord.
+
+**Gebouwd:**
+1. **Hercontrole (`app/documenten/reconciliatie.py::hercontroleer_open_documenten`, in `reconcilieer_administratie` op dezelfde port):** voor
+   élk inkoopdocument op `ter_accordering`, `wacht_op_iban_accordering` of `klaar_om_te_boeken` (> `HERCONTROLE_KLAAR_MINIMUM` = 1 dag stil)
+   de bestaande `extern_bestaan.zoek_extern_bestaand` (alle crediteurrecords van de identiteit, ± 60 d, genormaliseerd) — bewust ZONDER de
+   checks-cache (dít is de vers-toets); één client per administratie (throttling bundelt), dus hooguit één keer per document per dag. Eerste
+   BLOKKERENDE treffer (zelfde referentie, met/zonder gelijk bedrag) buiten de eigen keten en buiten de "toch verschillend"-afmeldingen →
+   afwijking `intussen_extern_geboekt`, detail = `omschrijf_treffer` (boekstuk/referentie/stand, deterministisch → acceptatie-vingerafdruk),
+   context: extern_boekstuk/extern_id/extern_stand (geboekt|concept)/bedrag_extern/extern_datum/document_status/sinds/backend. Een
+   bedrag-datum-signaal (ander nummer) maakt géén bevinding. **Storing (verbinding, RLZ-fout, geen credential) = géén bevinding, wél zichtbaar
+   overgeslagen:** `ReconciliatieRapport.hercontrole_overgeslagen` + CLI-regels `HERCONTROLE <adm>: N vers getoetst, K overgeslagen` /
+   `OVERGESLAGEN document=… : reden`. Een administratie zonder geboekte documenten maar mét open werk loopt óók mee.
+2. **Soort direct in `actie` (uitzondering op "nieuw start in meten", besluit Peter in de opdracht):** `SoortDefinitie.direct_actie_reden`
+   (guard `test_soort_stand.py`: alleen mét reden ≥ 20 tekens, en de lijst van zulke soorten is exact `["intussen_extern_geboekt"]`); de
+   explosie-rem (> 50/run → meten) blijft. Tekst `teksten.py::_documenten`: titel "Al geboekt in RLZ buiten de module — ‹lev› ‹nr›", wat noemt
+   waar het document bij ons wacht + boekstuk/bedrag/datum, doe = de twee knoppen. Urgentie 1 (direct onder "verdwenen").
+3. **Twee handelingen (één schrijver `app/documenten/intussen_extern_geboekt.py`, routes `POST /reconciliatie/documenten/{id}/extern-geboekt/
+   afwijzen` en `…/toch-verschillend`, élke kantoorrol binnen scope):**
+   - **"Afwijzen — al geboekt als ‹boekstuk›"** = bij ter_accordering éérst open vragen aan de accordeur sluiten (slotbericht) en de ronde laten
+     vervallen via `accordering.service.laat_ronde_vervallen_wegens_extern_geboekt` (reden letterlijk "niet meer nodig: al geboekt in Reeleezee
+     (RLZ-04-…)", marker `accordering_vervallen_extern_geboekt` → geen "opnieuw aanbieden"-banner), daarna de BESTAANDE `afwijzen.wijs_af` mét
+     voorgevulde reden "Al geboekt in Reeleezee als ‹boekstuk› (buiten de module)[ — toelichting]" + kruisverwijzing (`duplicaat_van_rlz_
+     document_id`/`_referentie`). Poorten mét route: `wacht_op_iban_accordering` = 409 "laat de tweede persoon de IBAN-accordering eerst afwijzen
+     of accorderen"; andere status = 409; accordeur-rol 403. Terugweg = het bestaande "Heropenen" op het afgewezen document.
+   - **"Toch verschillend — doorgaan"** = reden ≥ 5 verplicht (422), tijdlijnregel zonder statusovergang (`extern_duplicaat_toch_verschillend`
+     + `extern_ids`), audit `extern_duplicaat_toch_verschillend`, checks-cache van de crediteur ongeldig (les 21-09); het externe id telt daarna
+     niet meer als treffer — niet in de hercontrole én niet in de harde check Duplicaatcheck (`afgemelde_extern_ids` zit in `keten` van
+     `boekvoorstel._extern_rapport`). Tweede keer = 409 "al vastgelegd". Een Beheerder accepteert mét `bevinding_id` óók de open bevinding
+     (bestaande `kantoorbreed.accepteer`, reden "Toch verschillend — …"); een andere kantoorrol niet — de bevinding verdwijnt dan bij de
+     volgende run (auto-gesloten mét audit), en de melding zegt dat letterlijk.
+4. **Accordeur-app (`WachtrijItem.extern_geboekt`, DTO `extern_geboekt {boekstuk, systeem, stand, tekst}`):** één leesbron
+   `intussen_extern_geboekt.open_treffers` (laatste afgeronde run, soort afwijking, niet geaccepteerd — live acceptatie-stand; twee statements
+   in de bestaande sessie, `WACHTRIJ_MAX_STATEMENTS_PER_ADMINISTRATIE` ongewijzigd). App: banner letterlijk "Al geboekt in Reeleezee (RLZ-04-…) —
+   kantoor beoordeelt; akkoord niet nodig" (concept: "Staat al als concept in …"), item uit "te accorderen" (teller, "N van M", doorloop) en
+   in een eigen sectie **"Wachten op kantoor · N"** (kaart mét banner, review zonder actiebalk); BV-kaart-chip "N wacht(en) op kantoor".
+   Server = poort: `_stap_aan_de_beurt_voor` weigert akkoord én afwijzing (`WachtOpKantoor` → 409); `documenten_aan_de_beurt`/
+   `aantallen_aan_de_beurt` (09:00-herinnering, bundelmelding) slaan het document over; handmatige herinnerknop = 409 mét de banner-tekst
+   + route. Guard-tests in `tests/reconciliatie/test_intussen_extern_geboekt.py::TestAccordeurKant`.
+   Gouden-set-casus **aj** `tests/keten/test_aj_ter_accordering_intussen_extern_geboekt.py` (poging 2): intake → ter accordering → laag 1
+   akkoord → stuk verschijnt in RLZ → dagelijkse run → bevinding, banner, `WachtOpKantoor`, afwijzen trekt de ronde in; tegenproef zonder stuk.
+5. **Boeken ná het laatste akkoord:** `CheckResultaat.data["extern_geboekt"]` (Duplicaatcheck, eerste treffer buiten de module) →
+   `_boek_na_laatste_akkoord` → `detail["boek_fout"]["extern_geboekt"]` (+ `systeem`) → `AccorderingData/Response.boek_fout_extern_geboekt` →
+   `AccorderingSectie` toont bij die oorzaak de twee knoppen (component `ExternGeboektActies`, zelfde routes) i.p.v. "Los de oorzaak op en boek
+   opnieuw" (die proza blijft voor andere oorzaken). **Copy-check** `tests/unit/test_geen_bug_in_klanttekst.py`: het woord "bug" komt in geen
+   frontend-klanttekst (JSX/strings, commentaar uitgezonderd) en geen backend-string voor; drie bestaande strings herschreven (cli-help,
+   `soort_stand.meting`, bewaking "fout in de app-laag").
+6. **Meting 22-09 (lees-only, leesreplica per administratie + `rlz-lezen` mét een `Reference eq`-or-keten per administratie, nameting@):**
+   82 open inkoopdocumenten kantoorbreed (70 ter_accordering, 10 klaar_om_te_boeken, 2 wacht_op_iban) over 14 administraties; 39 in
+   RLZ-administraties getoetst → **10 staan al in RLZ**: Bouwadvies 8/13 (RLZ-04-00000516, 518, 519, 520, 521, 523, 524, 526 — refs F/2026/00053,
+   F/2026/01235, F/2026/01238, F/2026/01237, F2615113, VF2607986, C2615322, VCB260464), Molenhof Beheer 1/1 (RLZ-17-00001131 ref 200161832),
+   Rubicon 1/6 (RLZ-04-00002358 ref F239153280); 0 bij BLOW, Meyer, Kempen Facilities, Midden Nederland, Oirschot ×2, Veldhoven, Zilver. Universal
+   Steigerbouw (43, Odoo) niet meetbaar met `rlz-lezen` → ná deploy via de hercontrole zelf. **Wie boekte RLZ-04-00000518: niet leesbaar via de
+   API** (`PurchaseInvoices` kent geen `CreatedBy`/`ModifiedBy`; `$expand` erop wordt stil genegeerd; alleen Origin 1, Description "Segers",
+   Entity "B.A.B."). Volledige tabel in het rapport.
+
+**Keuzes (CC, Peter keek niet mee):** (a) soort direct in `actie` volgt de opdracht letterlijk ("NEE") en is als expliciete, gereden uitzondering
+in code + guard vastgelegd — de explosie-rem blijft de veiligheidsklep; (b) treffers = BLOKKERENDE bases (zelfde referentie, ook ander bedrag,
+ook RLZ-concept) — precies wat de boekstap zou blokkeren; bedrag+datum-signalen bewust niet (twee gelijke facturen komen legitiem voor);
+(c) `wacht_op_iban_accordering` wordt wél getoetst en gemeld maar niet afgewezen vanuit deze knop (afwijzing-DB-check kent die herkomst niet;
+IBAN-route eerst — zichtbaar 409 mét tekst); (d) "Toch verschillend" accepteert de bevinding alleen als de actor Beheerder is (acceptatie is
+Beheerder-werk); anders is de afmelding zelf de waarheid en verdwijnt de rij bij de volgende run — in de melding benoemd; (e) de meetlat is het
+bestaande onderdeel `reconciliatie` (geen nieuwe CLI): de `HERCONTROLE`-regels en de bevindingssoort zijn direct greppbaar.
