@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-22, rapport: docs/rapporten/2026-09-22-nameting-groepssaldi-na-deploy.md
+
 Domeinen: administraties-instellingen, reconciliatie, werkloop-productie
 niet vóór: 2026-09-22 09:00
 

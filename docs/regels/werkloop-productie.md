@@ -218,3 +218,16 @@
   wordt_geboekt_nu + ingediend/trigger/afgerond/opnieuw 7 dagen); oordeelregel "alle jobs dragen command python".
   Vervolg-opdracht `opdrachten/inbox/2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md` (`niet vóór:`). Les in
   `Platform/registers/verbeteringen.md` (21-09). Rapport `docs/rapporten/2026-09-21-f3-jobs-command-python-job-smoketest-wordt-geboekt-let-op.md`.
+
+<!-- toegevoegd 22-09-2026, opdracht "nameting-groepssaldi-na-deploy-kempen-groep" -->
+- **Een fix op bron-gedrag dekt het hele pad van de motor, niet alleen de call die faalde; en de eigen verkenning eerst doorzoeken (22-09;
+  BESLISSINGEN "GROEPSSALDI — PRODUCTIEFOUT 16→21-09 (enumfilter + deprecated)" alinea "Gemeten 22-09"):** de fix van 21-09 haalde het
+  int-literal op het enum-veld `AccountType` uit de Ledgers-call en schreef in api-verkenning dat `Status eq 2` "in productie geen 400 geeft" —
+  maar die call (`saldi.ic_open`) was vóór de fix nooit bereikt, en drie secties hoger stond al de STAP-0-tabel "Status is een enum-type,
+  `Status eq 1` = 400". De nameting van 22-09 vond daardoor 29/35 leden opnieuw `fout`, één dag ná "GEFIXT". Regels: (1) ná een bron-fout
+  op één call loop je élke call van dezelfde motor na op hetzelfde patroon (hier: alle `$filter`-strings in `saldi.py` — Ledgers,
+  JournalEntryLines, Sales-/PurchaseInvoices) én zet je het patroon in de guard (`ENUM_VELDEN`), niet alleen het ene veld; (2) een uitspraak
+  "veld X is kennelijk Edm.Int32" zonder eigen STAP-0 is geen feit — `grep` de api-verkenning op het veld vóór je 'm opschrijft; een claim
+  die een eerdere STAP-0 tegenspreekt is een rode vlag, geen open vraag; (3) de meting die de bug vond deed precies wat de regel van 21-09
+  voorschrijft ("niet gemeten" = schuld mét vervaldatum) — de nameting-opdracht mét `niet vóór:` + dispatch-onderdeel + regressie-detector
+  hebben een vijfdaagse stilte tot één dag teruggebracht. Rapport `docs/rapporten/2026-09-22-nameting-groepssaldi-na-deploy.md`.

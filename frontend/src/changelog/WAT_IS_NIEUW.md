@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-22 — Groepssaldi: het intercompany-deel werd nog niet gelezen, nu wel
+
+<!-- groepssaldi-status-enum-22-09 -->
+
+- **De kaart "Groepssaldi" toont vanaf de stand van morgenochtend voor álle leden een saldo.** Na de reparatie van gisteren bleek Reeleezee ook de vraag naar openstaande intercompany-facturen te weigeren; dat is nu opgelost. De stand van vandaag toont daardoor nog voor 29 van de 35 leden "meting mislukt"; de eerste volledige stand komt met de nachtelijke verwerking van 23 september.
+- **Het systeem meldde het zelf.** De controle van vanochtend heeft de mislukte stand als waarschuwing op Inzicht › Reconciliatie gezet — precies zoals gisteren beloofd. Die waarschuwing verdwijnt zodra de stand groen is.
+
 ## 2026-09-21 — Boeken: een boeking die blijft hangen zie je nu, en je kunt hem opnieuw indienen
 
 <!-- boek-wachtrij-niets-stil-21-09 -->

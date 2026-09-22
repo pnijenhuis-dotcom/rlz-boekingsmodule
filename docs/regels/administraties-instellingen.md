@@ -36,6 +36,14 @@
   onzichtbaar bleef. CLI `groep-saldi --groep … --stand` toont de nachtelijke cache-stand zonder lezer-scope (nameting); het signaal bij
   `fout` staat in `docs/regels/reconciliatie.md` (`groep_saldo_fout`). Werkt in productie: niet gemeten (vervolg-opdracht `niet vóór:
   2026-09-22 09:00`, dispatch-onderdeel `groep-saldi`).
+  **Gemeten 22-09 (BESLISSINGEN alinea "Gemeten 22-09"; rapport `docs/rapporten/2026-09-22-nameting-groepssaldi-na-deploy.md`):** de
+  Ledgers- en Odoo-fix werken (geen 400 op Ledgers meer, Bonte Hoeve/Nieuwenhoven `ok`), maar de stand van 22-09 gaf 29/35 leden `fout` op de
+  VOLGENDE call: `saldi.ic_open` filterde `Status eq 2` op Sales-/PurchaseInvoices → 400 "'Reeleezee.DTO.DocumentStatus' and 'Edm.Int32'" —
+  `Status` is óók een enum (STAP-0-tabel stond al in api-verkenning; de 21-09-notitie die het tegendeel beweerde is gecorrigeerd). Fix 22-09
+  (geen migratie): `Status` in `$select`, client-side `STATUS_OPEN` (2); `ENUM_VELDEN = ("AccountType", "Status")`; stub speelt de 400 na.
+  Regel aangescherpt: ná een enum-fout op één call álle `$filter`-strings van de motor nalopen (`docs/regels/werkloop-productie.md` 22-09).
+  Werkt in productie: RLZ-Ledgers/Odoo JA, open posten NIET GEMETEN tot de deploy van 22-09 + `sync-alles` 23-09 07:00 (vervolg-opdracht
+  `niet vóór: 2026-09-23 09:00`).
 
 <!-- uit CLAUDE.md § Domeinbeslissingen -->
 - **Administratienaam — bewerkbaar + volgt de bron (Peter 15-09; casus Camping Nieuwenhoven → "Strandpark Zilverduynen" in Odoo; migratie 0144):** veld "Naam" op Instellingen › Administraties › ‹administratie› › Algemeen (Beheerder-only, inline, `PUT /administraties/{id}/naam`, audit `administratie_naam_gewijzigd` oud→nieuw, bezet = 409); `naam_bron` 'odoo'|'rlz'|'mens' — ≠ mens volgt de bronnaam (Odoo `res.company.name` / RLZ `Administrations.Name`, één leesbron per backend) bij élke stamgegevens-sync (audit `administratie_naam_gevolgd`), mens = nooit overschrijven maar chip "in Odoo/Reeleezee heet deze administratie nu ‹naam›" + "Naam overnemen"; data-stap CLI `administratie-naam-bron-backfill` (dry-run default) — zie BESLISSINGEN "ADMINISTRATIENAAM — BEWERKBAAR + VOLGT DE BRON (Peter 15-09)".

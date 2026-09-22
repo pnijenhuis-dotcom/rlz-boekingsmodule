@@ -143,6 +143,16 @@
   op `fout` (RLZ-enumfilter + Odoo `deprecated`) en het enige signaal was "meting mislukt" op een kaart die niemand las. **Verwacht ná
   deploy: de run van 22-09 06:30 leest nog de stand van 21-09 (oude image) en meldt de LET-OP precies één keer mét audit; de `sync-alles`
   van 22-09 07:00 schrijft de eerste groene stand en op 23-09 is de LET-OP weg.** Test `tests/groepen/test_saldi.py::TestStandSysteemEnDetector`.
+  **Gemeten 22-09 (nameting-opdracht, leesreplica + Cloud Logging, scheduler-run `e315ceae` 04:30–04:46 UTC op image `fb63be5`) — de detector
+  WERKT IN PRODUCTIE: JA:** precies één bevinding `let_op` / blok `automatisering` / administratie NULL / `reden: groep_saldo_fout` / `aantal: 35` /
+  `stand_datum: 2026-09-21` mét de tekst "35 administratie(s) in 1 groep(en) (Kempen groep) … status fout — voorbeelden: ARVUM B.V.: GET
+  /…/Ledgers -> 400 …", en om 04:46:28 UTC één audit `automatisering_regressie` mét `categorie: groep_saldo_fout`, `aantal: 35`, `run_id`
+  e315ceae — exact de verwachting van 21-09. De LET-OP staat NIET in de job-stdout (`registreer` print alleen de tellerregels; de bevinding
+  leeft in `reconciliatie_bevinding`) — een meetrecept op deze detector leest dus de tabel of `/reconciliatie`, niet het log. De systeemmail
+  bleef `uitgeschakeld` (ontvangerslijst leeg), de bewakingsprobe `automatisering_regressie` is het mailende kanaal. **Vervolg:** de stand van
+  22-09 was opnieuw rood (29/35 `fout`, tweede enum-veld `Status` — zie `administraties-instellingen.md`), dus de run van 23-09 06:30 meldt de
+  LET-OP nog één keer mét een NIEUWE vingerafdruk (andere set: 29 leden) en de eerste groene stand komt pas van `sync-alles` 23-09 07:00 op
+  de image mét de fix van 22-09; verwacht weg op 24-09 (vervolg-opdracht `niet vóór: 2026-09-23 09:00`).
 
 <!-- toegevoegd 21-09-2026, opdracht "corrigeren-knop-geboekt-document-storno-plus-opnieuw-klaarzetten" -->
 - **Storno vanuit de module ≠ verdwenen document (21-09; geen migratie; BESLISSINGEN "CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW
