@@ -383,8 +383,16 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-veldwerkers-dubbelen-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "corrigeren" ]]; then
             OORDEEL_BRON="verkenning/nameting-corrigeren-$DATUM.txt"
-          else
+          elif [[ "$ONDERDEEL" == "jobs-start" ]]; then
+            OORDEEL_BRON="verkenning/nameting-jobs-start-$DATUM.txt"
+          elif [[ "$ONDERDEEL" =~ ^(alles|a|b|c|d|e)$ ]]; then
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
+          else
+            # 22-09 (nameting jobs-start: de bot-commit a786e53 droeg "Oordeel: ROOD" uit het VGG-replay-rapport van die dag
+            # terwijl het eigen rapport groen was — het onderdeel had geen eigen tak): élk ander onderdeel leest zijn EIGEN
+            # rapport `nameting-<onderdeel>-<dd-mm>.txt`; bestaat dat niet (btw-default draagt een slug) → "geen oordeelregel",
+            # nooit de replay-regel van een ander onderdeel.
+            OORDEEL_BRON="verkenning/nameting-$ONDERDEEL-$DATUM.txt"
           fi
           OORDEEL=""
           if [[ -f "$OORDEEL_BRON" ]]; then

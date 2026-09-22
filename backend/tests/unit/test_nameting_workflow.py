@@ -418,3 +418,48 @@ def test_nameting_sh_kent_onderdeel_corrigeren() -> None:
     dispatch-onderdeel), zodat een vervolg-opdracht zonder TTY `nameting.sh` niet op exit 3 strandt."""
     sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
     assert re.search(r"^\s*corrigeren\) echo corrigeren ;;", sh, re.M)
+
+
+def test_oordeel_jobs_start_neemt_eigen_rapport_niet_de_replay_regel(tmp_path: Path) -> None:
+    """Reproductie 22-09 (bot-commit a786e53 "nameting 22-09 jobs-start — Oordeel: ROOD"): het onderdeel jobs-start had
+    geen eigen OORDEEL_BRON-tak en viel terug op het VGG-replay-rapport van die dag ("Oordeel: ROOD") terwijl het eigen
+    rapport "alle jobs dragen command python" zei. Het commitbericht draagt de oordeelregel van het GEDRAAIDE onderdeel."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'OORDEEL_BRON="verkenning/nameting-jobs-start-$DATUM.txt"' in meet
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "jobs-start",
+        {
+            "nameting-vgg-replay-14-09.txt": "kop\n**Oordeel: ROOD**\n",
+            "nameting-jobs-start-14-09.txt": "kop\nOordeel: alle jobs dragen command python (rlz-migratie: alembic) — job-exit 0\n",
+        },
+    )
+    assert oordeel == "Oordeel: alle jobs dragen command python (rlz-migratie: alembic) — job-exit 0"
+
+
+def _onderdelen_met_eigen_rapport() -> list[str]:
+    """Élk dispatch-onderdeel dat zijn uitkomst in `verkenning/nameting-<onderdeel>-$DATUM.txt` schrijft."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    namen = re.findall(r'UIT="verkenning/nameting-([a-z-]+)-\$DATUM\.txt"', meet)
+    return sorted(set(namen) - {"vgg-replay"})
+
+
+@pytest.mark.parametrize("onderdeel", _onderdelen_met_eigen_rapport())
+def test_elk_onderdeel_met_eigen_rapport_leest_zijn_eigen_oordeelregel(tmp_path: Path, onderdeel: str) -> None:
+    """Generieke guard (22-09): een onderdeel mét een eigen rapportbestand krijgt in het commitbericht nooit de replay-regel
+    van een ander onderdeel — óók niet als iemand de expliciete tak vergeet (de else-tak leest `nameting-$ONDERDEEL`)."""
+    oordeel = _draai_oordeel(
+        tmp_path,
+        onderdeel,
+        {
+            "nameting-vgg-replay-14-09.txt": "kop\n**Oordeel: ROOD — niet deze**\n",
+            f"nameting-{onderdeel}-14-09.txt": f"kop\nOordeel: eigen regel van {onderdeel}\n",
+        },
+    )
+    assert oordeel == f"Oordeel: eigen regel van {onderdeel}", oordeel
+
+
+def test_oordeel_onbekend_onderdeel_zonder_rapport_is_geen_oordeelregel(tmp_path: Path) -> None:
+    """Een onderdeel zonder eigen bestand (btw-default schrijft mét slug) meldt 'geen oordeelregel', nooit de replay-regel."""
+    oordeel = _draai_oordeel(tmp_path, "btw-default", {"nameting-vgg-replay-14-09.txt": "kop\n**Oordeel: ROOD**\n"})
+    assert oordeel.startswith("geen oordeelregel"), oordeel
