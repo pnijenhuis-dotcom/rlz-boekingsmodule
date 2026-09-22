@@ -1,0 +1,196 @@
+== gcloud run jobs: startcommando per job (verwacht python; rlz-migratie alembic) ==
+NAME                         COMMAND  ARGS                                        IMAGE
+rlz-accordeur-herinneringen  python   -m,app.cli,accordeur-herinneringen          backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-bank-sync                python   -m,app.cli,bank-sync-wachtrij               backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-bewaking                 python   -m,app.cli,bewaking-probe                   backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-boek-wachtrij            python   -m,app.cli,boek-wachtrij-verwerken          backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-eerste-sync              python   -m,app.cli,eerste-sync-wachtrij             backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-extractie-wachtrij       python   -m,app.cli,extractie-wachtrij-verwerken     backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-intake-imap              python   -m,app.cli,intake-postvak-verwerken         backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-kantoor-digest           python   -m,app.cli,kantoor-digest                   backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-migratie                 alembic  upgrade,head                                backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-nieuwe-facturen          python   -m,app.cli,nieuwe-facturen-melden           backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-projecten-cijfers        python   -m,app.cli,projecten-cijfers-wachtrij       backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-reconciliatie            python   -m,app.cli,reconciliatie-alles              backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-smoketest                python   -m,app.cli,deploy-smoketest                 backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-sync                     python   -m,app.cli,sync-alles                       backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-terugkerend-herbereken   python   -m,app.cli,terugkerend-herbereken-wachtrij  backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-uren-herinneringen       python   -m,app.cli,uren-herinneringen               backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+rlz-webhook-afleveraar       python   -m,app.cli,webhook-afleveren                backend:142f33c3a1973de3811cb075dbca8fb02486ad99
+
+== rlz-boek-wachtrij: laatste 8 executies ==
+NAME                     COMPLETION_TIME              SUCCEEDED_COUNT  FAILED_COUNT
+rlz-boek-wachtrij-blscl  2026-09-22T13:14:21.661990Z  1
+rlz-boek-wachtrij-kvm5g  2026-09-22T13:12:47.718944Z  1
+rlz-boek-wachtrij-vw4k9  2026-09-22T13:12:19.732207Z  1
+rlz-boek-wachtrij-hmvj8  2026-09-22T13:10:25.751665Z  1
+rlz-boek-wachtrij-2tgvl  2026-09-22T13:08:27.837463Z  1
+rlz-boek-wachtrij-2txf5  2026-09-22T13:06:27.705885Z  1
+rlz-boek-wachtrij-wlprc  2026-09-22T13:04:23.808812Z  1
+rlz-boek-wachtrij-w59zs  2026-09-22T13:02:23.778133Z  1
+
+== scheduler-stand vangnetten (ENABLED verwacht; 'niet leesbaar' = nameting@ zonder cloudscheduler.viewer) ==
+rlz-boek-wachtrij: niet leesbaar
+rlz-extractie-wachtrij: niet leesbaar
+rlz-bank-sync: niet leesbaar
+rlz-bewaking: niet leesbaar
+rlz-webhook-afleveraar: niet leesbaar
+
+== db-lezen boek-wachtrij (7 dagen; wordt_geboekt_nu + ingediend/trigger/afgerond/opnieuw) ==
+== db-lezen boek-wachtrij v1 (1185 ms) ==
+| administratie | soort | tijdstip | document_id | uitkomst | verwerker | minuten | detail |
+|---|---|---|---|---|---|---|---|
+| Administratiekantoor Nijenhuis C.V. | ingediend | 2026-09-19 06:55:35.432353+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c |  |  |  | boek-75b35516-cff5-4191-bfdc-c585d2ffba2c-0 |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 06:55:35.706276+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 07:15:07.996623+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 08:11:43.081112+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 08:44:14.954368+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 14:04:43.089057+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 14:52:42.742706+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 15:24:08.732644+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 15:55:20.299320+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 16:14:48.060491+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 16:44:14.709075+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 16:54:26.419335+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-19 17:22:14.795357+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-20 05:36:54.739464+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-20 05:55:55.934264+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 07:29:44.449853+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 09:13:19.900952+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 10:04:13.433363+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 10:04:13.489165+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 10:04:13.528523+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 10:04:13.609708+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 10:04:13.893914+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 10:04:14.164178+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 10:04:31.696299+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 10:13:40.654388+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | ingediend | 2026-09-21 10:46:45.758876+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 |  |  |  | boek-6b828010-5f02-4602-86bb-fdc4316cce59-0 |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 10:46:46.074123+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 10:57:42.113334+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 10:57:43.106487+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:50:56.046682+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:50:56.177957+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:50:56.434192+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:50:56.517013+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:50:56.925961+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:50:57.243025+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:50:57.323674+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:50:57.593338+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:50:57.844564+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:50:57.978211+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:52:13.755626+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 11:52:14.798856+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:43.301120+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:43.384037+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:43.427293+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:43.592167+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:43.625506+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:43.771056+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:43.971932+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:44.865451+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:45.006830+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:45.008889+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:45.092273+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:45.246308+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:45.349088+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 12:52:45.376478+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 13:29:53.052138+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 13:29:54.107966+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 13:33:05.258737+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 13:33:06.262989+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 14:49:46.329766+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | trigger | 2026-09-21 14:49:47.355588+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geslaagd |  |  | rlz-boek-wachtrij |
+| Administratiekantoor Nijenhuis C.V. | afgerond | 2026-09-21 15:31:28.233804+00:00 | 75b35516-cff5-4191-bfdc-c585d2ffba2c | geboekt | job | 0 | boek-75b35516-cff5-4191-bfdc-c585d2ffba2c-0 |
+| Administratiekantoor Nijenhuis C.V. | afgerond | 2026-09-21 15:31:40.507836+00:00 | 6b828010-5f02-4602-86bb-fdc4316cce59 | geboekt | job | 0 | boek-6b828010-5f02-4602-86bb-fdc4316cce59-0 |
+| Belastingbutler B.V. | ingediend | 2026-09-21 07:20:46.354371+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 |  |  |  | boek-15a9bc7e-1f79-46b4-92a9-063c6447b554-0 |
+| Belastingbutler B.V. | trigger | 2026-09-21 07:20:46.652546+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 09:13:20.255083+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 10:04:13.684022+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 10:04:13.772176+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 10:04:14.009321+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 10:04:14.046104+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 10:04:14.245658+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 10:04:14.476861+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 10:04:32.019076+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 10:13:40.924133+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 10:57:42.354051+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 11:50:56.344016+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 11:50:56.576172+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 11:50:56.723001+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 11:50:56.784494+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 11:50:57.309655+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 11:52:14.060699+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 12:52:43.679967+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 12:52:43.829424+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 12:52:43.886792+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 12:52:43.942285+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 12:52:44.021430+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 12:52:44.036196+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 12:52:44.327473+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 13:29:53.330934+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 13:33:05.477880+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | trigger | 2026-09-21 14:49:46.599236+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geslaagd |  |  | rlz-boek-wachtrij |
+| Belastingbutler B.V. | afgerond | 2026-09-21 15:31:31.933389+00:00 | 15a9bc7e-1f79-46b4-92a9-063c6447b554 | geboekt | job | 0 | boek-15a9bc7e-1f79-46b4-92a9-063c6447b554-0 |
+| Old Dutch BV | ingediend | 2026-09-21 07:53:09.089061+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 |  |  |  | boek-de629f95-0b3b-487d-bf7a-60409b8f59f8-0 |
+| Old Dutch BV | trigger | 2026-09-21 07:53:09.371328+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | ingediend | 2026-09-21 07:53:28.418877+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 |  |  |  | boek-1ad6e15f-57ee-4552-92f2-e027b7e39132-0 |
+| Old Dutch BV | trigger | 2026-09-21 07:53:28.684066+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 09:13:20.623824+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 09:13:20.949455+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:13.951874+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:14.178625+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:14.223339+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:14.315610+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:14.357341+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:14.456422+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:14.581655+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:14.656496+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:14.714042+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:14.758857+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:14.853569+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:15.017379+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:32.259418+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:04:32.464264+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:13:41.130434+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:13:41.417366+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:57:42.566947+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 10:57:42.821055+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:50:56.693561+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:50:56.843163+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:50:56.972302+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:50:57.045996+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:50:57.111509+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:50:57.171156+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:50:57.382617+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:50:57.445545+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:50:57.524689+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:50:57.726617+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:52:14.300543+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 11:52:14.576007+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.091353+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.115916+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.193431+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.349490+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.389699+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.412360+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.440461+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.452225+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.585109+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.616121+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.723540+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.875259+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:44.966582+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 12:52:45.081049+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 13:29:53.584525+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 13:29:53.818955+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 13:33:05.710354+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 13:33:05.968393+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 14:49:46.828449+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | trigger | 2026-09-21 14:49:47.127950+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geslaagd |  |  | rlz-boek-wachtrij |
+| Old Dutch BV | afgerond | 2026-09-21 15:31:35.996283+00:00 | de629f95-0b3b-487d-bf7a-60409b8f59f8 | geboekt | job | 0 | boek-de629f95-0b3b-487d-bf7a-60409b8f59f8-0 |
+| Old Dutch BV | afgerond | 2026-09-21 15:31:38.624198+00:00 | 1ad6e15f-57ee-4552-92f2-e027b7e39132 | geboekt | job | 0 | boek-1ad6e15f-57ee-4552-92f2-e027b7e39132-0 |
+150 rij(en) over 3 administratie(s)
+Container called exit(0).
+
+Oordeel: alle jobs dragen command python (rlz-migratie: alembic) — job-exit 0
