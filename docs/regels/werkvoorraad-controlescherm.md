@@ -377,3 +377,15 @@
   verschoof "sinds". Tests `tests/documenten/test_boek_wachtrij.py::TestNietsStil21_09`,
   `test_router_boeken.py::TestBoekWachtrijOpnieuwIndienenRoute`, vitest `status.wordtGeboekt.test.ts`, `WordtGeboektBalk.test.tsx`.
   Werkt in productie: niet gemeten (vervolg-opdracht `2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md`). Rapport `docs/rapporten/2026-09-21-f3-jobs-command-python-job-smoketest-wordt-geboekt-let-op.md`.
+
+<!-- toegevoegd 22-09-2026, opdracht "nameting-corrigeren-testadministratie" (poging 2) -->
+- **Gemeten 22-09 — "Corrigeren…" (BESLISSINGEN "CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW KLAARZETTEN (Peter 21-09)" alinea "Gemeten
+  22-09"; rapport `docs/rapporten/2026-09-22-nameting-corrigeren-testadministratie.md`):** de code staat sinds 21-09 17:59 NL in productie
+  (service + 17 jobs `1018bcf`), maar de storno-cyclus mét TEST-referentie is NIET gedraaid: de RLZ-testadministratie "Administratiekantoor
+  Nijenhuis (test)" (`faae29c5`) is op 30-08 gearchiveerd, boeken uit, 0 credentials (archiveren trekt de webservice-login in) → élke
+  corrigeer-actie daar = 503 `GeenRlzCredentials`; dearchiveren vereist de TESTADMIN-login = klikpunt Peter (tien stappen in het rapport, incl.
+  bonus: toets op een opgeruimd augustus-stuk = blokkade `verdwenen`). Request-log sinds de deploy: 0 × POST corrigeren 200, 0 × 5xx (alleen
+  tokenloze probes); audit `document_gecorrigeerd` 0. **Werkt in productie: niet gemeten.** De meetlat staat nu als nameting-onderdeel
+  `corrigeren` (request-log + `rlz-lezen` TEST-CORRIGEREN + `db-lezen correcties`) — ná Peters klik komt het bewijs als bot-bestand op main;
+  vervolg-opdracht `2026-09-23-nameting-corrigeren-testadministratie-na-klikpunt.md`. De BLOW-stukken RLZ-04-00000357/358 zijn eveneens nog
+  niet gecorrigeerd (klikwerk Peter, klantadministratie).

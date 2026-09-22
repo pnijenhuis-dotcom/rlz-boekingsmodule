@@ -242,3 +242,19 @@
   app logt gestructureerd via `app/logboek.py` (JSON op stderr, root WARNING, `app` INFO; service én jobs) — nooit een tweede
   logconfiguratie ernaast; (3) terugvalmeting voor route-duur = `httpRequest.latency` in het request-log (hele route, incl. wachten),
   altijd mét vermelding dat het geen `checks.extern` is. Rapport `docs/rapporten/2026-09-22-nameting-iban-wissel-cache-na-deploy.md`.
+
+<!-- toegevoegd 22-09-2026, opdracht "nameting-corrigeren-testadministratie" (poging 2) -->
+- **Een nameting die op de testadministratie schrijft, toetst éérst de stand van die administratie — in het bouwrapport, niet pas in de
+  nameting (22-09; BESLISSINGEN "CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW KLAARZETTEN (Peter 21-09)" alinea "Gemeten 22-09"):** de
+  nameting-opdracht van 21-09 zei "upload in de web-app op de RLZ-testadministratie", maar die administratie ("Administratiekantoor Nijenhuis
+  (test)", `faae29c5`) stond sinds 30-08 gearchiveerd, boeken uit en zonder credential (archiveren trekt de login in — bedoeld gedrag); de
+  schrijvende stappen waren dus voor niemand uitvoerbaar zonder dearchiveren mét de TESTADMIN-login, en poging 1 verbrandde vijf minuten
+  sessielimiet zonder dat te zien. Regels: (1) een bouwrapport dat een schrijvende nameting op de testadministratie aankondigt, leest in
+  dezelfde run haar stand van de leesreplica (`gearchiveerd_op`, `boeken_ingeschakeld`, `rlz_credential`-rij) en zet een eventueel klikpunt
+  (dearchiveren/Boeken AAN) in de opdracht zelf; (2) een CC-run dearchiveert nooit zelf en zet nooit een credential — de webservice-login is
+  secrets-terrein, de TEST-referentie-regel sluit élke andere administratie uit, dus de uitkomst is dan een klikpunt mét letterlijke stappen +
+  de lees-only meetlat als dispatch-onderdeel (regel 21-09) zodat het bewijs ná de klik als bot-bestand komt; (3) een vervolg-opdracht die op
+  een klik wacht legt zichzelf terug in de inbox mét `niet vóór:` +1 dag (rij (k)), hoogstens drie keer, daarna `mislukt/` mét het klikpunt —
+  nooit een reeks lege "niet gemeten"-rapporten. Bijvangst: het jobs-image-pad uit de opdrachttekst (`template.template.containers[0].image`)
+  geeft een lege waarde; het juiste veld is `spec.template.spec.template.spec.containers[0].image` (zoals `f3_jobs.sh`). Rapport
+  `docs/rapporten/2026-09-22-nameting-corrigeren-testadministratie.md`.

@@ -36,7 +36,7 @@
 | Werkvoorraad = klantenlijst met tellers → klantpagina → controlescherm | goedgekeurd; UI gebouwd | mockup `#werkvoorraad`/`#klantpagina`/`#review`; BOUWPLAN fase 1 punt 8 |
 | Sync-laag per administratie (Ledgers/TaxRates/Vendors/Projects) | gebouwd + getest (2026-07-08) | BOUWPLAN fase 1 punt 4 |
 | Document-pipeline / statusmachine | gebouwd + getest (2026-07-08) | BOUWPLAN fase 1 punt 5; `backend/app/documenten/statusmachine.py` |
-| Corrigeren vanuit de module (storno actie 19 + opnieuw klaarzetten op een geboekt inkoop-/verkoop-/kassarapport-document; aangifte → tegenboek-pad, afgeletterd → bank, doorbelasting beide kanten of geen) | **gebouwd + getest (21-09)**; werkt in productie: niet gemeten (nameting-opdracht in de inbox) | BESLISSINGEN "CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW KLAARZETTEN (Peter 21-09)"; `backend/app/documenten/corrigeren.py`; `frontend/src/document/CorrigerenActie.tsx` |
+| Corrigeren vanuit de module (storno actie 19 + opnieuw klaarzetten op een geboekt inkoop-/verkoop-/kassarapport-document; aangifte → tegenboek-pad, afgeletterd → bank, doorbelasting beide kanten of geen) | **gebouwd + getest (21-09)**; werkt in productie: niet gemeten — nameting 22-09 kon niet schrijven (testadministratie gearchiveerd zonder credential) → klikpunt Peter + nameting-onderdeel `corrigeren` (vervolg 23-09) | BESLISSINGEN "CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW KLAARZETTEN (Peter 21-09)"; `backend/app/documenten/corrigeren.py`; `frontend/src/document/CorrigerenActie.tsx` |
 | Boeken (PUT+client-GUID, actie 17, idempotentie, failsafes) | gebouwd + getest (2026-07-09) | BOUWPLAN fase 1 punt 6; `backend/app/documenten/boeken.py` |
 | Controlescherm (kopgegevens + regels + harde checks + boekactie) | gebouwd (2026-07-09); geheugen-UI erbij (2026-07-14) | BOUWPLAN fase 1 punt 8; `frontend/src/document/BoekvoorstelPanel.tsx` |
 | Webhook "factuur geboekt" (outbox + vastgoed-scope-filter + afleveraar) | **gebouwd + getest (2026-08-02)** — outbox 2026-07-09, scope 2026-07-13, afleveraar + HMAC-per-verzendpoging 2026-08-02 (OPEN_ITEMS actiepunt 2 afgehandeld): payload ongetekend in de outbox, tekenen per poging (wire-formaat ongewijzigd), status openstaand/afgeleverd/mislukt + retry/backoff/dead-letter + re-drive (mislukt → openstaand als expliciete admin-actie, CLI `webhook-redrive`), audit per poging én per re-drive, toggle default UIT + config-failsafe (geen doel-URL → openstaand, geen fout); aanzetten wacht op de URL/secret-uitwisseling bij de hosting-fase — **de ontvanger zelf bestaat sinds 2026-08-02** (`POST /webhooks/rlz`, vastgoed-migratie 0066; drift-correctie 2026-08-07) | BOUWPLAN fase 1 punt 7; migraties 0018/0025; `app/documenten/webhook_afleveraar.py`; koppelcontract §3 (implementatienotitie 2026-08-02) |
@@ -12352,6 +12352,23 @@ fetch vangt geen vorm-fout in de `then`.
 **Beslispunt (open, Peter):** een kassarapport-correctie zet de registratie op `gestorneerd` en laat het oude concept in RLZ staan tot
 de herboeking het overschrijft; blijft de herboeking uit, dan meldt de omzet-reconciliatie het concept (bestaand gedrag) — akkoord dat
 dat de zichtbaarheid is, of wil Peter een aparte werkvoorraad-teller "gecorrigeerd, nog niet herboekt"?
+
+**Gemeten 22-09 (nameting poging 2, rapport `docs/rapporten/2026-09-22-nameting-corrigeren-testadministratie.md`; poging 1 stierf ná 5 min op de
+sessielimiet, WIP-branch `wip/2026-09-22-nameting-corrigeren-testadministratie` dbce16b = alleen inbox→lopend):** deploy-check groen (service + 17
+jobs `1018bcf`; `c43111e` live sinds 21-09 17:59 NL). **De storno-cyclus is niet gedraaid:** de RLZ-testadministratie "Administratiekantoor
+Nijenhuis (test)" (`faae29c5`, RLZ `8dbfb856`) is op 30-08 10:05 UTC gearchiveerd, `boeken_ingeschakeld` false en heeft 0 rijen in
+`platform.rlz_credential` (75 totaal) — `archiveer_administratie` trekt de webservice-login in (bedoeld), dus `corrigeer-toets`/`corrigeren` geven daar
+503 `GeenRlzCredentials`; dearchiveren vereist de TESTADMIN-login (rechten-probe) en is een mens-handeling, geen CC-run. Request-log sinds de
+deploy: 3 tokenloze probes van poging 1 (401/401/404), **0 × POST 200, 0 × 409, 0 × 5xx**; audit `document_gecorrigeerd`/`_mislukt` 0. **Werkt in
+productie: niet gemeten** (stap 0 ja). Gedicht in dezelfde run (regel 21-09 "niet gemeten = vervolg-opdracht + dispatch-onderdeel" — het bouwrapport
+leverde alleen de opdracht): `nameting.yml` onderdeel **`corrigeren`** (request-log beide routes sinds de deploy + `rlz-lezen` TEST-CORRIGEREN op de
+testadministratie + `db-lezen correcties`; oordeelregel `POST corrigeren 200/409/5xx`), querybibliotheek `app/lezen/queries/correcties.sql`,
+`via_gh_onderdeel corrigeren`, guards in `test_nameting_workflow.py` + `test_lezen.py`. **Klikpunt Peter** (tien stappen in het rapport):
+dearchiveren mét TESTADMIN-login → Boeken AAN → TEST-CORRIGEREN-2026-09-22 boeken → Corrigeren… → tweede klik 409 → btw € 20 herboeken → terugweg
+storno → bonus: augustus-stuk `KLIKTEST-ACC-1` toets = `verdwenen` (RLZ-stukken opgeruimd) → Boeken UIT/archiveren → `gh workflow run nameting -f
+onderdeel=corrigeren`. Vervolg-opdracht `opdrachten/inbox/2026-09-23-nameting-corrigeren-testadministratie-na-klikpunt.md` (`niet vóór: 2026-09-23
+09:00`; nog geen 200 = zichzelf terugleggen mét `niet vóór:` +1 dag, max 3×). Les (werkloop-productie): een nameting die op de testadministratie
+schrijft toetst éérst de stand van die administratie (gearchiveerd/credential/boeken) — in het bouwrapport, niet pas in de nameting.
 
 ## F3-JOBS — COMMAND PYTHON IN DEPLOY.YML + JOB-SMOKETEST + WORDT_GEBOEKT LET-OP (21-09) — job `rlz-boek-wachtrij` startte 18→21-09 niet (geen `--command`), "Boeken in RLZ" bleef op "Wordt geboekt…"; deploy draagt het commando zelf + start élke job ná deploy, f3_jobs.sh toetst/hervat luid, hangende boeking = regressie-LET-OP + probe + "Opnieuw indienen"; geen migratie
 
