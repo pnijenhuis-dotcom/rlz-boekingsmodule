@@ -318,6 +318,17 @@
   gouden-set-casus af `tests/keten/test_af_iban_akkoord_checks_cache.py` (BDO-UBL mét andere baseline → akkoord → direct OK + boeken). Les
   (Platform `registers/verbeteringen.md` 21-09): bij élke nieuwe cache eerst de lijst "welke handelingen maken dit ongeldig".
 
+<!-- toegevoegd 22-09-2026, opdracht "nameting-iban-wissel-cache-na-deploy" -->
+- **Gemeten 22-09 (BESLISSINGEN "CHECKS-CACHE — INVALIDATIE OP DE BRON (IBAN-akkoord) 21-09" alinea "Gemeten 22-09"; rapport
+  `docs/rapporten/2026-09-22-nameting-iban-wissel-cache-na-deploy.md`):** nazorg `checks-cache-legen --alles` uitgevoerd op de job-image
+  (129 → 0 oude rijen, 78 administraties; "geldig" in de CLI = élke niet-gemarkeerde rij, ongeacht leeftijd). **Werkt in productie: ja
+  voor het bevestig-pad** — request-log 21-09 17:38 NL: externe checks-run, 9 s later `bevestig_iban`, 3 s daarna opnieuw een externe run
+  mét nieuwe cache-rij (zonder invalidatie/set-hash een cache-hit). Meyer 0015.21.664.V.51.0112: verse checks "doorstaan" om 10:17 NL
+  (vóór de deploy, cache verlopen) → ter_accordering laag 3/3 open, niet herladen ná de deploy, niet geboekt = niet gemeten; `?extern=vers`
+  0 × en vier-ogen-akkoord 0 × sinds de deploy = niet gemeten (geen mens raakte de route). Gedicht: `checks_cache_ongeldig` op élk
+  `leverancier_iban_toegevoegd`-audit (ook bevestig/seed/baseline); `server_timing`-logregel bereikte Cloud Logging nooit →
+  `app/logboek.py`. Vervolg `2026-09-23-nameting-iban-wissel-cache-mens-en-server-timing.md`.
+
 <!-- toegevoegd 21-09-2026, opdracht "corrigeren-knop-geboekt-document-storno-plus-opnieuw-klaarzetten" -->
 - **"Corrigeren…" op een geboekt document — storno (actie 19) + opnieuw klaarzetten vanuit de module (Peter 21-09 "laten we die
   terugboeken meenemen", casus BLOW RLZ-04-00000357/358 fout btw-bedrag, "ik kan de storno-knop niet meer vinden"; geen migratie;

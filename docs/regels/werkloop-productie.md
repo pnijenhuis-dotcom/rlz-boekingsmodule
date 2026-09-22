@@ -231,3 +231,14 @@
   die een eerdere STAP-0 tegenspreekt is een rode vlag, geen open vraag; (3) de meting die de bug vond deed precies wat de regel van 21-09
   voorschrijft ("niet gemeten" = schuld mét vervaldatum) — de nameting-opdracht mét `niet vóór:` + dispatch-onderdeel + regressie-detector
   hebben een vijfdaagse stilte tot één dag teruggebracht. Rapport `docs/rapporten/2026-09-22-nameting-groepssaldi-na-deploy.md`.
+
+<!-- toegevoegd 22-09-2026, opdracht "nameting-iban-wissel-cache-na-deploy" -->
+- **Een meetrecept dat een logregel noemt is pas af als die regel in productie aantoonbaar aankomt (22-09; BESLISSINGEN "CHECKS-CACHE —
+  INVALIDATIE OP DE BRON (IBAN-akkoord) 21-09" alinea "Gemeten 22-09"):** het meetrecept van "Boeken sneller" (18-09) en het beslispunt
+  "15 min omhoog ná een week `checks.extern` meten" steunden op `jsonPayload.message="server_timing"` — die regel heeft Cloud Logging
+  nooit bereikt: `logger.info` van de `app`-loggers had geen handler (Python-root op WARNING), alleen uvicorn's access-log kwam aan als
+  textPayload. Vier dagen lang was de meetlat leeg zonder dat iemand het zag. Regels: (1) wie een logregel als meetlat opvoert, leest 'm
+  ná de eerste deploy één keer terug uit Cloud Logging (of laat de nameting-workflow dat doen) — "staat in de code" ≠ "komt aan"; (2) de
+  app logt gestructureerd via `app/logboek.py` (JSON op stderr, root WARNING, `app` INFO; service én jobs) — nooit een tweede
+  logconfiguratie ernaast; (3) terugvalmeting voor route-duur = `httpRequest.latency` in het request-log (hele route, incl. wachten),
+  altijd mét vermelding dat het geen `checks.extern` is. Rapport `docs/rapporten/2026-09-22-nameting-iban-wissel-cache-na-deploy.md`.

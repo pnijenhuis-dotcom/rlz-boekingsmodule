@@ -12052,6 +12052,30 @@ eerstvolgende vier-ogen-akkoord.
 **Beslispunt (open):** de 15-min-tijdsgeldigheid blijft als bovengrens staan (beslispunt 2 van "BOEKEN SNELLER"); mét invalidatie op de
 bron kan die veilig omhoog — pas ná een week meten van `checks.extern` in de Server-Timing.
 
+**Gemeten 22-09 (nameting-opdracht `2026-09-22-nameting-iban-wissel-cache-na-deploy`, rapport
+`docs/rapporten/2026-09-22-nameting-iban-wissel-cache-na-deploy.md`):** deploy-check groen (service én `rlz-reconciliatie` op `78c13c3`,
+fix `10c9fa3` live sinds 21-09 12:16 NL via deploy `7881cfd`). **Nazorg uitgevoerd** op de job-image: dry-run 78 administraties /
+129 geldige rijen (12 administraties, Universal 77) → echte run 129 ongeldig gemaakt → dry-run 2: 2 geldig (Bonte Hoeve, vers
+geschreven ná de echte run door post-fix-code) — de CLI telt met "geldig" élke niet-gemarkeerde rij, niet alleen rijen < 15 min (de
+opdrachttekst veronderstelde dat laatste). **Werkt in productie: JA voor het bevestig-pad** — request-log 21-09 17:38 NL (document
+a05c4c47, Kempen-scope 59bf1f7f): `POST …/checks` 17:38:20 (1,23 s, externe run), audit `leverancier_iban_toegevoegd` bron `bevestigd`
+17:38:29, `POST …/checks` 17:38:32 (0,81 s) mét nieuwe cache-rij `gecontroleerd_op` 17:38:32 — een tweede externe run 12 s ná de eerste,
+ver binnen de 15 min; zonder invalidatie/set-hash was dat een cache-hit geweest. **Niet gemeten:** (a) Meyer-document 0015.21.664.V.51.0112
+— tijdlijn: akkoord 21-09 09:15 → vraag 09:30 "geblokkeerd vanwege IBAN" → vraag afgehandeld 10:17:49 → verse checks "harde checks
+doorstaan" 10:17:58 (vóór de fix-deploy; de cache van 09:15 was toen al verlopen) → ter_accordering 3 lagen, laag 1 10:18, laag 2 10:54,
+laag 3 (klant-accordeur) open; sindsdien door niemand herladen (0 checks-requests op het document ná de deploy), niet geboekt; vertrouwde
+set = NL86INGB… (rlz_seed) + NL04RABO0200112244 (bevestigd 09:15); (b) `?extern=vers` 0 × in 48 checks-requests sinds de deploy (24 gewoon,
+24 voorverwarm) = geen mens raakte de knop/409-route; (c) vier-ogen-akkoord ná de deploy: 0 (drie set-mutaties waren baseline/bevestigd/
+rlz_seed). **Twee bouwgaten gedicht in dezelfde run:** (1) `checks_cache_ongeldig` stond alleen op het akkoord-audit — nu op élk
+`leverancier_iban_toegevoegd` (`_voeg_toe`: bevestig/seed/baseline), gouden-set-casus af toetst baseline 0 / akkoord ≥ 1; (2) de
+meetlat "Server-Timing `checks.extern` via `jsonPayload.message="server_timing"`" was in productie ONMEETBAAR: `logger.info` van de
+`app`-loggers had geen handler (root WARNING) — alleen uvicorn's access-log kwam aan; nieuw `app/logboek.py` (JSON-handler op stderr,
+root WARNING, `app` INFO, idempotent) in `app.main` én `app.cli.main`, guard `tests/unit/test_logboek.py`. Terugvalmeting uit het
+request-log (route-latency `POST …/checks` zonder voorverwarm): 21-09 n=149 p50 0,45 s / p95 1,57 s t.o.v. nulmeting 18-09 p50 0,79 / p95
+2,14 — geen regressie; 20-09 (zondag) en 22-09 tot 10:40 te weinig verkeer (0 resp. 2). CLI-vorm `--alles` was niet in de suite
+(regel 19-09) → `TestCliChecksCacheLegen::test_cli_alles_vorm…`. Vervolg-opdracht `2026-09-23-nameting-iban-wissel-cache-mens-en-server-timing.md`
+(`niet vóór: 2026-09-23 09:00`) voor (a)–(c) én de eerste `server_timing`-regels ná deze deploy.
+
 ## ACTIVA / MVA — FASE 1 GEBOUWD (Peter 21-09)
 
 **Status: AKKOORD Peter 21-09 ("activa, JA") op `docs/ONTWERP_ACTIVA_MVA.md` mét alle defaults §8 → FASE 1 GEBOUWD 21-09 (migratie 0168);
