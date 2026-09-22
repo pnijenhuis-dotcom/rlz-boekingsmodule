@@ -1,0 +1,311 @@
+== bua-kandidaten --jaar 2026 --detail (lees-only, kantoorbreed) ==
+BUA-kandidaten — 78 administratie(s), boekjaar 2026 (lees-only; kenmerk = `btw_aftrek_uitgesloten`; module = geboekte inkoopfacturen op factuurdatum, bank = geboekte bank-direct-boekingen op boekmoment)
+code  rekening                                   adm kenm rlz0 mod_n  mod_netto  mod_btw bank_n bank_netto bank_btw  advies
+4014  Kantinekosten                               74    0   74     0       0.00     0.00      0       0.00     0.00  beoordelen — BUA-kantineregeling: aftrek wél, correctie aan het jaareinde bij bevoordeling > € 227 — het kenmerk zet altijd álle btw in de kosten (te conservatief)
+4503  Kosten promotie/sponsoring                  74    0   74     0       0.00     0.00      0       0.00     0.00  niet_zetten — zakelijke reclamekosten, btw aftrekbaar; alleen het geschenkdeel valt onder het BUA
+4508  Relatiegeschenken (beperkt aftrekbaar)      75    0   75     0       0.00     0.00      0       0.00     0.00  zetten — BUA: btw op representatie/relatiegeschenken is niet aftrekbaar boven € 227 per begunstigde per jaar; horeca-deel nooit aftrekbaar (art. 15 lid 5 Wet OB)
+4510  Representatiekosten (beperkt aftrekbaar)    74    0   74     2      34.45     0.00      1    -260.00     0.00  zetten — BUA: btw op representatie/relatiegeschenken is niet aftrekbaar boven € 227 per begunstigde per jaar; horeca-deel nooit aftrekbaar (art. 15 lid 5 Wet OB)
+DETAIL per administratie
+administratie                     code  rekening                                  kenm rlz-default           historie               mod_n  mod_netto  mod_btw bank_n bank_netto bank_btw
+6-Steps Projectbeheersing         4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+6-Steps Projectbeheersing         4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+6-Steps Projectbeheersing         4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+6-Steps Projectbeheersing         4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+A.Y. Holding 2 B.V.               4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+A.Y. Holding 2 B.V.               4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+A.Y. Holding 2 B.V.               4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+A.Y. Holding 2 B.V.               4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+A.Y. Holding BV                   4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+A.Y. Holding BV                   4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+A.Y. Holding BV                   4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+A.Y. Holding BV                   4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+ARVUM B.V.                        4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+ARVUM B.V.                        4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+ARVUM B.V.                        4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+ARVUM B.V.                        4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+ARVUM Holding B.V.                4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+ARVUM Holding B.V.                4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+ARVUM Holding B.V.                4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+ARVUM Holding B.V.                4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Abbegaa B.V.                      4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Abbegaa B.V.                      4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Abbegaa B.V.                      4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Abbegaa B.V.                      4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Adda Import-Export                4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Adda Import-Export                4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Adda Import-Export                4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Adda Import-Export                4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Administratiekantoor Nijenhuis C  4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Administratiekantoor Nijenhuis C  4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Administratiekantoor Nijenhuis C  4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Administratiekantoor Nijenhuis C  4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      1    -260.00     0.00
+B. van Rooijen / G. Schaalje      4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+B. van Rooijen / G. Schaalje      4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+B. van Rooijen / G. Schaalje      4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+B. van Rooijen / G. Schaalje      4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+BLOw B.V                          4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+BLOw B.V                          4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+BLOw B.V                          4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+BLOw B.V                          4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+BWC Steigers B.V.                 4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+BWC Steigers B.V.                 4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+BWC Steigers B.V.                 4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+BWC Steigers B.V.                 4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Baard beheer & management B.V.    4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Baard beheer & management B.V.    4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Baard beheer & management B.V.    4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Baard beheer & management B.V.    4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Beauty by Tessa Elst              4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Beauty by Tessa Elst              4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Beauty by Tessa Elst              4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Beauty by Tessa Elst              4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Belastingbutler B.V.              4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Belastingbutler B.V.              4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Belastingbutler B.V.              4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Belastingbutler B.V.              4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Beleggingsmaatschappij Meyer BV   4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Beleggingsmaatschappij Meyer BV   4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Beleggingsmaatschappij Meyer BV   4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Beleggingsmaatschappij Meyer BV   4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Betbellat BV                      4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Betbellat BV                      4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Betbellat BV                      4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Betbellat BV                      4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bouwadvies Oost Nederland B.V.    4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bouwadvies Oost Nederland B.V.    4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bouwadvies Oost Nederland B.V.    4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bouwadvies Oost Nederland B.V.    4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Box Beheer B.V.                   4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Box Beheer B.V.                   4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Box Beheer B.V.                   4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Box Beheer B.V.                   4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Box Invest B.V.                   4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Box Invest B.V.                   4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Box Invest B.V.                   4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Box Invest B.V.                   4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bradwolff Constructie B.V.        4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bradwolff Constructie B.V.        4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bradwolff Constructie B.V.        4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bradwolff Constructie B.V.        4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bradwolff Holding B.V.            4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bradwolff Holding B.V.            4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bradwolff Holding B.V.            4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Bradwolff Holding B.V.            4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Caravanpark "De Visotter" B.V.    4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Caravanpark "De Visotter" B.V.    4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Caravanpark "De Visotter" B.V.    4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Caravanpark "De Visotter" B.V.    4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Clean Care Arnhem B.V.            4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Clean Care Arnhem B.V.            4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Clean Care Arnhem B.V.            4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Clean Care Arnhem B.V.            4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Clean Care Holding B.V.           4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Clean Care Holding B.V.           4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Clean Care Holding B.V.           4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Clean Care Holding B.V.           4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+DP Investments B.V.               4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+DP Investments B.V.               4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+DP Investments B.V.               4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+DP Investments B.V.               4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+De Nederlandse Beheer B.V.        4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+De Nederlandse Beheer B.V.        4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+De Nederlandse Beheer B.V.        4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+De Nederlandse Beheer B.V.        4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+De Wit Beheer Oss B.V.            4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+De Wit Beheer Oss B.V.            4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+De Wit Beheer Oss B.V.            4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+De Wit Beheer Oss B.V.            4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Delascos BV                       4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Delascos BV                       4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Delascos BV                       4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Delascos BV                       4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Dimo Living & Styles              4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Dimo Living & Styles              4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Dimo Living & Styles              4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Dimo Living & Styles              4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Fortuna Beheer B.V.               4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Fortuna Beheer B.V.               4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Fortuna Beheer B.V.               4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Fortuna Beheer B.V.               4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Frij Beheer BV                    4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Frij Beheer BV                    4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Frij Beheer BV                    4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Frij Beheer BV                    4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Handelsonderneming Kempen B.V.    4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Handelsonderneming Kempen B.V.    4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Handelsonderneming Kempen B.V.    4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Handelsonderneming Kempen B.V.    4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Hotel Pax                         4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Hotel Pax                         4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Hotel Pax                         4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Hotel Pax                         4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Inpensas Beheer BV                4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Inpensas Beheer BV                4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Inpensas Beheer BV                4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Inpensas Beheer BV                4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+J.G.M. Elissen Holding BV         4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+J.G.M. Elissen Holding BV         4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+J.G.M. Elissen Holding BV         4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+J.G.M. Elissen Holding BV         4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen B.V.                       4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen B.V.                       4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen B.V.                       4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen B.V.                       4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen Chalets B.V.               4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen Chalets B.V.               4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen Chalets B.V.               4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen Chalets B.V.               4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen Facilities B.V.            4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen Facilities B.V.            4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen Facilities B.V.            4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Kempen Facilities B.V.            4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+L.H.G. Admin B.V.                 4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+L.H.G. Admin B.V.                 4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+L.H.G. Admin B.V.                 4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+L.H.G. Admin B.V.                 4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+L.H.G. Holding B.V.               4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+L.H.G. Holding B.V.               4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+L.H.G. Holding B.V.               4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+L.H.G. Holding B.V.               4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Mantelzorgwoningen Midden Nederl  4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Mantelzorgwoningen Midden Nederl  4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Mantelzorgwoningen Midden Nederl  4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Mantelzorgwoningen Midden Nederl  4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Mantelzorgwoningen Oost Nederlan  4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Mantelzorgwoningen Oost Nederlan  4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Mantelzorgwoningen Oost Nederlan  4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Mantelzorgwoningen Oost Nederlan  4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Midden Nederland Beheer BV        4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Midden Nederland Beheer BV        4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Midden Nederland Beheer BV        4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Midden Nederland Beheer BV        4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Molenhof Beheer B.V.              4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Molenhof Beheer B.V.              4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Molenhof Beheer B.V.              4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Molenhof Beheer B.V.              4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Molenhof Verhuur B.V.             4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Molenhof Verhuur B.V.             4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Molenhof Verhuur B.V.             4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Molenhof Verhuur B.V.             4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Necol Beheer BV                   4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Necol Beheer BV                   4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Necol Beheer BV                   4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Necol Beheer BV                   4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Necol Energie B.V.                4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Necol Energie B.V.                4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Necol Energie B.V.                4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Necol Energie B.V.                4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Novitas Holding B.V.              4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Novitas Holding B.V.              4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Novitas Holding B.V.              4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Novitas Holding B.V.              4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Oirschot Recreatie B.V.           4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Oirschot Recreatie B.V.           4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Oirschot Recreatie B.V.           4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Oirschot Recreatie B.V.           4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Oirschot Vastgoed Beheer B.V.     4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Oirschot Vastgoed Beheer B.V.     4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Oirschot Vastgoed Beheer B.V.     4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Oirschot Vastgoed Beheer B.V.     4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Old Dutch BV                      4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Old Dutch BV                      4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Old Dutch BV                      4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Old Dutch BV                      4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Pilates Bloom B.V.                4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Pilates Bloom B.V.                4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Pilates Bloom B.V.                4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Pilates Bloom B.V.                4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+RB Infra B.V.                     4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+RB Infra B.V.                     4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+RB Infra B.V.                     4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+RB Infra B.V.                     4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Recreapi B.V.                     4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Recreapi B.V.                     4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Recreapi B.V.                     4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Recreapi B.V.                     4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Recreatiecentrum Dijkstel B.V.    4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Recreatiecentrum Dijkstel B.V.    4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Recreatiecentrum Dijkstel B.V.    4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Recreatiecentrum Dijkstel B.V.    4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Rubicon Investments B.V.          4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Rubicon Investments B.V.          4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Rubicon Investments B.V.          4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Rubicon Investments B.V.          4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+SOW Vastgoed B.V.                 4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+SOW Vastgoed B.V.                 4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+SOW Vastgoed B.V.                 4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+SOW Vastgoed B.V.                 4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Stephanie Loeffen B.V.            4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Stephanie Loeffen B.V.            4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Stephanie Loeffen B.V.            4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Stephanie Loeffen B.V.            4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Stichting Shuto                   4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Stichting Shuto                   4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Stichting Shuto                   4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Stichting Shuto                   4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunfactory Beheer B.V.            4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunfactory Beheer B.V.            4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunfactory Beheer B.V.            4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunfactory Beheer B.V.            4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunset Beheer B.V.                4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunset Beheer B.V.                4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunset Beheer B.V.                4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunset Beheer B.V.                4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunshine Island B.V.              4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunshine Island B.V.              4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunshine Island B.V.              4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Sunshine Island B.V.              4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+T&J Hoveniers                     4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+T&J Hoveniers                     4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+T&J Hoveniers                     4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+T&J Hoveniers                     4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       2      34.45     0.00      0       0.00     0.00
+Totaal Ontruimingen               4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Totaal Ontruimingen               4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Totaal Ontruimingen               4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Totaal Ontruimingen               4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Tupker Beheer B.V.                4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Tupker Beheer B.V.                4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Tupker Beheer B.V.                4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Tupker Beheer B.V.                4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Materiaal B.V.          4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Materiaal B.V.          4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Materiaal B.V.          4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Materiaal B.V.          4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Nederland B.V.          4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Nederland B.V.          4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Nederland B.V.          4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Nederland B.V.          4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Steigerbouw B.V.        4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Steigerbouw B.V.        4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Steigerbouw B.V.        4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Steigerbouw B.V.        4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Verkoop B.V.            4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Verkoop B.V.            4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Verkoop B.V.            4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Universal Verkoop B.V.            4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Van Boxtel Horeca Exploitatie B.  4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Van Boxtel Horeca Exploitatie B.  4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Van Boxtel Horeca Exploitatie B.  4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Van Boxtel Horeca Exploitatie B.  4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Vastgoedgroep Nederland B.V.      4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Vastgoedgroep Nederland B.V.      4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Vastgoedgroep Nederland B.V.      4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Veldhoven Recreatie B.V.          4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Veldhoven Recreatie B.V.          4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Zilver Beheer B.V.                4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Zilver Beheer B.V.                4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Zilver Beheer B.V.                4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Zilver Beheer B.V.                4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Ziton Holding B.V.                4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Ziton Holding B.V.                4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Ziton Holding B.V.                4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Ziton Holding B.V.                4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Zonnestudio Elderveld B.V.        4014  Kantinekosten                             uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Zonnestudio Elderveld B.V.        4503  Kosten promotie/sponsoring                uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Zonnestudio Elderveld B.V.        4508  Relatiegeschenken (beperkt aftrekbaar)    uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+Zonnestudio Elderveld B.V.        4510  Representatiekosten (beperkt aftrekbaar)  uit  geen                  geen                       0       0.00     0.00      0       0.00     0.00
+TOTAAL 297 kandidaat-rekening(en) in 75 van 78 administratie(s) · 0 mét kenmerk aan · advies zetten: 149 · module 2 regel(s) netto 34.45 btw 0.00 · bank 1 regel(s) · 0 fout(en)
+RLZ-kant niet gemeten (lees-only, geen RLZ-call) — een RLZ-kant-meting is een aparte `--rlz`-stap (niet gebouwd).
+Container called exit(0).
+
+Oordeel: TOTAAL 297 kandidaat-rekening(en) in 75 van 78 administratie(s) · 0 mét kenmerk aan · advies zetten: 149 · 0 fout(en) — job-exit 0
