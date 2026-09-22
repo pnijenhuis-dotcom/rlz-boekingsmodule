@@ -14,8 +14,9 @@ Regels:
 - Saldo = Σ Debit − Credit over de journaalregels van die rekening(en) (RLZ `JournalEntryLines`, Odoo
   `account.move.line` posted); crediteuren als positief bedrag getoond (Credit − Debit). Datumgrens = NL-dag in UTC
   (les 14-09: een `Z`-literal op middernacht schuift een dag) — zonder `--datum` géén filter (alles t/m vandaag).
-- IC = Σ open bedrag (RLZ `BaseRemainingAmount` op Status 2, Odoo `amount_residual_signed` op posted/not paid) van de
-  verkoop- resp. inkoopfacturen op IC-entity's. Geen namen van debiteuren/crediteuren in de uitvoer (geen PII).
+- IC = Σ open bedrag (RLZ `BaseRemainingAmount` op Status 2 — CLIENT-SIDE getoetst, `Status` is een enum in `$filter`
+  (400, productie 22-09); Odoo `amount_residual_signed` op posted/not paid) van de verkoop- resp. inkoopfacturen op
+  IC-entity's. Geen namen van debiteuren/crediteuren in de uitvoer (geen PII).
 - Webfilter-blokkering (`RlzWebfilterError`) = status `ongeldig` voor díe administratie, nooit een fout in het totaal;
   geen credential/koppeling = `overgeslagen`; elke andere fout = `fout` mét de melding. Alles zichtbaar, niets stil.
 - Levering: lees-only CLI `groep-saldi --groep <naam|code> [--datum]` (nameting-allowlist) leest LIVE; de kaart op de
@@ -61,6 +62,20 @@ NAAM_DEBITEUREN = ("debiteuren", "debiteur")
 NAAM_CREDITEUREN = ("crediteuren", "crediteur")
 #: RLZ AccountType: 3 activa, 4 passiva (api-verkenning "Ledgers").
 ACTIVA, PASSIVA = 3, 4
+
+#: RLZ documentstatus (`GET DocumentStatuses`, CLAUDE.md § Reeleezee API): 1 concept, 2 open (geboekt, nog niet volledig
+#: afgeletterd), 3 gesloten. Alleen 2 telt als open post; in `$filter` is `Status` een enum (int-literal = 400) —
+#: daarom client-side.
+STATUS_OPEN = 2
+
+
+def _status_int(waarde: object) -> int | None:
+    """RLZ geeft `Status` in JSON als int (soms als string); onleesbaar = None (telt nooit als open)."""
+    try:
+        return int(str(waarde))
+    except (TypeError, ValueError):
+        return None
+
 
 GEEN_CREDENTIAL = "geen RLZ-credential in de store"
 GEEN_ODOO_KOPPELING = "geen Odoo-koppeling"
@@ -226,7 +241,12 @@ class RlzBron(Bron):
         if not ids:
             return NUL
         entity = " or ".join(f"Entity/id eq {e}" for e in ids)
-        filter_ = f"({entity}) and Status eq 2" if len(ids) > 1 else f"{entity} and Status eq 2"
+        # Productie 22-09 (nameting groepssaldi): `Status eq 2` in `$filter` = 400 "'Reeleezee.DTO.DocumentStatus' and
+        # 'Edm.Int32'" — `Status` is net als `AccountType` een enum (api-verkenning "Status is een enum in $filter —
+        # 22-09");
+        # de open-status wordt daarom CLIENT-SIDE getoetst (Status 2 = Open/geboekt-nog-niet-afgeletterd; 1 = concept
+        # draagt óók een BaseRemainingAmount en mag niet meetellen). Guard: tests/unit/test_rlz_filter_enum_guard.py.
+        filter_ = f"({entity})" if len(ids) > 1 else entity
         if tot_en_met is not None:
             filter_ += f" and Date lt {nl_dag_einde_utc(tot_en_met)}"
         collectie = "SalesInvoices" if kant == "debiteuren" else "PurchaseInvoices"
@@ -234,13 +254,15 @@ class RlzBron(Bron):
         for pagina in range(MAX_PAGINAS):
             params = {
                 "$filter": filter_,
-                "$select": "id,BaseRemainingAmount,IsCreditInvoice",
+                "$select": "id,Status,BaseRemainingAmount,IsCreditInvoice",
                 "$top": str(PAGINA),
                 "$skip": str(pagina * PAGINA),
             }
             antwoord = self.client.get(collectie, params=params)
             deel = antwoord.get("value", []) if isinstance(antwoord, dict) else []
             for rij in deel:
+                if _status_int(rij.get("Status")) != STATUS_OPEN:
+                    continue
                 bedrag = _decimal(rij.get("BaseRemainingAmount"))
                 if rij.get("IsCreditInvoice") and bedrag > 0:
                     bedrag = -bedrag

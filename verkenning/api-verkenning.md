@@ -2573,10 +2573,34 @@ aansluitingsblok. Instrument: `rlz-lezen --top` is begrensd op 50 (nameting = st
   Ledgers (`IsTotalAccount eq false`, `IsFixedAssetAccount eq true`, `AccountNumber ge '4400'`) werken wél (bewezen elders in dit bestand).
 - **Niet getest:** de enum-literal-vorm (`AccountType eq Reeleezee.DTO.AccountTypeEnum'3'` of `'Asset'`). Zonder STAP-0-bewijs niet gebruiken —
   client-side toetsen is deterministisch en bewezen. Guard: `backend/tests/unit/test_rlz_filter_enum_guard.py`.
-- Open vraag voor een STAP-0: gelden dezelfde enum-semantiek voor `Status` (documenten) en `DocumentType`? `Status eq 2` en `DocumentType eq 10`
-  worden nu wél in `$filter` gebruikt en geven in productie geen 400 (IC-blok, saldi.ic_open) — die zijn dus kennelijk Edm.Int32; alleen
-  `AccountType` staat in `ENUM_VELDEN`.
+- ~~Open vraag voor een STAP-0: gelden dezelfde enum-semantiek voor `Status` (documenten) en `DocumentType`? `Status eq 2` … geven in
+  productie geen 400~~ — **BEANTWOORD 22-09, en de aanname was FOUT:** `Status` is óók een enum (sectie hieronder). De 21-09-tekst zag
+  "geen 400" omdat `saldi.ic_open` vóór de fix nooit bereikt werd (de Ledgers-call ging eerder stuk). De tabel "Status is een enum-type"
+  (STAP-0 op de TEST-administratie, `Status eq 1` = 400) stond al eerder in dit bestand; les: eerst dit bestand doorzoeken vóór je een
+  veld als "kennelijk Edm.Int32" opschrijft. `DocumentType` wordt nergens in een `$filter` gebruikt (client-side in `factuurmatch`).
 - Zie BESLISSINGEN "GROEPSSALDI — PRODUCTIEFOUT 16→21-09 (enumfilter + deprecated)".
+
+## Status is een enum in `$filter` — int-literal = 400 (productie 22-09, nameting groepssaldi ná de fix van 21-09)
+
+**Bron:** de nachtelijke groepssaldi-stand van 22-09 (`sync-alles` 07:00 NL op image `fb63be5`, leesreplica `groep_saldo_stand`), 29 van 35
+leden van "Kempen groep" identiek, op `SalesInvoices` (17) én `PurchaseInvoices` (12):
+
+```
+GET /<admin>/PurchaseInvoices?$filter=Entity/id eq <guid> and Status eq 2&$select=id,BaseRemainingAmount,IsCreditInvoice&$top=200&$skip=0
+400 {"Message":"A binary operator with incompatible types was detected. Found operand types 'Reeleezee.DTO.DocumentStatus' and 'Edm.Int32'."}
+```
+
+- `Status` op documenten (Sales-/PurchaseInvoices, Receipts) is in het OData-model de enum `Reeleezee.DTO.DocumentStatus`; de JSON geeft 'm als
+  int (1 concept, 2 open, 3 gesloten — `GET DocumentStatuses`, ongewijzigd), maar een int-literal in `$filter` = 400. Consistent mét de
+  STAP-0-tabel hierboven ("Status is een enum-type; werkende vormen `Status eq '1'`, `Status eq 'Tentative'`,
+  `Status eq Reeleezee.DTO.DocumentStatus'1'`", 1 treffer op het concept) en mét `schoonlijst.py`/`rlz_dubbel.py`, die Status al client-side
+  toetsen.
+- **Keuze module:** client-side toetsen (`saldi.py::RlzBron.ic_open`: `Status` in `$select`, `_status_int(rij["Status"]) == STATUS_OPEN`),
+  geen string-literal-vorm — de `'2'`-vorm is alleen voor `'1'` op één concept bewezen en client-side is deterministisch én dezelfde lijn als
+  21-09. De 6 leden die op 22-09 wél `ok` waren hebben geen IC-entity's (de collectie wordt dan niet gelezen).
+- Guard `backend/tests/unit/test_rlz_filter_enum_guard.py`: `ENUM_VELDEN = ("AccountType", "Status")`; een regel die het 400-gedrag
+  beschrijft (docstring mét de statuscode) telt niet als filter.
+- Zie BESLISSINGEN "GROEPSSALDI — PRODUCTIEFOUT 16→21-09 (enumfilter + deprecated)" alinea "Gemeten 22-09".
 
 ## Activa — STAP-0 21-09 (fase 1 activa/MVA, akkoord Peter 21-09) — LEES-ONLY via `nameting.sh activa-nulmeting` + `rlz-lezen`, administraties Pilates Bloom B.V., Zilver Beheer B.V., Vastgoedgroep Nederland B.V.
 

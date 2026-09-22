@@ -100,9 +100,19 @@ class NepClient:
             rek = params["$filter"].split("Account/id eq ")[1].split(" ")[0]
             return {"value": [{"DebitAmount": d, "CreditAmount": c} for d, c in self.regels.get(rek, [])]}
         if pad in ("SalesInvoices", "PurchaseInvoices"):
-            assert "Status eq 2" in params["$filter"]
+            # Productie 22-09 (nameting): `Status eq 2` in $filter = 400 (`Reeleezee.DTO.DocumentStatus` vs Edm.Int32) —
+            # RLZ's gedrag nagespeeld; de open-status wordt client-side getoetst, dus `Status` moet in $select staan.
+            if re.search(r"\bStatus\s+(eq|ne)\s+\d", params["$filter"]):
+                raise RuntimeError(
+                    f"GET /{pad} -> 400: A binary operator with incompatible types was detected. Found operand types "
+                    "'Reeleezee.DTO.DocumentStatus' and 'Edm.Int32'."
+                )
+            assert "Status" in params["$select"].split(","), params["$select"]
+            assert "$skip" in params
             bron = self.verkoop_open if pad == "SalesInvoices" else self.inkoop_open
             ids = re.findall(r"Entity/id eq ([0-9a-f-]{36})", params["$filter"])
+            if int(params["$skip"]) > 0:
+                return {"value": []}
             return {"value": [r for r in bron if str(r["Entity"]) in ids]}
         raise AssertionError(pad)
 
@@ -121,11 +131,20 @@ def _nep_client() -> NepClient:
             "c1": [("0", "3000.00"), ("500.00", "0"), ("0", "0.30")],  # crediteuren 2.500,30 (credit − debit)
         },
         verkoop_open=[
-            {"Entity": IC_ENTITY, "BaseRemainingAmount": "400.10"},
-            {"Entity": IC_ENTITY, "BaseRemainingAmount": "50.00", "IsCreditInvoice": True},
-            {"Entity": uuid.uuid4(), "BaseRemainingAmount": "999.00"},  # geen IC — telt niet
+            {"Entity": IC_ENTITY, "Status": 2, "BaseRemainingAmount": "400.10"},
+            {"Entity": IC_ENTITY, "Status": 2, "BaseRemainingAmount": "50.00", "IsCreditInvoice": True},
+            {"Entity": uuid.uuid4(), "Status": 2, "BaseRemainingAmount": "999.00"},  # geen IC — telt niet
+            {
+                "Entity": IC_ENTITY,
+                "Status": 1,
+                "BaseRemainingAmount": "777.00",
+            },  # concept: open bedrag = héle factuur, telt niet
+            {"Entity": IC_ENTITY, "Status": 3, "BaseRemainingAmount": "0.00"},  # gesloten: telt niet
         ],
-        inkoop_open=[{"Entity": IC_ENTITY_CRED, "BaseRemainingAmount": "1200.00"}],
+        inkoop_open=[
+            {"Entity": IC_ENTITY_CRED, "Status": "2", "BaseRemainingAmount": "1200.00"},  # Status als string: telt wél
+            {"Entity": IC_ENTITY_CRED, "Status": 1, "BaseRemainingAmount": "5000.00"},  # concept: telt niet
+        ],
     )
 
 
@@ -423,6 +442,51 @@ class TestRlzLedgersFilter:
             administratie_id, "X", groepsleden=[], tot_en_met=None, bron=saldi.RlzBron(Weigert())
         )
         assert rij.status == "fout" and "AccountTypeEnum" in (rij.detail or "")
+
+
+class TestRlzOpenPostenFilter:
+    """BUG 22-09 (nameting ná de fix van 21-09: 29/35 leden `fout`): RLZ weigert óók `Status eq 2` op
+    Sales-/PurchaseInvoices (`Reeleezee.DTO.DocumentStatus` vs Edm.Int32, 400) — de open-status wordt client-side
+    getoetst, `Status` staat in `$select`, de collectie wordt gepagineerd gelezen."""
+
+    def test_filter_zonder_status_en_alleen_status_2_telt(self) -> None:
+        client = _nep_client()
+        bron = saldi.RlzBron(client)
+        assert bron.ic_open([IC_ENTITY], kant="debiteuren", tot_en_met=None) == Decimal("350.10")
+        assert bron.ic_open([IC_ENTITY_CRED], kant="crediteuren", tot_en_met=None) == Decimal("1200.00")
+        filters = [p["$filter"] for pad, p in client.calls if pad in ("SalesInvoices", "PurchaseInvoices")]
+        assert filters and all("Status" not in f for f in filters), filters
+        assert filters[0] == f"Entity/id eq {IC_ENTITY}"
+
+    def test_filter_met_meer_entiteiten_en_datumgrens(self) -> None:
+        client = _nep_client()
+        bron = saldi.RlzBron(client)
+        bron.ic_open([IC_ENTITY, IC_ENTITY_CRED], kant="debiteuren", tot_en_met=date(2026, 9, 16))
+        (filter_,) = [p["$filter"] for pad, p in client.calls if pad == "SalesInvoices"]
+        assert (
+            filter_ == f"(Entity/id eq {IC_ENTITY} or Entity/id eq {IC_ENTITY_CRED}) and Date lt 2026-09-16T22:00:00Z"
+        )
+
+    def test_rlz_400_op_open_posten_blijft_zichtbaar_als_fout(self, administratie_id: uuid.UUID) -> None:
+        """De vorm van 21-09 (`Status eq 2` in de filter) tegen de stub = precies de productiefout van 22-09; en een
+        400 op de open posten wordt een `fout`-regel mét de RLZ-melding, nooit een exception naar de groep."""
+        with pytest.raises(RuntimeError, match="DocumentStatus"):
+            _nep_client().get(
+                "PurchaseInvoices",
+                {"$filter": f"Entity/id eq {IC_ENTITY_CRED} and Status eq 2", "$select": "id", "$skip": "0"},
+            )
+
+        class OpenPostenWeigeren(saldi.RlzBron):
+            def ic_open(self, entity_ids, *, kant, tot_en_met):  # noqa: ANN001
+                raise RuntimeError(
+                    "GET /x/PurchaseInvoices -> 400: A binary operator with incompatible types was detected. "
+                    "Found operand types 'Reeleezee.DTO.DocumentStatus' and 'Edm.Int32'."
+                )
+
+        rij = saldi.meet_administratie(
+            administratie_id, "X", groepsleden=[], tot_en_met=None, bron=OpenPostenWeigeren(_nep_client())
+        )
+        assert rij.status == "fout" and "DocumentStatus" in (rij.detail or "")
 
 
 class TestOdooDomein:
