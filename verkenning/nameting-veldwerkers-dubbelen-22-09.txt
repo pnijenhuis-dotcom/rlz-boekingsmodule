@@ -1,0 +1,9 @@
+== veldwerkers-dubbelen --alles (lees-only, harde sleutels) ==
+Dubbele veldwerkers — 1 administratie(s). LEES-ONLY op harde sleutels (KvK, IBAN via crediteur, e-mail); naamgelijkenis/planningspatroon telt NOOIT (correctie Peter 21-09). Geen write, geen samenvoegen.
+== Universal Steigerbouw B.V. (3ee6edf0-5cb8-4f98-bba1-16fb97ae6873) — 46 veldwerker(s) in scope · 0 mét KvK · 0 mét IBAN via crediteur · 0 kandidaat-cluster(s)
+  geen kandidaten op harde sleutels (KvK, IBAN, e-mail)
+  niet toetsbaar: telefoon — geen telefoonveld op platform.gebruiker — niet toetsbaar (geen bron, geen signaal)
+TOTAAL 0 kandidaat-cluster(s) over 46 veldwerker(s) in 1 administratie(s) · 0 fout(en). Beoordelen = klikpunt Peter; deze CLI schrijft niets.
+Container called exit(0).
+
+Oordeel: TOTAAL 0 kandidaat-cluster(s) over 46 veldwerker(s) in 1 administratie(s) · 0 fout(en) — job-exit 0
