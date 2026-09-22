@@ -215,6 +215,28 @@ class TestCliBlok:
         code, verzamelaar, uit = self._run(FakeBoekClient())
         assert code == 0 and verzamelaar.bevindingen == [] and "0 administratie(s)" in uit[-1]
 
+    def test_lees_only_run_schrijft_de_probe_stand_niet(self, stamgegevens: None, administratie_id: uuid.UUID) -> None:
+        """Nameting 22-09: `reconciliatie-alles --alleen activa --lees-only` meldde "niets vastgelegd" maar zette op
+        75 administraties `register_geprobeerd_op` op het meetmoment (leesreplica 10:18 UTC). Lees-only = verzamelaar
+        None → de probe doet alleen de GET; een echte run (verzamelaar) schrijft de stand wél."""
+        from app.activa import instelling as instelling_service
+        from app.db.session import scoped_session
+
+        client = FakeBoekClient()
+        client.fixed_assets_403 = True
+        uit: list[str] = []
+        code = rec.cli_blok(ARGS, verzamelaar=None, stdout=uit.append, client_voor=lambda aid: client)
+        assert code == 1 and any("activa_register_niet_leesbaar" in regel for regel in uit)
+        with scoped_session(administratie_id) as session:
+            stand = instelling_service.lees_stand(session, administratie_id)
+            assert stand.register_geprobeerd_op is None and stand.register_leesbaar is None
+        # tegenproef: de echte run legt de stand wél vast
+        code, _verzamelaar, _ = self._run(client)
+        assert code == 1
+        with scoped_session(administratie_id) as session:
+            stand = instelling_service.lees_stand(session, administratie_id)
+            assert stand.register_leesbaar is False and stand.register_geprobeerd_op is not None
+
     def test_403_is_afwijking_register_niet_leesbaar_met_handeling(
         self, stamgegevens: None, administratie_id: uuid.UUID
     ) -> None:

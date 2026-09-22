@@ -127,6 +127,19 @@ class TestBronLezers:
             stand = instelling_service.lees_stand(session, administratie_id)
             assert stand.register_leesbaar is False and "recht ontbreekt (403)" in (stand.register_fout or "")
 
+    def test_probe_zonder_schrijven_raakt_de_instelling_niet(
+        self, stamgegevens: None, administratie_id: uuid.UUID
+    ) -> None:
+        """`schrijf=False` (lees-only reconciliatie, 22-09): antwoord wél, rij niet — ook geen nieuwe rij."""
+        client = FakeBoekClient()
+        with scoped_session(administratie_id) as session:
+            assert instelling_service.probe_register(session, client, administratie_id, schrijf=False) is True
+            client.fixed_assets_403 = True
+            assert instelling_service.probe_register(session, client, administratie_id, schrijf=False) is False
+            stand = instelling_service.lees_stand(session, administratie_id)
+            assert stand.register_leesbaar is None and stand.register_geprobeerd_op is None
+            assert session.get(ActivaInstelling, administratie_id) is None
+
     def test_probe_andere_fout_laat_stand_onbekend_maar_noteert(
         self, stamgegevens: None, administratie_id: uuid.UUID
     ) -> None:

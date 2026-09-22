@@ -34,7 +34,7 @@ class TestBibliotheek:
         alle = bibliotheek.laad_alle()
         verwacht = {
             "document-feiten", "bankmutatie-feiten", "reconciliatie-bevindingen", "sync-status", "project-cache",
-            "whitelist-doelen", "documenten-zonder", "correcties",
+            "whitelist-doelen", "documenten-zonder", "correcties", "activa-stand",
         }
         assert verwacht <= set(alle)
         for q in alle.values():

@@ -388,7 +388,8 @@ def cli_blok(
         if client is not None:
             try:
                 with scoped_session(aid) as session:
-                    leesbaar = instelling_service.probe_register(session, client, aid)
+                    # lees-only (verzamelaar None) = niets vastleggen, ook de probe-stand niet (nameting 22-09)
+                    leesbaar = instelling_service.probe_register(session, client, aid, schrijf=verzamelaar is not None)
                 if leesbaar:
                     activa = register.lees_activa(client)
                 else:

@@ -292,10 +292,28 @@ def ververs_rlz_grens(session: Session, client, administratie_id: uuid.UUID) -> 
     return grens
 
 
-def probe_register(session: Session, client, administratie_id: uuid.UUID) -> bool:  # noqa: ANN001
+def probe_register(
+    session: Session,
+    client,  # noqa: ANN001
+    administratie_id: uuid.UUID,
+    *,
+    schrijf: bool = True,
+) -> bool:
     """Is `FixedAssets` leesbaar met deze login? Schrijft `register_leesbaar` + `register_fout` + tijdstip. Andere
     fouten dan 403 (netwerk, 500) worden als `register_fout` genoteerd zonder de leesbaar-stand te veranderen naar
-    False (onbekend blijft onbekend als er nog niets gemeten was)."""
+    False (onbekend blijft onbekend als er nog niets gemeten was).
+
+    `schrijf=False` (nameting 22-09): alleen de GET, niets in `activa_instelling` — de lees-only reconciliatie
+    (`reconciliatie-alles --lees-only`) beloofde "niets vastgelegd" maar schreef tot 22-09 wél de probe-stand."""
+    if not schrijf:
+        try:
+            client.get_fixed_assets(params={"$top": "1"})
+        except RlzApiError as exc:
+            if exc.status_code == 403:
+                return False
+            # andere fout: de opgeslagen stand (indien aanwezig) blijft leidend, onbekend = niet leesbaar
+            return bool(lees_stand(session, administratie_id).register_leesbaar)
+        return True
     rij = _rij_of_nieuw(session, administratie_id)
     rij.register_geprobeerd_op = datetime.now(UTC)
     try:
