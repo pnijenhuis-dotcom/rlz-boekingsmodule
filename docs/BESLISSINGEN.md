@@ -12219,7 +12219,7 @@ leesbaar", bevinding `activa_register_niet_leesbaar` in `meten`).
 
 ## VGG — BESLISPUNT 1 BESLIST: TOEWIJZING PAND + SOORT VERKOOP RLZ-01-00000082 (Peter 21-09)
 
-**Status: GEBOUWD 21-09 (CLI + tests); UITGEVOERD 22-09 — toewijzing werkt in productie: JA (pand `schoffelstraat-29` + pand_boeking `verkoop` op de leesreplica, idempotent bevestigd); `plan` toont het bewijspaar vertaalbaar: JA; SCHRIJF c: NEE — gestrand op stap 3 (Odoo 500 `invalid literal for int(): 'pand:schoffelstraat-29'`, niets gepost), instrumentfout gefixt + guard in dezelfde run, poging 2 ná deploy (`opdrachten/inbox/2026-09-22-vgg-schrijf-c-poging-2-na-deploy-pand-analytic.md`) — zie alinea "Uitgevoerd 22-09" hieronder en rapport `docs/rapporten/2026-09-22-vgg-toewijzing-schoffelstraat-schrijf-c.md`.**
+**Status: GEBOUWD 21-09 (CLI + tests); UITGEVOERD 22-09 — toewijzing werkt in productie: JA (pand `schoffelstraat-29` + pand_boeking `verkoop` op de leesreplica, idempotent bevestigd); `plan` toont het bewijspaar vertaalbaar: JA; SCHRIJF c: poging 1 NEE (gestrand op stap 3, Odoo 500 `invalid literal for int(): 'pand:schoffelstraat-29'`, niets gepost; instrumentfout gefixt + guard), **poging 2 (22-09 avond) JA — bewijspaar GEPOST als F/2026/00001, analytic 851, concept 3370 hersteld; reconcile niet uitgevoerd (IBAN BNK1 leeg), per-pand-sluit-eis niet gehaald (beslispunt 2) → GO-vraag SCHRIJF d = rapport `docs/rapporten/2026-09-22-vgg-schrijf-c-poging-2.md`** — zie alinea "Uitgevoerd 22-09" hieronder en rapport `docs/rapporten/2026-09-22-vgg-toewijzing-schoffelstraat-schrijf-c.md`.**
 
 **Besluit Peter 21-09:** beslispunt 1 uit "VGG — CONCEPT → AUTO-POSTEN NÁ GROENE TOETS (Peter 17-09)" alinea "Plan + zesde meting 17-09 avond" is
 beslist als **Toewijzing pand + soort `verkoop`** (het advies), niet als expliciete mapping 8000. Het bewijspaar RLZ-01-00000082 (Receipt,
@@ -12299,6 +12299,27 @@ GO Peter op dat rapport vóór SCHRIJF d.
    soort `balans`/voorstel midden) — ongemapte ledgers = beslispunt 2, geen tweede toewijzing door een CC-run; de JSON-bijlage toont letterlijk
    `"analytic_distribution": {"pand:schoffelstraat-29": 100}` op account 3608 (bevestigt de oorzaak van punt 3). Replay-oordeel blijft ROOD op
    uitsluitend de drie afletter-groepen (ongewijzigd sinds de vijfde meting).
+
+**Poging 2 22-09 avond (opdracht `2026-09-22-vgg-schrijf-c-poging-2-na-deploy-pand-analytic`, job-image `cc9936b` ≥ fix `cb9ba7d`, service = job; poging 1 van
+de opdracht (20:32) haalde de poort niet zonder werk → WIP-branch mét alleen de bestandsverplaatsing):**
+1. **`plan` — fix LIVE:** stap0-dry-run (`rlz-reconciliatie-c2xv2`) toont ná "ZOU POSTEN (bewijspaar)" de regel "analytic pand:schoffelstraat-29 → ZOU aanmaken
+   (Schoffelstraat 29, plan 1)"; migratie-dry-run (`-2nmpn`) fase A `pand-analytics` 39, fase B pand-eis afwijkingen 41 (ongewijzigd t.o.v. 13:32); migratiedoel
+   idempotent, rollen bestaand. IBAN BNK1 nog leeg.
+2. **SCHRIJF c — werkt in productie: JA** (`rlz-reconciliatie-8j7ch`, 20:58 NL, exit 0): partners 275/276 hergebruikt (naam/iban), concept 3369 bestaand (draft),
+   **analytic 851 aangemaakt** (`account.analytic.account` code `schoffelstraat-29`, naam "Schoffelstraat 29", plan 1, company 6), **concept 3370 "1 regel(s) analytic
+   hersteld (bestaand concept droeg de pseudo-sleutel)"** (regel 7392 `{"pand:schoffelstraat-29": 100}` → `{"851": 100}`), **→ GEPOST als F/2026/00001 (posted, 19-03-2026,
+   € 400.000,00)**; stap 4/5/6 overgeslagen (IBAN BNK1 leeg — klikpunt). Stand company 6: partners 2 (0 nieuw), account.move 2 (1 posted, 1 draft), statement lines 0.
+   Audit replica (`platform.audit_event`, 18:58:55–59 UTC): `partner_hergebruikt` 2, `move_bestaat` 2, `analytic_aangemaakt` 1, `regel_analytic_hersteld` 1 (oud =
+   pseudo-sleutel), `move_gepost` 1 — exact de verwachte tellers. Nummerformaat: dagboek F nummert `F/JJJJ/NNNNN` (de verwachtingstekst "F/2026/03/…" was een aanname).
+3. **GO-vraag SCHRIJF d (rapport `docs/rapporten/2026-09-22-vgg-schrijf-c-poging-2.md` §5):** bewezen = het schrijfpad t/m posten, idempotent en geaudit; NIET bewezen =
+   (a) reconcile (IBAN), (b) **de per-pand-sluit-eis (7d) — een data-eis, geen IBAN-eis:** Schoffelstraat 29 sluit niet (Δ € 349.047,91, aankoop-memorialen
+   RLZ-06-00000110/174 op ongemapte 1100/1601 = beslispunt 2), 41 panden rood in fase B → **`SCHRIJF d` zou vandaag fase A aanmaken en niets posten** (bedoeld gedrag).
+   CC-advies: GO pas ná beslispunt 2 (mapping via `odoo-koppeling-migratiedoel`, `plan` toont B groen of benoemde opruimpunten) én IBAN BNK1 (daarna eerst een herhaalde
+   idempotente `SCHRIJF c` voor stap 4/5/6). Klikpunten in het rapport §7.
+4. **Achtste meting (nameting-run 35770964986, onderdeel c, bot `0d5e374`):** byte-identiek aan de zevende meting op tijdstip en wachttijd na (2 regels) — het
+   posten in Odoo raakt de RLZ-replay niet; pand-eis Schoffelstraat 29 ongewijzigd rood (Δ 349.047,91). Onderdeel c leest de Odoo-boekhouding niet; de Odoo-stand
+   (posted, F/2026/00001, € 400.000,00) is bewezen door de terug-lees van SCHRIJF c zelf. Een lees-only Odoo-kant-saldibalans als dispatch-onderdeel bestaat niet
+   (aparte opdracht als Peter dat wil).
 
 ## BUA-KENMERK — LEES-ONLY METING + BULK-VOORSTEL (Peter 21-09)
 

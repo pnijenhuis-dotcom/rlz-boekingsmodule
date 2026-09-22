@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-22 (avond, poging 2), rapport: docs/rapporten/2026-09-22-vgg-schrijf-c-poging-2.md
+
 Domeinen: vgg-odoo-migratie, werkloop-productie
 niet vóór: 2026-09-22 16:00
 
