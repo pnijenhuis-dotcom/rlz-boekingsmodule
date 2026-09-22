@@ -31,6 +31,7 @@ from app.documenten.checks import (
     TariefInfo,
     check_afdeling,
     check_betaalstatus_declaraties,
+    check_btw_niet_plichtig,
     check_btw_past_bij_tarief,
     check_buitenland_tarief_crediteurkaart,
     check_duplicaat,
@@ -758,6 +759,18 @@ def _project_verplicht(administratie_id: uuid.UUID) -> bool:
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)
         return administratie.project_verplicht if administratie else False
+
+
+def _btw_plichtig_en_geen_btw(administratie_id: uuid.UUID) -> tuple[bool, uuid.UUID | None]:
+    """22-09 (BUG Peter, casus VGG / Lacy Lion): (btw_plichtig, "geen btw"-code) voor de harde checks — lokaal, in beide
+    rapport-takken. Onbekende administratie = (True, None) = bestaand gedrag."""
+    from app.beheer.btw_plichtig import geen_btw_taxrate_voor
+
+    with scoped_session(administratie_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None or administratie.btw_plichtig:
+            return True, None
+        return False, geen_btw_taxrate_voor(session, administratie_id)
 
 
 def _voorkeur_samenvoegen(session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None) -> bool | None:
@@ -2351,6 +2364,8 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
     IBAN-rij BLOKKEREND met die leesbare tekst (de seed kan niet draaien; een wissel is niet uit te sluiten), i.p.v.
     "niets te vergelijken"."""
     regels = _naar_check_regels(voorstel, _taxrate_percentages(administratie_id))
+    btw_plichtig, geen_btw_id = _btw_plichtig_en_geen_btw(administratie_id)
+    tarieven = _taxrate_info(administratie_id)
     vertrouwd: set[str] = set()
     if voorstel.vendor_id is not None:
         vertrouwd = leverancier_iban.vertrouwde_ibans(administratie_id=administratie_id, vendor_id=voorstel.vendor_id)
@@ -2368,6 +2383,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 totaalbedrag=voorstel.totaalbedrag,
                 regels=regels,
                 project_verplicht=_project_verplicht_per_regel(project_verplicht, voorstel),
+                btw_plichtig=btw_plichtig,
             ),
             _afdeling_check(administratie_id=administratie_id, voorstel=voorstel),
             check_betaalstatus_declaraties(kanaal=voorstel.intake_kanaal, betaalstatus=voorstel.betaalstatus),
@@ -2381,7 +2397,13 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
             ),
             # 18-09: btw-bedrag volgt het tarief — lokaal, dus óók in de storings-tak.
             check_btw_past_bij_tarief(
-                regels=regels, tarieven=_taxrate_info(administratie_id), samengevoegd_n=samengevoegd_n
+                regels=regels, tarieven=tarieven, samengevoegd_n=samengevoegd_n, btw_plichtig=btw_plichtig
+            ),
+            # 22-09: niet-btw-plichtige administratie — lokaal, dus óók in de storings-tak.
+            *(
+                []
+                if btw_plichtig
+                else [check_btw_niet_plichtig(regels=regels, tarieven=tarieven, geen_btw_taxrate_id=geen_btw_id)]
             ),
             check_vervaldatum(factuurdatum=voorstel.factuurdatum, vervaldatum=voorstel.vervaldatum),
             check_buitenland_tarief_crediteurkaart(
@@ -2628,6 +2650,7 @@ def voer_checks_uit(
         )
 
     assert ext.duplicaat is not None and ext.duplicaat_over_crediteuren is not None
+    btw_plichtig, geen_btw_id = _btw_plichtig_en_geen_btw(administratie_id)
     rapport = voer_harde_checks_uit(
         client=None,
         vendor_id=voorstel.vendor_id,
@@ -2655,6 +2678,8 @@ def voer_checks_uit(
         samengevoegd_n=_samengevoegd_n(voorstel, veldvoorstel),
         duplicaat_resultaat=ext.duplicaat,
         duplicaat_over_crediteuren_resultaat=ext.duplicaat_over_crediteuren,
+        btw_plichtig=btw_plichtig,
+        geen_btw_taxrate_id=geen_btw_id,
     )
     # Blok A 28-08: afdeling-check direct ná de verplichte velden (zelfde plek als in de
     # storings-tak), vóór de RLZ-afhankelijke checks.

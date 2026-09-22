@@ -258,6 +258,39 @@ def check_creditnota_herleiding(
     )
 
 
+NAAM_BTW_NIET_PLICHTIG = "Btw in niet-btw-plichtige administratie"
+
+
+def check_btw_niet_plichtig_verkoop(*, regels: list[VerkoopCheckRegel]) -> CheckResultaat:
+    """22-09 (BUG Peter, casus VGG / Lacy Lion; zelfde regel op de verkoopkant): in een niet-btw-plichtige
+    administratie is élke regel mét btw-bedrag ≠ 0, een tarief mét percentage > 0 of een verlegd-tarief BLOKKEREND —
+    RLZ wikkelt daar geen btw af en de debiteurpost zou te laag zijn. Bruto in de omzet, btw 0, "geen btw"-code."""
+    fouten: list[str] = []
+    for r in regels:
+        redenen: list[str] = []
+        if r.btw_bedrag is not None and r.btw_bedrag != 0:
+            redenen.append(f"btw € {r.btw_bedrag}")
+        if r.taxrate_id_bekend and r.taxrate_in_cache:
+            if r.taxrate_percentage is not None and r.taxrate_percentage > 0:
+                redenen.append(f"tarief {(r.taxrate_percentage * 100).normalize():f} %")
+            if r.taxrate_is_verlegd:
+                redenen.append("verlegd-tarief")
+        if redenen:
+            fouten.append(f"regel {r.volgnummer}: {', '.join(redenen)}")
+    if fouten:
+        return CheckResultaat(
+            naam=NAAM_BTW_NIET_PLICHTIG,
+            ok=False,
+            melding="Deze administratie is niet btw-plichtig — btw bestaat hier niet; zet het bedrag bruto in de omzet "
+            "met btw 0 en de btw-code 'geen btw': " + "; ".join(fouten),
+        )
+    return CheckResultaat(
+        naam=NAAM_BTW_NIET_PLICHTIG,
+        ok=True,
+        melding="Administratie is niet btw-plichtig — alle regels zonder btw (bruto in de omzet)",
+    )
+
+
 def voer_verkoop_checks_uit(
     *,
     debiteur_naam: str | None,
@@ -270,9 +303,12 @@ def voer_verkoop_checks_uit(
     is_creditnota: bool,
     gecrediteerd_factuurnummer: str | None,
     origineel_geboekt: bool,
+    btw_plichtig: bool = True,
 ) -> CheckRapport:
     """Vaste volgorde, alle checks draaien altijd (geen short-circuit — de controleur ziet het
-    volledige rapport in één keer, mockup #review-patroon)."""
+    volledige rapport in één keer, mockup #review-patroon). `btw_plichtig=False` (22-09) voegt de rij "Btw in
+    niet-btw-plichtige administratie" toe direct ná de factuur-btw-check."""
+    niet_plichtig = [] if btw_plichtig else [check_btw_niet_plichtig_verkoop(regels=regels)]
     resultaten = (
         check_verplichte_velden_verkoop(
             debiteur_naam=debiteur_naam,
@@ -284,6 +320,7 @@ def voer_verkoop_checks_uit(
         check_regelsom_verkoop(totaalbedrag_incl=totaalbedrag_incl, regels=regels),
         check_gb_codes_bekend(regels=regels),
         check_btw_uit_factuur(regels=regels),
+        *niet_plichtig,
         check_geen_ankerdebiteur(debiteur_naam=debiteur_naam),
         check_duplicaat_verkoop(
             lokale_hits=lokale_duplicaat_hits,

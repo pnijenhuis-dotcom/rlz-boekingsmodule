@@ -618,6 +618,7 @@ def voer_omzet_checks_uit(
         bandbreedte_procentpunt=Decimal(str(settings.omzet_marge_bandbreedte_procentpunt)),
     )
     rapport = _met_bron_controles(rapport, voorstel.bron_detail)
+    rapport = _met_niet_btw_plichtig(rapport, administratie_id=administratie_id, regels=voorstel.regels)
     from app.omzet import categorie as categorie_service
 
     if categorie_check is None:
@@ -627,6 +628,51 @@ def voer_omzet_checks_uit(
             melding="Omzetcategorie nog niet gecontroleerd (periode ontbreekt of geen RLZ-verbinding)",
         )
     return CheckRapport((*rapport.resultaten, categorie_check))
+
+
+NAAM_BTW_NIET_PLICHTIG = "Btw in niet-btw-plichtige administratie"
+
+
+def _met_niet_btw_plichtig(
+    rapport: CheckRapport, *, administratie_id: uuid.UUID, regels: list[OmzetRegelData]
+) -> CheckRapport:
+    """22-09 (BUG Peter, casus VGG / Lacy Lion): in een NIET-btw-plichtige administratie wordt het kassabedrag bruto
+    geboekt (`boeken._taxrate_percentages` → 0); een categorie mét een tarief > 0 % / verlegd is dan BLOKKEREND
+    (de mens kiest 'geen btw' in de categorie-mapping). Btw-plichtig = geen extra rij."""
+    from app.db.models import Administratie
+    from app.sync.btw import taxrate_vlaggen
+    from app.sync.models import TaxRateCache
+
+    with scoped_session(administratie_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None or administratie.btw_plichtig:
+            return rapport
+        tarieven = {
+            t.id: t
+            for t in session.scalars(select(TaxRateCache).where(TaxRateCache.administratie_id == administratie_id))
+        }
+    fouten: list[str] = []
+    for r in regels:
+        if r.taxrate_id is None:
+            continue
+        t = tarieven.get(r.taxrate_id)
+        if t is None:
+            continue
+        verlegd, _ = taxrate_vlaggen(t.brondata)
+        if (t.percentage is not None and t.percentage > 0) or verlegd:
+            fouten.append(f"{r.categorie}: {t.naam or r.taxrate_id}")
+    if fouten:
+        rij = CheckResultaat(
+            NAAM_BTW_NIET_PLICHTIG,
+            False,
+            "Deze administratie is niet btw-plichtig — het kassabedrag gaat bruto in de omzet; kies per categorie de "
+            "btw-code 'geen btw' (vrijgesteld/0 %): " + "; ".join(fouten),
+        )
+    else:
+        rij = CheckResultaat(
+            NAAM_BTW_NIET_PLICHTIG, True, "Administratie is niet btw-plichtig — omzet bruto, geen btw-splitsing"
+        )
+    return CheckRapport((*rapport.resultaten, rij))
 
 
 def _met_bron_controles(rapport: CheckRapport, bron_detail: dict | None) -> CheckRapport:

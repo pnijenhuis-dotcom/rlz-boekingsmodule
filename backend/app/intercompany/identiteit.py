@@ -70,6 +70,10 @@ class Identiteit:
     naam_norm: str
     sbi: str | None
     bron: str  # 'rlz' | 'odoo'
+    # 22-09 (BUG Peter, casus VGG / Lacy Lion): RLZ `AdministrationSettings.EnableTaxReporting` (STAP-0 22-09: VGG
+    # false, Kempen Facilities/Rubicon/Arvum true) — het btw-status-signaal voor `app/beheer/btw_plichtig.py`.
+    # None = niet leesbaar / Odoo.
+    enable_tax_reporting: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +92,7 @@ def lees_identiteit_rlz(client: Any) -> Identiteit:
     rij = rijen[0] if rijen else (antwoord if isinstance(antwoord, dict) and "CompanyName" in antwoord else {})
     naam = " ".join(str(rij.get("CompanyName") or "").split()) or None
     sbi = str(rij.get("StandardBusinessIdentification") or "").strip() or None
+    etr = rij.get("EnableTaxReporting")
     return Identiteit(
         kvk=normaliseer_kvk_nummer(str(rij.get("ChamberOfCommerceNumber") or "")),
         btw=None,
@@ -95,6 +100,7 @@ def lees_identiteit_rlz(client: Any) -> Identiteit:
         naam_norm=naam_norm(naam),
         sbi=sbi,
         bron="rlz",
+        enable_tax_reporting=bool(etr) if isinstance(etr, bool) else None,
     )
 
 
@@ -188,7 +194,22 @@ def sync_identiteiten(
             uitkomsten.append(IdentiteitUitkomst(aid, naam, "fout", melding=f"{type(exc).__name__}: {exc}"))
             continue
         stand = upsert_identiteit(aid, identiteit)
-        uitkomsten.append(IdentiteitUitkomst(aid, naam, stand, identiteit=identiteit))
+        melding = None
+        # 22-09: btw-status-signaal uit dezelfde AdministrationSettings-call — nooit een stop van de identiteit-sync.
+        try:
+            from app.beheer import btw_plichtig
+            from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+
+            btw_stand = btw_plichtig.volg_rlz_signaal(
+                administratie_id=aid, enable_tax_reporting=identiteit.enable_tax_reporting, actor_id=SYSTEEM_ACTOR_ID
+            )
+            if btw_stand == "bevestigd_rlz":
+                melding = "btw-plichtig bevestigd uit RLZ (EnableTaxReporting)"
+            elif btw_stand == "signaal_opgeslagen" and identiteit.enable_tax_reporting is False:
+                melding = "RLZ EnableTaxReporting=false — kandidaat 'niet btw-plichtig', bevestig de btw-status"
+        except Exception as exc:  # noqa: BLE001 — zichtbaar, nooit stop
+            melding = f"btw-status-signaal niet verwerkt: {type(exc).__name__}: {exc}"
+        uitkomsten.append(IdentiteitUitkomst(aid, naam, stand, identiteit=identiteit, melding=melding))
     return uitkomsten
 
 

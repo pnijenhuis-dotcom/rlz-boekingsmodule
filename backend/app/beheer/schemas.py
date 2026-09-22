@@ -190,6 +190,10 @@ class AdministratieInstellingenDto(BaseModel):
     probe_groen: bool | None = None
     # Facturatiemodule niet afgenomen (migratie 0093, 01-09): SalesInvoices-403 bij de probe.
     verkoopmodule_afwezig: bool = False
+    # Btw-plichtig (BUG Peter 22-09, migratie 0170): False = btw in de kosten + harde check; bron 'rlz' | 'mens' | None.
+    btw_plichtig: bool = True
+    btw_plichtig_bron: str | None = None
+    btw_plichtig_rlz_signaal: bool | None = None
     # Boekhoud-backend (migratie 0101): 'rlz' | 'odoo' + Odoo-koppelstand (company, label, sleutel-vervaldatum,
     # probe) — nooit de API-key.
     boekhoud_backend: str = "rlz"

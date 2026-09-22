@@ -95,6 +95,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.beheer.btw_plichtig import BTW_BRON_NIET_PLICHTIG, CHIP_TEKST, geen_btw_taxrate_voor
 from app.db.models import Administratie, Grootboekrekening
 from app.documenten.checks import is_buitenland_tarief
 from app.documenten.regelsom import zet_btw_in_kosten
@@ -472,6 +473,36 @@ def _met_aftrek_uitgesloten(
     )
 
 
+def _met_niet_btw_plichtig(
+    regel: BoekvoorstelRegelData, *, geen_btw_taxrate_id: uuid.UUID | None
+) -> BoekvoorstelRegelData:
+    """LAATSTE stap (BUG Peter 22-09, casus VGG / Studio Lacy Lion 2026-042 → RLZ-04-00000925) voor een NIET-btw-plichtige
+    administratie: btw bestaat daar niet — élke regel gaat op bruto (netto := netto + factuur-btw, btw 0,00) mét de
+    "geen btw"-code van de administratie (vrijgesteld > NL 0 % > leeg, `app/beheer/btw_plichtig.py`), chip
+    "administratie niet btw-plichtig — btw zit in de kosten". Wint van élke andere prefill-bron (factuur, geheugen,
+    grootboek, default); alleen de mens wint hiervan — en dan blokkeert de harde check "Btw in niet-btw-plichtige
+    administratie" tot de btw weer in de kosten staat."""
+    netto, btw = regel.netto_bedrag, regel.btw_bedrag
+    if netto is not None and btw is not None and btw != 0:
+        netto, btw = zet_btw_in_kosten(netto, btw)
+    elif netto is not None and btw is None:
+        btw = Decimal("0.00")
+    return _met_herkomst(
+        replace(
+            regel,
+            taxrate_id=geen_btw_taxrate_id,
+            netto_bedrag=netto,
+            btw_bedrag=btw,
+            btw_bron=BTW_BRON_NIET_PLICHTIG,
+            btw_bron_detail=CHIP_TEKST,
+            btw_in_kosten=True,
+            btw_bewust_leeg=False,
+            factuur_btw_percentage=None,
+        ),
+        **{VELD_BTW: BTW_BRON_NIET_PLICHTIG},
+    )
+
+
 def grootboek_defaults_voor(session: Session, *, administratie_id: uuid.UUID) -> dict[uuid.UUID, uuid.UUID]:
     """{ledger_id: standaard_taxrate_id} van déze administratie — alleen rekeningen mét een default die nog in de
     bron staan, en alleen tarieven die in de actuele `taxrate_cache` staan (een verdwenen tarief vult nooit)."""
@@ -608,6 +639,9 @@ def verrijk_prefill(
     regels dragen hun eigen tekst al). `factuur_verlegd` = de factuur vermeldt "btw verlegd" én de factuur-btw is 0."""
     administratie = session.get(Administratie, administratie_id)
     standaard_taxrate_id = administratie.standaard_taxrate_id if administratie is not None else None
+    # 22-09 (Peter, casus VGG / Lacy Lion): niet btw-plichtig = ná álle stappen élke regel op bruto mét "geen btw"-code.
+    btw_plichtig = administratie.btw_plichtig if administratie is not None else True
+    geen_btw_id = None if btw_plichtig else geen_btw_taxrate_voor(session, administratie_id)
     grootboek_defaults = grootboek_defaults_voor(session, administratie_id=administratie_id)
     historie_defaults = grootboek_historie_defaults_voor(session, administratie_id=administratie_id)
     # 18-09 (BUA): aftrek-uitgesloten rekeningen + het 0 %-tarief waarmee "btw in kosten" gezet wordt.
@@ -702,6 +736,8 @@ def verrijk_prefill(
             engine_observaties=engine_observaties,
             regel_sleutel=sleutel,
         )
+        if not btw_plichtig:
+            regel = _met_niet_btw_plichtig(regel, geen_btw_taxrate_id=geen_btw_id)
         verrijkt.append(regel)
 
     if samengevoegde_regel is not None:
@@ -747,4 +783,6 @@ def verrijk_prefill(
             engine_observaties=engine_observaties,
             regel_sleutel=None,
         )
+        if not btw_plichtig:
+            samengevoegde_regel = _met_niet_btw_plichtig(samengevoegde_regel, geen_btw_taxrate_id=geen_btw_id)
     return verrijkt, samengevoegde_regel

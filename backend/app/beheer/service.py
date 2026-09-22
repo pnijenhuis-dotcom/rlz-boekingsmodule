@@ -162,6 +162,10 @@ class AdministratieInstellingen:
     # Facturatiemodule niet afgenomen (migratie 0093, 01-09): chip in de tabel + detail-dialoog;
     # verkoop-rakende leesroutes slaan deze administratie over. Herprobe mét SalesInvoices ok wist 'm.
     verkoopmodule_afwezig: bool = False
+    # Btw-plichtig (BUG Peter 22-09, migratie 0170).
+    btw_plichtig: bool = True
+    btw_plichtig_bron: str | None = None
+    btw_plichtig_rlz_signaal: bool | None = None
     # Boekhoud-backend (migratie 0101, besluit 0016): 'rlz' | 'odoo' + de Odoo-koppelstand (nooit de key).
     boekhoud_backend: str = "rlz"
     odoo_company_id: int | None = None
@@ -329,6 +333,9 @@ def overzicht_administratie_instellingen(
             webservice_username=stand.get(r.id, (None, None))[0],
             probe_groen=stand.get(r.id, (None, None))[1],
             verkoopmodule_afwezig=r.verkoopmodule_afwezig,
+            btw_plichtig=r.btw_plichtig,
+            btw_plichtig_bron=r.btw_plichtig_bron,
+            btw_plichtig_rlz_signaal=r.btw_plichtig_rlz_signaal,
             boekhoud_backend=r.boekhoud_backend,
             odoo_company_id=odoo_stand[r.id].company_id if r.id in odoo_stand else None,
             odoo_company_naam=odoo_stand[r.id].company_naam if r.id in odoo_stand else None,

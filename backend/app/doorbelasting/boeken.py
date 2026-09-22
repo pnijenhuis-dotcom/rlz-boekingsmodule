@@ -245,18 +245,42 @@ def _spiegel_regelspec(
     return spec
 
 
+def _doel_btw_stand(doel_administratie_id: uuid.UUID) -> tuple[bool, uuid.UUID | None]:
+    """22-09 (BUG Peter, casus VGG / Lacy Lion): is de DOEL-administratie btw-plichtig, en zo niet: haar "geen
+    btw"-code. De bron-kant (verkoop mét btw — IC-facturen "met btw", besluit Peter) blijft ongemoeid."""
+    from app.beheer.btw_plichtig import geen_btw_taxrate_voor
+
+    with scoped_session(doel_administratie_id) as session:
+        doel = session.get(Administratie, doel_administratie_id)
+        if doel is None or doel.btw_plichtig:
+            return True, None
+        return False, geen_btw_taxrate_voor(session, doel_administratie_id)
+
+
+def _spec_voor_doel(
+    spec: list[tuple[uuid.UUID, Decimal, Decimal, str, uuid.UUID | None]], *, doel_btw_plichtig: bool
+) -> list[tuple[uuid.UUID, Decimal, Decimal, str, uuid.UUID | None]]:
+    """Niet-btw-plichtige doel-administratie: spiegel-inkoop INCL. btw als kosten (netto := netto + btw, btw 0)
+    — één spec voor RLZ-regels én webhook, zodat wat geboekt en wat gemeld wordt nooit uit elkaar loopt."""
+    if doel_btw_plichtig:
+        return spec
+    return [(lid, netto + btw, Decimal("0.00"), oms, pid) for lid, netto, btw, oms, pid in spec]
+
+
 def _spiegel_lines_van_spec(
-    spec: list[tuple[uuid.UUID, Decimal, Decimal, str, uuid.UUID | None]], *, btw_taxrate_id: uuid.UUID
+    spec: list[tuple[uuid.UUID, Decimal, Decimal, str, uuid.UUID | None]], *, btw_taxrate_id: uuid.UUID | None
 ) -> list[dict]:
+    """`btw_taxrate_id` None (22-09: niet-btw-plichtig doel zonder "geen btw"-code) = géén TaxRate in de regel."""
     lines: list[dict] = []
     for ledger_id, netto, btw, omschrijving, project_id in spec:
         line: dict = {
             "Account": {"id": str(ledger_id)},
-            "TaxRate": {"id": str(btw_taxrate_id)},
             "NetAmount": float(netto),
             "TaxAmount": float(btw),
             "Description": omschrijving,
         }
+        if btw_taxrate_id is not None:
+            line["TaxRate"] = {"id": str(btw_taxrate_id)}
         # Zelfde vorm als app/documenten/boeken.py: Project alleen zetten als er een is.
         if project_id is not None:
             line["Project"] = {"id": str(project_id)}
@@ -821,21 +845,30 @@ def _boek_voor_doelentiteit(
                     mapping_id=mapping.id,
                     actief=True,
                 )
-        spiegel_spec = _spiegel_regelspec(
-            regels=regels,
-            bron_regels=bron_regels,
-            omschrijving_basis=omschrijving_basis,
-            btw_pct=btw_pct,
-            provisie=provisie,
-            provisie_btw=provisie_btw,
-            provisie_kosten_ledger_id=mapping.provisie_kosten_ledger_id,
-            provisie_omschrijving=f"Provisie {provisie_pct_tekst}% over nettobedrag",
+        # 22-09: een niet-btw-plichtige doel-administratie krijgt de spiegel incl. btw als kosten mét haar "geen
+        # btw"-code (de bron-verkoop hierboven blijft mét btw).
+        doel_btw_plichtig, doel_geen_btw = _doel_btw_stand(mapping.doel_administratie_id)
+        spiegel_spec = _spec_voor_doel(
+            _spiegel_regelspec(
+                regels=regels,
+                bron_regels=bron_regels,
+                omschrijving_basis=omschrijving_basis,
+                btw_pct=btw_pct,
+                provisie=provisie,
+                provisie_btw=provisie_btw,
+                provisie_kosten_ledger_id=mapping.provisie_kosten_ledger_id,
+                provisie_omschrijving=f"Provisie {provisie_pct_tekst}% over nettobedrag",
+            ),
+            doel_btw_plichtig=doel_btw_plichtig,
         )
         spiegel_boekstuknummer = _boek_spiegel_inkoop(
             client=doel_client,
             rlz_id=spiegel_rlz_id,
             vendor_id=vendor_id,
-            lines=_spiegel_lines_van_spec(spiegel_spec, btw_taxrate_id=instelling["btw_taxrate_id"]),
+            lines=_spiegel_lines_van_spec(
+                spiegel_spec,
+                btw_taxrate_id=instelling["btw_taxrate_id"] if doel_btw_plichtig else doel_geen_btw,
+            ),
             referentie=verkoop_referentie or f"DOORB-{invoice_number}",
             datum_iso=datum_iso,
             upload_id=rlz_doorbelasting_upload_id(document_id, mapping.doel_customer_guid, kant="spiegel"),
@@ -1021,15 +1054,19 @@ def boek_spiegel_alsnog(
                     actief=True,
                 )
         omschrijving_basis = " ".join(x for x in (leverancier, bron_referentie) if x)
-        spiegel_spec = _spiegel_regelspec(
-            regels=regels,
-            bron_regels=bron_regels,
-            omschrijving_basis=omschrijving_basis,
-            btw_pct=btw_pct,
-            provisie=boeking.provisie_bedrag,
-            provisie_btw=btw_over(boeking.provisie_bedrag, btw_pct),
-            provisie_kosten_ledger_id=provisie_kosten_ledger_id,
-            provisie_omschrijving="Provisie over nettobedrag (doorbelasting)",
+        doel_btw_plichtig, doel_geen_btw = _doel_btw_stand(doel_administratie_id)  # 22-09
+        spiegel_spec = _spec_voor_doel(
+            _spiegel_regelspec(
+                regels=regels,
+                bron_regels=bron_regels,
+                omschrijving_basis=omschrijving_basis,
+                btw_pct=btw_pct,
+                provisie=boeking.provisie_bedrag,
+                provisie_btw=btw_over(boeking.provisie_bedrag, btw_pct),
+                provisie_kosten_ledger_id=provisie_kosten_ledger_id,
+                provisie_omschrijving="Provisie over nettobedrag (doorbelasting)",
+            ),
+            doel_btw_plichtig=doel_btw_plichtig,
         )
         bestand = _standaard_opslag().lezen(pad=opslag_pad)
         # Factuur-PDF (blok A): de bewaarkopie van de boekrun, of — als die toen ontbrak — een
@@ -1062,7 +1099,9 @@ def boek_spiegel_alsnog(
             client=doel_client,
             rlz_id=boeking.spiegel_rlz_id,
             vendor_id=vendor_id,
-            lines=_spiegel_lines_van_spec(spiegel_spec, btw_taxrate_id=btw_taxrate_id),
+            lines=_spiegel_lines_van_spec(
+                spiegel_spec, btw_taxrate_id=btw_taxrate_id if doel_btw_plichtig else doel_geen_btw
+            ),
             referentie=boeking.verkoop_referentie or f"DOORB-{boeking.verkoop_invoice_number}",
             datum_iso=f"{boekdatum.isoformat()}T00:00:00",
             upload_id=rlz_doorbelasting_upload_id(boeking.document_id, doel_customer_guid, kant="spiegel"),

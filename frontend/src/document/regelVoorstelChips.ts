@@ -16,7 +16,15 @@ export type GbBron = 'geheugen' | 'geheugen_seed' | 'geheugen_conflict' | 'ai'
 /** 'grootboek' (14-09) = standaard-tarief van de rekening in RLZ/Odoo (grijs); 'grootboek_historie' (0143) = dezelfde default
  * afgeleid uit de eigen boekingshistorie van de rekening — ORANJE "meestal op deze rekening (n×)" tot het
  * leverancier-geheugen 'm bevestigt (seed-only-regel, geen nieuwe kleurregel). */
-export type BtwBron = 'factuur' | 'factuur_regel' | 'standaard' | 'factuur_verlegd' | 'grootboek' | 'grootboek_historie' | 'grootboek_aftrek_uitgesloten'
+export type BtwBron =
+  | 'factuur'
+  | 'factuur_regel'
+  | 'standaard'
+  | 'factuur_verlegd'
+  | 'grootboek'
+  | 'grootboek_historie'
+  | 'grootboek_aftrek_uitgesloten'
+  | 'administratie_niet_btw_plichtig'
 
 /** Blok 10 07-09 (project uit de factuur, casus Spot Services — backend `project_bron`): 'factuur' = groen (exacte
  * projectcode op de factuur, of een bevestigd werknummer van deze leverancier), 'factuur_onbevestigd' = oranje
@@ -140,7 +148,19 @@ export function bepaalBtwHerkomstChip(
   handmatig: boolean,
   detail: string | null = null,
 ): RegelChip | null {
-  if (!bron || !huidigTaxrateId || handmatig) return null
+  if (!bron || handmatig) return null
+  if (bron === 'administratie_niet_btw_plichtig') {
+    // 22-09 (BUG Peter, casus VGG / Studio Lacy Lion): de administratie is niet btw-plichtig — btw bestaat hier niet. Élke
+    // regel staat op bruto (btw in de kosten) mét de "geen btw"-code (of leeg als Reeleezee er geen kent). Wint van alles;
+    // de harde check "Btw in niet-btw-plichtige administratie" blijft de poort. Ook zonder tarief tonen (leeg mag hier).
+    return {
+      klasse: 'handmatig',
+      tekst: detail ?? 'administratie niet btw-plichtig — btw zit in de kosten',
+      titel:
+        'Deze administratie is niet btw-plichtig (Instellingen › Administraties › Boeken & AI › Btw-plichtig): Reeleezee wikkelt geen btw af en boekt alleen het nettobedrag op de crediteurpost. Daarom staat de regel op het factuurbedrag incl. btw met btw 0,00 en de btw-code "geen btw". De harde check blokkeert elke regel mét btw.',
+    }
+  }
+  if (!huidigTaxrateId) return null
   if (bron === 'grootboek_aftrek_uitgesloten') {
     // 18-09 (Peter, casus Rituals — BUA, migratie 0163): de rekening staat op "btw niet aftrekbaar" (representatie,
     // relatiegeschenken, personeelsvoorzieningen, kantine) → 0 %/geen btw én de factuur-btw in de kosten. Wint van

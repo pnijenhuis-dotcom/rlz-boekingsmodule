@@ -84,10 +84,10 @@ def regels_naar_rlz_lines(voorstel: BoekvoorstelData) -> list[dict]:
     btw_sluitend = btw_per_regel_sluitend(voorstel)
     for regel, btw_bedrag in zip(voorstel.regels, btw_sluitend, strict=True):
         # btw_bedrag mag None zijn (verlegd/vrijgesteld); netto_bedrag is door de harde checks afgedwongen.
-        basis: dict = {
-            "Account": {"id": str(regel.ledger_id)},
-            "TaxRate": {"id": str(regel.taxrate_id)},
-        }
+        basis: dict = {"Account": {"id": str(regel.ledger_id)}}
+        # 22-09 (niet-btw-plichtige administratie zonder "geen btw"-code): géén TaxRate in de PUT, TaxAmount 0.
+        if regel.taxrate_id is not None:
+            basis["TaxRate"] = {"id": str(regel.taxrate_id)}
         if regel.omschrijving:
             basis["Description"] = regel.omschrijving
         if regel.project_id is None and gewichten:
@@ -111,11 +111,9 @@ def tegenboek_lines(voorstel: BoekvoorstelData, omschrijving: str) -> list[dict]
     lines: list[dict] = []
     btw_sluitend = btw_per_regel_sluitend(voorstel)
     for regel, btw_bedrag in zip(voorstel.regels, btw_sluitend, strict=True):
-        basis: dict = {
-            "Account": {"id": str(regel.ledger_id)},
-            "TaxRate": {"id": str(regel.taxrate_id)},
-            "Description": omschrijving,
-        }
+        basis: dict = {"Account": {"id": str(regel.ledger_id)}, "Description": omschrijving}
+        if regel.taxrate_id is not None:
+            basis["TaxRate"] = {"id": str(regel.taxrate_id)}
         if regel.project_id is None and gewichten:
             for deel in splits_regel(regel.netto_bedrag or Decimal("0"), btw_bedrag, gewichten):
                 lines.append(

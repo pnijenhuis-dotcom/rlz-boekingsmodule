@@ -18,6 +18,7 @@ import { AfdelingenBeheer } from './AfdelingenBeheer'
 import { IntakeRegels } from './IntakeRegels'
 import { BtwDefaultRij } from './BtwDefaultRij'
 import { BtwAftrekUitgeslotenBlok } from './BtwAftrekUitgeslotenBlok'
+import { BtwPlichtigRij } from './BtwPlichtigRij'
 import { ActivaInstellingenBlok } from './ActivaInstellingenBlok'
 import { AutoboekenLerenRij } from './AutoboekenLerenRij'
 import { OmzetBronnenBlok } from './OmzetBronnenBlok'
@@ -332,6 +333,9 @@ export function AdministratieDetailPagina({
                 ná een wijziging herlaadt de lijst zodat chip + uitzonderingenlijst dezelfde stand zien. */}
             <AutoboekenLerenRij administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} onGewijzigd={onHerlaad} />
             <BtwDefaultRij administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />
+            {/* 22-09 (BUG Peter, casus VGG / Studio Lacy Lion, migratie 0170): btw-plichtig aan/uit mét herkomst en RLZ-signaal;
+                anker `btw-plichtig` (registry-entry). */}
+            <BtwPlichtigRij administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />
           </div>
           {/* 18-09 (Peter, casus Rituals — BUA, migratie 0163): btw niet aftrekbaar per grootboekrekening; anker `btw-aftrek`. */}
           <BtwAftrekUitgeslotenBlok administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />

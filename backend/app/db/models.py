@@ -120,6 +120,11 @@ class Administratie(Base):
         Index("ix_administratie_groep_id", "groep_id"),
         # Administratienaam volgt de bron (Peter 15-09, migratie 0144): drie toegestane herkomsten.
         CheckConstraint("naam_bron IN ('odoo', 'rlz', 'mens')", name="ck_administratie_naam_bron"),
+        # Btw-plichtig (BUG Peter 22-09, migratie 0170): herkomst van het kenmerk.
+        CheckConstraint(
+            "btw_plichtig_bron IS NULL OR btw_plichtig_bron IN ('rlz', 'mens')",
+            name="ck_administratie_btw_plichtig_bron",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
@@ -201,6 +206,18 @@ class Administratie(Base):
     # in de RLZ-historie → één/NL/favoriet → administratie-default als die verlegd is → leeg). NULL = geen voorkeur,
     # de historie beslist. Geen FK naar taxrate_cache (zelfde overweging als standaard_taxrate_id).
     voorkeurs_verlegd_taxrate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    # Btw-plichtig per administratie (BUG Peter 22-09, casus VGG / Studio Lacy Lion 2026-042 → RLZ-04-00000925; migratie
+    # 0170): default TRUE. FALSE = "btw bestaat niet in deze administratie": de prefill zet élke regel op bruto (btw in de
+    # kosten) mét de "geen btw"-code, de harde check "Btw in niet-btw-plichtige administratie" blokkeert btw ≠ 0 / tarief
+    # > 0 %, en de PUT naar RLZ draagt TaxAmount 0. `btw_plichtig_bron` 'rlz' (EnableTaxReporting true bevestigt
+    # plichtig) | 'mens' (Beheerder) | NULL (nooit bevestigd). Het RLZ-signaal (`AdministrationSettings.
+    # EnableTaxReporting`, nachtelijke identiteit-sync) zet het kenmerk nooit zelf op FALSE — het voedt de detector
+    # "bevestig btw-status" (app/beheer/btw_plichtig.py). Eén schrijver: app/beheer/btw_plichtig.py.
+    btw_plichtig: Mapped[bool] = mapped_column(default=True, server_default="true")
+    btw_plichtig_bron: Mapped[str | None] = mapped_column(Text, default=None)
+    btw_plichtig_gewijzigd_op: Mapped[datetime | None] = mapped_column(default=None)
+    btw_plichtig_rlz_signaal: Mapped[bool | None] = mapped_column(default=None)
+    btw_plichtig_rlz_gezien_op: Mapped[datetime | None] = mapped_column(default=None)
     # Klant-accorderingsflow (migratie 0033, mockup #autorisatie): optioneel per administratie,
     # default UIT. Aan = de boekknop wordt "Ter accordering" en direct boeken is server-side
     # geblokkeerd tot alle vereiste lagen akkoord zijn (app/accordering/service.py).

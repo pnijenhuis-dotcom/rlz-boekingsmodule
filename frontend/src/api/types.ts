@@ -987,6 +987,10 @@ export interface BoekvoorstelDto {
    * leesbare bron ("uit btw-nummer factuur") — stuurt de NL-eerst btw-keuzelijst; null = onbekend → alles tonen. */
   leverancier_land?: string | null
   leverancier_land_bron?: string | null
+  /** 22-09 (BUG Peter, casus VGG / Lacy Lion): false = administratie niet btw-plichtig — btw-keuzelijst verborgen mét chip,
+   * harde check "Btw in niet-btw-plichtige administratie"; `geen_btw_taxrate_id` = de code die "Btw in de kosten zetten" zet. */
+  btw_plichtig?: boolean
+  geen_btw_taxrate_id?: string | null
 }
 
 export interface GeheugenVeldVoorstelDto {
@@ -1018,7 +1022,8 @@ export interface GeheugenVoorstelDto {
 /** 18-09 (btw volgt tarief): handeling op een check-rij — `code` 'btw_in_kosten' | 'zet_tarief', `regel` 1-gebaseerd,
  * `taxrate_id` = het tarief dat de actie zet (null = geen geschikt tarief in de cache → alleen tekst). */
 export interface CheckActieDto {
-  code: 'btw_in_kosten' | 'zet_tarief' | string
+  /** 22-09: `btw_in_kosten_alles` (regel 0) = álle regels bruto met btw 0 en de "geen btw"-code (niet-btw-plichtige administratie). */
+  code: 'btw_in_kosten' | 'zet_tarief' | 'btw_in_kosten_alles' | string
   label: string
   regel: number
   taxrate_id: string | null
@@ -1208,6 +1213,11 @@ export interface AdministratieInstellingenDto {
    * SalesInvoices gaf 403 bij de rechten-probe; verkoop-rakende leesroutes slaan deze
    * administratie over. Een herprobe mét SalesInvoices ok haalt het kenmerk weg. */
   verkoopmodule_afwezig?: boolean
+  /** Btw-plichtig (BUG Peter 22-09, migratie 0170): false = btw in de kosten + harde check; bron 'rlz' | 'mens' | null =
+   * nooit bevestigd; `btw_plichtig_rlz_signaal` = RLZ EnableTaxReporting (detector). */
+  btw_plichtig?: boolean
+  btw_plichtig_bron?: string | null
+  btw_plichtig_rlz_signaal?: boolean | null
   /** Eerste-sync-stand (wizard-nazorg 27-08): laatste run; de rij toont 'm zolang die niet
    * volledig groen is (status ≠ klaar) mét herstartknop. null/ontbrekend = nog nooit gestart. */
   eerste_sync?: EersteSyncRunDto | null

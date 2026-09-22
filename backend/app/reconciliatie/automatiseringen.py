@@ -1913,6 +1913,60 @@ def groep_saldi_bevinding(*, nu: datetime, fouten=None) -> dict[str, Any] | None
     }
 
 
+BTW_STATUS_BEVESTIGEN = "btw_status_bevestigen"
+
+
+def btw_status_bevindingen(*, nu: datetime, kandidaten=None) -> list[dict[str, Any]]:  # noqa: ANN001
+    """22-09 (BUG Peter, casus VGG / Studio Lacy Lion 2026-042 → RLZ-04-00000925): detector "niet btw-plichtig?" — per
+    administratie waarvan het kenmerk `btw_plichtig` nog op true staat zónder mens-bevestiging én (a) RLZ
+    `AdministrationSettings.EnableTaxReporting` false zegt (nachtelijke identiteit-sync; STAP-0 22-09: VGG false,
+    Kempen Facilities/Rubicon/Arvum true) óf (b) de tarieven-cache geen enkel tarief mét percentage > 0 kent, één LET-OP
+    mét handeling: deeplink naar Instellingen › Administraties › ‹administratie› › Boeken & AI (anker `btw-plichtig`)
+    waar de Beheerder de status bevestigt (bron 'mens' → de rij verdwijnt). Geen regressie (domein-LET-OP, geen
+    codefout), geen `meten`-fase (een LET-OP is geen bevindingssoort). Nooit zelf op false zetten — dat is geld.
+    `kandidaten` = al berekende `Kandidaat`-rijen (tests); anders wordt de detector hier gedraaid."""
+    if kandidaten is None:
+        from app.beheer import btw_plichtig
+
+        kandidaten = btw_plichtig.kandidaten()
+    uit: list[dict[str, Any]] = []
+    for k in kandidaten:
+        reden_tekst = (
+            "Reeleezee zegt EnableTaxReporting=false (geen btw-aangifte in deze administratie)"
+            if k.reden == "rlz_signaal"
+            else "geen enkel btw-tarief met een percentage > 0 in de gesyncte btw-codes"
+        )
+        tekst = (
+            f"LET-OP     btw-status {k.naam}: kandidaat 'niet btw-plichtig' — {reden_tekst}; het kenmerk staat nog op "
+            "btw-plichtig, dus de module splitst btw en Reeleezee boekt alleen het netto op de crediteurpost "
+            "(casus Lacy Lion: € 322,38 te weinig betaald). Bevestig de btw-status op Instellingen › Administraties › "
+            "Boeken & AI › Btw-plichtig (aan of uit) — daarna verdwijnt deze regel."
+        )
+        uit.append(
+            {
+                "soort": "let_op",
+                "administratie_id": k.administratie_id,
+                "blok": BLOK,
+                "vingerafdruk": vingerafdruk_automatisering(
+                    sleutel=f"btw_status|{k.reden}",
+                    categorie=BTW_STATUS_BEVESTIGEN,
+                    administratie_id=k.administratie_id,
+                ),
+                "tekst": tekst[:1000],
+                "detail": {
+                    "automatisering": "btw_status",
+                    "automatisering_label": "Btw-status per administratie (detector niet btw-plichtig)",
+                    "reden": BTW_STATUS_BEVESTIGEN,
+                    "kandidaat_reden": k.reden,
+                    "rlz_signaal": k.rlz_signaal,
+                    "administratie_naam": k.naam,
+                    "doel_pad": f"/instellingen/administraties/{k.administratie_id}?tab=boeken-ai#btw-plichtig",
+                },
+            }
+        )
+    return uit
+
+
 WERKVOORRAAD_TELLERS = "werkvoorraad_tellers"
 
 
@@ -2048,6 +2102,8 @@ def registreer(verzamelaar, *, nu: datetime | None = None, stdout=None) -> dict:
     if groep_saldi is not None:
         verzamelaar.bevinding(**groep_saldi)
     for kw in boek_wachtrij_gestrand_bevindingen(nu=nu):  # 21-09: boeking hangt > herstelgrens op wordt_geboekt
+        verzamelaar.bevinding(**kw)
+    for kw in btw_status_bevindingen(nu=nu):  # 22-09: detector "niet btw-plichtig?" — bevestig de btw-status
         verzamelaar.bevinding(**kw)
     if stdout is not None:
         for regel in regels(tellers):

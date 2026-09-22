@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -258,6 +258,32 @@ jobs:
             echo "Oordeel: ${TOTAAL:-geen totaalregel} · ${FOUTEN:-fouten onbekend} — job-exit $rc_bua" >> "$UIT"
             echo "STATUS bua-kandidaten: rapport in $UIT (job-exit $rc_bua = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "btw-niet-plichtig" ]]; then
+            # 22-09 (BUG Peter, casus VGG / Studio Lacy Lion): lees-only nazorgrapport — module-geboekte inkoopfacturen 2026 mét
+            # btw ≠ 0 in Vastgoedgroep Nederland + RLZ-crediteurpost/betaald/open per document (uitsluitend GET) → kolom
+            # TE WEINIG (Peters nabetaallijst) + het aantal ingediende aangiften (aangiftepoort n.v.t.), plus de detector-lijst
+            # `btw-plichtig-kandidaten`. Meetrecept "werkt in productie": een TOTAAL-regel + Lacy Lion (2026-042) mét TE WEINIG
+            # 322.38 zolang het document niet gecorrigeerd is; ná Peters klik 0.00.
+            UIT="verkenning/nameting-btw-niet-plichtig-$DATUM.txt"
+            rc_bnp=0
+            {
+              echo "== btw-in-niet-plichtige-administratie --administratie Vastgoedgroep --jaar 2026 --rlz (lees-only, GET) =="
+              scripts/gcp/nameting.sh btw-in-niet-plichtige-administratie --administratie "Vastgoedgroep" --jaar 2026 --rlz 2> nameting-bnp.stderr || rc_bnp=$?
+              echo
+              echo "== btw-plichtig-kandidaten (lees-only) =="
+              scripts/gcp/nameting.sh btw-plichtig-kandidaten 2>> nameting-bnp.stderr || rc_bnp=$?
+            } > "$UIT"
+            cat nameting-bnp.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-bnp.stderr; then
+              echo "::error::btw-niet-plichtig kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_bnp)" >> "$UIT"
+            TOTAAL="$(grep -m1 -o 'TOTAAL te weinig betaald[^:]*: € [0-9.,-]*' "$UIT" || true)"
+            KAND="$(grep -m1 -o 'btw-plichtig-kandidaten — [0-9]* administratie(s)' "$UIT" || true)"
+            echo "Oordeel: ${TOTAAL:-geen totaalregel} · ${KAND:-kandidaten onbekend} — job-exit $rc_bnp" >> "$UIT"
+            echo "STATUS btw-niet-plichtig: rapport in $UIT (job-exit $rc_bnp = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "veldwerkers-dubbelen" ]]; then
             # 21-09 (opdracht Peter, correctie "broers in één ploeg"): lees-only kandidatenrapport dubbele veldwerkers op HARDE
             # sleutels alleen (KvK, IBAN via crediteur, e-mail) over alle administraties mét uren-opt-in — alleen op verzoek,
@@ -381,6 +407,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-bua-kandidaten-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "veldwerkers-dubbelen" ]]; then
             OORDEEL_BRON="verkenning/nameting-veldwerkers-dubbelen-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "btw-niet-plichtig" ]]; then
+            OORDEEL_BRON="verkenning/nameting-btw-niet-plichtig-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "corrigeren" ]]; then
             OORDEEL_BRON="verkenning/nameting-corrigeren-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "jobs-start" ]]; then

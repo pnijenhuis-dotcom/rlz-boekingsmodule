@@ -790,6 +790,11 @@ class BoekvoorstelResponse(BaseModel):
     # NL-eerst btw-keuzelijst (`useTaxrateOptiesGefilterd`). None = onbekend → de lijst toont alles. Additief.
     leverancier_land: str | None = None
     leverancier_land_bron: str | None = None
+    # 22-09 (BUG Peter, casus VGG / Lacy Lion): is de administratie btw-plichtig? False = de btw-keuzelijst is verborgen
+    # mét chip "administratie niet btw-plichtig — btw zit in de kosten"; de harde check "Btw in niet-btw-plichtige
+    # administratie" blokkeert btw ≠ 0. `geen_btw_taxrate_id` = de code die "Btw in de kosten zetten" zet. Additief.
+    btw_plichtig: bool = True
+    geen_btw_taxrate_id: uuid.UUID | None = None
 
 
 class BoekvoorstelInput(StrikteInvoer):

@@ -105,8 +105,15 @@ class OmzetBoekResultaat:
 
 
 def _taxrate_percentages(administratie_id: uuid.UUID) -> dict[uuid.UUID, Decimal | None]:
+    """Percentages voor de incl-splitsing. 22-09 (BUG Peter, casus VGG / Lacy Lion): in een NIET-btw-plichtige
+    administratie is élk percentage 0 — het kassabedrag gaat bruto in de omzet (TaxAmount 0), ongeacht de code."""
+    from app.db.models import Administratie
+
     with scoped_session(administratie_id) as session:
         rijen = session.scalars(select(TaxRateCache).where(TaxRateCache.administratie_id == administratie_id)).all()
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is not None and not administratie.btw_plichtig:
+            return {rij.id: Decimal(0) for rij in rijen}
         return {rij.id: rij.percentage for rij in rijen}
 
 

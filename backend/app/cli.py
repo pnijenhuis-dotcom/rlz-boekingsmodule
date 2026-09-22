@@ -3135,6 +3135,10 @@ def main(argv: list[str] | None = None) -> int:
     from app.documenten.btw_tarief_cli import register as register_btw_tarief
 
     register_btw_tarief(subparsers)  # btw-tarief-afwijking-rapport (lees-only, nameting-allowlist)
+    from app.beheer.btw_plichtig_cli import dispatch as dispatch_btw_plichtig  # 22-09: btw-plichtig per administratie
+    from app.beheer.btw_plichtig_cli import register as register_btw_plichtig
+
+    register_btw_plichtig(subparsers)  # btw-in-niet-plichtige-administratie/-kandidaten lees-only; -zetten schrijvend
     register_administratienaam(subparsers)  # administratie-naam-bron-backfill (data-stap 0144, dry-run default)
     from app.appupdate.cli_cmd import dispatch as dispatch_appupdate  # OTA 16-09 nacht
     from app.appupdate.cli_cmd import register as register_appupdate
@@ -3889,6 +3893,8 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_bua
     if (uitkomst_btw_tarief := dispatch_btw_tarief(args)) is not None:  # 18-09, lees-only
         return uitkomst_btw_tarief
+    if (uitkomst_btw_plichtig := dispatch_btw_plichtig(args)) is not None:  # 22-09: btw-plichtig per administratie
+        return uitkomst_btw_plichtig
     if (uitkomst_appupdate := dispatch_appupdate(args)) is not None:  # OTA 16-09 nacht
         return uitkomst_appupdate
     if (uitkomst_doorbelasting_aansluiting := dispatch_doorbelasting_aansluiting(args)) is not None:  # 16-09 nacht

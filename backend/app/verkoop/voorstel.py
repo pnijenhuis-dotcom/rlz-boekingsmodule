@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -239,6 +239,44 @@ def verkoop_omschrijving_vastly(factuurnummer: str, *, is_creditnota: bool) -> s
     return f"VASTLY-{soort} {factuurnummer} ·"
 
 
+BTW_BRON_NIET_PLICHTIG = "niet_btw_plichtig"
+
+
+def _niet_btw_plichtig_toepassen(
+    session: Session, *, administratie_id: uuid.UUID, regels: list[VerkoopRegelData]
+) -> list[VerkoopRegelData]:
+    """22-09 (BUG Peter, casus VGG / Lacy Lion — zelfde regel voor de verkoopkant: Vastly 380/381, huur vrijgesteld):
+    in een NIET-btw-plichtige administratie bestaat btw niet — élke regel gaat op bruto (netto := netto + btw, btw 0)
+    mét de "geen btw"-code van de administratie, vergrendeld (`btw_bron='niet_btw_plichtig'`, categorie None zodat de
+    factuur-btw-check 'm niet als afwijking van de UBL ziet). Btw-plichtig = ongewijzigd."""
+    from app.beheer.btw_plichtig import geen_btw_taxrate_voor
+    from app.db.models import Administratie
+
+    administratie = session.get(Administratie, administratie_id)
+    if administratie is None or administratie.btw_plichtig:
+        return regels
+    geen_btw = geen_btw_taxrate_voor(session, administratie_id)
+    uit: list[VerkoopRegelData] = []
+    for r in regels:
+        netto = r.netto_bedrag
+        if netto is not None and r.btw_bedrag:
+            netto = netto + r.btw_bedrag
+        uit.append(
+            replace(
+                r,
+                netto_bedrag=netto,
+                btw_bedrag=Decimal("0.00") if netto is not None else r.btw_bedrag,
+                taxrate_id=geen_btw,
+                btw_categorie=None,
+                btw_percentage_ubl=None,
+                btw_vergrendeld=True,
+                btw_bron=BTW_BRON_NIET_PLICHTIG,
+                btw_kandidaten=(),
+            )
+        )
+    return uit
+
+
 def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> VerkoopVoorstelData:
     """Het opgeslagen verkoopvoorstel, of — zolang er niets opgeslagen is — een deterministische
     prefill uit het UBL-veldvoorstel: bedragen per regel, GB-code → ledger via het rekeningschema
@@ -305,7 +343,7 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
                 totaalbedrag_incl=bestaand.totaalbedrag_incl,
                 is_creditnota=bestaand.is_creditnota,
                 gecrediteerd_factuurnummer=bestaand.gecrediteerd_factuurnummer,
-                regels=regels,
+                regels=_niet_btw_plichtig_toepassen(session, administratie_id=administratie_id, regels=regels),
                 opgeslagen=True,
                 rlz_boekstuknummer=bestaand.rlz_boekstuknummer,
             )
@@ -356,7 +394,7 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
             totaalbedrag_incl=_als_decimal(veldvoorstel.get("totaal_incl")),
             is_creditnota=bool(veldvoorstel.get("is_creditnota")),
             gecrediteerd_factuurnummer=gecrediteerd[0] if gecrediteerd else None,
-            regels=regels,
+            regels=_niet_btw_plichtig_toepassen(session, administratie_id=administratie_id, regels=regels),
             opgeslagen=False,
         )
 
@@ -618,6 +656,10 @@ def voer_verkoop_checks_uit(
                 f"Document {document_id} kan niet meer gecontroleerd worden (status: {document.status.value})"
             )
         taxrates = _actieve_taxrates(session, administratie_id=administratie_id)
+        from app.db.models import Administratie as _Administratie
+
+        _adm = session.get(_Administratie, administratie_id)
+        btw_plichtig = _adm.btw_plichtig if _adm is not None else True
         lokale_hits = 0
         origineel = False
         if voorstel.factuurnummer:
@@ -670,4 +712,5 @@ def voer_verkoop_checks_uit(
         is_creditnota=voorstel.is_creditnota,
         gecrediteerd_factuurnummer=voorstel.gecrediteerd_factuurnummer,
         origineel_geboekt=origineel,
+        btw_plichtig=btw_plichtig,
     )

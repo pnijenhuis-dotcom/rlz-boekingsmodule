@@ -392,6 +392,15 @@ export const REGISTRY: readonly RegistryEntry[] = [
     doel: { soort: 'tab', tab: 'boeken-ai', anker: 'omzetbronnen' },
     beheerder: true,
   },
+  // 22-09 (BUG Peter, casus VGG / Studio Lacy Lion, migratie 0170): btw-plichtig per administratie.
+  {
+    id: 'btw-plichtig',
+    naam: 'Btw-plichtig — uit = btw in de kosten, geen btw-splitsing (niet-btw-plichtige administratie)',
+    waar: 'Administraties › <administratie> › tab Boeken & AI › Btw-plichtig',
+    synoniemen: ['btw-plichtig', 'btw plichtig', 'niet btw-plichtig', 'vrijgesteld', 'geen btw', 'btw in de kosten', 'enabletaxreporting', 'btw-aangifte', 'verhuurder', 'vastgoedgroep'],
+    doel: { soort: 'tab', tab: 'boeken-ai', anker: 'btw-plichtig' },
+    beheerder: true,
+  },
   // 18-09 (Peter, casus Rituals — BUA, migratie 0163): btw niet aftrekbaar per grootboekrekening.
   {
     id: 'btw-aftrek',

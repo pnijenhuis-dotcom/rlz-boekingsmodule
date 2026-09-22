@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.aikosten import service as aikosten_service
 from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope, vereis_kantoorrol
-from app.beheer import administratienaam, btw_aftrek, btw_default, groepen, schemas, service
+from app.beheer import administratienaam, btw_aftrek, btw_default, btw_plichtig, groepen, schemas, service
 
 # Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): élk endpoint in deze router is
 # kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
@@ -48,6 +48,9 @@ def administratie_instellingen_lijst(
                 webservice_username=r.webservice_username,
                 probe_groen=r.probe_groen,
                 verkoopmodule_afwezig=r.verkoopmodule_afwezig,
+                btw_plichtig=r.btw_plichtig,
+                btw_plichtig_bron=r.btw_plichtig_bron,
+                btw_plichtig_rlz_signaal=r.btw_plichtig_rlz_signaal,
                 boekhoud_backend=r.boekhoud_backend,
                 odoo_company_id=r.odoo_company_id,
                 odoo_company_naam=r.odoo_company_naam,
@@ -1273,3 +1276,30 @@ def administratie_groep_zetten(
     if g is None:
         return schemas.AdministratieGroepDto()
     return schemas.AdministratieGroepDto(groep_id=g.id, groep_naam=g.naam, groep_code=g.code)
+
+
+@router.get("/administraties/{administratie_id}/btw-plichtig", response_model=btw_plichtig.BtwPlichtigDto)
+def btw_plichtig_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> btw_plichtig.BtwPlichtigDto:
+    """Btw-plichtig per administratie (BUG Peter 22-09, casus VGG / Lacy Lion; migratie 0170): stand + herkomst + het
+    RLZ-signaal (EnableTaxReporting) + de "geen btw"-code die de prefill kiest — Beheerder-only (tab "Boeken & AI")."""
+    try:
+        return btw_plichtig.haal_op(administratie_id=administratie_id)
+    except btw_plichtig.BtwPlichtigFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.put("/administraties/{administratie_id}/btw-plichtig", response_model=btw_plichtig.BtwPlichtigDto)
+def btw_plichtig_zetten(
+    administratie_id: uuid.UUID,
+    invoer: btw_plichtig.BtwPlichtigInput,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> btw_plichtig.BtwPlichtigDto:
+    """Zet het kenmerk (bron 'mens' — het RLZ-signaal overschrijft 'm daarna nooit meer); audit
+    `administratie_btw_plichtig_gewijzigd` oud→nieuw. False = prefill bruto + "geen btw"-code, harde check "Btw in
+    niet-btw-plichtige administratie", PUT mét TaxAmount 0."""
+    try:
+        return btw_plichtig.zet(actor_id=actor.id, administratie_id=administratie_id, btw_plichtig=invoer.btw_plichtig)
+    except btw_plichtig.BtwPlichtigFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

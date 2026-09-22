@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0169
+-- Migratie-head bij deze dump: 0170
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -3932,8 +3932,14 @@ CREATE TABLE platform.administratie (
     uren_omschrijving_chips jsonb,
     uren_herinnering_tijd time without time zone,
     project_afsluit_stil_maanden smallint DEFAULT '6'::smallint NOT NULL,
+    btw_plichtig boolean DEFAULT true NOT NULL,
+    btw_plichtig_bron text,
+    btw_plichtig_gewijzigd_op timestamp with time zone,
+    btw_plichtig_rlz_signaal boolean,
+    btw_plichtig_rlz_gezien_op timestamp with time zone,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_boekhoud_backend CHECK (((boekhoud_backend)::text = ANY ((ARRAY['rlz'::character varying, 'odoo'::character varying])::text[]))),
+    CONSTRAINT ck_administratie_btw_plichtig_bron CHECK (((btw_plichtig_bron IS NULL) OR (btw_plichtig_bron = ANY (ARRAY['rlz'::text, 'mens'::text])))),
     CONSTRAINT ck_administratie_naam_bron CHECK ((naam_bron = ANY (ARRAY['odoo'::text, 'rlz'::text, 'mens'::text]))),
     CONSTRAINT ck_administratie_uren_dagmax CHECK (((uren_dagmax_uren > (0)::numeric) AND (uren_dagmax_uren <= (24)::numeric)))
 );

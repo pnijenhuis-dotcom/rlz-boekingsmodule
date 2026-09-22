@@ -762,6 +762,9 @@ export function BoekvoorstelPanel({
   // 18-09 DEEL B: NL-leverancier → alleen NL-tarieven, buitenland ingeklapt; gebruik 12 mnd bovenaan (één hook, alle schermen).
   // 18-09 DEEL B: land van de leverancier (server: btw-nummer crediteur → btw-nummer factuur → IBAN → onbekend).
   const [leverancierLand, setLeverancierLand] = useState<{ land: string | null; bron: string | null }>({ land: null, bron: null })
+  // 22-09 (BUG Peter, casus VGG / Lacy Lion): niet btw-plichtig = btw-keuzelijst verborgen mét chip; de check-actie
+  // "Btw in de kosten zetten" herrekent álle regels. Default true (bestaand gedrag) tot de server iets anders zegt.
+  const [btwPlichtig, setBtwPlichtig] = useState(true)
   const taxrateGefilterd = useTaxrateOptiesGefilterd(taxrateOpties, leverancierLand.land)
   const percentageMap = useMemo(() => {
     const map: Record<string, number> = {}
@@ -901,6 +904,7 @@ export function BoekvoorstelPanel({
         setAccorderingOvergeslagenReden(dto.accordering_overgeslagen_reden ?? null)
         // 18-09 DEEL B: land van de leverancier voor de NL-eerst btw-keuzelijst + chip in de crediteur-kaart.
         setLeverancierLand({ land: dto.leverancier_land ?? null, bron: dto.leverancier_land_bron ?? null })
+        setBtwPlichtig(dto.btw_plichtig !== false)
         setVendorId(dto.vendor_id)
         setReferentie(dto.referentie ?? '')
         setOmschrijving(dto.omschrijving ?? '')
@@ -1175,6 +1179,31 @@ export function BoekvoorstelPanel({
    * := het 0 %-tarief) of zet_tarief (het ene tarief dat de factuur-btw verklaart; de btw volgt via de tarief-handler).
    * De check draait daarna gewoon opnieuw (autosave + checks); de server blijft de poort. */
   const voerCheckActieUit = (actie: CheckActieDto) => {
+    if (actie.code === 'btw_in_kosten_alles') {
+      // 22-09 (niet-btw-plichtige administratie): élke regel bruto (netto := netto + btw, btw 0) mét de "geen btw"-code
+      // van de administratie (null = leeg — de PUT gaat dan zonder TaxRate); de check draait daarna opnieuw.
+      setRegels((huidig) =>
+        huidig.map((r) => {
+          const netto = bedragAlsGetal(r.netto)
+          const btw = bedragAlsGetal(r.btw) ?? 0
+          const [nieuwNetto, nieuwBtw] = netto !== null ? zetBtwInKosten(netto, btw) : [null, 0]
+          return {
+            ...r,
+            taxrateId: actie.taxrate_id ?? null,
+            netto: nieuwNetto !== null ? formatEuro(nieuwNetto) : r.netto,
+            btw: formatEuro(nieuwBtw),
+            btwInKosten: true,
+            btwHandmatig: false,
+            btwBron: 'administratie_niet_btw_plichtig',
+            btwDetail: null,
+            aiZekerheid: null,
+            handmatigeVelden: { ...r.handmatigeVelden, taxrateId: true },
+          }
+        }),
+      )
+      veranderInvoer()
+      return
+    }
     const doel = regels[actie.regel - 1]
     if (!doel) return
     if (actie.code === 'btw_in_kosten') {
@@ -2292,7 +2321,19 @@ export function BoekvoorstelPanel({
                   )}
                 </td>
                 <td>
-                  {isReadOnly ? (
+                  {!btwPlichtig ? (
+                    // 22-09 (BUG Peter, casus VGG / Lacy Lion): geen keuzelijst in een niet-btw-plichtige administratie —
+                    // btw bestaat hier niet; de regel staat bruto in de kosten mét de "geen btw"-code (of leeg).
+                    <div className="regel-herkomst">
+                      <span
+                        className="chip handmatig"
+                        data-testid="regel-btw-niet-plichtig-chip"
+                        title="Deze administratie is niet btw-plichtig: Reeleezee wikkelt geen btw af en boekt alleen het nettobedrag op de crediteurpost. De regel staat daarom op het factuurbedrag incl. btw met btw 0,00; de btw-code is 'geen btw' (of leeg als Reeleezee er geen kent)."
+                      >
+                        administratie niet btw-plichtig — btw zit in de kosten
+                      </span>
+                    </div>
+                  ) : isReadOnly ? (
                     optieWeergave(taxrateOpties, regel.taxrateId)
                   ) : (
                     <>

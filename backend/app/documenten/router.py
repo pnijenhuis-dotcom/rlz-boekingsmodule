@@ -297,6 +297,24 @@ def _met_leverancier_land(
         _logger.exception("leverancier_land: afleiding mislukt voor document %s", resp.document_id)
         return resp
     resp.leverancier_land, resp.leverancier_land_bron = info.land, info.bron_tekst
+    return _met_btw_plichtig(resp, administratie_id=administratie_id)
+
+
+def _met_btw_plichtig(
+    resp: schemas.BoekvoorstelResponse, *, administratie_id: uuid.UUID
+) -> schemas.BoekvoorstelResponse:
+    """22-09 (BUG Peter, casus VGG / Lacy Lion): additief `btw_plichtig` + `geen_btw_taxrate_id` op de response — de
+    frontend verbergt in een niet-btw-plichtige administratie de btw-keuzelijst (chip) en de check-actie "Btw in de
+    kosten zetten" kent de code. Onbekend/fout = True (bestaand gedrag; de server blijft de poort)."""
+    from app.beheer import btw_plichtig
+
+    try:
+        stand = btw_plichtig.haal_op(administratie_id=administratie_id)
+    except Exception:  # noqa: BLE001 — weergave-hulp, nooit een 500 op het controlescherm
+        _logger.exception("btw_plichtig: stand niet leesbaar voor administratie %s", administratie_id)
+        return resp
+    resp.btw_plichtig = stand.btw_plichtig
+    resp.geen_btw_taxrate_id = stand.geen_btw_taxrate_id if not stand.btw_plichtig else None
     return resp
 
 

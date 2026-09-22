@@ -105,7 +105,11 @@ def check_verplichte_velden(
     totaalbedrag: Decimal | None,
     regels: list[CheckRegel],
     project_verplicht: bool = False,
+    btw_plichtig: bool = True,
 ) -> CheckResultaat:
+    """`btw_plichtig=False` (Peter 22-09, casus VGG / Lacy Lion): in een niet-btw-plichtige administratie is een LEGE
+    btw-code toegestaan (RLZ kent er mogelijk geen "geen btw"-code; de PUT gaat dan zonder `TaxRate` mét TaxAmount 0) —
+    de harde check "Btw in niet-btw-plichtige administratie" blijft de poort op btw-bedrag en tarief."""
     ontbrekend: list[str] = []
     if vendor_id is None:
         ontbrekend.append("crediteur")
@@ -123,7 +127,7 @@ def check_verplichte_velden(
     for i, regel in enumerate(regels, start=1):
         if regel.ledger_id is None:
             per_veld["grootboekrekening"].append(i)
-        if regel.taxrate_id is None:
+        if regel.taxrate_id is None and btw_plichtig:
             per_veld["btw-code"].append(i)
         if regel.netto_bedrag is None:
             per_veld["netto bedrag"].append(i)
@@ -327,6 +331,10 @@ class TariefInfo:
 NAAM_BTW_TARIEF = "Btw-bedrag past bij tarief"
 ACTIE_BTW_IN_KOSTEN = "btw_in_kosten"
 ACTIE_ZET_TARIEF = "zet_tarief"
+# 22-09 (Peter, casus VGG / Studio Lacy Lion 2026-042 → RLZ-04-00000925): harde check voor een NIET-btw-plichtige
+# administratie + de ene actie die álle regels herrekent (netto := netto + btw, btw := 0, tarief := de "geen btw"-code).
+NAAM_BTW_NIET_PLICHTIG = "Btw in niet-btw-plichtige administratie"
+ACTIE_BTW_IN_KOSTEN_ALLES = "btw_in_kosten_alles"
 
 
 def _pct_tekst(p: Decimal | None) -> str:
@@ -358,6 +366,7 @@ def check_btw_past_bij_tarief(
     regels: list[CheckRegel],
     tarieven: Mapping[uuid.UUID, TariefInfo],
     samengevoegd_n: int = 1,
+    btw_plichtig: bool = True,
 ) -> CheckResultaat:
     """HARDE check (opdracht Peter 18-09, casus Rituals 88-186308: 0 % · NL, Nul mét € 20,24 btw op € 96,36 — 11/11
     groen, Boeken actief): per regel |btw − netto × percentage| ≤ marge, marge = 1 cent × aantal samengevoegde
@@ -368,7 +377,15 @@ def check_btw_past_bij_tarief(
     vrijgesteld/buitenland-tarief = verwacht 0,00 (daar staat immers geen btw op de factuur). Een regel zonder tarief,
     netto of btw-bedrag telt hier niet (verplichte velden/regeltelling vangen dat); een tarief dat niet in de cache
     staat is niet toetsbaar en wordt benoemd. Lokaal, geen RLZ-call — draait óók in de storings-tak en op het
-    autoboek-pad (rood = niet boeken)."""
+    autoboek-pad (rood = niet boeken). `btw_plichtig=False` (22-09): niet van toepassing — dáár toetst
+    `check_btw_niet_plichtig` (btw bestaat niet in die administratie; een tarief-uitkomst "verwacht € 322" zou de
+    mens de verkeerde kant op sturen)."""
+    if not btw_plichtig:
+        return CheckResultaat(
+            NAAM_BTW_TARIEF,
+            True,
+            f"Niet van toepassing — administratie is niet btw-plichtig (zie '{NAAM_BTW_NIET_PLICHTIG}')",
+        )
     marge = marge_voor(samengevoegd_n)
     marge_ct = int(marge * 100)
     fouten: list[str] = []
@@ -445,6 +462,67 @@ def check_btw_past_bij_tarief(
         extra = f"; regel {', '.join(map(str, niet_toetsbaar))} niet toetsbaar (tarief zonder percentage)"
     return CheckResultaat(
         NAAM_BTW_TARIEF, True, f"Btw-bedrag volgt het tarief op {getoetst} regel(s) (marge {marge_ct} ct){extra}"
+    )
+
+
+def tarief_is_geen_btw(info: TariefInfo | None) -> bool:
+    """Een tarief dat in een niet-btw-plichtige administratie mag: percentage 0 (of onbekend) én niet verlegd én niet
+    buitenland — vrijgesteld ("NL, Geen BTW (Vrijgesteld)") en "NL, Nul tarief" dus wél; verlegd/EU maken een
+    aangifte-rubriek aan en horen er niet. None (tarief niet in de cache) = niet toetsbaar → False."""
+    if info is None:
+        return False
+    nul = info.percentage is None or info.percentage == 0
+    return nul and not info.verlegd and not info.buitenland
+
+
+def check_btw_niet_plichtig(
+    *,
+    regels: list[CheckRegel],
+    tarieven: Mapping[uuid.UUID, TariefInfo],
+    geen_btw_taxrate_id: uuid.UUID | None,
+) -> CheckResultaat:
+    """HARDE check (BUG Peter 22-09, casus Vastgoedgroep Nederland / Studio Lacy Lion 2026-042 → RLZ-04-00000925: de
+    module splitste € 1.535,13 + 21 % € 322,38, RLZ boekte in de niet-btw-plichtige administratie alleen het netto op de
+    crediteurpost → € 322,38 te weinig betaald). Alleen aangeroepen als de administratie NIET btw-plichtig is: btw bestaat
+    daar niet — élke regel mét btw-bedrag ≠ 0 óf een tarief mét percentage > 0 / verlegd / buitenland is BLOKKEREND.
+    Eén actie "Btw in de kosten zetten" (`ACTIE_BTW_IN_KOSTEN_ALLES`, regel 0 = álle regels): netto := netto + btw,
+    btw := 0, tarief := de "geen btw"-code van de administratie (`geen_btw_taxrate_id`; None = tarief leeg, de PUT gaat
+    zonder TaxRate). Lokaal, geen RLZ-call — óók in de storings-tak en op het autoboek-pad. Een regel zonder tarief én
+    zonder btw-bedrag is hier in orde (verplichte velden eist in deze administratie geen btw-code)."""
+    fouten: list[str] = []
+    for i, regel in enumerate(regels, start=1):
+        redenen: list[str] = []
+        if regel.btw_bedrag is not None and regel.btw_bedrag != 0:
+            redenen.append(f"btw € {regel.btw_bedrag}")
+        if regel.taxrate_id is not None:
+            info = tarieven.get(regel.taxrate_id)
+            if info is None:
+                redenen.append("tarief niet in de gesyncte btw-codes")
+            elif not tarief_is_geen_btw(info):
+                redenen.append(f"tarief {_pct_tekst(info.percentage)} · {info.naam or regel.taxrate_id}")
+        if redenen:
+            fouten.append(f"regel {i}: {', '.join(redenen)}")
+    if not fouten:
+        return CheckResultaat(
+            NAAM_BTW_NIET_PLICHTIG,
+            True,
+            "Administratie is niet btw-plichtig — alle regels zonder btw (bruto in de kosten)",
+        )
+    acties = (
+        CheckActie(
+            ACTIE_BTW_IN_KOSTEN_ALLES,
+            "Btw in de kosten zetten (alle regels)",
+            0,
+            geen_btw_taxrate_id,
+        ),
+    )
+    return CheckResultaat(
+        NAAM_BTW_NIET_PLICHTIG,
+        False,
+        "Deze administratie is niet btw-plichtig: Reeleezee wikkelt geen btw af en boekt alleen het nettobedrag op de "
+        "crediteurpost — een gesplitste regel wordt dan te laag betaald. Zet de btw in de kosten (netto = factuurbedrag "
+        "incl. btw, btw 0, btw-code 'geen btw'): " + "; ".join(fouten),
+        acties=acties,
     )
 
 
@@ -776,6 +854,8 @@ def voer_harde_checks_uit(
     samengevoegd_n: int = 1,
     duplicaat_resultaat: CheckResultaat | None = None,
     duplicaat_over_crediteuren_resultaat: CheckResultaat | None = None,
+    btw_plichtig: bool = True,
+    geen_btw_taxrate_id: uuid.UUID | None = None,
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
     consistent dezelfde vier rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
@@ -788,6 +868,17 @@ def voer_harde_checks_uit(
     sneller 18-09, `checks_extern.py`): de EXTERNE uitkomsten al berekend (parallel of uit de cache) — dan raakt deze
     functie RLZ/Odoo niet meer aan; zonder die twee draait ze de live queries zelf (bestaand gedrag)."""
     assert client is not None or (duplicaat_resultaat is not None and duplicaat_over_crediteuren_resultaat is not None)
+    # 22-09 (Peter, casus VGG / Lacy Lion): in een niet-btw-plichtige administratie komt de check "Btw in
+    # niet-btw-plichtige administratie" direct ná de tarief-check (die daar "n.v.t." meldt).
+    niet_plichtig = (
+        []
+        if btw_plichtig
+        else [
+            check_btw_niet_plichtig(
+                regels=regels, tarieven=tarieven or {}, geen_btw_taxrate_id=geen_btw_taxrate_id
+            )
+        ]
+    )
     return CheckRapport(
         (
             check_verplichte_velden(
@@ -797,12 +888,16 @@ def voer_harde_checks_uit(
                 totaalbedrag=totaalbedrag,
                 regels=regels,
                 project_verplicht=project_verplicht,
+                btw_plichtig=btw_plichtig,
             ),
             check_regeltelling(
                 totaalbedrag=totaalbedrag, regels=regels, totaal_excl=totaal_excl, factuur_btw=factuur_btw
             ),
             # 18-09 (Peter, casus Rituals): btw-bedrag volgt het tarief — lokaal, direct ná de regeltelling.
-            check_btw_past_bij_tarief(regels=regels, tarieven=tarieven or {}, samengevoegd_n=samengevoegd_n),
+            check_btw_past_bij_tarief(
+                regels=regels, tarieven=tarieven or {}, samengevoegd_n=samengevoegd_n, btw_plichtig=btw_plichtig
+            ),
+            *niet_plichtig,
             check_vervaldatum(factuurdatum=factuurdatum, vervaldatum=vervaldatum),
             check_buitenland_tarief_crediteurkaart(
                 regels=regels,
