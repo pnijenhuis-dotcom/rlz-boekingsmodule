@@ -674,7 +674,9 @@
   "afdeling_prefill_leverancier": null,
   "accordering_overgeslagen_reden": null,
   "leverancier_land": "NL",
-  "leverancier_land_bron": "uit btw-nummer crediteur"
+  "leverancier_land_bron": "uit btw-nummer crediteur",
+  "btw_plichtig": true,
+  "geen_btw_taxrate_id": null
  },
  "checks": {
   "geblokkeerd": true,

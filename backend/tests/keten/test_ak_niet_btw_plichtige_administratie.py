@@ -1,5 +1,6 @@
 """Casus (ak) — niet-btw-plichtige administratie (BUG Peter 22-09, casus Vastgoedgroep Nederland / Studio Lacy Lion
-2026-042 → RLZ-04-00000925: module splitste 1.535,13 + 322,38, RLZ boekte alleen het netto → € 322,38 te weinig betaald).
+2026-042 → RLZ-04-00000925: module splitste 1.535,13 + 322,38, RLZ boekte alleen het netto → € 322,38 te weinig
+betaald).
 Hergebruikt het Rituals-document (ae: 96,36 + 21 % 20,24 = 116,60) in een administratie mét `btw_plichtig = false`:
 (1) de prefill zet de regel bruto 116,60 / btw 0,00 mét "NL, Geen BTW (Vrijgesteld)" en chip, de DTO draagt
 `btw_plichtig=false` + de geen-btw-code, de checks zijn groen (tarief-check n.v.t., regeltelling sluit) en de
