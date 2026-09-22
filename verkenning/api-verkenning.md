@@ -2619,3 +2619,27 @@ respons 204, altijd terug-lezen; (3) RLZ berekent `CurrentDepreciationValue` zel
 `CurrentDepreciationValue == 0` ná ≥ 12 maanden, zonder eigen berekening; (4) Universal/Rubicon vergen het RLZ-recht "Vaste activa" op de
 webservice-login (klikpunt Peter) — tot dan is het register daar zichtbaar "niet leesbaar".
 
+## AdministrationSettings.EnableTaxReporting = de btw-status van de administratie (STAP-0 22-09, BUG "niet-btw-plichtige administratie") — LEES-ONLY via `nameting.sh rlz-lezen`
+
+Aanleiding: Vastgoedgroep Nederland B.V. is niet btw-plichtig (besluit Peter 13-09, `odoo/rj220.py`); de module splitste Studio Lacy Lion
+2026-042 in € 1.535,13 + 21 % € 322,38, RLZ boekte de crediteurpost op 1.535,13 (RLZ-04-00000925) → € 322,38 te weinig betaald. De module
+kende geen kenmerk "btw-plichtig"; gezocht naar een RLZ-veld dat de status draagt.
+
+| # | Route | Uitkomst |
+|---|---|---|
+| a | `GET {adminId}/AdministrationSettings?$top=1` Vastgoedgroep Nederland B.V. | **200**, één rij mét o.a. **`EnableTaxReporting: false`**, `PurchaseVATIncluded: false`, `SalesVATIncluded: false`, `UseLongTaxSummary: false`, `UseVatSupplementThresholdCurrentYear: true`, `IsFiscalSelfEmployed: false`, `LegalAdministrationPolicies: "NL"`, `FirstBookDate 2025-01-01`, `StartDateFiscalYear 2024-01-01`, `FixedAssetAlertAmount 450.0`, `ChamberOfCommerceNumber 97433861`. Géén veld "IsVatLiable"/"btw-plichtig" met die naam. |
+| b | idem Kempen Facilities B.V. | **200**, `EnableTaxReporting: true`. |
+| c | idem Rubicon Investments B.V. | **200**, `EnableTaxReporting: true`. |
+| d | idem Arvum B.V. (naam in RLZ "Arvum B.V.", niet "ARVUM") | **200**, `EnableTaxReporting: true`. |
+| e | `GET {adminId}/TaxRates?$top=50` Vastgoedgroep Nederland | **200, 22 tarieven = de RLZ-standaardset** (NL Hoog 0.21 favoriet, NL Laag 0.09 favoriet, **"NL, Geen BTW (Vrijgesteld)" IsExcempt favoriet**, "NL, BTW-bedrag zelf specificeren", (vooruit)/(achteraf)-varianten, "NL, Nul tarief", "NL, Auto tarief" 0.12, 2 × NL verlegd, 10 × EU/Ex-EU verlegd/export). De tarievenset zegt dus NIETS over de btw-status — élke administratie draagt dezelfde set. |
+
+**Conclusies:** (1) `EnableTaxReporting` is het enige leesbare veld dat de btw-status draagt: false bij de bewezen niet-btw-plichtige VGG, true bij
+drie btw-plichtige administraties. Letterlijk betekent het "btw-aangifte in RLZ aan/uit" — een administratie die de aangifte buiten RLZ doet zou
+óók false geven; daarom zet de module het kenmerk `btw_plichtig` NOOIT zelf op false op dit signaal (spiegelbeeld-fout = alle btw stil in de
+kosten), maar gebruikt false als DETECTOR-signaal (LET-OP "bevestig btw-status", Beheerder bevestigt) en true als bevestiging mét bron 'rlz'
+(`app/beheer/btw_plichtig.py`, nachtelijke identiteit-sync leest het veld mee uit dezelfde AdministrationSettings-call). (2) De "geen btw"-code
+voor een niet-btw-plichtige administratie = het vrijgestelde NL-tarief (`IsExcempt`, bij VGG favoriet) > "NL, Nul tarief" > geen (PUT zonder
+`TaxRate`, TaxAmount 0). (3) Niet gemeten: hoe RLZ een PUT mét `TaxRate` 21 % + `TaxAmount` verwerkt in een EnableTaxReporting=false-
+administratie (de casus suggereert: TaxAmount wordt niet in de crediteurpost meegenomen) — de nazorg-CLI `btw-in-niet-plichtige-administratie
+--rlz` leest per module-document `BaseInvoiceAmount`/`TotalTaxAmount`/`BasePaidAmount` terug en maakt dat zichtbaar (kolom TE WEINIG).
+

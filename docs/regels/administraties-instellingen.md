@@ -71,6 +71,20 @@
 <!-- uit CLAUDE.md § Werkwijze -->
 - **RLZ-check als knop (nachtrun 10/11-09 blok 1; geen migratie):** knop "RLZ-check" op Instellingen › Administraties › ‹administratie› › Algemeen (Webservice-gegevens) → `POST /administraties/{id}/rlz-check`, resultaat inline per leesroute (stand, letterlijk RLZ-antwoord ≤ 300 tekens, RLZ-recht) + "Administraties die deze login ziet: N" mét eigen-id-markering, "Sync opnieuw starten" bij groene check ná rode eerste sync, sync-fout-chip mét tooltip — zie BESLISSINGEN "RLZ-CHECK ALS KNOP".
 
+<!-- toegevoegd 22-09-2026, opdracht "BUG-niet-btw-plichtige-administratie-btw-gesplitst-vgg-lacy-lion-te-weinig-betaald" -->
+- **Kenmerk "Btw-plichtig" op de administratie (BUG Peter 22-09, casus VGG / Studio Lacy Lion; migratie 0170; BESLISSINGEN "BTW-PLICHTIG PER
+  ADMINISTRATIE — NIET-PLICHTIG = BTW IN DE KOSTEN, HARDE CHECK (Peter 22-09)"):** rij "Btw-plichtig" op Instellingen › Administraties ›
+  ‹administratie› › Boeken & AI (anker `btw-plichtig`, registry-entry, Beheerder-only, `GET/PUT /administraties/{id}/btw-plichtig`, audit
+  `administratie_btw_plichtig_gewijzigd` oud→nieuw, bron 'mens'); default true. **Bron = RLZ waar leesbaar:** de nachtelijke identiteit-sync
+  (`sync-alles` → `intercompany/identiteit.sync_identiteiten`) leest `AdministrationSettings.EnableTaxReporting` mee uit dezelfde call — true
+  bevestigt btw-plichtig mét bron 'rlz' (herkomst-chip "bevestigd uit Reeleezee"), false zet het kenmerk nooit zelf om maar maakt de
+  administratie kandidaat (LET-OP "bevestig btw-status" in Inzicht › Reconciliatie mét deeplink; chip "Reeleezee: btw-aangifte uit" +
+  twee linkbtn's "Blijft btw-plichtig" / "Niet btw-plichtig" op de rij); een mens-keuze wordt door de sync nooit overschreven. STAP-0 22-09:
+  VGG false, Kempen Facilities/Rubicon/Arvum true; de tarievenset is overal de RLZ-standaardset (22) en zegt niets. Het gedrag van het
+  kenmerk (prefill bruto, verborgen keuzelijst, harde check, PUT zonder TaxRate, verkoop/omzet/doorbelasting-doel) staat in `docs/regels/btw.md`.
+  Data-stap: `btw-plichtig-zetten --administratie "Vastgoedgroep" --uit` op de job-image ná deploy (besluit Peter 13-09), overige
+  administraties uit `btw-plichtig-kandidaten` ná Peters besluit. Werkt in productie: niet gemeten.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Stack & platform — Instellingen › Administraties v2 (CLAUDE.md `ed6d176` r. 52–62)

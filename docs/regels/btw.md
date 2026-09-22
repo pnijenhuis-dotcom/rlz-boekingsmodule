@@ -184,6 +184,56 @@
   C.V. (netto −260,00, btw 0,00) — advies ongewijzigd. `bua-kenmerk-zetten` is niet gedraaid (ook niet `--dry-run`): eerst Peters "ja", dan de dry-run
   op de job-image (verwacht 149 in 75), dan echt, dan de nameting `bua-kandidaten` → "149 mét kenmerk aan".
 
+<!-- toegevoegd 22-09-2026, opdracht "BUG-niet-btw-plichtige-administratie-btw-gesplitst-vgg-lacy-lion-te-weinig-betaald" -->
+- **Btw-plichtig per administratie — niet-plichtig = btw in de kosten, harde check (BUG Peter 22-09, casus Vastgoedgroep Nederland /
+  Studio Lacy Lion 2026-042 d.d. 11-09, € 1.857,51 = 1.535,13 + 21 % 322,38, akkoord Sophia Gerritsen 16-09 + Kempen 18-09, geboekt
+  RLZ-04-00000925 als 4106 Schoonmaakkosten 1.535,13 / btw 322,38: RLZ wikkelt in die administratie geen btw af en boekte de crediteurpost
+  op 1.535,13 → € 322,38 te weinig betaald; de check "Btw-bedrag past bij tarief" was groen omdat die het tarief toetst, niet of de
+  administratie mag splitsen; migratie 0170; BESLISSINGEN "BTW-PLICHTIG PER ADMINISTRATIE — NIET-PLICHTIG = BTW IN DE KOSTEN, HARDE CHECK
+  (Peter 22-09)"):** (1) **Kenmerk** `platform.administratie.btw_plichtig` (default true — niets verandert voor bestaande administraties),
+  `btw_plichtig_bron` 'rlz' | 'mens' | NULL (nooit bevestigd), `btw_plichtig_gewijzigd_op`, plus het RLZ-signaal `btw_plichtig_rlz_signaal`
+  = `AdministrationSettings.EnableTaxReporting` (STAP-0 22-09: VGG **false**; Kempen Facilities, Rubicon, Arvum **true**; de tarievenset
+  zegt niets — VGG draagt de standaardset van 22) gelezen in de nachtelijke identiteit-sync uit dezelfde call (`intercompany/identiteit.py`
+  → `beheer/btw_plichtig.volg_rlz_signaal`). **True bevestigt** btw-plichtig mét bron 'rlz' (alleen als er geen mens-keuze staat);
+  **false zet het kenmerk NOOIT zelf op false** — letterlijk betekent het "geen btw-aangifte in RLZ", een administratie die de aangifte
+  buiten RLZ doet zou óók false geven en stil alle btw in de kosten zetten is de spiegelbeeld-fout van de casus (geld → mens op de knop).
+  Eén schrijver `app/beheer/btw_plichtig.py`; Beheerder-rij "Btw-plichtig" op Instellingen › Administraties › ‹administratie› › Boeken &
+  AI (anker `btw-plichtig`, registry-entry; `GET/PUT /administraties/{id}/btw-plichtig`, audit `administratie_btw_plichtig_gewijzigd`
+  oud→nieuw) mét herkomst-chip, RLZ-signaal-chip en de "geen btw"-code; `btw_plichtig`/`_bron`/`_rlz_signaal` op de administratie-lijst.
+  (2) **Detector** (`btw_plichtig.kandidaten`, LET-OP `btw_status_bevestigen` per administratie in blok `automatisering`, geen regressie,
+  geen `meten`-fase — een LET-OP is geen bevindingssoort): kenmerk nog true zónder bevestiging (bron NULL) én (RLZ-signaal false óf — bij een
+  gesyncte cache — geen enkel tarief mét percentage > 0) → "bevestig de btw-status" mét deeplink naar de instelling; verdwijnt bij bron 'mens'
+  of 'rlz'. Lees-only CLI `btw-plichtig-kandidaten` = Peters kandidatenlijst (ARVUM/Rubicon zijn per STAP-0 géén kandidaat; VGG wél).
+  (3) **Gedrag bij `btw_plichtig = false` — btw bestaat niet in die administratie:** de prefill (`regel_prefill._met_niet_btw_plichtig`,
+  LAATSTE stap, wint van factuur/geheugen/grootboek/default; alleen de mens wint en loopt dan tegen de check) zet élke regel én de
+  samengevoegde regel op bruto (netto := netto + factuur-btw via `regelsom.zet_btw_in_kosten`, btw 0,00, `btw_in_kosten`) mét de "geen
+  btw"-code van de administratie (`btw_plichtig.geen_btw_taxrate_voor`: NL-vrijgesteld `IsExcempt` — VGG "NL, Geen BTW (Vrijgesteld)",
+  favoriet — > "NL, Nul tarief" > geen: dan géén `TaxRate` in de PUT, `rlz_inkoop.regels_naar_rlz_lines`/`tegenboek_lines` laten 'm weg,
+  TaxAmount 0), `btw_bron='administratie_niet_btw_plichtig'`, chip "administratie niet btw-plichtig — btw zit in de kosten"; het
+  controlescherm verbergt de btw-keuzelijst en toont die chip (`BoekvoorstelPanel`, `btw_plichtig` + `geen_btw_taxrate_id` op de
+  boekvoorstel-response). **Harde check "Btw in niet-btw-plichtige administratie"** (`checks.check_btw_niet_plichtig`, lokaal, in beide
+  rapport-takken én op het autoboek-pad, direct ná de tarief-check die dan "n.v.t." meldt): btw-bedrag ≠ 0, tarief mét percentage > 0,
+  verlegd, buitenland of onbekend = blokkerend mét ÉÉN actie **"Btw in de kosten zetten (alle regels)"** (`ACTIE_BTW_IN_KOSTEN_ALLES`,
+  regel 0; frontend herrekent élke regel en slaat op, de server blijft de poort); verplichte velden eist dan geen btw-code (leeg mag); de
+  regeltelling blijft Σ bruto = factuurtotaal incl. Verkoop (Vastly 380/381, huur vrijgesteld — zelfde regel): `verkoop/voorstel.
+  _niet_btw_plichtig_toepassen` zet élke regel bruto/0 mét de "geen btw"-code, vergrendeld (`btw_bron='niet_btw_plichtig'`, UBL-categorie
+  weg zodat de factuur-btw-check niet dubbel meldt) + rij `check_btw_niet_plichtig_verkoop`. Kassarapport: `omzet/boeken._taxrate_percentages`
+  geeft 0 voor élke code (bruto in de omzet) + check-rij op een categorie mét tarief > 0 %/verlegd. Doorbelasting: de SPIEGEL-inkoop in een
+  niet-btw-plichtige doel-administratie gaat incl. btw als kosten (`_spec_voor_doel`: één spec voor RLZ-regels én webhook) mét de "geen
+  btw"-code van het doel of zonder TaxRate; de BRON-verkoop blijft mét btw (IC-facturen "met btw", besluit Peter). (4) **Nazorg** (lees-only
+  CLI `btw-in-niet-plichtige-administratie --administratie … --jaar 2026 [--rlz]`, nameting-allowlist, dispatch-onderdeel `btw-niet-plichtig`):
+  module-geboekte inkoopfacturen van het jaar mét btw ≠ 0 op een regel → boekstuk, leverancier, referentie, datum, netto/btw/bruto; `--rlz`
+  (uitsluitend GET op het eigen client-GUID) → RLZ-crediteurpost `BaseInvoiceAmount`, `TotalTaxAmount`, betaald `BasePaidAmount`, open
+  `BaseRemainingAmount` en de kolom **TE WEINIG** = bruto module − crediteurpost RLZ (Peters nabetaallijst), plus RLZ-inkoopfacturen van het
+  jaar mét `TotalTaxAmount` ≠ 0 zonder module-spoor en het aantal ingediende aangiften (VGG: aangiftepoort n.v.t. als dat 0 is). Herstel per
+  document = "Corrigeren…" (21-09) mét de regel op bruto / btw 0; Lacy Lion eerst als bewijs (verwacht daarna crediteurpost 1.857,51, restant
+  322,38 open voor de nabetaling). Schrijvende CLI `btw-plichtig-zetten --administratie … --uit|--aan [--dry-run]` (weigerlijst nameting.sh,
+  job-image ná deploy) voor VGG (besluit Peter 13-09) en de administraties die Peter uit de kandidatenlijst aanwijst. (5) **Vastly/Odoo:**
+  ARVUM-pilot erft het kenmerk (Arvum EnableTaxReporting true → mét btw-mapping); een niet-btw-plichtige company krijgt géén btw-mapping
+  (`docs/ONTWERP_VASTLY_ODOO.md` §2.1). Guards: `tests/beheer/test_btw_plichtig.py`, `tests/documenten/test_btw_niet_plichtig.py`,
+  `tests/doorbelasting/test_btw_niet_plichtig_doel.py`, `tests/verkoop/test_btw_niet_plichtig.py`, `tests/omzet/test_btw_niet_plichtig.py`,
+  gouden-set-casus **ak** `tests/keten/test_ak_niet_btw_plichtige_administratie.py`, vitest `BtwPlichtigRij`, `BoekvoorstelPanel.btwPlichtig`. Werkt in productie: niet gemeten (kenmerk staat overal op true tot de data-stap).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Btw-tarief buitenland (CLAUDE.md `ed6d176` r. 354–360)

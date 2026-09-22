@@ -6,6 +6,15 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-22 — Niet btw-plichtig? Dan boekt de module het volledige factuurbedrag, zonder btw-splitsing
+
+<!-- btw-plichtig-per-administratie-22-09 -->
+
+- **Nieuwe instelling "Btw-plichtig" per administratie** (Instellingen › Administraties › ‹administratie› › Boeken & AI). Staat die uit, dan bestaat btw in die administratie niet: elke boekingsregel gaat op het factuurbedrag inclusief btw (de btw zit in de kosten), de btw-keuzelijst verdwijnt uit het controlescherm en er komt een chip "administratie niet btw-plichtig — btw zit in de kosten" voor in de plaats. Dit geldt voor inkoopfacturen, verkoopfacturen, kassarapporten en doorbelastingen naar zo'n administratie.
+- **Een harde controle "Btw in niet-btw-plichtige administratie" houdt gesplitste regels tegen** — mét één knop "Btw in de kosten zetten (alle regels)" die alle regels in één keer herrekent.
+- **Het systeem wijst kandidaten aan.** Zegt Reeleezee dat een administratie geen btw-aangifte doet, dan staat die op Inzicht › Reconciliatie als "bevestig de btw-status" met een link naar de instelling; u kiest aan of uit. De module zet een administratie nooit zelf op niet-btw-plichtig.
+- **Aanleiding.** Bij Vastgoedgroep Nederland (niet btw-plichtig) splitste de module een schoonmaakfactuur van € 1.857,51 in € 1.535,13 netto en € 322,38 btw; Reeleezee boekte alleen het nettobedrag als schuld aan de leverancier, waardoor € 322,38 te weinig betaald werd. Een lees-only rapport toont per administratie welke boekingen dit raakt en hoeveel er nog aan de leverancier betaald moet worden; herstellen gaat met "Corrigeren…" op het geboekte document.
+
 ## 2026-09-22 — Al buiten de module geboekt? Dan hoort u het dezelfde dag, niet pas na het laatste akkoord
 
 <!-- ter-accordering-bestaanscheck-22-09 -->

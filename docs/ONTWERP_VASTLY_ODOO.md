@@ -61,6 +61,14 @@ doorbelasting-DOEL (spiegel-inkoopfacturen landen dáár; BESLISSINGEN "Spiegelk
 - PDF: Odoo rendert via de HTTP-rapportroute mét sessie (§2.4 open) — voor de Vastly-stroom niet nodig (Vastly maakt de PDF), wél voor
   doorbelasting; buiten scope.
 
+- *Toegevoegd 22-09 (BUG Peter, casus VGG / Studio Lacy Lion 2026-042; migratie 0170):* het kenmerk `administratie.btw_plichtig` geldt óók
+  hier. Een NIET-btw-plichtige Vastly-/verhuurder-administratie (VGG: `tax_ids = []` in de replay, `odoo/rj220.py`) krijgt op Odoo een
+  company ZONDER btw-mapping: de `VerkoopPort`-Odoo-implementatie zet dan élke regel bruto (`price_unit` incl., `tax_ids = [[6, 0, []]]`) —
+  dezelfde regel als RLZ (bruto in de omzet, TaxAmount 0, "geen btw"-code) — en de harde check "Btw in niet-btw-plichtige administratie"
+  blokkeert élke regel mét btw vóór de write. De ARVUM-pilot (parallel-modus) erft het kenmerk uit de RLZ-administratie: Arvum B.V. staat in
+  RLZ op `EnableTaxReporting: true` (STAP-0 22-09), dus mét btw-mapping; VGG staat op false → zonder. De rekening-/btw-mapping-stap van de
+  wizard (§2.1 hierboven) slaat de btw-mapping over als `btw_plichtig = false` en toont dat als chip, nooit stil.
+
 ### 2.2 Waarborg-memoriaal naar Odoo
 - Bestaande `app/waarborg/boeken.py` achter een `MemoriaalPort`; Odoo-implementatie hergebruikt de memoriaal-move-schrijver van de
   VGG-replay (`entry` op MEM, debet/credit uit `DebitAmount`/`CreditAmount`, nooit `NetAmount`), balansrekening = Odoo-tegenhanger
