@@ -174,6 +174,16 @@
   `test_nameting_workflow.py::test_elk_niet_vgg_onderdeel_is_uitgesloten_van_de_vgg_tak`. Guards: `tests/beheer/test_bua_cli.py`,
   `tests/unit/test_nameting_workflow.py` (9).
 
+<!-- toegevoegd 22-09-2026, opdracht "nameting-activa-fase1-en-bua-kandidaten-na-deploy" -->
+- **BUA-meting gemeten in productie 22-09 — werkt in productie: JA (meting); zetting wacht op Peters "ja" (22-09; BESLISSINGEN "BUA-KENMERK —
+  LEES-ONLY METING + BULK-VOORSTEL (Peter 21-09)" alinea "Gemeten 22-09"; rapport `docs/rapporten/2026-09-22-nameting-activa-fase1-en-bua.md`):**
+  dispatch-onderdeel `bua-kandidaten` (run 35715207462, bot-bestand `verkenning/nameting-bua-kandidaten-22-09.txt`, commit `922eb28`) bevestigt de
+  replica-meting van 21-09 exact: 297 kandidaat-rekeningen in 75 van 78 administraties, 0 mét kenmerk aan, advies zetten 149 (4508 × 75 + 4510 × 74),
+  4014 × 74 beoordelen, 4503 × 74 niet_zetten, nergens een RLZ-/historie-default, module 2026 alleen 4510 bij T&J Hoveniers (2 regels € 34,45, btw
+  0,00), 0 fouten. Bijvangst uit de bank-kolom (niet in de replica-meting): één geboekte bank-direct-boeking op 4510 bij Administratiekantoor Nijenhuis
+  C.V. (netto −260,00, btw 0,00) — advies ongewijzigd. `bua-kenmerk-zetten` is niet gedraaid (ook niet `--dry-run`): eerst Peters "ja", dan de dry-run
+  op de job-image (verwacht 149 in 75), dan echt, dan de nameting `bua-kandidaten` → "149 mét kenmerk aan".
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Btw-tarief buitenland (CLAUDE.md `ed6d176` r. 354–360)
