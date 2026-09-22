@@ -274,3 +274,21 @@
   script met exit 1 zonder één regel rapport, terwijl de uitkomst (2 partners, 2 concepten, stap 3 FOUT) alleen in Cloud Logging stond;
   (4) een gestrande SCHRIJF-stap is een systeemfout van de bouw (regel 19-09 poging 2): fix + guard + reproductietest in dezelfde run, de
   meetlat opnieuw ná deploy als vervolg-opdracht mét `niet vóór:`. Rapport `docs/rapporten/2026-09-22-vgg-toewijzing-schoffelstraat-schrijf-c.md`.
+
+<!-- toegevoegd 22-09-2026, opdracht "nameting-jobs-start-en-boek-wachtrij-trigger" -->
+- **Gemeten 22-09 — F3-jobs `command python`, job-smoketest, vangnetten (BESLISSINGEN "F3-JOBS — COMMAND PYTHON IN DEPLOY.YML + JOB-SMOKETEST +
+  WORDT_GEBOEKT LET-OP (21-09)" alinea "Gemeten 22-09"; rapport `docs/rapporten/2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md`):**
+  **werkt in productie: JA** voor het startcommando (bot-bestand `verkenning/nameting-jobs-start-22-09.txt`, commit `a786e53`: 16 jobs `python`,
+  `rlz-migratie` `alembic`, alle op image `142f33c`), de job-smoketest (deploys `fb63be5` en `142f33c`: 15 × "job-smoketest ‹job›: start ok"), de
+  vangnet-schedulers (owner-sessie: `rlz-boek-wachtrij` */2, `rlz-extractie-wachtrij` */10, `rlz-bewaking` */15, `rlz-webhook-afleveraar` */5
+  ENABLED; `rlz-bank-sync` heeft bewust géén scheduler — on-demand, f3_jobs.sh meldt "geen scheduler … overgeslagen") en de job zelf (exact 30
+  executies/uur sinds de deploy, 0 × "exec likely failed"). **Trigger-pad niet gemeten** (geen `boek_wachtrij_ingediend` ná de deploy; poging 2 =
+  `opdrachten/inbox/2026-09-23-nameting-boek-wachtrij-trigger-pad-poging-2.md`, `niet vóór: 2026-09-23 09:00`, hoogstens drie pogingen). Twee
+  lessen: (1) **een nieuw dispatch-onderdeel heeft VIER plekken, niet drie** — if-tak + `options:` + `via_gh_onderdeel` (regel 19-09) én een
+  `OORDEEL_BRON`-tak: de bot-commit `a786e53` droeg "Oordeel: ROOD" uit het VGG-replay-rapport van die dag terwijl het eigen rapport groen was;
+  sinds 22-09 leest de else-tak `nameting-$ONDERDEEL-$DATUM.txt` en lezen alleen `alles|a|b|c|d|e` het replay-rapport, guard
+  `test_nameting_workflow.py::test_elk_onderdeel_met_eigen_rapport_leest_zijn_eigen_oordeelregel` (parametrisch over élk `UIT`-bestand) — het
+  bot-BESTAND blijft de bron van een meting, het commitbericht is een samenvatting; (2) `nameting@` leest de scheduler-stand niet
+  (`cloudscheduler.viewer` ontbreekt → "niet leesbaar") — beslispunt Peter: één owner-binding, dan meet `jobs-start` de vangnetten zelf; tot dan
+  meet de owner-sessie ze en noemt het rapport dat expliciet. De testadministratie in een opdrachttekst bij haar RLZ-adminId (`8dbfb856…`) is
+  platform-id `faae29c5` — gearchiveerd zonder credential (zie de regel van 22-09 hierboven).

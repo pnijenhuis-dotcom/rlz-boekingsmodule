@@ -224,3 +224,15 @@
   Feit productie (leesreplica 21-09, per administratie): 5 boekingen ingediend 19-09 06:55 (Nijenhuis 75b35516), 21-09 07:20
   (Belastingbutler), 07:53 ×2 (Old Dutch), 10:46 (Nijenhuis) → alle vijf `afgerond geboekt` door verwerker `job` 21-09 15:31
   ná Peters `--command python`; 140 trigger-audits `geslaagd`, 0 `mislukt`. Rapport `docs/rapporten/2026-09-21-f3-jobs-command-python-job-smoketest-wordt-geboekt-let-op.md`.
+
+<!-- toegevoegd 22-09-2026, opdracht "nameting-jobs-start-en-boek-wachtrij-trigger" -->
+- **Gemeten 22-09 — `boek_wachtrij_gestrand` (afwezig-pad) en de auto-sluiting van `wordt_geboekt_verouderd` (BESLISSINGEN "F3-JOBS — COMMAND PYTHON
+  IN DEPLOY.YML + JOB-SMOKETEST + WORDT_GEBOEKT LET-OP (21-09)" alinea "Gemeten 22-09"; rapport `docs/rapporten/2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md`):**
+  kwartier-probe `rlz-bewaking` 22-09 11:15–13:00 UTC: acht metingen, élke keer `boek_wachtrij_gestrand=ok`; scheduler-run `e315ceae` (04:30–04:46
+  UTC, image `fb63be5`): bevindingen `let_op`/`fout` = precies één (`groep_saldo_fout`), **0 × `boek_wachtrij_gestrand`** — er hing niets (leesreplica
+  `wordt_geboekt` 0), dus het afwezig-pad klopt; het aanwezig-pad (LET-OP + systeemmail + probe `fout` bij een écht hangende boeking) is alleen in
+  de gouden set (casus **ai**) bewezen, niet in productie — er is sinds de fix geen boeking meer blijven hangen. De oude in-meting-afwijking
+  `wordt_geboekt_verouderd` (document `75b35516`, 19-09) is door dezelfde run gesloten: audit `reconciliatie_auto_gesloten` 04:46:28 UTC, soort
+  `wordt_geboekt_verouderd` / `afwijking` / blok `documenten` / aantal 1, `samenvatting.delta.verdwenen_afwijkingen` 13. **Werkt in productie: JA
+  (afwezig-pad + auto-sluiting); aanwezig-pad niet gemeten.** Meetles: `automatisering_regressie=fout` in de bewakingsregel is een
+  verzamelsignaal (hier `groep_saldo_fout`) — lees de categorie in `reconciliatie_bevinding`/audit vóór je 'm aan een feature toeschrijft.

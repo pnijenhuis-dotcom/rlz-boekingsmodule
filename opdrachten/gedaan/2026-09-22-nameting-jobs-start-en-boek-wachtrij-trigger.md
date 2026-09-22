@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-22, rapport: docs/rapporten/2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md
+
 Domeinen: werkloop-productie, reconciliatie, werkvoorraad-controlescherm
 
 niet vóór: 2026-09-22 09:00

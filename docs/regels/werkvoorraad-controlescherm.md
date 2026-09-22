@@ -389,3 +389,13 @@
   `corrigeren` (request-log + `rlz-lezen` TEST-CORRIGEREN + `db-lezen correcties`) — ná Peters klik komt het bewijs als bot-bestand op main;
   vervolg-opdracht `2026-09-23-nameting-corrigeren-testadministratie-na-klikpunt.md`. De BLOW-stukken RLZ-04-00000357/358 zijn eveneens nog
   niet gecorrigeerd (klikwerk Peter, klantadministratie).
+
+<!-- toegevoegd 22-09-2026, opdracht "nameting-jobs-start-en-boek-wachtrij-trigger" -->
+- **Gemeten 22-09 — "Wordt geboekt…" mét achtergrond-schrijver die start (BESLISSINGEN "F3-JOBS — COMMAND PYTHON IN DEPLOY.YML + JOB-SMOKETEST +
+  WORDT_GEBOEKT LET-OP (21-09)" alinea "Gemeten 22-09"; rapport `docs/rapporten/2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md`):**
+  de job `rlz-boek-wachtrij` start sinds de deploy van 21-09 17:38 UTC élke 2 minuten (30/uur, 0 × "exec likely failed"), `db-lezen boek-wachtrij`
+  = 0 × `wordt_geboekt_nu` en de vijf boekingen van 19→21-09 staan `afgerond geboekt`. **Het trigger-pad (klik "Boeken in RLZ" → 202 → job
+  binnen 2 min) is NIET gemeten:** geen enkele indiening ná de deploy — request-log 21-09 17:38 → 22-09 13:20 UTC: 0 × POST `/boeken` 202, 0 ×
+  `boek-wachtrij/opnieuw-indienen`, één 409 (Bouwadvies Oost Nederland, 08:52 UTC — poort vóór het indienen, geen `wordt_geboekt`). Ook de
+  lijst-/balklabels "loopt vast" en "Opnieuw indienen" zijn daarmee ongebruikt in productie. Meting volgt uit gewoon kantoorgebruik of Peters klik
+  op de testadministratie (gearchiveerd zonder credential — dearchiveren éérst); vervolg-opdracht poging 2 `niet vóór: 2026-09-23 09:00`.

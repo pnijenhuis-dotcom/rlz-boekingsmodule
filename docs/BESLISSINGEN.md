@@ -12435,8 +12435,7 @@ schrijft toetst éérst de stand van die administratie (gearchiveerd/credential/
 
 ## F3-JOBS — COMMAND PYTHON IN DEPLOY.YML + JOB-SMOKETEST + WORDT_GEBOEKT LET-OP (21-09) — job `rlz-boek-wachtrij` startte 18→21-09 niet (geen `--command`), "Boeken in RLZ" bleef op "Wordt geboekt…"; deploy draagt het commando zelf + start élke job ná deploy, f3_jobs.sh toetst/hervat luid, hangende boeking = regressie-LET-OP + probe + "Opnieuw indienen"; geen migratie
 
-**Status:** GEBOUWD + GETEST (21-09, inbox-run); **werkt in productie: niet gemeten** (de fix deployt ná deze run; nameting = vervolg-opdracht
-`opdrachten/inbox/2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md` mét `niet vóór:`, onderdeel `jobs-start` in `nameting.yml`).
+**Status:** GEBOUWD + GETEST (21-09, inbox-run); **werkt in productie: JA voor command/job-smoketest/vangnet-schedulers/job-start/probe/LET-OP-afwezig-pad/auto-sluiting — trigger-pad NIET GEMETEN (gemeten 22-09, zie alinea "Gemeten 22-09"; poging 2 = `opdrachten/inbox/2026-09-23-nameting-boek-wachtrij-trigger-pad-poging-2.md`, `niet vóór: 2026-09-23 09:00`)**; onderdeel `jobs-start` in `nameting.yml`.
 Opdracht `opdrachten/gedaan/2026-09-21-BUG-rlz-boek-wachtrij-job-zonder-command-python-exec-failed-deploy-yml.md`; rapport `docs/rapporten/2026-09-21-f3-jobs-command-python-job-smoketest-wordt-geboekt-let-op.md`.
 Volledige regeltekst: `docs/regels/werkloop-productie.md` (deploy/f3_jobs/smoketest/meetlat), `werkvoorraad-controlescherm.md` (lijstlabel,
 balk, Opnieuw indienen, tijdlijn), `reconciliatie.md` (LET-OP + probe). Les: `Platform/registers/verbeteringen.md` 21-09.
@@ -12490,4 +12489,28 @@ balk, Opnieuw indienen, tijdlijn), `reconciliatie.md` (LET-OP + probe). Les: `Pl
 **Regel (woordelijk, ook in `Platform/registers/verbeteringen.md`):** een job die door de deploy wordt aangemaakt erft niets van het
 bootstrap-script — élke eigenschap die de start bepaalt staat in de deploy zelf; "start hij?" is een aparte toets naast "draait hij op het
 juiste beeld?"; een vangnet-cadans start nooit gepauzeerd; werk dat "op de achtergrond loopt" krijgt een tijdgrens mét handeling.
+
+**Gemeten 22-09 (nameting-opdracht `opdrachten/gedaan/2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md`; rapport
+`docs/rapporten/2026-09-22-nameting-jobs-start-en-boek-wachtrij-trigger.md`; lees-only, niets ingediend):**
+- **Stap 0:** deploy `fb63be5` (run 35632649146, 21-09 17:32–17:38 UTC) groen, stap "F3-jobs bijwerken … + job-smoketest" logt 15 × "job-smoketest ‹job›:
+  start ok"; deploy `142f33c` (22-09) herhaalt dat. Service `rlz-backend` = jobs = `142f33c`; `rlz-boek-wachtrij` command `python`.
+- **Meetlat `jobs-start`** (bot-bestand `verkenning/nameting-jobs-start-22-09.txt`, commit `a786e53`): 16 jobs `python` + `rlz-migratie` `alembic`;
+  laatste 8 executies `succeededCount 1`; `db-lezen boek-wachtrij` 150 rijen / 3 administraties / **0 × `wordt_geboekt_nu`**, de vijf boekingen van
+  19→21-09 `afgerond geboekt` (job, 21-09 15:31), laatste indiening 21-09 07:53. Scheduler-stand voor `nameting@` "niet leesbaar" (geen
+  `cloudscheduler.viewer`); owner-sessie: `rlz-boek-wachtrij` */2, `rlz-extractie-wachtrij` */10, `rlz-bewaking` */15, `rlz-webhook-afleveraar` */5 ENABLED;
+  `rlz-bank-sync` heeft bewust géén scheduler (on-demand). Cloud Logging job-kant sinds de deploy: exact 30 executies/uur, 0 × "exec likely failed".
+- **Trigger-pad: NIET GEMETEN** — 0 × `boek_wachtrij_ingediend` ná de deploy; request-log 0 × POST `/boeken` 202, 0 × `opnieuw-indienen`, één 409
+  (Bouwadvies Oost Nederland 08:52 UTC = poort vóór het indienen). Vraagt één klik 'Boeken in RLZ' van Peter op de RLZ-testadministratie (RLZ-adminId
+  `8dbfb856…` = platform `faae29c5`, gearchiveerd 30-08 zonder credential → éérst dearchiveren mét TESTADMIN-login) óf een gewone kantoor-indiening; poging 2
+  als vervolg-opdracht mét `niet vóór: 2026-09-23 09:00`, hoogstens drie pogingen, daarna `mislukt/` mét klikpunt.
+- **Bewaking + reconciliatie:** probe `boek_wachtrij_gestrand=ok` bij élke kwartiermeting 22-09 11:15–13:00 UTC; scheduler-run `e315ceae` (04:30–04:46
+  UTC): 0 × `boek_wachtrij_gestrand`, enige LET-OP = `groep_saldo_fout`; audit `reconciliatie_auto_gesloten` 04:46:28 UTC `wordt_geboekt_verouderd` /
+  afwijking / documenten / aantal 1 (document `75b35516`), delta `verdwenen_afwijkingen` 13 — afwezig-pad + auto-sluiting werken; het aanwezig-pad
+  (écht hangende boeking → LET-OP + probe fout) is alleen in de gouden set bewezen.
+- **Bijvangst gefixt (procesfout van de bouw 21-09):** de bot-commit `a786e53` heette "nameting 22-09 jobs-start — Oordeel: ROOD" terwijl het rapport
+  groen was — `jobs-start` had geen `OORDEEL_BRON`-tak en viel terug op het VGG-replay-rapport van die dag. Fix in `nameting.yml`: eigen tak +
+  else-tak `nameting-$ONDERDEEL-$DATUM.txt` (replay alleen voor `alles|a|b|c|d|e`); guards in `test_nameting_workflow.py` (reproductie + parametrisch
+  over élk `UIT`-bestand + onderdeel zonder bestand = "geen oordeelregel"). Regel: een nieuw dispatch-onderdeel = if-tak + `options:` +
+  `via_gh_onderdeel` + `OORDEEL_BRON`-tak — vier plekken. Beslispunt Peter: `roles/cloudscheduler.viewer` voor `nameting@` (owner-binding) zodat
+  `jobs-start` de vangnetten zelf leest.
 
