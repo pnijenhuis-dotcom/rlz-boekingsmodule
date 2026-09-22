@@ -3071,6 +3071,9 @@ def _reconciliatie_run_blokken() -> tuple[str, ...]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from app.logboek import configureer_logboek
+
+    configureer_logboek()  # nameting 22-09: JSON-logregels (stderr) óók voor de jobs — stdout blijft het rapport
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="RLZ Boekingsmodule beheer-CLI")
     parser.add_argument(
         "--smoketest",

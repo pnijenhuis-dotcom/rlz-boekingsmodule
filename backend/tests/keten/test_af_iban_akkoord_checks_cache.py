@@ -109,6 +109,27 @@ class TestAkkoordWerktDirectDoor:
         # Daarna cachet de verse run weer gewoon — de vingerafdruk mét de nieuwe set is stabiel.
         assert keten.checks_dto(bdo_geblokkeerd)["extern_uit_cache"] is True
 
+    def test_elk_pad_naar_de_vertrouwde_set_auditeert_het_aantal_ongeldig_gemaakte_rapporten(
+        self, keten: Keten, bdo_geblokkeerd: uuid.UUID, beheerder_id: uuid.UUID
+    ) -> None:
+        """Nameting 22-09 (productie 21-09: drie set-mutaties via bevestig/baseline/seed, nul akkoorden — en alleen het
+        akkoord-pad schreef `checks_cache_ongeldig`): het veld staat nu op ÉLK `leverancier_iban_toegevoegd`-audit.
+        De baseline uit de fixture (nog geen cache-rij) telt 0, het vier-ogen-akkoord ≥ 1."""
+        _vier_ogen_akkoord(keten, bdo_geblokkeerd, beheerder_id)
+        with keten.admin_engine.connect() as conn:
+            rijen = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde FROM platform.audit_event WHERE actie = 'leverancier_iban_toegevoegd' "
+                    "AND administratie_id = :a ORDER BY tijdstip"
+                ),
+                {"a": keten.administratie_id},
+            ).all()
+        waarden = [rij.nieuwe_waarde for rij in rijen]
+        assert [w["bron"] for w in waarden] == ["baseline", "bevestigd"], waarden
+        assert all("checks_cache_ongeldig" in w for w in waarden), waarden
+        assert waarden[0]["checks_cache_ongeldig"] == 0  # baseline vóór de eerste controle: nog niets te invalideren
+        assert waarden[-1]["checks_cache_ongeldig"] >= 1  # het akkoord trof de gecachte rij van de fixture
+
     def test_boeken_direct_na_het_akkoord_slaagt_binnen_de_15_min(
         self, keten: Keten, bdo_geblokkeerd: uuid.UUID, beheerder_id: uuid.UUID
     ) -> None:

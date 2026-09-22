@@ -60,7 +60,12 @@ def _voeg_toe(
                 bevestigd_door=bevestigd_door,
             )
         )
-        checks_extern.maak_ongeldig_voor_vendor(session, administratie_id=administratie_id, vendor_id=vendor_id)
+        cache_ongeldig = checks_extern.maak_ongeldig_voor_vendor(
+            session, administratie_id=administratie_id, vendor_id=vendor_id
+        )
+        # Nameting 22-09: het aantal ongeldig gemaakte rapporten staat op élk pad in het audit (tot 22-09 alleen op het
+        # akkoord-pad in `iban_accordering.accordeer`) — het meetrecept "veld bestaat, ≥ 0" geldt zo ook voor
+        # bevestig/seed/baseline (productie 21-09: drie van die mutaties, nul akkoorden).
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -69,7 +74,7 @@ def _voeg_toe(
             record_id=vendor_id,
             actie="leverancier_iban_toegevoegd",
             correlatie_id=uuid.uuid4(),
-            nieuwe_waarde={"iban": iban, "bron": bron.value},
+            nieuwe_waarde={"iban": iban, "bron": bron.value, "checks_cache_ongeldig": cache_ongeldig},
             administratie_id=administratie_id,
         )
     return True

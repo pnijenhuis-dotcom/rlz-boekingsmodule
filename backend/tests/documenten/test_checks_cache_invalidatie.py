@@ -269,3 +269,26 @@ class TestCliChecksCacheLegen:
         from app.cli import main
 
         assert main(["checks-cache-legen"]) == 2
+
+    def test_cli_alles_vorm_uit_het_meetrecept_dry_run_echt_dry_run(
+        self,
+        administratie_id: uuid.UUID,
+        admin_engine: Engine,
+        geblokkeerd_document: uuid.UUID,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Regel 19-09: élke CLI-vorm die een meetrecept noemt is in de suite gedraaid. De nazorg van 22-09 draaide
+        `--alles --dry-run` → `--alles` → `--alles --dry-run` op de job-image (productie: 78 administraties, 129 → 0);
+        vóór deze test kende de suite alleen de `--administratie`-vorm."""
+        from app.cli import main
+
+        assert main(["checks-cache-legen", "--alles", "--dry-run"]) == 0
+        uit = capsys.readouterr().out
+        assert "dry-run" in uit and "administratie(s)" in uit and " 0 ongeldig gemaakt" in uit
+        assert not _is_ongeldig(admin_engine, geblokkeerd_document)
+        assert main(["checks-cache-legen", "--alles"]) == 0
+        uit = capsys.readouterr().out
+        assert _is_ongeldig(admin_engine, geblokkeerd_document)
+        assert "dry-run" not in uit and " 0 ongeldig gemaakt" not in uit.splitlines()[-1]
+        assert main(["checks-cache-legen", "--alles", "--dry-run"]) == 0
+        assert capsys.readouterr().out.splitlines()[-1].endswith("0 geldig, 0 ongeldig gemaakt")

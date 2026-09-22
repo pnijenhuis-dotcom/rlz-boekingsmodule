@@ -54,7 +54,11 @@ from app.waarborg.router import router as waarborg_router
 from app.zoeken.archief_kantoorbreed import router as archief_kantoorbreed_router
 from app.zoeken.router import router as zoeken_router
 
+from app.logboek import configureer_logboek
+
 logger = logging.getLogger(__name__)
+# Nameting 22-09: zonder handler bereikte geen `app`-INFO-regel (o.a. `server_timing`) Cloud Logging — app/logboek.py.
+configureer_logboek()
 
 # Nederlandse omschrijving per (methode, route-sjabloon) voor de melding van de globale
 # exception-handler hieronder — alleen voor de gevoelige schrijfacties waarbij "er ging iets mis
