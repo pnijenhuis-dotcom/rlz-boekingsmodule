@@ -85,6 +85,10 @@ export interface AccorderingDto {
    * accorderingssectie toont 'm rood mét de knop "Opnieuw boeken". Null = geen. */
   boek_fout?: string | null
   boek_fout_op?: string | null
+  /** 22-09: kern van een Duplicaatcheck-boekfout buiten de module (extern_id, extern_boekstuk, extern_stand, systeem,
+   * bedrag_extern, extern_datum) — de sectie toont dan de knoppen "Afwijzen — al geboekt als …" / "Toch verschillend"
+   * i.p.v. proza. Null/afwezig = andere oorzaak. */
+  boek_fout_extern_geboekt?: Record<string, unknown> | null
   /** Blok 4 bundel 08-09: status 'overgeslagen' = geen ronde, klant-accordering overgeslagen op de
    * leveranciersregel ('intercompany'); `stappen` leeg, geen acties. */
   overgeslagen_reden?: string | null

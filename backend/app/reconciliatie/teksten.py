@@ -418,6 +418,26 @@ def _documenten(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             "Open het document en kies 'Opnieuw proberen' (het systeem plant de boeking ook zelf opnieuw in); blijft "
             "het hangen, meld het als systeemfout.",
         )
+    if soort == "intussen_extern_geboekt":
+        # Peter 22-09 (casus Bouwadvies F/2026/01235): het document wacht bij ons (klant-akkoord/IBAN/kantoor) terwijl
+        # dezelfde factuur intussen buiten de module in RLZ/Odoo is geboekt — twee knoppen op de rij, nooit een derde
+        # accordeur voor niets.
+        boekstuk = _s(d, "extern_boekstuk") or "boekstuk onbekend"
+        stand = "als concept" if _s(d, "extern_stand") == "concept" else "al geboekt"
+        stand_titel = "Al als concept in" if stand == "als concept" else "Al geboekt in"
+        wacht = {
+            "ter_accordering": "wacht bij ons op het klant-akkoord",
+            "wacht_op_iban_accordering": "wacht bij ons op de IBAN-accordering",
+            "klaar_om_te_boeken": "staat bij ons klaar om te boeken",
+        }.get(_s(d, "document_status") or "", "staat bij ons nog open")
+        extern_datum = datum(_s(d, "extern_datum"))
+        stuk = f"{boekstuk}" + (f" ({extern}" + (f", {extern_datum}" if extern_datum else "") + ")" if extern else "")
+        return (
+            _titel(f"{stand_titel} {sys_} buiten de module", onderwerp),
+            f"Dit document {wacht}, maar dezelfde factuur staat {stand} in {sys_} als {stuk} — buiten de module om.",
+            "Wijs het document af als 'al geboekt' (de accordering wordt ingetrokken), of kies 'Toch verschillend — "
+            "doorgaan' als het écht een andere factuur is.",
+        )
     if soort == "teruggedraaid_in_odoo":
         return (
             _titel("Teruggedraaid in Odoo", onderwerp),

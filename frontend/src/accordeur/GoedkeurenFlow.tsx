@@ -64,8 +64,7 @@ import {
   kaartSleutel,
   kiesActieveAdministratie,
   vragenChipTekst,
-  wachtSindsTekst,
-} from './administraties'
+  wachtSindsTekst, isWachtOpKantoor, wachtOpKantoorChipTekst } from './administraties'
 import { PullToRefresh } from './PullToRefresh'
 import { useVerversBijVoorgrond } from './verversen'
 import { UitlogIcoon } from './UitlogIcoon'
@@ -822,7 +821,11 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
   const standen = administratiesMetWerk(items, vragen)
   const actieveBv = kiesActieveAdministratie(bvKeuze, standen)
   // Blok A 28-08: de kaart is per (administratie, afdeling) — `actieveBv` is de kaartsleutel.
-  const bvItems: WachtrijItem[] = actieveBv ? items.filter((i) => kaartSleutel(i) === actieveBv) : []
+  const bvAlles: WachtrijItem[] = actieveBv ? items.filter((i) => kaartSleutel(i) === actieveBv) : []
+  // 22-09: items die intussen buiten de module geboekt zijn horen niet bij "te accorderen" — ze staan apart onder
+  // "Wachten op kantoor" (banner, geen knoppen) en tellen nooit mee in de doorloop of de "N van M"-teller.
+  const bvItems: WachtrijItem[] = bvAlles.filter((i) => !isWachtOpKantoor(i))
+  const bvWachtOpKantoor: WachtrijItem[] = bvAlles.filter((i) => isWachtOpKantoor(i))
   const bvNaam = standen.find((s) => s.sleutel === actieveBv)?.naam ?? null
 
   // Prefetch-venster: in review de huidige + eerstvolgende factuur VAN DEZELFDE ADMINISTRATIE,
@@ -850,7 +853,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
     const rest = items.filter((i) => i.document_id !== verwerktItem.document_id)
     // Volgende factuur van DEZELFDE administratie (besluit 27-08); stapel leeg → terug naar het
     // BV-overzicht (of, bij nog precies één administratie met werk, direct díe wachtrij).
-    const restBv = rest.filter((i) => i.administratie_id === verwerktItem.administratie_id)
+    const restBv = rest.filter((i) => i.administratie_id === verwerktItem.administratie_id && !isWachtOpKantoor(i))
     setItems(rest)
     setVerwerkt((v) => v + 1)
     toon(melding)
@@ -1136,6 +1139,11 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         {s.teAccorderen > 0 && <span className="acc-chip vraag acc-bvteller">{s.teAccorderen} te accorderen</span>}
+                        {s.wachtOpKantoor > 0 && (
+                          <span className="acc-chip wacht acc-bvteller" data-testid="acc-wacht-op-kantoor-teller">
+                            {wachtOpKantoorChipTekst(s.wachtOpKantoor)}
+                          </span>
+                        )}
                         <span className="acc-arrow">›</span>
                       </div>
                     </button>
@@ -1215,6 +1223,37 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
                           )}
                         </div>
                       )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span className="acc-amt">{eurWeergave(item.totaalbedrag)}</span>
+                      <span className="acc-arrow">›</span>
+                    </div>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {/* 22-09: intussen buiten de module geboekt — kantoor beoordeelt, akkoord niet nodig; nooit stil weg. */}
+            {!laden && !fout && !toonOverzicht && bvWachtOpKantoor.length > 0 && (
+              <>
+                <div className="acc-seclabel" data-testid="acc-wacht-op-kantoor">
+                  Wachten op kantoor · {bvWachtOpKantoor.length}
+                </div>
+                <div className="acc-toelicht">
+                  Deze facturen staan al in de boekhouding; het kantoor beoordeelt ze. U hoeft niets te doen.
+                </div>
+                {bvWachtOpKantoor.map((item) => (
+                  <button key={item.document_id} className="acc-qcard acc-qcard-wacht" onClick={() => openReview(item)}>
+                    <div>
+                      <div className="acc-lev">{item.leverancier_naam ?? 'Onbekende leverancier'}</div>
+                      <div className="acc-meta">
+                        {item.referentie ? `nr. ${item.referentie} · ` : ''}
+                        {datumWeergave(item.factuurdatum)}
+                        {item.administratie_naam ? ` · ${item.administratie_naam}` : ''}
+                      </div>
+                      <div className="acc-wachtnote" data-testid="acc-extern-geboekt-banner">
+                        {item.extern_geboekt?.tekst}
+                      </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span className="acc-amt">{eurWeergave(item.totaalbedrag)}</span>
@@ -1310,6 +1349,11 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
 
         {weergave === 'review' && huidige && (
           <div>
+            {huidige.extern_geboekt && (
+              <div className="acc-wachtnote" role="status" data-testid="acc-extern-geboekt-banner">
+                {huidige.extern_geboekt.tekst}
+              </div>
+            )}
             <div className="acc-boekinfo">
               {/* Blok B 04-09: een verplichting wordt niet geboekt — de kop heet dan
                   "Verplichting:" en beschrijft het werk, niet de boekingsregel. */}
@@ -1512,7 +1556,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
         )}
       </div>
 
-      {weergave === 'review' && huidige && (
+      {weergave === 'review' && huidige && !huidige.extern_geboekt && (
         <div className="acc-actionbar">
           {/* D2 (06-09): lezen mag direct (ook uit de cache), het geldbesluit wacht op de verse
               stand — de knoppen staan tot dan op slot met "verversen…" (in de praktijk < 1 s). */}

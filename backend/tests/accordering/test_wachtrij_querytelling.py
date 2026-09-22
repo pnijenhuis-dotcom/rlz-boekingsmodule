@@ -236,7 +236,8 @@ def test_payload_lijst_dto_blijft_compact(
 
     verzamel(body)
     assert not (sleutels & verboden), sleutels & verboden
-    assert json.dumps(body["items"][0]).count("null") <= 8  # géén lange staart optionele velden
+    # géén lange staart optionele velden (22-09: +1 voor `extern_geboekt`, de banner-kern "al geboekt buiten de module")
+    assert json.dumps(body["items"][0]).count("null") <= 9
 
 
 # --- herstelrun "Basis eerst" 08-09, blok 1: doorbelasting-items schalen niet meer --------------------------------

@@ -139,6 +139,9 @@ class AccorderingResponse(BaseModel):
     # controlescherm toont 'm rood in de accorderingssectie mét de knop "Opnieuw boeken".
     boek_fout: str | None = None
     boek_fout_op: datetime | None = None
+    # 22-09: kern van een Duplicaatcheck-boekfout buiten de module (extern_id, extern_boekstuk, extern_stand, systeem,
+    # bedrag_extern, extern_datum) → knoppen "Afwijzen — al geboekt als …" / "Toch verschillend — doorgaan".
+    boek_fout_extern_geboekt: dict | None = None
     # Blok 4 (08-09): status "overgeslagen" = geen ronde, klant-accordering overgeslagen op de leveranciersregel
     # (`overgeslagen_reden` = "intercompany"); `stappen` leeg, geen acties. Additief.
     overgeslagen_reden: str | None = None
@@ -320,6 +323,15 @@ class VragenAanMijResponse(BaseModel):
     items: list[AccordeurVraagResponse]
 
 
+class WachtrijExternGeboektDto(BaseModel):
+    """22-09: kern van de app-banner "Al geboekt in Reeleezee (RLZ-04-…) — kantoor beoordeelt; akkoord niet nodig"."""
+
+    boekstuk: str | None
+    systeem: str
+    stand: str  # geboekt | concept
+    tekst: str
+
+
 class WachtrijItemResponse(BaseModel):
     document_id: uuid.UUID
     administratie_id: uuid.UUID
@@ -347,6 +359,9 @@ class WachtrijItemResponse(BaseModel):
     verplichting: WachtrijVerplichtingDto | None = None
     # Alleen bij een inkoopfactuur mét een binnen/buiten-offerte-match (OPTIE A, ④).
     offerte_match: OfferteMatchKortDto | None = None
+    # 22-09: open bevinding "intussen buiten de module geboekt" — banner in de app, niet in "Te accorderen", geen
+    # Akkoord/Afwijzen (server weigert óók, 409); telt in "Wachten op kantoor". None = gewoon te accorderen.
+    extern_geboekt: WachtrijExternGeboektDto | None = None
 
 
 class WachtrijVerplichtingDto(BaseModel):

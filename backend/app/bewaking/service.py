@@ -423,7 +423,7 @@ def _probe_rls_weigering(nu: datetime) -> ProbeUitkomst:
         status="fout",
         detail=(
             f"{len(rijen)} RLS-weigering(en) in de laatste 24 u — een schrijfpad van de app werd door Row-Level "
-            f"Security geweigerd (bug in de app-laag, zie audit `rls_weigering`): " + "; ".join(delen)
+            f"Security geweigerd (fout in de app-laag, zie audit `rls_weigering`): " + "; ".join(delen)
         )[:1000],
     )
 

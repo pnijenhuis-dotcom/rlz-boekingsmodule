@@ -2534,6 +2534,11 @@ def voer_checks_uit(
         identiteit_vendor_ids = duplicaat_module.identiteit_vendor_ids(
             session, administratie_id=administratie_id, vendor_id=voorstel.vendor_id
         )
+        # 22-09: externe stukken die een mens op dit document als "Toch verschillend" heeft afgemeld tellen in de
+        # Duplicaatcheck niet meer als treffer (zelfde uitzonderingsmechanisme als de eigen (her)boekketen).
+        from app.documenten import intussen_extern_geboekt
+
+        afgemelde_extern = intussen_extern_geboekt.afgemelde_extern_ids(session, document_id)
 
     # --- extern: vingerafdruk → cache of (parallelle) verse run ---------------------------------------------------
     from app.backends.registry import backend_voor
@@ -2577,6 +2582,7 @@ def voer_checks_uit(
     keten = frozenset(
         {rlz_herboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
         | {rlz_tegenboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
+        | set(afgemelde_extern)
     )
     timing.tel("checks.lokaal", (time.perf_counter() - t_lokaal) * 1000)
 

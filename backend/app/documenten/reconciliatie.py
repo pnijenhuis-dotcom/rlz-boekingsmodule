@@ -29,7 +29,9 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from sqlalchemy import exists, func, select
 
@@ -38,7 +40,7 @@ from app.backends.registry import inkoop_port_voor
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.documenten.models import Boekvoorstel, Document, DocumentStatus
-from app.documenten.rlz_ids import rlz_herboeking_id
+from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
 from app.rlz.client import RlzClient
 from app.rlz.credentials import (
     GeenRlzCredentials,
@@ -65,6 +67,20 @@ AFRONDING_REDEN = "afronding ≤ 0,05"
 #: actie "Opnieuw boeken (document verdwenen)" bestaat. Per backend een eigen naam (contract A↔A8 punt 2).
 ONTBREEKT_SOORTEN = frozenset({"ontbreekt_in_rlz", "ontbreekt_in_odoo"})
 
+#: Hercontrole "intussen buiten de module geboekt" (Peter 22-09, casus Bouwadvies F/2026/01235): élk OPEN document dat
+#: op de klant of het kantoor wacht wordt dagelijks VERS tegen RLZ/Odoo getoetst met dezelfde bestaanscheck als de harde
+#: check Duplicaatcheck (`extern_bestaan.zoek_extern_bestaand`, over álle crediteurrecords van de identiteit, ± 60 d,
+#: genormaliseerd) — bewust zonder de checks-cache (0165): dít is de vers-toets. Treffer buiten de module = bevinding
+#: `intussen_extern_geboekt` mét boekstuk/bedrag/datum en twee handelingen op de rij (afwijzen als al geboekt / toch
+#: verschillend).
+SOORT_INTUSSEN_EXTERN_GEBOEKT = "intussen_extern_geboekt"
+HERCONTROLE_STATUSSEN = frozenset(
+    {DocumentStatus.TER_ACCORDERING, DocumentStatus.WACHT_OP_IBAN_ACCORDERING, DocumentStatus.KLAAR_OM_TE_BOEKEN}
+)
+#: `klaar_om_te_boeken` telt pas mee als het document langer dan dit stil ligt (een vers klaargezet document wordt zo
+#: geboekt — de harde check op het boekmoment dekt dat al); ter_accordering/wacht_op_iban altijd.
+HERCONTROLE_KLAAR_MINIMUM = timedelta(days=1)
+
 
 @dataclass(frozen=True)
 class ReconciliatieAfwijking:
@@ -89,6 +105,34 @@ class ReconciliatieRapport:
     #: verdeling van de toets over de backends (Odoo-administratie: N in Odoo, M in het Reeleezee-verleden)
     aantal_in_odoo: int = 0
     aantal_in_rlz_verleden: int = 0
+    #: Hercontrole open documenten (22-09): hoeveel getoetst; per overgeslagen document (id, reden) — zichtbaar, nooit
+    #: stil (storing = géén bevinding, wél deze regel). De treffers zelf staan als `intussen_extern_geboekt` in
+    #: `afwijkingen`.
+    hercontrole_getoetst: int = 0
+    hercontrole_overgeslagen: tuple[tuple[uuid.UUID, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class _Open:
+    """Eén open document voor de hercontrole (ter_accordering / wacht_op_iban / klaar_om_te_boeken > 1 dag)."""
+
+    document_id: uuid.UUID
+    status: DocumentStatus
+    vendor_id: uuid.UUID | None
+    referentie: str | None
+    totaalbedrag: Decimal | None
+    factuurdatum: Any
+    boek_cyclus: int
+    leverancier_naam: str | None
+    #: sinds wanneer het document in deze stand staat (laatst_gewijzigd_op)
+    sinds: datetime | None
+
+
+@dataclass(frozen=True)
+class HercontroleRapport:
+    getoetst: int
+    afwijkingen: tuple[ReconciliatieAfwijking, ...]
+    overgeslagen: tuple[tuple[uuid.UUID, str], ...]
 
 
 @dataclass(frozen=True)
@@ -290,6 +334,202 @@ def _rlz_client_voor(administratie_id: uuid.UUID) -> RlzClient:
     return client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
 
 
+def _open_documenten(administratie_id: uuid.UUID, *, nu: datetime) -> list[_Open]:
+    grens = nu - HERCONTROLE_KLAAR_MINIMUM
+    with scoped_session(administratie_id) as session:
+        rows = session.execute(
+            select(
+                Document.id,
+                Document.status,
+                Boekvoorstel.vendor_id,
+                Boekvoorstel.referentie,
+                Boekvoorstel.totaalbedrag,
+                Boekvoorstel.factuurdatum,
+                Boekvoorstel.boek_cyclus,
+                VendorCache.naam,
+                Document.laatst_gewijzigd_op,
+            )
+            .join(Boekvoorstel, Boekvoorstel.document_id == Document.id)
+            .join(
+                VendorCache,
+                (VendorCache.id == Boekvoorstel.vendor_id) & (VendorCache.administratie_id == administratie_id),
+                isouter=True,
+            )
+            .where(
+                Document.administratie_id == administratie_id,
+                Document.status.in_(tuple(HERCONTROLE_STATUSSEN)),
+                Document.soort == "inkoopfactuur",
+            )
+            .order_by(Document.laatst_gewijzigd_op)
+        ).all()
+    uit: list[_Open] = []
+    for r in rows:
+        status = r[1]
+        gewijzigd = r[8]
+        if status == DocumentStatus.KLAAR_OM_TE_BOEKEN and gewijzigd is not None:
+            g = gewijzigd if gewijzigd.tzinfo is not None else gewijzigd.replace(tzinfo=UTC)
+            if g > grens:
+                continue
+        uit.append(
+            _Open(
+                document_id=r[0],
+                status=status,
+                vendor_id=r[2],
+                referentie=r[3],
+                totaalbedrag=r[4],
+                factuurdatum=r[5],
+                boek_cyclus=r[6] or 0,
+                leverancier_naam=r[7],
+                sinds=gewijzigd,
+            )
+        )
+    return uit
+
+
+def _hercontrole_context(
+    doc: _Open, treffer: dict[str, Any], *, administratie_naam: str, backend: Backend
+) -> dict[str, str | None]:
+    from app.documenten import extern_bestaan
+
+    status = extern_bestaan.status_van(treffer)
+    datum = treffer.get("Date") or treffer.get("BookDate")
+    return {
+        "leverancier_naam": doc.leverancier_naam,
+        "factuurnummer": doc.referentie,
+        "administratie_naam": administratie_naam,
+        "bedrag_lokaal": _str(doc.totaalbedrag),
+        "bedrag_extern": _str(treffer.get("BaseInvoiceAmount")),
+        "backend": backend.value,
+        "extern_id": _str(treffer.get("id")),
+        "extern_boekstuk": _str(treffer.get("ReceiptNumber") or treffer.get("InvoiceNumber")),
+        "extern_referentie": _str(treffer.get("Reference")),
+        "extern_status": _str(status),
+        "extern_stand": "concept" if status == 1 else "geboekt",
+        "extern_datum": str(datum)[:10] if datum else None,
+        "match_basis": _str(treffer.get("match_basis")),
+        "document_status": doc.status.value,
+        "sinds": doc.sinds.isoformat() if doc.sinds is not None else None,
+        "boek_cyclus": str(doc.boek_cyclus),
+    }
+
+
+def beoordeel_hercontrole(
+    doc: _Open, treffers: list[dict[str, Any]], *, backend: Backend, administratie_naam: str, afgemeld: frozenset[str]
+) -> ReconciliatieAfwijking | None:
+    """Pure kern (testbaar zonder DB/HTTP): de eerste BLOKKERENDE treffer (zelfde genormaliseerde referentie, met of
+    zonder gelijk bedrag — dezelfde bases die de boekstap blokkeren) die niet als "toch verschillend" is afgemeld → één
+    afwijking `intussen_extern_geboekt`. Het detail = `omschrijf_treffer` (boekstuk, referentie, stand) —
+    deterministisch, zit in de acceptatie-vingerafdruk. Een bedrag-datum-signaal (ander nummer) maakt hier bewust géén
+    bevinding."""
+    from app.documenten import extern_bestaan
+
+    for treffer in treffers:
+        if treffer.get("match_basis") not in extern_bestaan.BLOKKERENDE_BASES:
+            continue
+        if str(treffer.get("id") or "") in afgemeld:
+            continue
+        systeem = "Odoo" if backend is Backend.ODOO else "Reeleezee"
+        return ReconciliatieAfwijking(
+            doc.document_id,
+            rlz_herboeking_id(doc.document_id, doc.boek_cyclus),
+            SOORT_INTUSSEN_EXTERN_GEBOEKT,
+            extern_bestaan.omschrijf_treffer(treffer, systeem=systeem),
+            _hercontrole_context(doc, treffer, administratie_naam=administratie_naam, backend=backend),
+        )
+    return None
+
+
+def hercontroleer_open_documenten(
+    *,
+    administratie_id: uuid.UUID,
+    port: InkoopPort | None = None,
+    client: Any | None = None,
+    nu: datetime | None = None,
+    administratie_naam: str | None = None,
+) -> HercontroleRapport:
+    """Dagelijkse vers-toets (Peter 22-09): voor élk open document (`HERCONTROLE_STATUSSEN`, klaar_om_te_boeken > 1 dag)
+    de RLZ-/Odoo-bestaanscheck opnieuw — één `zoek_extern_bestaand` per document op één client per administratie (de
+    throttling van de client bundelt), dagelijks dus hooguit één keer per document per dag. Storing (verbinding,
+    RLZ-fout, geen credential) = géén bevinding, wél zichtbaar overgeslagen mét reden; de eigen (her)boek-/
+    tegenboekketen en de door een mens afgemelde externe id's (`intussen_extern_geboekt.afgemelde_extern_ids`) tellen
+    nooit als treffer."""
+    from app.documenten import duplicaat_module, extern_bestaan, intussen_extern_geboekt
+
+    nu = nu or datetime.now(UTC)
+    open_docs = _open_documenten(administratie_id, nu=nu)
+    if not open_docs:
+        return HercontroleRapport(getoetst=0, afwijkingen=(), overgeslagen=())
+    naam = administratie_naam or _administratie_naam(administratie_id)
+    eigen_port = False
+    if client is None:
+        if port is None:
+            try:
+                port = inkoop_port_voor(administratie_id, rlz_client_factory=lambda: _rlz_client_voor(administratie_id))
+                eigen_port = True
+            except Exception as exc:  # noqa: BLE001 — geen credential/onbekende backend: alles zichtbaar overgeslagen
+                reden = f"hercontrole niet mogelijk: {exc}"
+                return HercontroleRapport(
+                    getoetst=0, afwijkingen=(), overgeslagen=tuple((d.document_id, reden) for d in open_docs)
+                )
+        try:
+            client = port.leesclient()
+        except Exception as exc:  # noqa: BLE001 — leesclient openen mislukt = storing, zichtbaar
+            if eigen_port:
+                port.__exit__(None, None, None)
+            reden = f"hercontrole niet mogelijk: {exc}"
+            return HercontroleRapport(
+                getoetst=0, afwijkingen=(), overgeslagen=tuple((d.document_id, reden) for d in open_docs)
+            )
+    backend = port.backend if port is not None else Backend.RLZ
+    afwijkingen: list[ReconciliatieAfwijking] = []
+    overgeslagen: list[tuple[uuid.UUID, str]] = []
+    try:
+        with scoped_session(administratie_id) as session:
+            identiteiten = {
+                d.document_id: duplicaat_module.identiteit_vendor_ids(
+                    session, administratie_id=administratie_id, vendor_id=d.vendor_id
+                )
+                for d in open_docs
+            }
+            afgemeld = {
+                d.document_id: intussen_extern_geboekt.afgemelde_extern_ids(session, d.document_id) for d in open_docs
+            }
+        for doc in open_docs:
+            if doc.vendor_id is None or not doc.referentie:
+                overgeslagen.append((doc.document_id, "geen crediteur of referentie — niets om op te toetsen"))
+                continue
+            keten = {str(rlz_herboeking_id(doc.document_id, c)) for c in range(doc.boek_cyclus + 1)} | {
+                str(rlz_tegenboeking_id(doc.document_id, c)) for c in range(doc.boek_cyclus + 1)
+            }
+            try:
+                treffers = extern_bestaan.zoek_extern_bestaand(
+                    client,
+                    vendor_ids=list(dict.fromkeys([doc.vendor_id, *identiteiten.get(doc.document_id, ())])),
+                    referentie=doc.referentie,
+                    totaalbedrag=doc.totaalbedrag,
+                    factuurdatum=doc.factuurdatum,
+                    uitgezonderd_ids=keten,
+                )
+            except Exception as exc:  # noqa: BLE001 — storing = geen bevinding, zichtbaar overgeslagen (opdracht 22-09)
+                overgeslagen.append((doc.document_id, f"controle mislukt: {exc}"))
+                continue
+            afwijking = beoordeel_hercontrole(
+                doc,
+                treffers,
+                backend=backend,
+                administratie_naam=naam,
+                afgemeld=afgemeld.get(doc.document_id, frozenset()),
+            )
+            if afwijking is not None:
+                afwijkingen.append(afwijking)
+    finally:
+        if eigen_port and port is not None:
+            port.__exit__(None, None, None)
+    return HercontroleRapport(
+        getoetst=len(open_docs) - len(overgeslagen), afwijkingen=tuple(afwijkingen), overgeslagen=tuple(overgeslagen)
+    )
+
+
 def reconcilieer_administratie(
     *,
     administratie_id: uuid.UUID,
@@ -311,7 +551,15 @@ def reconcilieer_administratie(
     `controle_mislukt`-bevinding."""
     geboekte_documenten = _geboekte_documenten(administratie_id)
     if not geboekte_documenten:
-        return ReconciliatieRapport(administratie_id=administratie_id, aantal_gecontroleerd=0, afwijkingen=())
+        # Hercontrole (22-09) loopt óók zonder geboekte documenten: een administratie met alleen open werk telt mee.
+        herc = hercontroleer_open_documenten(administratie_id=administratie_id, port=port, client=client)
+        return ReconciliatieRapport(
+            administratie_id=administratie_id,
+            aantal_gecontroleerd=0,
+            afwijkingen=herc.afwijkingen,
+            hercontrole_getoetst=herc.getoetst,
+            hercontrole_overgeslagen=herc.overgeslagen,
+        )
 
     eigen_port = port is None
     if port is None:
@@ -356,6 +604,11 @@ def reconcilieer_administratie(
             uit, is_overgeslagen = _toets_document(doc_port, doc, administratie_naam=administratie_naam)
             afwijkingen.extend(uit)
             overgeslagen += int(is_overgeslagen)
+        # Hercontrole open documenten (22-09) op dezelfde port/client — één verbinding per administratie.
+        herc = hercontroleer_open_documenten(
+            administratie_id=administratie_id, port=port, administratie_naam=administratie_naam
+        )
+        afwijkingen.extend(herc.afwijkingen)
     finally:
         if verleden_port is not None:
             verleden_port.__exit__(None, None, None)
@@ -370,6 +623,8 @@ def reconcilieer_administratie(
         backend=port.backend.value,
         aantal_in_odoo=in_odoo,
         aantal_in_rlz_verleden=in_rlz_verleden,
+        hercontrole_getoetst=herc.getoetst,
+        hercontrole_overgeslagen=herc.overgeslagen,
     )
 
 

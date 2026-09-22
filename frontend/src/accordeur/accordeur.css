@@ -501,6 +501,21 @@
   gap: 8px;
 }
 
+/* 22-09: "Al geboekt in Reeleezee (RLZ-04-…) — kantoor beoordeelt; akkoord niet nodig" — banner op kaart én review. */
+.acc-wachtnote {
+  background: var(--acc-purple-bg);
+  border-radius: 10px;
+  padding: 9px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--acc-purple);
+  font-weight: 600;
+}
+.acc-qcard-wacht {
+  opacity: 0.92;
+}
+
 /* ===== Actiebalk binnen duimbereik ===== */
 .acc-actionbar {
   position: sticky;

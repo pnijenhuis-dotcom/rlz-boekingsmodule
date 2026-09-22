@@ -178,6 +178,9 @@ function stubFetch(rol = 'boekhouding', opties: StubOpties = {}) {
         }
         return Promise.resolve(jsonResponse({ id: url.split('/')[3] }))
       }
+      if (url.startsWith('/reconciliatie/documenten/') && url.endsWith('/extern-geboekt/afwijzen')) {
+        return Promise.resolve(jsonResponse({ document_id: 'doc-22', status: 'afgewezen', reden: 'x', accordering_vervallen: true, afwijzing_id: 'afw-1' }))
+      }
       if (url.startsWith('/reconciliatie/documenten/') && url.endsWith('/bewust-verwijderd-herstellen')) {
         return Promise.resolve(jsonResponse({ document_id: 'doc-9', document_status_nieuw: 'geboekt', acceptatie_ingetrokken_id: 'acc-1' }))
       }
@@ -490,5 +493,62 @@ describe('ReconciliatieScreen (kantoorbreed)', () => {
       administratie_id: ADMIN_A,
       reden: 'toch niet dubbel — stuk hoort in RLZ',
     })
+  })
+
+  // Peter 22-09 (casus Bouwadvies F/2026/01235): "intussen buiten de module geboekt" → twee handelingen op de rij.
+  const EXTERN_GEBOEKT: BevindingDto = {
+    id: 'r22',
+    run_id: RUN_ID,
+    blok: 'documenten',
+    soort: 'afwijking',
+    administratie_id: ADMIN_A,
+    administratie_naam: 'Bouwadvies Oost Nederland B.V.',
+    vingerafdruk: 'doc:vaf22',
+    tekst: 'document=doc-22 soort=intussen_extern_geboekt [vaf:doc:vaf22]: al geboekt in Reeleezee: RLZ-04-00000518',
+    titel: 'Al geboekt in RLZ buiten de module — Beter Assemblage B.V. F/2026/01235',
+    wat: 'Dit document wacht bij ons op het klant-akkoord, maar dezelfde factuur staat al geboekt in RLZ als RLZ-04-00000518.',
+    doe: "Wijs het document af als 'al geboekt', of kies 'Toch verschillend — doorgaan'.",
+    details: [],
+    sinds: '2026-09-22T05:00:00Z',
+    nieuw: true,
+    acceptatie: null,
+    gezien: null,
+    detail: {
+      bron: 'documenten',
+      afwijking_soort: 'intussen_extern_geboekt',
+      document_id: 'doc-22',
+      leverancier_naam: 'Beter Assemblage B.V.',
+      factuurnummer: 'F/2026/01235',
+      extern_id: 'ffb1f1f3-0000-4000-8000-000000000518',
+      extern_boekstuk: 'RLZ-04-00000518',
+      extern_stand: 'geboekt',
+      bedrag_extern: '173.84',
+      extern_datum: '2026-08-26',
+      document_status: 'ter_accordering',
+      backend: 'rlz',
+    },
+    doel_pad: `/?administratie=${ADMIN_A}&document=doc-22`,
+  }
+
+  it('"intussen buiten de module geboekt": twee handelingen op de rij (élke kantoorrol) + deeplink; afwijzen = document-route mét bevinding-kern', async () => {
+    const aangeroepen = stubFetch('boekhouding', { lijstAntwoord: lijst([EXTERN_GEBOEKT], { totaal: 1 }) })
+    renderScherm()
+    const tabel = await screen.findByTestId('reconciliatie-tabel')
+    const [rij] = within(tabel).getAllByTestId('reconciliatie-rij')
+    expect(within(rij).getByRole('button', { name: 'Afwijzen — al geboekt als RLZ-04-00000518: F/2026/01235' })).toBeInTheDocument()
+    expect(within(rij).getByRole('button', { name: 'Toch verschillend — doorgaan: F/2026/01235' })).toBeInTheDocument()
+    expect(within(rij).getByRole('link', { name: /Naar het document/ })).toHaveAttribute('href', `/?administratie=${ADMIN_A}&document=doc-22`)
+    // Geen generieke "Accepteren…" als primaire handeling: de rij heeft haar eigen twee knoppen.
+    expect(within(rij).queryByRole('button', { name: /^Afwijking accepteren:/ })).toBeNull()
+    await userEvent.click(within(rij).getByRole('button', { name: /^Afwijzen — al geboekt als/ }))
+    const dialoog = await screen.findByTestId('extern-geboekt-afwijzen-dialoog')
+    expect(dialoog).toHaveTextContent('RLZ-04-00000518')
+    await userEvent.click(within(dialoog).getByRole('button', { name: 'Afwijzen en accordering intrekken' }))
+    await waitFor(() => expect(aangeroepen.some((a) => a.pad === '/reconciliatie/documenten/doc-22/extern-geboekt/afwijzen')).toBe(true))
+    const post = aangeroepen.find((a) => a.pad === '/reconciliatie/documenten/doc-22/extern-geboekt/afwijzen')!
+    expect(post.method).toBe('POST')
+    expect(post.body).toEqual({ administratie_id: ADMIN_A, extern_id: 'ffb1f1f3-0000-4000-8000-000000000518', extern_boekstuk: 'RLZ-04-00000518', systeem: 'Reeleezee' })
+    // Ná succes wordt de lijst opnieuw opgehaald.
+    await waitFor(() => expect(aangeroepen.filter((a) => a.pad.startsWith('/reconciliatie/bevindingen?')).length).toBeGreaterThan(1))
   })
 })

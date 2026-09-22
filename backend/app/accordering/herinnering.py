@@ -110,6 +110,16 @@ def stuur_handmatige_herinnering(
         stap = _eerstvolgende_open_stap(stappen)
         if stap is None:
             raise GeenOpenAccordering("Alle lagen zijn al besloten")
+        # 22-09: intussen buiten de module geboekt (open bevinding) → geen herinnering; het kantoor beoordeelt eerst.
+        from app.accordering.service import WachtOpKantoor
+        from app.documenten import intussen_extern_geboekt
+
+        treffer = intussen_extern_geboekt.open_treffers(session, administratie_id=administratie_id).get(document_id)
+        if treffer is not None:
+            raise WachtOpKantoor(
+                f"Geen herinnering gestuurd: {intussen_extern_geboekt.banner_tekst(treffer)} — kies op Inzicht › "
+                "Reconciliatie 'Afwijzen — al geboekt' of 'Toch verschillend'."
+            )
         accordeur = session.get(Gebruiker, stap.accordeur_gebruiker_id)
         if (
             accordeur is None

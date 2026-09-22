@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -60,6 +61,9 @@ class CheckResultaat:
     signaal: bool = False
     # 18-09: acties op de rij ("signalering zonder handeling is niet af") — alleen bij een blokkerende uitkomst.
     acties: tuple[CheckActie, ...] = ()
+    # 22-09: machineleesbare kern van een blokkerende uitkomst (Duplicaatcheck: het externe stuk `extern_geboekt` mét
+    # boekstuk/id/systeem/stand) zodat de accordering ná het laatste akkoord er twee knoppen van kan maken i.p.v. proza.
+    data: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -596,7 +600,28 @@ def check_duplicaat(
             )
         if historie:
             delen.append(historie_melding(historie))
-        return CheckResultaat("Duplicaatcheck", False, "; ".join(delen))
+        # 22-09: de eerste treffer BUITEN de module als machineleesbare kern (knoppen "Afwijzen — al geboekt als …" /
+        # "Toch verschillend — doorgaan" op het controlescherm ná het laatste klant-akkoord;
+        # zie intussen_extern_geboekt.py).
+        data: dict[str, Any] | None = None
+        for f in blokkerend:
+            if f.get("bron") in ("module", "app_historie"):
+                continue
+            st = extern_bestaan.status_van(f)
+            data = {
+                "extern_geboekt": {
+                    "extern_id": str(f.get("id") or ""),
+                    "extern_boekstuk": f.get("ReceiptNumber") or f.get("InvoiceNumber"),
+                    "extern_referentie": f.get("Reference"),
+                    "extern_stand": "concept" if st == 1 else "geboekt",
+                    "bedrag_extern": (
+                        str(f.get("BaseInvoiceAmount")) if f.get("BaseInvoiceAmount") is not None else None
+                    ),
+                    "extern_datum": str(f.get("Date") or f.get("BookDate") or "")[:10] or None,
+                }
+            }
+            break
+        return CheckResultaat("Duplicaatcheck", False, "; ".join(delen), data=data)
     if signalen:
         return CheckResultaat(
             "Duplicaatcheck",

@@ -44,6 +44,11 @@ class SoortDefinitie:
     #: Promotie in code (ná een meting): datum + korte verwijzing (rapport). Leeg = alleen via DB-override.
     gepromoveerd_op: date | None = None
     meting: str | None = None
+    #: Uitzondering op "nieuw start in meten" (alleen op een expliciet besluit van Peter, mét reden — guard-test): een
+    #: soort
+    #: die een bestaande harde check herhaalt en een bestaand boekstuk als bewijs draagt (geen nieuwe domeinhypothese)
+    #: mag direct in `actie` starten. De explosie-rem (> 50/run → meten) geldt onverkort.
+    direct_actie_reden: str | None = None
 
 
 def _oud(soort: str, blok: str) -> SoortDefinitie:
@@ -75,8 +80,19 @@ REGISTRY: dict[str, SoortDefinitie] = {
             sinds=date(2026, 9, 18),
             default=METEN,
             gepromoveerd_op=date(2026, 9, 21),
-            meting="21-09: drie dagen gestrand zonder signaal (BUG --command python) → LET-OP via automatiseringen, "
+            meting="21-09: drie dagen gestrand zonder signaal (fout --command python) → LET-OP via automatiseringen, "
             "rapport docs/rapporten/2026-09-21-f3-jobs-command-python-job-smoketest-wordt-geboekt-let-op.md",
+        ),
+        # hercontrole "intussen buiten de module geboekt" (Peter 22-09, casus Bouwadvies F/2026/01235): dezelfde harde
+        # check Duplicaatcheck, dagelijks vers op élk open document; het bewijs is een bestaand RLZ-/Odoo-boekstuk.
+        # Besluit Peter in de opdracht: "start in meten? NEE — direct actie-bevinding mét actiemail".
+        SoortDefinitie(
+            soort="intussen_extern_geboekt",
+            blok="documenten",
+            sinds=date(2026, 9, 22),
+            default=ACTIE,
+            direct_actie_reden="Peter 22-09 (opdracht ter-accordering-bestaanscheck): bestaande harde-check-soort mét "
+            "een bestaand boekstuk als bewijs — geen meetfase; explosie-rem blijft",
         ),
         # bank
         _oud("document_ontbreekt_in_rlz", "bank"),

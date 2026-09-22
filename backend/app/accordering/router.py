@@ -58,6 +58,9 @@ def _vertaal(exc: service.AccorderingFout) -> HTTPException:
     if isinstance(exc, service.KlantAkkoordAlCompleet):
         # Punt 24 (opruimrun 28-08): conflict met de actuele stand — boeken is de juiste actie.
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, service.WachtOpKantoor):
+        # 22-09: intussen buiten de module geboekt — kantoor beoordeelt; akkoord/afwijzing/herinnering niet nodig.
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if isinstance(exc, service.DocumentNietAanbiedbaar):
         # Aanvulling blok 3 (08-09): statuspoort = conflict met de actuele stand (zoals `OngeldigeBoekpoging`
         # op de boek-route) — een samengevoegd-huls of afgevoerd duplicaat is nooit aanbiedbaar.
@@ -82,6 +85,7 @@ def _accordering_response(data: service.AccorderingData) -> schemas.AccorderingR
         afgerond_op=data.afgerond_op,
         boek_fout=data.boek_fout,
         boek_fout_op=data.boek_fout_op,
+        boek_fout_extern_geboekt=data.boek_fout_extern_geboekt,
         overgeslagen_reden=data.overgeslagen_reden,
         overgeslagen_leverancier_naam=data.overgeslagen_leverancier_naam,
         stappen=[
@@ -847,6 +851,21 @@ def vraag_beantwoorden_als_accordeur(
     )
 
 
+def _naar_extern_geboekt(treffer: object | None) -> schemas.WachtrijExternGeboektDto | None:
+    """22-09: banner-kern voor de app uit `intussen_extern_geboekt.OpenTreffer`."""
+    if treffer is None:
+        return None
+    from app.documenten import intussen_extern_geboekt
+
+    t = treffer  # type: ignore[assignment]
+    return schemas.WachtrijExternGeboektDto(
+        boekstuk=getattr(t, "extern_boekstuk", None),
+        systeem=getattr(t, "systeem", "Reeleezee"),
+        stand=getattr(t, "extern_stand", "geboekt"),
+        tekst=intussen_extern_geboekt.banner_tekst(t),  # type: ignore[arg-type]
+    )
+
+
 @router.get("/accordering/wachtrij", response_model=schemas.WachtrijResponse)
 def wachtrij(response: Response, actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.WachtrijResponse:
     """De accordeer-wachtrij van de ingelogde gebruiker (PWA-endpoint, scope-aanscherping
@@ -956,6 +975,7 @@ def wachtrij(response: Response, actor: CurrentGebruiker = Depends(get_current_g
                     if item.vraag is not None
                     else None
                 ),
+                extern_geboekt=_naar_extern_geboekt(item.extern_geboekt),
             )
             for item in items
         ]

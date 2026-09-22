@@ -435,3 +435,96 @@ def document_bewust_verwijderd_herstellen(
         document_status_nieuw=r.document_status_nieuw,
         acceptatie_ingetrokken_id=r.acceptatie_ingetrokken_id,
     )
+
+
+# ---- "intussen buiten de module geboekt" (Peter 22-09) — twee handelingen op het document ---------------------------
+
+
+def _vertaal_extern_geboekt(exc: Exception) -> HTTPException:
+    from app.documenten import intussen_extern_geboekt as ieg
+
+    tekst = str(exc)
+    if isinstance(exc, ieg.DocumentNietGevonden):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=tekst)
+    if isinstance(exc, ieg.GeenToegang):
+        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=tekst)
+    if isinstance(exc, ieg.StatusNietToegestaan | ieg.AlVastgelegd):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=tekst)
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=tekst)
+
+
+@router.post(
+    "/reconciliatie/documenten/{document_id}/extern-geboekt/afwijzen",
+    response_model=schemas.ExternGeboektAfwijzenResultaatDto,
+)
+def document_extern_geboekt_afwijzen(
+    document_id: uuid.UUID,
+    invoer: schemas.ExternGeboektAfwijzenInvoerDto,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.ExternGeboektAfwijzenResultaatDto:
+    """ "Afwijzen — al geboekt als ‹RLZ-04-…›" (Peter 22-09, bevinding `intussen_extern_geboekt` én de boekfout ná het
+    laatste akkoord): lopende accorderingsronde vervalt mét tijdlijnregel "niet meer nodig: al geboekt in Reeleezee",
+    daarna de bestaande afwijs-route mét voorgevulde reden + kruisverwijzing. Élke kantoorrol binnen scope; 409 als het
+    document op de IBAN-accordering wacht of al een andere status heeft (mét route), 404 onbekend, 403 buiten scope."""
+    from app.documenten import afwijzen
+    from app.documenten import intussen_extern_geboekt as ieg
+    from app.documenten.statusmachine import OngeldigeStatusovergang
+
+    try:
+        r = ieg.wijs_af_al_geboekt(
+            administratie_id=invoer.administratie_id,
+            document_id=document_id,
+            actor_id=actor.id,
+            rol=actor.rol,
+            extern_boekstuk=invoer.extern_boekstuk,
+            extern_id=invoer.extern_id,
+            systeem=invoer.systeem,
+            toelichting=invoer.toelichting,
+        )
+    except ieg.ExternGeboektFout as exc:
+        raise _vertaal_extern_geboekt(exc) from exc
+    except (afwijzen.OngeldigeStatusovergang, OngeldigeStatusovergang) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.ExternGeboektAfwijzenResultaatDto(
+        document_id=r.document_id,
+        status=r.status,
+        reden=r.reden,
+        accordering_vervallen=r.accordering_vervallen,
+        afwijzing_id=r.afwijzing_id,
+    )
+
+
+@router.post(
+    "/reconciliatie/documenten/{document_id}/extern-geboekt/toch-verschillend",
+    response_model=schemas.ExternGeboektTochVerschillendResultaatDto,
+)
+def document_extern_geboekt_toch_verschillend(
+    document_id: uuid.UUID,
+    invoer: schemas.ExternGeboektTochVerschillendInvoerDto,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.ExternGeboektTochVerschillendResultaatDto:
+    """ "Toch verschillend — doorgaan" (Peter 22-09): het externe stuk is een andere factuur. Tijdlijnregel + audit, het
+    stuk telt niet meer als treffer (hercontrole én harde check Duplicaatcheck), checks-cache ongeldig; een Beheerder
+    accepteert in dezelfde handeling ook de open bevinding. 422 zonder inhoudelijke reden, 409 als al vastgelegd."""
+    from app.documenten import intussen_extern_geboekt as ieg
+
+    try:
+        r = ieg.toch_verschillend(
+            administratie_id=invoer.administratie_id,
+            document_id=document_id,
+            actor_id=actor.id,
+            rol=actor.rol,
+            extern_id=invoer.extern_id,
+            extern_boekstuk=invoer.extern_boekstuk,
+            reden=invoer.reden,
+            bevinding_id=invoer.bevinding_id,
+        )
+    except ieg.ExternGeboektFout as exc:
+        raise _vertaal_extern_geboekt(exc) from exc
+    return schemas.ExternGeboektTochVerschillendResultaatDto(
+        document_id=r.document_id,
+        extern_ids=list(r.extern_ids),
+        reden=r.reden,
+        bevinding_geaccepteerd=r.bevinding_geaccepteerd,
+        checks_cache_ongeldig=r.checks_cache_ongeldig,
+    )

@@ -436,3 +436,94 @@ export function mailStatusTekst(waarde: MailStatusWaarde | null | undefined): st
     .filter((x): x is string => x !== null)
     .join(' · ')
 }
+
+
+// ---- "Intussen buiten de module geboekt" (Peter 22-09, casus Bouwadvies F/2026/01235) ---------------------------------
+
+/** Is dit de rij met de twee handelingen "Afwijzen — al geboekt als …" / "Toch verschillend — doorgaan"? */
+export function isIntussenExternGeboekt(r: BevindingDto): boolean {
+  return r.blok === 'documenten' && r.detail?.afwijking_soort === 'intussen_extern_geboekt' && typeof r.detail?.document_id === 'string'
+}
+
+/** Kern van het externe stuk zoals de bevinding (`detail`) of de accorderings-boekfout ('m draagt. */
+export interface ExternGeboektKern {
+  extern_id: string | null
+  extern_boekstuk: string | null
+  systeem: 'Reeleezee' | 'Odoo'
+  stand: 'geboekt' | 'concept'
+  bedrag_extern: string | null
+  extern_datum: string | null
+}
+
+export function externGeboektKernUitBevinding(r: BevindingDto): ExternGeboektKern {
+  const d = r.detail ?? {}
+  const s = (k: string): string | null => (typeof d[k] === 'string' && (d[k] as string).trim() !== '' ? (d[k] as string) : null)
+  return {
+    extern_id: s('extern_id'),
+    extern_boekstuk: s('extern_boekstuk'),
+    systeem: s('backend') === 'odoo' ? 'Odoo' : 'Reeleezee',
+    stand: s('extern_stand') === 'concept' ? 'concept' : 'geboekt',
+    bedrag_extern: s('bedrag_extern'),
+    extern_datum: s('extern_datum'),
+  }
+}
+
+export interface ExternGeboektAfwijzenResultaatDto {
+  document_id: string
+  status: string
+  reden: string
+  accordering_vervallen: boolean
+  afwijzing_id: string
+}
+
+/** "Afwijzen — al geboekt als ‹boekstuk›": ronde vervalt ("niet meer nodig: al geboekt in …"), document afgewezen mét
+ * voorgevulde reden via de bestaande afwijs-route. Élke kantoorrol binnen scope; 409 mét route bij wacht_op_iban/geboekt. */
+export function afwijsAlGeboekt(
+  documentId: string,
+  administratieId: string,
+  kern: ExternGeboektKern,
+  toelichting?: string,
+): Promise<ExternGeboektAfwijzenResultaatDto> {
+  const t = toelichting?.trim()
+  return apiJson(`/reconciliatie/documenten/${documentId}/extern-geboekt/afwijzen`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      administratie_id: administratieId,
+      extern_id: kern.extern_id,
+      extern_boekstuk: kern.extern_boekstuk,
+      systeem: kern.systeem,
+      ...(t ? { toelichting: t } : {}),
+    }),
+  })
+}
+
+export interface ExternGeboektTochVerschillendResultaatDto {
+  document_id: string
+  extern_ids: string[]
+  reden: string
+  bevinding_geaccepteerd: boolean
+  checks_cache_ongeldig: number
+}
+
+/** "Toch verschillend — doorgaan": reden verplicht (≥ 5); het stuk telt daarna niet meer als treffer (hercontrole én harde
+ * check); een Beheerder accepteert mét `bevindingId` óók de open bevinding. */
+export function tochVerschillend(
+  documentId: string,
+  administratieId: string,
+  kern: ExternGeboektKern,
+  reden: string,
+  bevindingId?: string,
+): Promise<ExternGeboektTochVerschillendResultaatDto> {
+  return apiJson(`/reconciliatie/documenten/${documentId}/extern-geboekt/toch-verschillend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      administratie_id: administratieId,
+      extern_id: kern.extern_id,
+      extern_boekstuk: kern.extern_boekstuk,
+      reden: reden.trim(),
+      ...(bevindingId ? { bevinding_id: bevindingId } : {}),
+    }),
+  })
+}

@@ -73,6 +73,18 @@ export interface WachtrijItemDto {
   /** Alleen bij inkoopfacturen: de stand t.o.v. de goedgekeurde offerte (②③). Null = niets te
    * melden (geen verplichting van deze leverancier / niet toetsbaar). */
   offerte_match?: OfferteMatchKortDto | null
+  /** 22-09 (Peter, casus Bouwadvies): dit document is intussen buiten de module al in Reeleezee/Odoo geboekt — het
+   * kantoor beoordeelt. De app toont de banner (`tekst`), telt het item NIET in "te accorderen" maar in "wacht op
+   * kantoor", en biedt geen Akkoord/Afwijzen (de server weigert die óók). Null/afwezig = gewoon te accorderen. */
+  extern_geboekt?: WachtrijExternGeboektDto | null
+}
+
+export interface WachtrijExternGeboektDto {
+  boekstuk: string | null
+  systeem: string
+  stand: 'geboekt' | 'concept' | string
+  /** Letterlijk: "Al geboekt in Reeleezee (RLZ-04-…) — kantoor beoordeelt; akkoord niet nodig". */
+  tekst: string
 }
 
 /** Verplichting op de accordeur-kaart (mockup offerte-matching blok 1). */

@@ -220,3 +220,41 @@ class BewustVerwijderdHerstelResultaatDto(BaseModel):
     document_id: uuid.UUID
     document_status_nieuw: str
     acceptatie_ingetrokken_id: uuid.UUID | None
+
+
+class ExternGeboektAfwijzenInvoerDto(BaseModel):
+    """Invoer van "Afwijzen — al geboekt als ‹boekstuk›" (Peter 22-09): het externe stuk uit de bevinding (of uit de
+    boekfout ná het laatste akkoord); toelichting optioneel — de reden is voorgevuld."""
+
+    administratie_id: uuid.UUID
+    extern_id: str | None = Field(default=None, max_length=120)
+    extern_boekstuk: str | None = Field(default=None, max_length=60)
+    systeem: str = Field(default="Reeleezee", max_length=20)
+    toelichting: str | None = Field(default=None, max_length=500)
+
+
+class ExternGeboektAfwijzenResultaatDto(BaseModel):
+    document_id: uuid.UUID
+    status: str
+    reden: str
+    accordering_vervallen: bool
+    afwijzing_id: uuid.UUID
+
+
+class ExternGeboektTochVerschillendInvoerDto(BaseModel):
+    """Invoer van "Toch verschillend — doorgaan" (Peter 22-09): reden verplicht (≥ 5 tekens), `extern_id` verplicht
+    (dát stuk wordt uitgezonderd); `bevinding_id` optioneel — een Beheerder accepteert dan óók de open bevinding."""
+
+    administratie_id: uuid.UUID
+    extern_id: str = Field(min_length=1, max_length=120)
+    extern_boekstuk: str | None = Field(default=None, max_length=60)
+    reden: str = Field(min_length=1, max_length=2000)
+    bevinding_id: uuid.UUID | None = None
+
+
+class ExternGeboektTochVerschillendResultaatDto(BaseModel):
+    document_id: uuid.UUID
+    extern_ids: list[str]
+    reden: str
+    bevinding_geaccepteerd: bool
+    checks_cache_ongeldig: int

@@ -28,6 +28,7 @@ import {
 } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { BewustVerwijderdActie } from './BewustVerwijderdActie'
+import { ExternGeboektActies } from './ExternGeboektActies'
 import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
 import { HerboekenAlsOmzetActie, isOmzetInInkoopstroom } from './HerboekenAlsOmzetActie'
 import { isKassarapportInWerkvoorraad, TypeWijzigenKassarapportActie } from './TypeWijzigenKassarapportActie'
@@ -53,7 +54,7 @@ import {
   type BevindingDto,
   type BevindingenLijstDto,
   type ReconciliatieRunDto,
-  type SoortFacet,
+  type SoortFacet, isIntussenExternGeboekt, externGeboektKernUitBevinding,
 } from './reconciliatieApi'
 
 const ALLE = '__alle'
@@ -312,6 +313,29 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
               />{' '}
             </>
           )}
+          {deeplink}
+        </>
+      )
+    }
+    // Peter 22-09: intussen buiten de module geboekt (document wacht nog op klant/IBAN/kantoor) → twee handelingen op de
+    // rij: afwijzen als al geboekt (accordering ingetrokken) of toch verschillend — doorgaan.
+    if (r.soort === 'afwijking' && isIntussenExternGeboekt(r) && r.administratie_id !== null) {
+      const d = r.detail ?? {}
+      return (
+        <>
+          <ExternGeboektActies
+            compact
+            administratieId={r.administratie_id}
+            documentId={String(d.document_id)}
+            kern={externGeboektKernUitBevinding(r)}
+            bevindingId={r.id}
+            leverancier={typeof d.leverancier_naam === 'string' ? d.leverancier_naam : null}
+            factuurnummer={typeof d.factuurnummer === 'string' ? d.factuurnummer : null}
+            onGelukt={(melding) => {
+              toast.meld(melding)
+              herlaad()
+            }}
+          />{' '}
           {deeplink}
         </>
       )

@@ -9,6 +9,22 @@ import {
   type AccorderingStapDto,
 } from '../accordering/accorderingApi'
 import { herinnerTijdLabel, isVandaagHerinnerd } from '../accordering/herinnerDag'
+import { ExternGeboektActies } from '../reconciliatie/ExternGeboektActies'
+import type { ExternGeboektKern } from '../reconciliatie/reconciliatieApi'
+
+/** 22-09: de externe kern uit de boekfout ná het laatste akkoord (server: `boek_fout_extern_geboekt`), of null. */
+export function externGeboektKernUitBoekFout(d: Record<string, unknown> | null | undefined): ExternGeboektKern | null {
+  if (!d || typeof d.extern_id !== 'string' || d.extern_id === '') return null
+  const s = (k: string): string | null => (typeof d[k] === 'string' && (d[k] as string) !== '' ? (d[k] as string) : null)
+  return {
+    extern_id: d.extern_id,
+    extern_boekstuk: s('extern_boekstuk'),
+    systeem: s('systeem') === 'Odoo' ? 'Odoo' : 'Reeleezee',
+    stand: s('extern_stand') === 'concept' ? 'concept' : 'geboekt',
+    bedrag_extern: s('bedrag_extern'),
+    extern_datum: s('extern_datum'),
+  }
+}
 
 function formatTijdstip(iso: string | null): string {
   if (!iso) return '—'
@@ -71,6 +87,7 @@ export function AccorderingSectie({
   const [laatstHerinnerd, setLaatstHerinnerd] = useState<string | null>(null)
   const [boekenBezig, setBoekenBezig] = useState(false)
   const [boekenFout, setBoekenFout] = useState<string | null>(null)
+  const [melding, setMelding] = useState<string | null>(null)
 
   const laad = useCallback(() => {
     haalAccorderingVanDocument(administratieId, documentId)
@@ -157,6 +174,8 @@ export function AccorderingSectie({
   const akkoordMaarNietGeboekt =
     accordering.status === 'afgerond' && ['ter_accordering', 'klaar_om_te_boeken', 'boeken_mislukt'].includes(documentStatus)
   const terughaalbaar = accordering.status === 'open' || (akkoordMaarNietGeboekt && documentStatus === 'ter_accordering')
+  // 22-09: strandde het boeken op een extern al geboekt stuk, dan krijgt de melding twee knoppen i.p.v. proza.
+  const externKern = akkoordMaarNietGeboekt ? externGeboektKernUitBoekFout(accordering.boek_fout_extern_geboekt) : null
 
   return (
     <div className="panel">
@@ -208,6 +227,11 @@ export function AccorderingSectie({
         akkoord boekt de motor automatisch, mét alle harde checks opnieuw.
       </div>
       {fout && <div className="fout">{fout}</div>}
+      {melding && (
+        <div className="hint" role="status" data-testid="accordering-melding">
+          {melding}
+        </div>
+      )}
       {akkoordMaarNietGeboekt && (
         <div className="fout" role="alert" style={{ marginTop: 8 }}>
           <b>Boeken ná het laatste akkoord is niet gelukt</b>
@@ -222,20 +246,46 @@ export function AccorderingSectie({
           ) : (
             ' — het document staat nog niet geboekt (zie de tijdlijn voor de reden).'
           )}
-          <div className="hint" style={{ marginTop: 4 }}>
-            Los de oorzaak op en boek opnieuw — het klant-akkoord blijft geldig zolang het bedrag ongewijzigd is.
-            Voorstel aanpassen? Haal het document dan terug uit de accordering en bied het opnieuw aan.
-          </div>
+          {externKern ? (
+            <>
+              {/* Peter 22-09: de oorzaak is een extern al geboekt stuk → dezelfde twee knoppen als op Inzicht › Reconciliatie,
+                  geen proza. Server = de poort (afwijs-route + accordering intrekken / toch verschillend). */}
+              <div className="hint" style={{ marginTop: 4 }}>
+                Deze factuur staat al in {externKern.systeem} als {externKern.extern_boekstuk ?? 'boekstuk onbekend'} — buiten de module
+                om. Kies wat er moet gebeuren:
+              </div>
+              <div className="actions" style={{ marginTop: 6 }} data-testid="extern-geboekt-acties">
+                <ExternGeboektActies
+                  administratieId={administratieId}
+                  documentId={documentId}
+                  kern={externKern}
+                  onGelukt={(tekst) => {
+                    setBoekenFout(null)
+                    setMelding(tekst)
+                    onGewijzigd()
+                    void laad()
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="hint" style={{ marginTop: 4 }}>
+              Los de oorzaak op en boek opnieuw — het klant-akkoord blijft geldig zolang het bedrag ongewijzigd is.
+              Voorstel aanpassen? Haal het document dan terug uit de accordering en bied het opnieuw aan.
+            </div>
+          )}
           {boekenFout && (
             <div className="hint" style={{ marginTop: 4, color: 'var(--red)' }}>
               {boekenFout}
             </div>
           )}
-          <div className="actions" style={{ marginTop: 6 }}>
-            <button type="button" className="btn primary" disabled={boekenBezig} onClick={() => void opnieuwBoeken()}>
-              {boekenBezig ? 'Bezig…' : 'Opnieuw boeken (klant-akkoord compleet)'}
-            </button>
-          </div>
+          {!externKern && (
+            <div className="actions" style={{ marginTop: 6 }}>
+              <button type="button" className="btn primary" disabled={boekenBezig} onClick={() => void opnieuwBoeken()}>
+                {boekenBezig ? 'Bezig…' : 'Opnieuw boeken (klant-akkoord compleet)'}
+              </button>
+            </div>
+          )}
         </div>
       )}
       {terughaalbaar && (

@@ -6,6 +6,15 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-22 — Al buiten de module geboekt? Dan hoort u het dezelfde dag, niet pas na het laatste akkoord
+
+<!-- ter-accordering-bestaanscheck-22-09 -->
+
+- **Elke ochtend controleren we of een factuur die nog op akkoord wacht intussen al rechtstreeks in Reeleezee of Odoo is geboekt.** Is dat zo, dan staat hij op Inzicht › Reconciliatie mét het boekstuknummer, het bedrag en de datum — en met twee knoppen: "Afwijzen — al geboekt als …" (de accordering wordt ingetrokken, de accordeurs zien de factuur niet meer) of "Toch verschillend — doorgaan" (u legt met een reden vast dat het een andere factuur is; daarna gaat het boeken gewoon door).
+- **Accordeurs klikken niet meer voor niets.** In de app verdwijnt zo'n factuur uit "te accorderen" en staat hij onder "Wachten op kantoor" met de melding "Al geboekt in Reeleezee (…) — kantoor beoordeelt; akkoord niet nodig". Er gaat geen herinnering meer over uit.
+- **Strandt het boeken ná het laatste akkoord tóch op zo'n dubbele boeking,** dan staan dezelfde twee knoppen direct bij de melding op het controlescherm — geen tekst meer over "de oorzaak oplossen".
+- **Aanleiding.** Bij Bouwadvies Oost Nederland gaven drie accordeurs akkoord op een factuur die vijf dagen eerder al buiten de module om in Reeleezee was geboekt; het systeem hield de dubbele boeking wél tegen, maar meldde het pas na het laatste akkoord.
+
 ## 2026-09-22 — Groepssaldi: het intercompany-deel werd nog niet gelezen, nu wel
 
 <!-- groepssaldi-status-enum-22-09 -->

@@ -68,7 +68,15 @@ class TestRegistry:
     def test_nieuwe_soorten_starten_in_meten_en_onbekend_is_meten(self) -> None:
         for d in soort_stand.REGISTRY.values():
             if d.sinds >= soort_stand.REGISTRY_SINDS or d.soort == "dubbele_betaling_vermoed":
+                if d.direct_actie_reden:
+                    # 22-09: expliciete uitzondering (besluit Peter in de opdracht) — alleen mét reden, en de soort moet
+                    # een bestaand boekstuk als bewijs dragen; de tekst-guard eist een leesbare tekst zoals bij elke
+                    # soort.
+                    assert d.default == soort_stand.ACTIE and len(d.direct_actie_reden) >= 20, d.soort
+                    continue
                 assert d.default == soort_stand.METEN, f"{d.soort} is nieuw maar start niet in meten"
+        assert soort_stand.code_default("intussen_extern_geboekt") == "actie"
+        assert [d.soort for d in soort_stand.REGISTRY.values() if d.direct_actie_reden] == ["intussen_extern_geboekt"]
         assert soort_stand.code_default("dubbele_betaling_vermoed") == "meten"
         assert soort_stand.code_default("bedrag_wijkt_af") == "actie"
         assert soort_stand.code_default("nog_nooit_gezien") == "meten"

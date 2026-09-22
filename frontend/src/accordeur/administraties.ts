@@ -19,12 +19,24 @@ export interface AdministratieStand {
   naam: string | null
   afdelingId: string | null
   afdelingNaam: string | null
-  /** Aantal te accorderen facturen in deze administratie. */
+  /** Aantal te accorderen facturen in deze administratie (zonder de "wacht op kantoor"-items). */
   teAccorderen: number
+  /** 22-09: facturen die intussen buiten de module al geboekt zijn — het kantoor beoordeelt; akkoord niet nodig.
+   * Tellen apart (nooit stil), nooit mee in `teAccorderen`. */
+  wachtOpKantoor: number
   /** Aantal open vragen van het kantoor aan déze accordeur (op de kaart én los). */
   vragen: number
   /** ISO-tijdstip van de langst wachtende factuur (null = alleen vragen). */
   oudsteWacht: string | null
+}
+
+/** 22-09: intussen buiten de module geboekt → het kantoor beoordeelt; geen akkoord nodig. */
+export function isWachtOpKantoor(item: { extern_geboekt?: WachtrijItemDto['extern_geboekt'] }): boolean {
+  return item.extern_geboekt != null
+}
+
+export function wachtOpKantoorChipTekst(aantal: number): string {
+  return aantal === 1 ? '1 wacht op kantoor' : `${aantal} wachten op kantoor`
 }
 
 /** Kaartsleutel van een wachtrij-item: per (administratie, afdeling). */
@@ -51,7 +63,7 @@ export function administratiesMetWerk(items: WachtrijItemDto[], vragen: Accordeu
   ): AdministratieStand => {
     let s = per.get(sleutel)
     if (!s) {
-      s = { id, sleutel, naam, afdelingId, afdelingNaam, teAccorderen: 0, vragen: 0, oudsteWacht: null }
+      s = { id, sleutel, naam, afdelingId, afdelingNaam, teAccorderen: 0, wachtOpKantoor: 0, vragen: 0, oudsteWacht: null }
       per.set(sleutel, s)
     } else if (!s.naam && naam) {
       s.naam = naam
@@ -66,6 +78,11 @@ export function administratiesMetWerk(items: WachtrijItemDto[], vragen: Accordeu
         : item.administratie_naam
       : null
     const s = stand(kaartSleutel(item), item.administratie_id, naam, item.afdeling_id ?? null, afdelingNaam)
+    if (isWachtOpKantoor(item)) {
+      // 22-09: telt zichtbaar apart; de oudste-wacht-regel gaat over werk voor de accordeur, dus niet hierop.
+      s.wachtOpKantoor += 1
+      continue
+    }
     s.teAccorderen += 1
     if (s.oudsteWacht === null || item.aangeboden_op < s.oudsteWacht) s.oudsteWacht = item.aangeboden_op
   }

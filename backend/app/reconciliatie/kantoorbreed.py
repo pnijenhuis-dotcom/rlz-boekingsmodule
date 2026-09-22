@@ -53,6 +53,8 @@ _URGENTIE_AFWIJKING_SOORT = {
     "ontbreekt_in_odoo": 0,
     "document_ontbreekt_in_rlz": 0,
     "mutatie_ontbreekt_in_rlz": 0,
+    # Peter 22-09: al buiten de module geboekt terwijl accordeurs nog klikken — tijdkritisch, direct onder "verdwenen".
+    "intussen_extern_geboekt": 1,
     "teruggedraaid_in_odoo": 1,
     "boeking_teruggedraaid_in_rlz": 1,
     "aflettering_teruggedraaid_in_rlz": 1,

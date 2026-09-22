@@ -1757,6 +1757,17 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
             )
         if getattr(resultaat, "aantal_overgeslagen", 0):
             overgeslagen += f" ({resultaat.aantal_overgeslagen} niet van toepassing: niets te toetsen in deze backend)"
+        # Hercontrole open documenten (Peter 22-09): zichtbaar per administratie — getoetst + overgeslagen mét reden
+        # (storing = géén bevinding, wél deze regel; principe 4 "niets verdwijnt stil").
+        herc_getoetst = getattr(resultaat, "hercontrole_getoetst", 0)
+        herc_over = getattr(resultaat, "hercontrole_overgeslagen", ())
+        if herc_getoetst or herc_over:
+            print(
+                f"HERCONTROLE {administratie_id}: {herc_getoetst} open document(en) vers getoetst op "
+                f"'intussen buiten de module geboekt', {len(herc_over)} overgeslagen"
+            )
+            for doc_id, reden in herc_over:
+                print(f"    - OVERGESLAGEN document={doc_id}: {reden}")
         if not resultaat.afwijkingen:
             print(
                 f"OK         {administratie_id}: {resultaat.aantal_gecontroleerd} gecontroleerd, "
@@ -3431,7 +3442,7 @@ def main(argv: list[str] | None = None) -> int:
 
     cache_legen_parser = subparsers.add_parser(
         "checks-cache-legen",
-        help="21-09 (BUG IBAN-wissel ná vier-ogen-akkoord): álle nog geldige externe-checks-cache-rijen "
+        help="21-09 (fix IBAN-wissel ná vier-ogen-akkoord): álle nog geldige externe-checks-cache-rijen "
         "(boekhouding.check_extern_cache) ongeldig markeren — rapporten van vóór de invalidatie-fix dragen anders "
         "tot 15 min een verouderde vertrouwde IBAN-set. Volgende checks-run draait vers. --dry-run telt alleen; "
         "idempotent.",

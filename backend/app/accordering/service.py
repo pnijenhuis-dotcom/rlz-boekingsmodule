@@ -130,6 +130,11 @@ class KantoorActieVereist(AccorderingFout):
     """Aanbieden/intrekken/instellingen zijn kantoor-acties — niet voor de rol klant-accordeur."""
 
 
+class WachtOpKantoor(AccorderingFout):
+    """22-09: het document staat intussen buiten de module al in RLZ/Odoo (open bevinding `intussen_extern_geboekt`) —
+    het kantoor beoordeelt; een akkoord of afwijzing van de accordeur is niet nodig en wordt niet meer vastgelegd."""
+
+
 class VoorstelUitzonderingFout(AccorderingFout):
     """Onbekende of al opgeheven voorstel-uitzondering, of een accordeur die aan een ander zit."""
 
@@ -180,6 +185,10 @@ class AccorderingData:
     # `detail["boek_fout"]`), zichtbaar op het controlescherm + in de documentenlijst. None = geen.
     boek_fout: str | None = None
     boek_fout_op: datetime | None = None
+    # 22-09: machineleesbare kern als de boekfout een extern al geboekt stuk is (Duplicaatcheck buiten de module):
+    # {extern_id, extern_boekstuk, extern_stand, bedrag_extern, extern_datum, systeem} — het controlescherm toont dan de
+    # knoppen "Afwijzen — al geboekt als …" / "Toch verschillend — doorgaan" i.p.v. proza. None = andere oorzaak.
+    boek_fout_extern_geboekt: dict | None = None
     # Blok 4 (08-09): status "overgeslagen" — geen ronde, de klant-accordering is voor dit document overgeslagen
     # op de leveranciersregel (`reden` = "intercompany"); `stappen` is dan leeg en er zijn geen acties.
     overgeslagen_reden: str | None = None
@@ -221,6 +230,15 @@ def _eerstvolgende_open_stap(stappen: list[AccorderingStap]) -> AccorderingStap 
     return None
 
 
+def _boek_fout_extern_geboekt_van(accordering: DocumentAccordering) -> dict | None:
+    """22-09: het externe stuk achter een Duplicaatcheck-boekfout (`detail["boek_fout"]["extern_geboekt"]`), of None."""
+    boek_fout = (accordering.detail or {}).get("boek_fout")
+    if not isinstance(boek_fout, dict) or not boek_fout.get("fout"):
+        return None
+    extern = boek_fout.get("extern_geboekt")
+    return dict(extern) if isinstance(extern, dict) and extern.get("extern_id") else None
+
+
 def _boek_fout_van(accordering: DocumentAccordering) -> tuple[str | None, datetime | None]:
     """De persistente boekfout op de ronde (`detail["boek_fout"] = {fout, tijdstip, geboekt}`)."""
     boek_fout = (accordering.detail or {}).get("boek_fout")
@@ -247,6 +265,7 @@ def _naar_data(session: Session, accordering: DocumentAccordering, stappen: list
         afgerond_op=accordering.afgerond_op,
         boek_fout=boek_fout,
         boek_fout_op=boek_fout_op,
+        boek_fout_extern_geboekt=_boek_fout_extern_geboekt_van(accordering),
         stappen=[
             StapData(
                 id=s.id,
@@ -1879,6 +1898,49 @@ def _rond_herberekende_rondes_af(*, administratie_id: uuid.UUID, uitkomst: Ronde
 AFDELING_GEWIJZIGD_REDEN = "afdeling gewijzigd — opnieuw aanbieden vereist"
 
 
+def laat_ronde_vervallen_wegens_extern_geboekt(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    reden: str,
+    extern_boekstuk: str | None,
+) -> int:
+    """22-09 (Peter, casus Bouwadvies F/2026/01235): het document blijkt intussen buiten de module in RLZ/Odoo geboekt
+    en het kantoor wijst het af als "al geboekt" — de lopende ronde vervalt mét de reden "niet meer nodig: al geboekt in
+    Reeleezee (RLZ-04-…)" op de tijdlijn (accordeurs zien de factuur niet meer; hun akkoord was niet voor niets fout,
+    alleen niet meer nodig). Gemarkeerd `accordering_vervallen_extern_geboekt`: géén herstelwerk in de
+    werkvoorraad-banner
+    (zoals de duplicaat-variant). Zonder open ronde (akkoord compleet, `boek_fout`) gaat het document alsnog terug naar
+    klaar_om_te_boeken mét dezelfde reden — nooit stil vast op ter_accordering."""
+    from app.documenten.intussen_extern_geboekt import VERVALLEN_MARKER
+
+    extra = {VERVALLEN_MARKER: True, "extern_boekstuk": extern_boekstuk}
+    aantal = _laat_open_rondes_vervallen(
+        session,
+        administratie_id=administratie_id,
+        actor_id=actor_id,
+        nu=datetime.now(UTC),
+        document_ids={document_id},
+        reden=reden,
+        detail_extra=extra,
+    )
+    if aantal:
+        return aantal
+    document = session.get(Document, document_id)
+    if document is not None and document.status == DocumentStatus.TER_ACCORDERING:
+        laatste = _laatste_accordering(session, document_id)
+        _schrijf_overgang(
+            session,
+            document=document,
+            naar=DocumentStatus.KLAAR_OM_TE_BOEKEN,
+            actor_id=actor_id,
+            detail={"accordering_id": str(laatste.id) if laatste is not None else None, "reden": reden, **extra},
+        )
+    return 0
+
+
 def laat_ronde_vervallen_bij_duplicaat(
     session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, reden: str
 ) -> int:
@@ -1975,6 +2037,8 @@ def vervallen_meldingen(*, administratie_id: uuid.UUID) -> list[VervallenMelding
                 # Blok A2 04-09: een ronde die verviel omdat het document als duplicaat is afgevoerd is géén
                 # herstelwerk ("opnieuw aanbieden") — die batches blijven buiten deze melding.
                 DocumentGebeurtenis.detail["accordering_vervallen_duplicaat"].astext.is_(None),
+                # 22-09: idem voor "niet meer nodig: al geboekt in Reeleezee" (kantoor koos bewust).
+                DocumentGebeurtenis.detail["accordering_vervallen_extern_geboekt"].astext.is_(None),
                 batch_expr.isnot(None),
             )
             .group_by(batch_expr)
@@ -2893,6 +2957,14 @@ def _stap_aan_de_beurt_voor(
         raise GeenOpenAccordering("Alle lagen zijn al besloten")
     if volgende.accordeur_gebruiker_id != actor_id:
         raise NietAanDeBeurt("Deze factuur wacht op een andere accordeur (sequentiële lagen)")
+    # 22-09: intussen buiten de module geboekt (open bevinding) → het kantoor beoordeelt, akkoord/afwijzing niet nodig.
+    from app.documenten import intussen_extern_geboekt
+
+    treffer = intussen_extern_geboekt.open_treffers(session, administratie_id=accordering.administratie_id).get(
+        document_id
+    )
+    if treffer is not None:
+        raise WachtOpKantoor(intussen_extern_geboekt.banner_tekst(treffer))
     return accordering, volgende, stappen
 
 
@@ -3236,6 +3308,7 @@ def _boek_na_laatste_akkoord(
 
     geboekt = False
     boek_fout: str | None = None
+    extern_geboekt: dict | None = None
     try:
         gecombineerd = orkestratie.boek_document_met_doorbelasting(
             administratie_id=administratie_id, document_id=document_id, actor_id=SYSTEEM_ACTOR_ID
@@ -3255,6 +3328,13 @@ def _boek_na_laatste_akkoord(
         boek_fout = "Boeken geblokkeerd door harde checks: " + "; ".join(
             r.melding for r in exc.rapport.resultaten if not r.ok
         )
+        # 22-09: is de blokkade een extern al geboekt stuk (Duplicaatcheck buiten de module), dan reist de kern mee —
+        # het controlescherm maakt er twee knoppen van i.p.v. "los de oorzaak op".
+        for r in exc.rapport.resultaten:
+            kern = (getattr(r, "data", None) or {}).get("extern_geboekt") if not r.ok else None
+            if kern:
+                extern_geboekt = dict(kern)
+                break
         logger.warning("Accordering %s afgerond maar boeken geblokkeerd: %s", accordering_id, boek_fout)
     except boeken_service.BoekenFout as exc:
         boek_fout = str(exc)
@@ -3269,6 +3349,7 @@ def _boek_na_laatste_akkoord(
         document_id=document_id,
         fout=boek_fout,
         geboekt=geboekt,
+        extern_geboekt=extern_geboekt,
     )
     with scoped_session(administratie_id) as session:
         accordering = session.get(DocumentAccordering, accordering_id)
@@ -3281,7 +3362,13 @@ def _boek_na_laatste_akkoord(
 
 
 def _registreer_boek_fout(
-    *, administratie_id: uuid.UUID, accordering_id: uuid.UUID, document_id: uuid.UUID, fout: str | None, geboekt: bool
+    *,
+    administratie_id: uuid.UUID,
+    accordering_id: uuid.UUID,
+    document_id: uuid.UUID,
+    fout: str | None,
+    geboekt: bool,
+    extern_geboekt: dict | None = None,
 ) -> None:
     """Persistente uitkomst van de boekpoging ná het laatste akkoord (bugfix-run 28-08):
     `detail["boek_fout"]` op de ronde (None bij een schone boeking), een tijdlijnregel mét reden
@@ -3300,6 +3387,14 @@ def _registreer_boek_fout(
                 accordering.detail = detail
             return
         detail["boek_fout"] = {"fout": fout[:1000], "tijdstip": datetime.now(UTC).isoformat(), "geboekt": geboekt}
+        if extern_geboekt:
+            from app.backends.registry import backend_voor
+
+            try:
+                systeem = "Odoo" if backend_voor(administratie_id).value == "odoo" else "Reeleezee"
+            except Exception:  # noqa: BLE001 — onbekende backend: RLZ is de default
+                systeem = "Reeleezee"
+            detail["boek_fout"]["extern_geboekt"] = {**extern_geboekt, "systeem": systeem}
         accordering.detail = detail
         document = session.get(Document, document_id)
         assert document is not None
@@ -3588,6 +3683,11 @@ class WachtrijItem:
     # Alleen bij een inkoopfactuur mét een binnen/buiten-match: de conform-offerte-melding
     # (OPTIE A, ④) — het vinkje "Conform offerte ‹nr›" staat vóóringevuld, de mens tikt Akkoord.
     offerte_match: object | None = None
+    # 22-09: open bevinding `intussen_extern_geboekt` (`intussen_extern_geboekt.OpenTreffer`) — de app toont de banner
+    # "Al geboekt in Reeleezee (RLZ-04-…) — kantoor beoordeelt; akkoord niet nodig", telt het item niet in
+    # "Te accorderen" maar in "Wachten op kantoor" (nooit stil) en biedt geen Akkoord/Afwijzen; de server weigert die
+    # besluiten óók (409).
+    extern_geboekt: object | None = None
 
 
 @dataclass(frozen=True)
@@ -4057,6 +4157,9 @@ def _wachtrij_administratie(
     doorbelastingen = _doorbelasting_verdelingen(
         session, administratie_id=administratie_id, runs=_klaargezette_runs(session, document_ids)
     )
+    from app.documenten import intussen_extern_geboekt
+
+    extern_treffers = intussen_extern_geboekt.open_treffers(session, administratie_id=administratie_id)
 
     items: list[WachtrijItem] = []
     for ronde, volgende in rondes:
@@ -4092,6 +4195,7 @@ def _wachtrij_administratie(
                 offerte_match=(
                     offerte_matches.get(ronde.document_id) if soort == DocumentSoort.INKOOPFACTUUR.value else None
                 ),
+                extern_geboekt=extern_treffers.get(ronde.document_id),
             )
         )
     return items
@@ -4117,9 +4221,17 @@ def documenten_aan_de_beurt(*, administratie_id: uuid.UUID) -> dict[uuid.UUID, l
     exact dezelfde aan-de-beurt-definitie als de wachtrij (`_open_rondes_met_volgende_stap`),
     zodat teller, wachtrij en meldingen nooit uiteenlopen. Selectiebron van de dagelijkse
     herinnering (via aantallen_aan_de_beurt) én de nieuwe-facturen-bundelmelding."""
+    from app.documenten import intussen_extern_geboekt
+
     per_accordeur: dict[uuid.UUID, list[uuid.UUID]] = {}
     with scoped_session(administratie_id) as session:
-        for ronde, volgende in _open_rondes_met_volgende_stap(session, administratie_id=administratie_id):
+        rondes = _open_rondes_met_volgende_stap(session, administratie_id=administratie_id)
+        # 22-09: een document dat intussen buiten de module geboekt is (open bevinding) wacht op het kantoor — geen
+        # herinnering, geen bundelmelding (de wachtrij toont 'm wél, mét banner: nooit stil).
+        extern = intussen_extern_geboekt.open_treffers(session, administratie_id=administratie_id) if rondes else {}
+        for ronde, volgende in rondes:
+            if ronde.document_id in extern:
+                continue
             per_accordeur.setdefault(volgende.accordeur_gebruiker_id, []).append(ronde.document_id)
     return per_accordeur
 
