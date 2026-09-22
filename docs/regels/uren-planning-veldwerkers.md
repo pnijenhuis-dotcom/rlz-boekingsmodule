@@ -308,6 +308,17 @@
   (di 15-9-2026) in de overflow-sweep (24/24). Mockup `planning-v3-dag-eerst.html` notitie "Conflictenbalk" + balk-voorbeeld 1-op-1
   bijgewerkt (UX-review: zelfde plek boven het grid, geen nieuwe route of tegel — past in de IA).
 
+<!-- toegevoegd 22-09-2026, opdracht "nameting-planning-conflictenpaneel-veldwerkers-dubbelen" -->
+- **Een detector op harde sleutels rapporteert óók hoeveel personen die sleutel dragen; "0 kandidaten" zonder gevulde sleutels is een lege toets,
+  geen groen (nameting 22-09; BESLISSINGEN "PLANNING — CONFLICTENPANEEL MÉT HANDELING + DUBBELE VELDWERKERS (Peter 21-09)" alinea "Gemeten
+  22-09"):** `veldwerkers-dubbelen --alles` gaf bij Universal "0 kandidaat-cluster(s) over 46 veldwerker(s) · 0 fout(en)", maar de leesreplica
+  toont 0 dossiers, 0 KvK-nummers en 0 crediteur-koppelingen — van de drie sleutels blijft alleen de unieke e-mail over, dus de 0 is per
+  constructie. De CLI drukt die tellers al ("0 mét KvK · 0 mét IBAN via crediteur") en dat blijft verplicht voor élke sleutel-detector; een
+  nameting leest die tellers mee en noemt een lege toets in het oordeel. De remedie is klikwerk (dossier mét KvK, crediteur koppelen), nooit
+  naam- of planningsgelijkenis. Het conflictenpaneel toont alleen conflicten vanaf vandaag; Universal had op 22-09 0 dubbel geplande persoon-dagen
+  vanaf vandaag (19 in verstreken weken), dus de handelingen "Houd ‹A›"/"Beide (halve dagen)…" zijn nog ongebruikt en een nameting forceert nooit een
+  conflict in de echte planning (write + veldwerker-melding) — tellen, `niet vóór:` +7 dagen, hoogstens drie pogingen.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-signaal "geplande week zonder weekstaat" (CLAUDE.md `ed6d176` r. 675–682)

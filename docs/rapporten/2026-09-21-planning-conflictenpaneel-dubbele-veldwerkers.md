@@ -3,8 +3,8 @@
 Opdracht `opdrachten/gedaan/2026-09-21-planning-conflictenbalk-onleesbaar-oude-week-dubbele-veldwerkers-zonder-handeling.md` (Peter
 21-09, Universal Steigerbouw /planning: "17 conflicten deze week — ma 7-9: M. Demir op 25137 Bergeijk (van Stiphout) én 26082 Eindhoven
 … ik kan er niet uithalen wat het conflict is"; correctie Peter 21-09: Ponchev/Panchev en de Demirs zijn broers in één ploeg, géén dubbele
-records). Gebouwd + getest; migratie 0169; geen RLZ-write, geen AI. **Werkt in productie: niet gemeten** — de code deployt ná deze run;
-meetrecept onderaan. Peter keek niet mee; keuzes staan in "Keuzes".
+records). Gebouwd + getest; migratie 0169; geen RLZ-write, geen AI. **Werkt in productie: gemeten 22-09 — lees-kant + dubbelen-CLI ja, handelingen niet gemeten (ongebruikt; 0 conflicten vanaf vandaag), zie
+`docs/rapporten/2026-09-22-nameting-planning-conflictenpaneel.md`** (oorspronkelijk: niet gemeten — de code deployt ná die run; meetrecept onderaan). Peter keek niet mee; keuzes staan in "Keuzes".
 
 **Één regel voor Peter:** de balk is een paneel per dag geworden dat zegt wát het conflict is en er een knop bij zet ("Houd Bergeijk" /
 "Houd Eindhoven" / "Beide (halve dagen)…" mét reden); het telt alleen vandaag en later (een dubbele planning van vorige week is historie),

@@ -12313,7 +12313,7 @@ bestaande aan staan, verdwenen rekening = onbekend), `tests/unit/test_nameting_w
 rapport `docs/rapporten/2026-09-21-planning-conflictenpaneel-dubbele-veldwerkers.md`). Canonieke regeltekst:
 `docs/regels/uren-planning-veldwerkers.md` alinea "Planning — conflictenPANEEL mét handeling + dubbele veldwerkers op harde sleutels" +
 `docs/regels/kantoor-frontend.md` alinea "Signaalbalk → paneel-tabel (21-09)". Mockup `planning-v3-dag-eerst.html` notitie "Conflictenbalk"
-bijgewerkt (UX-review: zelfde plek, geen nieuwe route/tegel). Werkt in productie: niet gemeten — meetrecept in het rapport.**
+bijgewerkt (UX-review: zelfde plek, geen nieuwe route/tegel). Werkt in productie: gemeten 22-09 — lees-kant + dubbelen-CLI JA, handelingen niet gemeten (alinea "Gemeten 22-09").**
 
 **Feit (Peter 21-09, Universal /planning):** "17 conflicten deze week — ma 7-9: M. Demir op 25137 Bergeijk (van Stiphout) én 26082 Eindhoven
 (Wijnen Bouw) … vr 11-9: M. Sanli op 26019 Bennekom (Boon) én 26030 Scherpenzeel én 26129 Hilversum … ik kan er niet uithalen wat het
@@ -12332,6 +12332,21 @@ records; planningspatroon ≠ identiteit.
 klopt dan mét de afspraak; (2) het akkoord verloopt op STAND-wijziging, niet op tijd; (3) dubbelen-CLI toetst óók e-mail en meldt telefoon
 als niet toetsbaar i.p.v. het stil weg te laten (KP 7.6); (4) geen "laatst bekeken week onthouden" — de URL is de bron, de weekchip maakt
 een oude week eerlijk.
+
+**Gemeten 22-09 (nameting-opdracht `2026-09-22-nameting-planning-conflictenpaneel-veldwerkers-dubbelen`, rapport
+`docs/rapporten/2026-09-22-nameting-planning-conflictenpaneel.md`):** deploy-check groen (`ab1c46d` voorouder van deploy `fb63be5` 21-09 17:38 UTC;
+service = jobs `a3f6f94`). (C) **Dubbelen-CLI — werkt in productie: JA als instrument:** bot-bestand `verkenning/nameting-veldwerkers-dubbelen-22-09.txt`
+(`d14277b`) = "TOTAAL 0 kandidaat-cluster(s) over 46 veldwerker(s) in 1 administratie(s) · 0 fout(en)"; **maar bij Universal 0 `veldwerker_dossier`-rijen,
+0 KvK, 0 `veldwerker_crediteur`-koppelingen, 0 IBAN's** (leesreplica) — alleen e-mail (uniek) blijft als sleutel, dus die "0" is per constructie en
+bewijst niets over dubbelen; klikwerk kantoor = dossiers mét KvK + crediteur-koppelingen (bestaande flows), geen code. (A/B) **Paneel — lees-kant JA,
+handelingen NIET GEMETEN:** ná de deploy 17 × `GET /uren/kantoor/planning` 200 (Universal, 22-09), 4 reserveringen 201, 1 bulk bron `ploeg`, **0**
+`POST …/conflict-akkoord`, **0** bulks bron `conflict`, **0** rijen `planning_conflict_akkoord`, 0 × 5xx; oorzaak: Universal heeft **0 dubbel geplande
+persoon-dagen vanaf vandaag** (19, alle in verstreken weken — de "17 conflicten" van 21-09 stonden in week 37 en zijn nu historie) en 0 afwezigheden,
+dus het paneel toont terecht geen rij mét handeling; niets geforceerd (write in de echte planning + veldwerker-melding). Bijvangst: de 500 op
+`planning/bulk` 21-09 09:13:26 UTC (vóór de deploy) had latency 0 s náást een 500 op een statisch asset en 401's op token-vernieuwen = sessie-
+afbreking bij herladen, retry 3 s later 200 — geen app-fout. Vervolg: poging 2 `opdrachten/inbox/2026-09-29-nameting-planning-conflictenpaneel-handelingen-poging-2.md`
+(`niet vóór: 2026-09-29 09:00`, hoogstens 3 pogingen → `mislukt/` mét de stand).
+
 ## CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW KLAARZETTEN (Peter 21-09) — "Corrigeren…" in het ⋯-menu op een geboekt inkoop-/verkoop-/kassarapport-document: actie 19 op het externe stuk + terug naar klaar_om_te_boeken mét gele balk; aangifte → tegenboek-pad, afgeletterd → bank, doorbelasting beide kanten of geen; geen migratie
 
 **Status:** GEBOUWD + GETEST (21-09, inbox-run; poging 2 ná WIP-branch `wip/2026-09-21-corrigeren-knop-geboekt-document-storno-plus-opnieuw-klaarzetten`

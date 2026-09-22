@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-22, rapport: docs/rapporten/2026-09-22-nameting-planning-conflictenpaneel.md
+
 Domeinen: uren-planning-veldwerkers, werkloop-productie
 niet vóór: 2026-09-22 09:00
 
