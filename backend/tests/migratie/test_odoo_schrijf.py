@@ -825,6 +825,7 @@ class _Move:
     status: str
     reden: str = ""
     partner: dict | None = None
+    pand: dict | None = None
 
 
 def _partner(naam: str, **sleutels: str) -> dict:
@@ -1529,3 +1530,253 @@ class TestPostenEnTerug:
         c = FakeClient(lambda m, meth, b: [{"id": 1, "state": "posted", "name": "LF/1"}])
         with pytest.raises(NietEenConcept):
             zet_terug_naar_concept(c, 1, audit=GeheugenAudit())
+
+
+# --- pand-analytic (22-09: SCHRIJF c strandde op `action_post` mét de pseudo-sleutel 'pand:schoffelstraat-29') -----
+
+from app.migratie import odoo_schrijf as _osch  # noqa: E402
+
+PLAN = 7
+PAND_SLEUTEL = "pand:schoffelstraat-29"
+PAND = {"code": "schoffelstraat-29", "adres": "Schoffelstraat 29", "soort": "verkoop"}
+
+
+def _met_analytics(basis: Callable[[str, str, dict], Any], odoo: dict[str, Any]) -> Callable[[str, str, dict], Any]:
+    """Legt `account.analytic.account` (lookup-vóór-create) + de vals van élke account.move-create over de nep-
+    Odoo."""
+    odoo.setdefault("analytics", {})
+    odoo.setdefault("move_vals", {})
+    odoo.setdefault("line_analytics", {})
+
+    def handler(model, methode, body):
+        if model == "account.analytic.account" and methode == "search_read":
+            code = next(t[2] for t in body["domain"] if isinstance(t, list) and t[0] == "code")
+            return [dict(a, id=i) for i, a in odoo["analytics"].items() if a["code"] == code]
+        if model == "account.analytic.account" and methode == "create":
+            odoo["volgend"] += 1
+            vals = body["vals_list"][0]
+            odoo["analytics"][odoo["volgend"]] = {
+                "name": vals["name"], "code": vals["code"], "active": True,
+                "company_id": [vals["company_id"], "VGG"], "plan_id": [vals["plan_id"], "Project"],
+            }
+            return [odoo["volgend"]]
+        if model == "account.analytic.account" and methode == "read":
+            return [dict(odoo["analytics"][i], id=i) for i in body["ids"] if i in odoo["analytics"]]
+        if model == "account.move" and methode == "create":
+            uit = basis(model, methode, body)
+            odoo["move_vals"][uit[0]] = body["vals_list"][0]
+            return uit
+        if model == "account.move.line" and methode == "search_read":
+            move_id = next((t[2] for t in body["domain"] if isinstance(t, list) and t[0] == "move_id"), None)
+            if move_id in odoo["line_analytics"]:
+                return [{"id": lid, "analytic_distribution": d} for lid, d in odoo["line_analytics"][move_id].items()]
+            return basis(model, methode, body)
+        if model == "account.move.line" and methode == "write":
+            for lid in body["ids"]:
+                for regels in odoo["line_analytics"].values():
+                    if lid in regels:
+                        regels[lid] = body["vals"]["analytic_distribution"]
+            return True
+        return basis(model, methode, body)
+
+    return handler
+
+
+def _moves_met_pand() -> list[_Move]:
+    """De verkoopfactuur RLZ-00007 draagt de pand-analytic én een ontvangst (bankregel): het bewijspaar via
+    --boekstuk."""
+    moves = _moves()
+    for m in moves:
+        if m.move_type == "out_invoice" and m.status == "vertaalbaar":
+            m.vals["invoice_line_ids"] = [
+                [0, 0, {"name": "r", "tax_ids": [[6, 0, []]], "analytic_distribution": {PAND_SLEUTEL: 100}}]
+            ]
+            m.pand = dict(PAND)
+    moves.append(
+        _Move(
+            anker="anker-bank-12", rlz_id="rlz-12", boekstuk="RLZ-00012", move_type="bank", date="2025-07-12",
+            vals={"journal_id": 53, "payment_ref": "Koper K", "amount": 1000.0, "ref": "anker-bank-12"},
+            bank={
+                "reconcile": [
+                    {"anker": "anker-out_invoice-7", "boekstuk": "RLZ-00007", "move_type": "out_invoice",
+                     "bedrag": "1000.00"}
+                ]
+            },
+            status="vertaalbaar",
+        )
+    )
+    return moves
+
+
+class TestPandAnalyticOplosser:
+    def test_pseudo_sleutels_in_vals(self) -> None:
+        vals = {"invoice_line_ids": [[0, 0, {"analytic_distribution": {PAND_SLEUTEL: 100, "848": 0}}], [0, 0, {}]]}
+        assert _osch.pand_sleutels_in(vals) == {PAND_SLEUTEL}
+        assert _osch.pand_sleutels_in({"line_ids": [{"analytic_distribution": {"12": 100}}]}) == set()
+
+    def test_maak_concept_move_weigert_een_pseudo_sleutel(self, writes_aan: None) -> None:
+        c = FakeClient()
+        regel = [0, 0, {"analytic_distribution": {PAND_SLEUTEL: 100}}]
+        vals = {"move_type": "out_invoice", "invoice_line_ids": [regel]}
+        with pytest.raises(_osch.AnalyticNietOpgelost, match="pand:schoffelstraat-29"):
+            maak_concept_move(c, vals, anker="a", audit=GeheugenAudit())
+        assert c.calls == []  # niets naar Odoo
+
+    def test_lookup_voor_create_aanmaken_dan_hergebruik_met_naam_uit_pand(self, writes_aan: None) -> None:
+        odoo, basis = _nep_odoo()
+        c = FakeClient(_met_analytics(basis, odoo))
+        a = GeheugenAudit()
+        opl = _osch.PandAnalyticOplosser(c, analytic_plan_id=PLAN, audit=a)
+        regel = [0, 0, {"analytic_distribution": {PAND_SLEUTEL: 100}}]
+        vals = {"move_type": "out_invoice", "invoice_line_ids": [regel]}
+        nieuw = opl.vervang(vals, pand=PAND)
+        ((aid, rij),) = odoo["analytics"].items()
+        assert rij == {
+            "name": "Schoffelstraat 29", "code": "schoffelstraat-29", "active": True,
+            "company_id": [PIN, "VGG"], "plan_id": [PLAN, "Project"],
+        }
+        assert nieuw["invoice_line_ids"][0][2]["analytic_distribution"] == {str(aid): 100}
+        assert vals["invoice_line_ids"][0][2]["analytic_distribution"] == {PAND_SLEUTEL: 100}  # bron ongewijzigd
+        # tweede keer: cache, geen tweede create, geen tweede search
+        n_calls = len(c.calls)
+        assert opl.vervang(vals, pand=PAND)["invoice_line_ids"][0][2]["analytic_distribution"] == {str(aid): 100}
+        assert len(c.calls) == n_calls
+        assert [x["actie"] for x in a.regels] == ["odoo_migratie_analytic_aangemaakt"]
+        assert opl.meldingen == [f"analytic {PAND_SLEUTEL} → {aid} (aangemaakt)"]
+        # een verse oplosser vindt 'm terug: hergebruik, geen create
+        opl2 = _osch.PandAnalyticOplosser(c, analytic_plan_id=PLAN, audit=a)
+        assert opl2.vervang(vals)["invoice_line_ids"][0][2]["analytic_distribution"] == {str(aid): 100}
+        assert len(odoo["analytics"]) == 1 and a.regels[-1]["actie"] == "odoo_migratie_analytic_hergebruikt"
+
+    def test_zonder_pseudo_sleutel_niets_gelezen_of_geschreven(self, writes_aan: None) -> None:
+        c = FakeClient()
+        opl = _osch.PandAnalyticOplosser(c, analytic_plan_id=PLAN, audit=GeheugenAudit())
+        vals = {"invoice_line_ids": [[0, 0, {"analytic_distribution": {"848": 100}}]]}
+        assert opl.vervang(vals) is vals and c.calls == []
+
+    def test_meerduidig_en_gearchiveerd_en_geen_plan_zijn_zichtbaar(self, writes_aan: None) -> None:
+        odoo, basis = _nep_odoo()
+        c = FakeClient(_met_analytics(basis, odoo))
+        vals = {"invoice_line_ids": [[0, 0, {"analytic_distribution": {PAND_SLEUTEL: 100}}]]}
+        odoo["analytics"] = {
+            1: {"name": "x", "code": "schoffelstraat-29", "active": True, "company_id": [PIN, "VGG"],
+                "plan_id": [PLAN, "P"]},
+            2: {"name": "y", "code": "schoffelstraat-29", "active": True, "company_id": False, "plan_id": [PLAN, "P"]},
+        }
+        with pytest.raises(_osch.AnalyticMeerduidig, match="2 actieve"):
+            _osch.PandAnalyticOplosser(c, analytic_plan_id=PLAN, audit=GeheugenAudit()).vervang(vals)
+        odoo["analytics"] = {
+            1: {"name": "x", "code": "schoffelstraat-29", "active": False, "company_id": [PIN, "VGG"],
+                "plan_id": [PLAN, "P"]}
+        }
+        with pytest.raises(_osch.AnalyticNietOpgelost, match="GEARCHIVEERD"):
+            _osch.PandAnalyticOplosser(c, analytic_plan_id=PLAN, audit=GeheugenAudit()).vervang(vals)
+        odoo["analytics"] = {}
+        with pytest.raises(_osch.AnalyticNietOpgelost, match="geen analytic_plan_id"):
+            _osch.PandAnalyticOplosser(c, analytic_plan_id=None, audit=GeheugenAudit()).vervang(vals)
+        assert not any(m == "account.analytic.account.create" for m in c.methoden())
+
+    def test_herstel_regels_van_bestaand_concept_raakt_alleen_regels_met_pseudo_sleutel(self, writes_aan: None) -> None:
+        odoo, basis = _nep_odoo()
+        c = FakeClient(_met_analytics(basis, odoo))
+        odoo["line_analytics"][3370] = {11: {PAND_SLEUTEL: 100}, 12: False, 13: {"848": 100}}
+        a = GeheugenAudit()
+        namen = {"schoffelstraat-29": "Schoffelstraat 29"}
+        opl = _osch.PandAnalyticOplosser(c, analytic_plan_id=PLAN, audit=a, namen=namen)
+        assert opl.herstel_regels(3370) == 1
+        (aid,) = odoo["analytics"]
+        assert odoo["line_analytics"][3370] == {11: {str(aid): 100}, 12: False, 13: {"848": 100}}
+        h = [x for x in a.regels if x["actie"] == "odoo_migratie_regel_analytic_hersteld"]
+        assert len(h) == 1 and h[0]["oude_waarde"] == {"analytic_distribution": {PAND_SLEUTEL: 100}}
+        assert h[0]["nieuwe_waarde"]["odoo_id"] == 11 and h[0]["nieuwe_waarde"]["move_id"] == 3370
+        assert opl.herstel_regels(3370) == 0  # idempotent: niets meer te herstellen
+
+    def test_dry_run_stand_leest_alleen(self) -> None:
+        odoo, basis = _nep_odoo()
+        c = FakeClient(_met_analytics(basis, odoo))
+        opl = _osch.PandAnalyticOplosser(c, analytic_plan_id=PLAN, audit=GeheugenAudit())
+        vals = {"invoice_line_ids": [[0, 0, {"analytic_distribution": {PAND_SLEUTEL: 100}}]]}
+        verwacht = f"analytic {PAND_SLEUTEL} → ZOU aanmaken (Schoffelstraat 29, plan {PLAN})"
+        assert opl.dry_run_stand(vals, pand=PAND) == [verwacht]
+        odoo["analytics"] = {
+            9: {"name": "x", "code": "schoffelstraat-29", "active": True, "company_id": [PIN, "VGG"],
+                "plan_id": [PLAN, "P"]}
+        }
+        assert _osch.PandAnalyticOplosser(c, analytic_plan_id=PLAN, audit=GeheugenAudit()).dry_run_stand(vals) == [
+            f"analytic {PAND_SLEUTEL} → bestaand 9 (hergebruik)"
+        ]
+        leeg = _osch.PandAnalyticOplosser(c, analytic_plan_id=None, audit=GeheugenAudit())
+        assert leeg.dry_run_stand({"invoice_line_ids": []}) == []
+        assert not any(m.endswith(".create") or m.endswith(".write") for m in c.methoden())
+
+
+class TestStap0PandAnalytic:
+    """Reproductie 22-09 (executie rlz-reconciliatie-zp7xs): het bewijspaar droeg `{'pand:schoffelstraat-29': 100}` →
+    Odoo 500 op action_post. Ná de fix: analytic aangemaakt in het plan, concept mét het échte id, gepost."""
+
+    def test_schrijf_lost_pand_analytic_op_voor_het_posten(self, writes_aan: None) -> None:
+        odoo, basis = _nep_odoo()
+        c = FakeClient(_met_analytics(basis, odoo))
+        a = GeheugenAudit()
+        r = voer_stap0_uit(
+            uuid.uuid4(), administratie_naam="VGG", schrijf=True, stappen=range(0, 7), max_per_type=1,
+            client_factory=lambda aid: c, replay_module=_Replay(_moves_met_pand()), audit=a, writes_aan=True,
+            boekstuk="RLZ-00007", analytic_plan_id=PLAN,
+        )
+        md = r.als_markdown()
+        assert r.stappen[3].werkt is True, md
+        ((aid, rij),) = odoo["analytics"].items()
+        assert rij["name"] == "Schoffelstraat 29" and rij["code"] == "schoffelstraat-29"
+        assert rij["plan_id"][0] == PLAN
+        gepost = r.stappen[3].odoo_ids[0]
+        assert odoo["moves"][gepost]["state"] == "posted"
+        assert odoo["move_vals"][gepost]["invoice_line_ids"][0][2]["analytic_distribution"] == {str(aid): 100}
+        assert f"analytic {PAND_SLEUTEL} → {aid} (aangemaakt)" in r.meldingen
+        assert [x["actie"] for x in a.regels].count("odoo_migratie_analytic_aangemaakt") == 1
+        assert "pand:" not in str(odoo["move_vals"])  # nooit een pseudo-sleutel naar Odoo
+
+    def test_schrijf_herstelt_een_bestaand_concept_met_pseudo_sleutel(self, writes_aan: None) -> None:
+        odoo, basis = _nep_odoo()
+        c = FakeClient(_met_analytics(basis, odoo))
+        moves = _moves_met_pand()
+        paar = next(m for m in moves if m.move_type == "out_invoice" and m.status == "vertaalbaar")
+        # het concept van 22-09 (3370) staat al op de company mét de pseudo-sleutel in zijn regel
+        odoo["moves"][3370] = {
+            "state": "draft", "company_id": [PIN, "VGG"], "ref": "171384", "invoice_origin": f"mig:{paar.anker}",
+            "move_type": "out_invoice", "name": "/", "partner_id": 65,
+        }
+        odoo["line_analytics"][3370] = {41: {PAND_SLEUTEL: 100}, 42: False}
+        r = voer_stap0_uit(
+            uuid.uuid4(), administratie_naam="VGG", schrijf=True, stappen=range(0, 7), max_per_type=1,
+            client_factory=lambda aid: c, replay_module=_Replay(moves), audit=GeheugenAudit(), writes_aan=True,
+            boekstuk="RLZ-00007", analytic_plan_id=PLAN,
+        )
+        assert r.stappen[3].odoo_ids == [3370] and r.stappen[3].werkt is True, r.als_markdown()
+        (aid,) = odoo["analytics"]
+        assert odoo["line_analytics"][3370][41] == {str(aid): 100}
+        assert "1 regel(s) analytic hersteld" in r.stappen[3].regels[0]
+        assert odoo["moves"][3370]["state"] == "posted"
+
+    def test_dry_run_toont_zou_aanmaken_en_schrijft_niets(self) -> None:
+        odoo, basis = _nep_odoo()
+        c = FakeClient(_met_analytics(basis, odoo))
+        r = voer_stap0_uit(
+            uuid.uuid4(), administratie_naam="VGG", schrijf=False, stappen=range(0, 7), max_per_type=1,
+            client_factory=lambda aid: c, replay_module=_Replay(_moves_met_pand()), audit=GeheugenAudit(),
+            writes_aan=False,
+            boekstuk="RLZ-00007", analytic_plan_id=PLAN,
+        )
+        assert f"analytic {PAND_SLEUTEL} → ZOU aanmaken (Schoffelstraat 29, plan {PLAN})" in r.stappen[3].regels
+        assert odoo["analytics"] == {} and not any(m.endswith(".create") for m in c.methoden())
+
+    def test_zonder_plan_is_de_blokkade_zichtbaar_en_niets_gepost(self, writes_aan: None) -> None:
+        odoo, basis = _nep_odoo()
+        c = FakeClient(_met_analytics(basis, odoo))
+        r = voer_stap0_uit(
+            uuid.uuid4(), administratie_naam="VGG", schrijf=True, stappen=range(0, 7), max_per_type=1,
+            client_factory=lambda aid: c, replay_module=_Replay(_moves_met_pand()), audit=GeheugenAudit(),
+            writes_aan=True,
+            boekstuk="RLZ-00007", analytic_plan_id=None,
+        )
+        assert r.stappen[3].werkt is False and "geen analytic_plan_id" in r.stappen[3].regels[0]
+        assert odoo["posted"] == [] and "pand:" not in str(odoo["move_vals"])

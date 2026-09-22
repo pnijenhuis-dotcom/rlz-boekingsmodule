@@ -561,6 +561,7 @@ class TestMiniVgg:
             "status",
             "reden",
             "partner",  # blok 7: partner-voorstel reist mee (None bij entry/bank_direct)
+            "pand",  # 22-09: pand achter de analytic-pseudo-sleutel reist mee (None zonder pand-analytic)
         }
         mj1 = per[MJ1]
         assert mj1.partner is None
@@ -577,6 +578,14 @@ class TestMiniVgg:
             and regels[0]["tax_ids"] == [[6, 0, []]]
         )
         assert regels[0]["analytic_distribution"] == {"pand:gelderstraat-60": 100}
+        # 22-09: het pand achter de pseudo-sleutel reist mee (code/adres/soort) zodat het schrijfpad de échte analytic
+        # kan aanmaken en benoemen — een move zonder pand-analytic draagt None
+        assert mj1.pand is not None and mj1.pand["code"] == "gelderstraat-60"
+        assert set(mj1.pand) == {"code", "adres", "soort"}
+        assert all(m.pand is None for m in rapport.moves if not any(
+            str(k).startswith("pand:") for _, _, r in (m.vals.get("line_ids") or m.vals.get("invoice_line_ids") or [])
+            for k in (r.get("analytic_distribution") or {})
+        ))
         assert "Gelderstraat 60 te Almere" in mj1.vals["narration"]  # ontknipt, geen "60\nte"
         pi1 = per[PI1]
         assert (

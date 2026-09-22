@@ -261,3 +261,41 @@ class TestCli:
         tekst = (REPO / "scripts" / "gcp" / "vgg_blok7_odoo_writes.sh").read_text(encoding="utf-8")
         assert 'execute 1 vgg-odoo-migratie --administratie "$ADMIN" --schrijf' in tekst
         assert "plan_stap vgg-odoo-migratie" in tekst and 'BEWIJSPAAR="${VGG_BEWIJSPAAR:-RLZ-01-00000082}"' in tekst
+
+
+class TestPandAnalytic:
+    """22-09: fase A lost `pand:<code>` op vóór élk concept (lookup-vóór-create in het plan) — SCHRIJF c strandde op de
+    pseudo-sleutel bij action_post; de dry-run telt en toont de benodigde pand-analytics."""
+
+    def test_fase_a_lost_pand_analytic_op_en_post(self, writes_aan: None) -> None:  # noqa: F811
+        from tests.migratie.test_odoo_schrijf import PAND, PAND_SLEUTEL, PLAN, _met_analytics, _moves_met_pand
+
+        odoo, handler = _odoo_met_regels()
+        handler = _met_analytics(handler, odoo)
+        c = FakeClient(handler)
+        rapport = run.voer_migratie_uit(
+            uuid.uuid4(), administratie_naam="VGG", schrijf=True, client_factory=lambda aid: c,
+            replay_module=_Replay(_moves_met_pand()), audit=GeheugenAudit(), writes_aan=True, analytic_plan_id=PLAN,
+        )
+        assert rapport.oordeel != "ROOD", rapport.als_markdown()
+        (aid, rij), = odoo["analytics"].items()
+        assert rij["name"] == PAND["adres"] and rij["code"] == PAND["code"]
+        assert "pand:" not in str(odoo["move_vals"]) and any(
+            v.get("invoice_line_ids", [[0, 0, {}]])[0][2].get("analytic_distribution") == {str(aid): 100}
+            for v in odoo["move_vals"].values()
+        )
+        assert PAND_SLEUTEL not in str(odoo["move_vals"])
+
+    def test_dry_run_telt_en_toont_pand_analytics(self) -> None:
+        from tests.migratie.test_odoo_schrijf import PAND_SLEUTEL, PLAN, _met_analytics, _moves_met_pand
+
+        odoo, handler = _odoo_met_regels()
+        c = FakeClient(_met_analytics(handler, odoo))
+        rapport = run.voer_migratie_uit(
+            uuid.uuid4(), administratie_naam="VGG", schrijf=False, client_factory=lambda aid: c,
+            replay_module=_Replay(_moves_met_pand()), audit=GeheugenAudit(), writes_aan=True, analytic_plan_id=PLAN,
+        )
+        a = rapport.fasen["A. concepten"]
+        assert a.tellers["pand-analytics"] == 1
+        assert f"analytic {PAND_SLEUTEL} → ZOU aanmaken (Schoffelstraat 29, plan {PLAN})" in a.regels
+        assert odoo["analytics"] == {} and not any(m.endswith(".create") for m in c.methoden())

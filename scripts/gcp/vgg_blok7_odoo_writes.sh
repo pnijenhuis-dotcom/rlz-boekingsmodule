@@ -51,16 +51,21 @@ execute() {  # execute <kill-switch 0|1> <cli-args…>  — rapport altijd getoo
   local extra=()
   [[ "$ks" == "1" ]] && extra=(--update-env-vars "MIGRATIE_ODOO_WRITES_INGESCHAKELD=true")
   echo ">> gcloud run jobs execute $JOB  [$*]  kill-switch=$ks" >&2
-  local uitvoer exec_naam
+  local uitvoer exec_naam rc=0
+  # 22-09: een MISLUKTE executie (exit 1 = rood rapport, bv. SCHRIJF c op de pand-analytic-pseudo-sleutel) gaf hier onder
+  # `set -e` een stille exit vóór het log gelezen was — het rapport stond alleen in Cloud Logging. Exitcode vasthouden,
+  # log altijd tonen, daarna de code teruggeven (de aanroeper beslist).
   uitvoer="$(gcloud run jobs execute "$JOB" --project "$PROJECT" --region "$REGION" --wait \
-    --format="value(metadata.name)" "${extra[@]}" --args="^|^$args" 2>&1 | tee /dev/stderr | tail -1)"
+    --format="value(metadata.name)" "${extra[@]}" --args="^|^$args" 2>&1 | tee /dev/stderr)" || rc=$?
   exec_naam="$(grep -o 'rlz-[a-z-]*-[a-z0-9]\{5\}' <<<"$uitvoer" | tail -1)"
-  [[ -n "$exec_naam" ]] || { echo "FOUT: geen executie-naam in de gcloud-uitvoer" >&2; return 1; }
+  [[ -n "$exec_naam" ]] || { echo "FOUT: geen executie-naam in de gcloud-uitvoer (rc=$rc)" >&2; return 1; }
+  [[ $rc -eq 0 ]] || echo ">> executie $exec_naam eindigde met code $rc — rapport volgt uit Cloud Logging" >&2
   sleep 5
   gcloud logging read "resource.type=\"cloud_run_job\" AND labels.\"run.googleapis.com/execution_name\"=\"$exec_naam\"" \
     --project "$PROJECT" --region "$REGION" --limit 5000 --order=asc --format="value(textPayload)" 2>/dev/null \
     || gcloud logging read "resource.type=\"cloud_run_job\" AND labels.\"run.googleapis.com/execution_name\"=\"$exec_naam\"" \
       --project "$PROJECT" --limit 5000 --order=asc --format="value(textPayload)"
+  return $rc
 }
 
 plan_stap() {  # een dry-run-uitkomst is nooit een storing: melden en doorlopen

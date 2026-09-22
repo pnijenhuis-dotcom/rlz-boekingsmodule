@@ -202,6 +202,7 @@ def voer_migratie_uit(
     writes_aan: bool,
     posten: bool = True,
     odoo_lezer: Any | None = None,
+    analytic_plan_id: int | None = None,
 ) -> MigratieRapport:
     from app.migratie import odoo_schrijf  # noqa: PLC0415
 
@@ -246,13 +247,30 @@ def voer_migratie_uit(
         odoo_schrijf.NietEenConcept,
         odoo_schrijf.PartnerMeerduidig,
         odoo_schrijf.PartnerOnbekend,
+        odoo_schrijf.AnalyticMeerduidig,
+        odoo_schrijf.AnalyticNietOpgelost,
     )
+    # 22-09: pand-analytic `pand:<code>` → écht analytic-id vóór élk concept (lookup-vóór-create in het plan)
+    oplosser = odoo_schrijf.PandAnalyticOplosser(client, analytic_plan_id=analytic_plan_id, audit=audit)
     # pand-eis vóór het schrijven: rood = geen concept-berg (Peter: geen handwerk achteraf)
     pand_fouten = per_pand_sluit(per_pand)
     if not schrijf:
         a = fasen["A. concepten"]
-        a.tellers = {"documenten": len(documenten), "bankregels": len(bankregels), "zonder partner": sum(1 for m in documenten if m.move_type != "entry" and not m.partner)}
+        pand_sleutels = sorted({k for m in documenten for k in odoo_schrijf.pand_sleutels_in(m.vals)})
+        a.tellers = {
+            "documenten": len(documenten),
+            "bankregels": len(bankregels),
+            "zonder partner": sum(1 for m in documenten if m.move_type != "entry" and not m.partner),
+            "pand-analytics": len(pand_sleutels),
+        }
         a.regels.append("ZOU: partners zoek-vóór-create, concepten + statement lines (idempotent op anker)")
+        with client:
+            gezien: set[str] = set()
+            for m in documenten:
+                for regel in oplosser.dry_run_stand(m.vals, pand=getattr(m, "pand", None)):
+                    if regel not in gezien and len(gezien) < 40:
+                        gezien.add(regel)
+                        a.regels.append(regel)
         b = fasen["B. toets"]
         b.tellers = {"pand-eis afwijkingen": len(pand_fouten)}
         b.regels.extend(pand_fouten[:20] or ["per pand: alle verkochte panden sluiten (replay)"])
@@ -289,7 +307,9 @@ def voer_migratie_uit(
                     continue
                 vals["partner_id"] = pid
             try:
+                vals = oplosser.vervang(vals, pand=getattr(m, "pand", None))
                 move_id = odoo_schrijf.maak_concept_move(client, vals, anker=str(m.anker), audit=audit)
+                oplosser.herstel_regels(move_id)
                 rapport.move_ids[str(m.anker)] = move_id
                 geschreven_moves[str(m.anker)] = m
             except schrijf_fouten as exc:
@@ -439,7 +459,7 @@ def register_odoo_migratie_run(subparsers: argparse._SubParsersAction) -> None: 
 def run_odoo_migratie_run(args: argparse.Namespace) -> int:
     from app.config import settings  # noqa: PLC0415
     from app.migratie.cli_cmd import zoek_administratie  # noqa: PLC0415
-    from app.migratie.cli_odoo import _laad_replay  # noqa: PLC0415
+    from app.migratie.cli_odoo import _laad_replay, analytic_plan_id_voor  # noqa: PLC0415
     from app.migratie.odoo_doel import doelclient_voor  # noqa: PLC0415
     from app.migratie.odoo_schrijf import DbAudit, GeheugenAudit  # noqa: PLC0415
     from app.migratie.uitvoer import print_gedoseerd  # noqa: PLC0415
@@ -460,6 +480,7 @@ def run_odoo_migratie_run(args: argparse.Namespace) -> int:
         writes_aan=bool(settings.migratie_odoo_writes_ingeschakeld),
         posten=not args.geen_posten,
         odoo_lezer=standaard_odoo_lezer(),
+        analytic_plan_id=analytic_plan_id_voor(administratie_id),
     )
     print_gedoseerd(rapport.als_markdown())
     if rapport.company_id is None:

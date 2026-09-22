@@ -114,6 +114,15 @@ class PartnerOnbekend(Exception):
     """Het voorstel draagt geen enkele sleutel én geen naam — een concept zonder partner mag niet (besluit 3)."""
 
 
+class AnalyticMeerduidig(Exception):
+    """Méér dan één actief analytic account mét deze pand-code in het plan — de mens kiest, wij raden nooit."""
+
+
+class AnalyticNietOpgelost(Exception):
+    """Een `analytic_distribution` draagt nog een pseudo-sleutel (`pand:<code>`) — die mag NOOIT naar Odoo (22-09:
+    `action_post` strandde op "invalid literal for int(): 'pand:schoffelstraat-29'")."""
+
+
 def anker_marker(anker: str | uuid.UUID) -> str:
     return f"mig:{anker}"
 
@@ -199,6 +208,11 @@ def maak_concept_move(client: CompanyGepindeClient, vals: dict[str, Any], *, ank
     mét kale `ref`, memorialen `ref = 'mig:<anker>'`); `company_id` verplicht = pin; ná create `state == 'draft'`
     terug-gelezen (anders `button_cancel` + `ConceptNietDraft`). Geeft het move-id (bestaand of nieuw)."""
     eis_writes_aan()
+    pseudo = pand_sleutels_in(vals)
+    if pseudo:
+        raise AnalyticNietOpgelost(
+            f"analytic_distribution draagt pseudo-sleutel(s) {sorted(pseudo)} — eerst oplossen via PandAnalyticOplosser"
+        )
     marker = anker_marker(anker)
     move_type = str(vals.get("move_type") or "entry")
     treffers = zoek_move_op_anker(client, anker, move_type=move_type)
@@ -266,6 +280,234 @@ def _cancel_stil(client: CompanyGepindeClient, move_id: int) -> None:
         client.call(MODEL_MOVE, "button_cancel", ids=[int(move_id)])
     except OdooFout as exc:  # noqa: BLE001 — de oorspronkelijke fout blijft leidend, dit is nazorg
         logger.warning("button_cancel op account.move %s mislukte: %s", move_id, exc)
+
+
+# --- pand-analytic (22-09; SCHRIJF c strandde op de pseudo-sleutel) ---------------------------------------------------
+
+MODEL_ANALYTIC = "account.analytic.account"
+PAND_ANALYTIC_PREFIX = "pand:"
+_ANALYTIC_VELDEN = ["id", "name", "code", "active", "company_id", "plan_id"]
+
+
+def _regel_dicts(vals: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """De regel-dicts uit `invoice_line_ids`/`line_ids` (Odoo-commands `[0, 0, {...}]` óf kale dicts)."""
+    uit: list[dict[str, Any]] = []
+    for veld in ("invoice_line_ids", "line_ids"):
+        for item in vals.get(veld) or []:
+            regel = item[2] if isinstance(item, (list, tuple)) and len(item) == 3 else item
+            if isinstance(regel, dict):
+                uit.append(regel)
+    return uit
+
+
+def pand_sleutels_in(vals: Mapping[str, Any]) -> set[str]:
+    """Álle `pand:<code>`-sleutels in de `analytic_distribution` van de regels van een move-vals."""
+    return {
+        str(k)
+        for regel in _regel_dicts(vals)
+        for k in (regel.get("analytic_distribution") or {})
+        if str(k).startswith(PAND_ANALYTIC_PREFIX)
+    }
+
+
+class PandAnalyticOplosser:
+    """Vertaalt de replay-pseudo-sleutel `pand:<code>` (vertaling.py: "run 3 zoekt/maakt de analytic aan") naar het
+    échte `account.analytic.account`-id op de doelcompany: lookup-vóór-create op (`code` = pand-code, plan =
+    `analytic_plan_id` van de doelkoppeling, company ∈ {pin, False}); precies één ACTIEF = hergebruik, méér =
+    `AnalyticMeerduidig`, alleen gearchiveerd = fout (Odoo weigert boekingen erop), géén = create mét `name` = adres
+    (terugval code) + `code` + `plan_id` + `company_id`, terug-gelezen; audit per aanmaak/hergebruik. Cache per run.
+    Zonder plan-id kan er niets aangemaakt worden: dat is een zichtbare `AnalyticNietOpgelost`, nooit een pseudo-sleutel
+    naar Odoo. `herstel_regels(move_id)` repareert de regels van een BESTAAND concept (22-09: concept 3370 op company 6
+    droeg de pseudo-sleutel al — een herhaalde run zou anders op dezelfde 500 stranden)."""
+
+    def __init__(
+        self,
+        client: CompanyGepindeClient,
+        *,
+        analytic_plan_id: int | None,
+        audit: AuditSchrijver,
+        namen: Mapping[str, str] | None = None,
+    ) -> None:
+        self.client = client
+        self.analytic_plan_id = int(analytic_plan_id) if analytic_plan_id else None
+        self.audit = audit
+        self.namen: dict[str, str] = dict(namen or {})
+        self.cache: dict[str, int] = {}
+        self.meldingen: list[str] = []
+
+    @staticmethod
+    def code_van(sleutel: str) -> str:
+        return sleutel[len(PAND_ANALYTIC_PREFIX) :] if sleutel.startswith(PAND_ANALYTIC_PREFIX) else sleutel
+
+    def noteer_naam(self, code: str, naam: str | None) -> None:
+        if naam and code not in self.namen:
+            self.namen[code] = naam
+
+    def zoek(self, code: str) -> int | None:
+        """Lees-only lookup (ook in de dry-run bruikbaar): id van het ene actieve analytic account met deze code."""
+        if code in self.cache:
+            return self.cache[code]
+        domein: list[Any] = [
+            ["code", "=", code],
+            ["company_id", "in", [int(self.client.pin), False]],
+            ["active", "in", [True, False]],
+        ]
+        if self.analytic_plan_id is not None:
+            domein.insert(1, ["plan_id", "=", self.analytic_plan_id])
+        bestaand = self.client.search_read(MODEL_ANALYTIC, domein, _ANALYTIC_VELDEN, limit=5)
+        actief = [r for r in bestaand if r.get("active", True)]
+        if len(actief) > 1:
+            raise AnalyticMeerduidig(
+                f"{len(actief)} actieve analytic accounts mét code {code!r} in plan {self.analytic_plan_id}: "
+                f"{[r['id'] for r in actief]} — kies zelf in Odoo"
+            )
+        if len(actief) == 1:
+            self.cache[code] = int(actief[0]["id"])
+            return self.cache[code]
+        if bestaand:
+            raise AnalyticNietOpgelost(
+                f"analytic account {code!r} bestaat alleen GEARCHIVEERD ({[r['id'] for r in bestaand]}) — "
+                "heractiveer 'm in Odoo"
+            )
+        return None
+
+    def los_op(self, code: str) -> tuple[int, str]:
+        """Zoek → anders create (schrijvend). Geeft (id, 'hergebruikt' | 'aangemaakt'); cache-treffer = geen call, geen
+        audit."""
+        if code in self.cache:
+            return self.cache[code], "hergebruikt"
+        bestaand = self.zoek(code)
+        if bestaand is not None:
+            self.audit.leg_vast(
+                "odoo_migratie_analytic_hergebruikt",
+                nieuwe_waarde=_audit_basis(self.client, MODEL_ANALYTIC, "search_read", odoo_id=bestaand, code=code),
+            )
+            return bestaand, "hergebruikt"
+        eis_writes_aan()
+        if self.analytic_plan_id is None:
+            raise AnalyticNietOpgelost(
+                f"geen analytic_plan_id in de doelkoppeling — analytic voor pand {code!r} niet aanmaakbaar "
+                "(migratiedoel-probe herhalen: `odoo-koppeling-migratiedoel`)"
+            )
+        naam = self.namen.get(code) or code
+        nieuw_id = int(
+            self.client.create(
+                MODEL_ANALYTIC,
+                {"name": naam, "code": code, "plan_id": self.analytic_plan_id, "company_id": int(self.client.pin)},
+            )
+        )
+        terug = self.client.read_een(MODEL_ANALYTIC, nieuw_id, _ANALYTIC_VELDEN)
+        if terug is None:
+            raise AnalyticNietOpgelost(f"analytic {code!r} aangemaakt als {nieuw_id} maar niet terug te lezen")
+        terug_company = _m2o_id(terug.get("company_id"))
+        if terug_company not in (None, int(self.client.pin)):
+            raise AnalyticNietOpgelost(
+                f"analytic {code!r} aangemaakt als {nieuw_id} maar Odoo zette company {terug_company} i.p.v. "
+                f"{self.client.pin} — controleer in Odoo"
+            )
+        self.cache[code] = nieuw_id
+        self.audit.leg_vast(
+            "odoo_migratie_analytic_aangemaakt",
+            nieuwe_waarde=_audit_basis(
+                self.client,
+                MODEL_ANALYTIC,
+                "create",
+                odoo_id=nieuw_id,
+                code=code,
+                naam=naam,
+                plan_id=self.analytic_plan_id,
+            ),
+        )
+        return nieuw_id, "aangemaakt"
+
+    def _vertaal_distributie(self, distributie: Mapping[str, Any]) -> dict[str, Any]:
+        uit: dict[str, Any] = {}
+        for sleutel, pct in distributie.items():
+            if str(sleutel).startswith(PAND_ANALYTIC_PREFIX):
+                code = self.code_van(str(sleutel))
+                al_gemeld = code in self.cache
+                odoo_id, herkomst = self.los_op(code)
+                uit[str(odoo_id)] = pct
+                if not al_gemeld:  # één melding per pand per run (de eerste keer zegt aangemaakt/hergebruikt)
+                    self.meldingen.append(f"analytic {PAND_ANALYTIC_PREFIX}{code} → {odoo_id} ({herkomst})")
+            else:
+                uit[str(sleutel)] = pct
+        return uit
+
+    def vervang(self, vals: dict[str, Any], *, pand: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """Kopie van `vals` waarin élke `pand:<code>` een Odoo-id is geworden (create waar nodig). Zonder pseudo-
+        sleutels: dezelfde vals terug (niets gelezen, niets geschreven)."""
+        if pand and pand.get("code"):
+            self.noteer_naam(str(pand["code"]), pand.get("adres"))
+        if not pand_sleutels_in(vals):
+            return vals
+        nieuw = dict(vals)
+        for veld in ("invoice_line_ids", "line_ids"):
+            if not vals.get(veld):
+                continue
+            regels = []
+            for item in vals[veld]:
+                if isinstance(item, (list, tuple)) and len(item) == 3 and isinstance(item[2], dict):
+                    regel = dict(item[2])
+                    if regel.get("analytic_distribution"):
+                        regel["analytic_distribution"] = self._vertaal_distributie(regel["analytic_distribution"])
+                    regels.append([item[0], item[1], regel])
+                elif isinstance(item, dict):
+                    regel = dict(item)
+                    if regel.get("analytic_distribution"):
+                        regel["analytic_distribution"] = self._vertaal_distributie(regel["analytic_distribution"])
+                    regels.append(regel)
+                else:
+                    regels.append(item)
+            nieuw[veld] = regels
+        return nieuw
+
+    def dry_run_stand(self, vals: Mapping[str, Any], *, pand: Mapping[str, Any] | None = None) -> list[str]:
+        """Voor het dry-run-rapport: per pseudo-sleutel 'bestaand id N' of 'ZOU aanmaken (plan P)'. Lees-only."""
+        if pand and pand.get("code"):
+            self.noteer_naam(str(pand["code"]), pand.get("adres"))
+        uit: list[str] = []
+        for sleutel in sorted(pand_sleutels_in(vals)):
+            code = self.code_van(sleutel)
+            try:
+                bestaand = self.zoek(code)
+            except (AnalyticMeerduidig, AnalyticNietOpgelost, OdooFout) as exc:
+                uit.append(f"analytic {sleutel}: STOP — {exc}")
+                continue
+            if bestaand is not None:
+                uit.append(f"analytic {sleutel} → bestaand {bestaand} (hergebruik)")
+            elif self.analytic_plan_id is None:
+                uit.append(f"analytic {sleutel}: STOP — geen analytic_plan_id in de doelkoppeling")
+            else:
+                naam = self.namen.get(code) or code
+                uit.append(f"analytic {sleutel} → ZOU aanmaken ({naam}, plan {self.analytic_plan_id})")
+        return uit
+
+    def herstel_regels(self, move_id: int) -> int:
+        """Regels van een BESTAAND concept mét pseudo-sleutel(s) → `write` met de opgeloste distributie (audit per
+        regel). Geeft het aantal herstelde regels; 0 = niets te doen (ook niets geschreven)."""
+        regels = self.client.search_read(
+            MODEL_MOVE_LINE, [["move_id", "=", int(move_id)]], ["id", "analytic_distribution"], limit=500
+        )
+        hersteld = 0
+        for regel in regels:
+            distributie = regel.get("analytic_distribution") or {}
+            pseudo = isinstance(distributie, dict) and any(str(k).startswith(PAND_ANALYTIC_PREFIX) for k in distributie)
+            if not pseudo:
+                continue
+            eis_writes_aan()
+            nieuw = self._vertaal_distributie(distributie)
+            self.client.write(MODEL_MOVE_LINE, [int(regel["id"])], {"analytic_distribution": nieuw})
+            self.audit.leg_vast(
+                "odoo_migratie_regel_analytic_hersteld",
+                oude_waarde={"analytic_distribution": dict(distributie)},
+                nieuwe_waarde=_audit_basis(
+                    self.client, MODEL_MOVE_LINE, "write", odoo_id=int(regel["id"]), move_id=int(move_id),
+                    analytic_distribution=nieuw,
+                ),
+            )
+            hersteld += 1
+        return hersteld
 
 
 # --- partner (besluit Peter 12-09 punt 3) -----------------------------------------------------------------------------

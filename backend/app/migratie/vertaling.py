@@ -171,6 +171,10 @@ class MoveVoorstel:
     #: move zodat de partners-stap van `vgg-odoo-stap0` zoek-vóór-create kan doen; None = geen partner nodig (entry,
     #: bank_direct). `vals["partner_id"]` blijft None tot die stap 'm invult.
     partner: dict[str, Any] | None = None
+    #: 22-09 (SCHRIJF c strandde: `action_post` → "invalid literal for int(): 'pand:schoffelstraat-29'"): het pand dat
+    #: de `analytic_distribution`-pseudo-sleutel `pand:<code>` draagt (code/adres/soort) reist mee, zodat het schrijfpad
+    #: de échte Odoo-analytic (lookup-vóór-create in het plan) kan invullen en benoemen. None = geen pand-analytic.
+    pand: dict[str, Any] | None = None
 
     def als_dict(self) -> dict[str, Any]:
         return {
@@ -184,6 +188,7 @@ class MoveVoorstel:
             "status": self.status,
             "reden": self.reden,
             "partner": self.partner,
+            "pand": self.pand,
         }
 
 
@@ -920,6 +925,8 @@ def vertaal_document(
     uit.move.vals = vals
     uit.move.status = status
     uit.move.reden = "; ".join(redenen) if redenen else "1-op-1 vertaald"
+    if analytic and pand is not None:
+        uit.move.pand = {"code": pand.pand_code, "adres": pand.adres, "soort": pand.soort}
     return uit
 
 

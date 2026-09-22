@@ -576,6 +576,17 @@ def _partner_voorstel(m: Any) -> dict[str, Any] | None:
     return dict(voorstel) if isinstance(voorstel, dict) else None
 
 
+def analytic_plan_id_voor(administratie_id: uuid.UUID) -> int | None:
+    """Het analytic-plan (Project) van de doelkoppeling — de plek waar pand-analytics leven; None = geen migratiedoel
+    (de runner meldt dat zelf via de client_factory) of geen plan in de probe (dan is aanmaken zichtbaar onmogelijk)."""
+    from app.migratie.odoo_doel import doelkoppeling_voor  # noqa: PLC0415
+
+    try:
+        return doelkoppeling_voor(administratie_id).analytic_plan_id
+    except GeenMigratieDoel:
+        return None
+
+
 def voer_stap0_uit(
     administratie_id: uuid.UUID,
     *,
@@ -590,6 +601,7 @@ def voer_stap0_uit(
     boekstuk: str | None = None,
     jaar_maand: tuple[int, int] = STAP0_JAAR_MAAND,
     odoo_lezer: Any | None = None,
+    analytic_plan_id: int | None = None,
 ) -> Stap0Rapport:
     """De bewijscyclus (blok 7 run 2, besluiten Peter 12-09 punt 2 + 3). `schrijf=False` = print wat er zou gebeuren.
     Elke stap meldt 'werkt op company 6: ja/nee/niet uitgevoerd'. Volgorde en poorten:
@@ -653,7 +665,12 @@ def voer_stap0_uit(
         odoo_schrijf.NietEenConcept,
         odoo_schrijf.PartnerMeerduidig,
         odoo_schrijf.PartnerOnbekend,
+        odoo_schrijf.AnalyticMeerduidig,
+        odoo_schrijf.AnalyticNietOpgelost,
     )
+    # 22-09: pand-analytic `pand:<code>` → écht analytic-id (lookup-vóór-create in het plan van de doelkoppeling);
+    # SCHRIJF c strandde op `action_post` mét de pseudo-sleutel. Dry-run leest alleen ("bestaand"/"ZOU aanmaken").
+    oplosser = odoo_schrijf.PandAnalyticOplosser(client, analytic_plan_id=analytic_plan_id, audit=audit)
 
     with client:
         # --- stap 0: partners (besluit 3) — alleen de partijen die stap 1–3 nodig hebben ---
@@ -717,6 +734,7 @@ def voer_stap0_uit(
                 omschr = f"{m.boekstuk} (rlz {m.rlz_id}) anker {m.anker} — {n_regels} regels"
                 if not schrijf:
                     s.regels.append(f"ZOU aanmaken: {omschr}" + (" → ZOU POSTEN (bewijspaar)" if is_paar else ""))
+                    s.regels.extend(oplosser.dry_run_stand(m.vals, pand=getattr(m, "pand", None)))
                     continue
                 if n != 2 and str(m.anker) in zonder_partner:
                     s.uitgevoerd, s.werkt = True, False
@@ -734,10 +752,14 @@ def voer_stap0_uit(
                         s.regels.append(f"overgeslagen {omschr}: partner_id leeg (stap 0 niet gedraaid of mislukt)")
                         continue
                 try:
+                    vals = oplosser.vervang(vals, pand=getattr(m, "pand", None))
                     move_id = odoo_schrijf.maak_concept_move(client, vals, anker=str(m.anker), audit=audit)
                     s.odoo_ids.append(move_id)
                     aangemaakt_moves[n].append(move_id)
                     regel = f"concept {move_id}: {omschr}"
+                    hersteld = oplosser.herstel_regels(move_id)
+                    if hersteld:
+                        regel += f" · {hersteld} regel(s) analytic hersteld (bestaand concept droeg de pseudo-sleutel)"
                     if is_paar:
                         na = odoo_schrijf.post_move(client, move_id, audit=audit)
                         gepost_move_id = move_id
@@ -746,6 +768,7 @@ def voer_stap0_uit(
                 except schrijf_fouten as exc:
                     s.werkt = False
                     s.regels.append(f"FOUT {omschr}: {exc}")
+        rapport.meldingen.extend(oplosser.meldingen)
         groen_1_3 = all(rapport.stappen[n].werkt for n in (1, 2, 3) if n in gekozen and rapport.stappen[n].uitgevoerd)
 
         # --- stap 4: statement lines van de betalende bankregels (klikpunt IBAN) ---
@@ -1064,6 +1087,7 @@ def _run_stap0(args: argparse.Namespace) -> int:
         boekstuk=getattr(args, "boekstuk", None) or None,
         jaar_maand=jaar_maand,
         odoo_lezer=standaard_odoo_lezer(),
+        analytic_plan_id=analytic_plan_id_voor(administratie_id),
     )
     print_gedoseerd(rapport.als_markdown())  # blok 8 nazorg 15-09: stap0-rapport groeit mee met --max-per-type
     if not rapport.replay_beschikbaar or rapport.company_id is None:
