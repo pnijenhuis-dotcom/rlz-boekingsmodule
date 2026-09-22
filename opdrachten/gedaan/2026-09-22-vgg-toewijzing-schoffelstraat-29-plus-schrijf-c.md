@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-22, rapport: docs/rapporten/2026-09-22-vgg-toewijzing-schoffelstraat-schrijf-c.md
+
 Domeinen: vgg-odoo-migratie, werkloop-productie
 niet vóór: 2026-09-22 09:00
 

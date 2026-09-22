@@ -258,3 +258,19 @@
   nooit een reeks lege "niet gemeten"-rapporten. Bijvangst: het jobs-image-pad uit de opdrachttekst (`template.template.containers[0].image`)
   geeft een lege waarde; het juiste veld is `spec.template.spec.template.spec.containers[0].image` (zoals `f3_jobs.sh`). Rapport
   `docs/rapporten/2026-09-22-nameting-corrigeren-testadministratie.md`.
+
+<!-- toegevoegd 22-09-2026, opdracht "vgg-toewijzing-schoffelstraat-29-plus-schrijf-c" -->
+- **Een gedocumenteerd "later"-gat in een schrijfpad is een guard aan de schrijfgrens, geen commentaarregel; en een gestrande job-executie
+  toont altijd haar rapport (22-09; BESLISSINGEN "VGG — BESLISPUNT 1 BESLIST: TOEWIJZING PAND + SOORT VERKOOP RLZ-01-00000082 (Peter 21-09)"
+  alinea "Uitgevoerd 22-09"):** `vertaling.py` droeg sinds 12-09 de regel "de analytic-sleutel is in de dry-run `pand:<code>` (run 3 zoekt/
+  maakt de analytic aan)"; het schrijfpad kwam er nooit, en het eerste document mét pand-analytic dat SCHRIJF c bereikte strandde op
+  `action_post` (Odoo 500, pseudo-sleutel in `analytic_distribution`) — ná zes eerdere metingen en drie plan-runs die het niet kónden zien,
+  want Odoo valideert de sleutel pas bij posten. Regels: (1) élke plaatshouder die een schrijfpad later moet oplossen krijgt in dezelfde
+  commit een guard op de schrijffunctie (hier `maak_concept_move` → `AnalyticNietOpgelost`) én een dry-run-regel die de open stap benoemt
+  ("→ ZOU aanmaken (…)"), zodat "nog niet gebouwd" zichtbaar is in élk plan-rapport en nooit pas in productie; (2) een fix op een schrijfpad
+  dekt óók de sporen die de gestrande poging al achterliet (concept 3370 mét pseudo-sleutel → `herstel_regels` vóór het posten) — een
+  idempotent anker dat een kapot concept hergebruikt, herhaalt anders dezelfde fout; (3) een wrapper-script onder `set -euo pipefail` houdt de
+  exitcode van `gcloud run jobs execute --wait` vast en leest het log ALTIJD (`vgg_blok7_odoo_writes.sh::execute`): op 22-09 eindigde het
+  script met exit 1 zonder één regel rapport, terwijl de uitkomst (2 partners, 2 concepten, stap 3 FOUT) alleen in Cloud Logging stond;
+  (4) een gestrande SCHRIJF-stap is een systeemfout van de bouw (regel 19-09 poging 2): fix + guard + reproductietest in dezelfde run, de
+  meetlat opnieuw ná deploy als vervolg-opdracht mét `niet vóór:`. Rapport `docs/rapporten/2026-09-22-vgg-toewijzing-schoffelstraat-schrijf-c.md`.

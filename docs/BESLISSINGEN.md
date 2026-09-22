@@ -12180,7 +12180,7 @@ leesbaar", bevinding `activa_register_niet_leesbaar` in `meten`).
 
 ## VGG — BESLISPUNT 1 BESLIST: TOEWIJZING PAND + SOORT VERKOOP RLZ-01-00000082 (Peter 21-09)
 
-**Status: GEBOUWD 21-09 (CLI + tests), productie: niet uitgevoerd — recept in `docs/rapporten/2026-09-21-activa-fase1-bua-vgg-toewijzing-universal-overhead.md` sectie C.**
+**Status: GEBOUWD 21-09 (CLI + tests); UITGEVOERD 22-09 — toewijzing werkt in productie: JA (pand `schoffelstraat-29` + pand_boeking `verkoop` op de leesreplica, idempotent bevestigd); `plan` toont het bewijspaar vertaalbaar: JA; SCHRIJF c: NEE — gestrand op stap 3 (Odoo 500 `invalid literal for int(): 'pand:schoffelstraat-29'`, niets gepost), instrumentfout gefixt + guard in dezelfde run, poging 2 ná deploy (`opdrachten/inbox/2026-09-22-vgg-schrijf-c-poging-2-na-deploy-pand-analytic.md`) — zie alinea "Uitgevoerd 22-09" hieronder en rapport `docs/rapporten/2026-09-22-vgg-toewijzing-schoffelstraat-schrijf-c.md`.**
 
 **Besluit Peter 21-09:** beslispunt 1 uit "VGG — CONCEPT → AUTO-POSTEN NÁ GROENE TOETS (Peter 17-09)" alinea "Plan + zesde meting 17-09 avond" is
 beslist als **Toewijzing pand + soort `verkoop`** (het advies), niet als expliciete mapping 8000. Het bewijspaar RLZ-01-00000082 (Receipt,
@@ -12212,6 +12212,54 @@ rlz-reconciliatie … --args="^|^-m|app.cli|pand-toewijzen|--administratie|Vastg
 bewijspaar moet "vertaalbaar" tonen mét `pand schoffelstraat-29 (verkoop, hoog/mens)` en `regel N → opbrengst_panden`, anders STOP mét de
 exacte blokkade uit het rapport (een andere ongemapte ledger = beslispunt 2, geen tweede toewijzing); (4) `vgg_blok7_odoo_writes.sh "SCHRIJF c"`,
 GO Peter op dat rapport vóór SCHRIJF d.
+
+**Uitgevoerd 22-09 (opdracht `2026-09-22-vgg-toewijzing-schoffelstraat-29-plus-schrijf-c`, alles op de gedeployde job-image `51555f6`, service = job):**
+1. **Toewijzing — werkt in productie: JA.** Dry-run (`rlz-reconciliatie-czbjf`): precies één RLZ-treffer (Receipts, id `8b079e5c-aeba-4776-9097-31d2686184f6`,
+   19-03-2026, € 400.000,00, relatie "Ouwekerk Notariaat"), pand `schoffelstraat-29` → nieuw, pand_boeking verkoop/mens/hoog → nieuw.
+   `--schrijf` (`-czxnd`): GESCHREVEN, audit `pand_toegewezen_mens` + `pand_boeking_toegewezen_mens` (11:08:32 UTC, oud = null). Tweede
+   `--schrijf` (`-7v2lm`): pand "bestaand", pand_boeking "ongewijzigd", audit "geen" — idempotent. Leesreplica: `pand` 1 rij (status
+   `verkocht`, verkoopdatum 2026-03-19, herkomst mens, `rlz_project_id` leeg), `pand_boeking` 1 rij (verkoop, hoog, € 400.000,00,
+   `bevestigd_door` = Peters gebruikers-id). De pand-code is dezelfde als het adres-voorstel van de afleiding van die ochtend
+   (`nameting-vgg-panden-22-09.txt`: "Schoffelstraat 29 | Purmerend | dossier 2026.079950.01 | zou nieuw zijn") — een latere
+   `pandenregister-afleiden --schrijf` hergebruikt dit pand (mens wint).
+2. **`plan` — bewijspaar VERTAALBAAR: JA** (`-drn8g` migratiedoel ongewijzigd/idempotent, `-nrvt6` vijf rollen hergebruikt, `-brj4t` stap0-dry-run,
+   `-d7smw` migratie-dry-run): stap0 "replay 2180 moves, selectie 2026-03: in_invoice 1 · out_invoice 1 · paar: out_invoice RLZ-01-00000082 ↔
+   1 bankregel(s) (2026-03-20)", stap 3 "ZOU aanmaken: RLZ-01-00000082 … → ZOU POSTEN (bewijspaar)"; migratie-dry-run 229 vertaalbare
+   documenten (17-09: 224), pand-eis afwijkingen 41 (17-09: 39; de twee extra zijn meetbaar geworden, niet nieuw fout). Bijvangst:
+   **KLIKPUNT PETER (nu bereikt, 17-09 nog niet): IBAN op dagboek BNK1 in company 6 is leeg → stap 4/5 (statement line + reconcile)
+   worden overgeslagen** — het bewijspaar wordt dan wél gepost maar niet gereconcilieerd; de per-pand-sluit-eis (7d) is pas ná IBAN + poging 2 toetsbaar.
+3. **SCHRIJF c — NEE (gestrand, niets gepost; executie `rlz-reconciliatie-zp7xs`, exit 1):** stap 0 ja (partners 275 Gimple B.V., 276 Ouwerkerk
+   Notariaat [iban] nieuw), stap 1 ja (concept 3369 RLZ-04-00000431 Gimple, draft), **stap 3 FOUT: `Odoo account.move.action_post → 500
+   builtins.ValueError: invalid literal for int() with base 10: 'pand:schoffelstraat-29'`** (4 × 500 = de retry), stap 4–6 overgeslagen. Stand
+   company 6: 2 partners, 2 concepten (3369 in_invoice, **3370 out_invoice = het bewijspaar, draft, mét de pseudo-sleutel in zijn regel**),
+   0 gepost, 0 statement lines. **Oorzaak = instrumentfout van de bouw, geen data-fout:** `vertaling.py` schrijft de analytic als pseudo-
+   sleutel `pand:<code>` en zegt letterlijk "run 3 zoekt/maakt de analytic aan (lookup-vóór-create)" — dat schrijfpad was nooit gebouwd; de
+   dry-run kon het niet tonen (Odoo accepteert de JSON op create, pas `action_post` valideert), en dit was het eerste document mét pand-analytic
+   dat het schrijfpad bereikte (alle eerdere SCHRIJF-c-pogingen strandden vóór stap 3 op "niet vertaalbaar").
+4. **Fix + guard (dezelfde run, poort groen):** `odoo_schrijf.PandAnalyticOplosser` — `pand:<code>` → écht `account.analytic.account`-id via
+   lookup-vóór-create op (`code` = pand-code, `plan_id` = analytic-plan van de doelkoppeling, company ∈ {6, False}; één actief = hergebruik,
+   méér = `AnalyticMeerduidig`, alleen gearchiveerd = STOP, géén = create `{name: adres, code, plan_id, company_id}` + terug-lezen; audit
+   `odoo_migratie_analytic_aangemaakt`/`_hergebruikt`), cache per run, één melding per pand in het rapport; `herstel_regels(move_id)` repareert
+   de regels van een BESTAAND concept (3370!) via `account.move.line write` mét audit `odoo_migratie_regel_analytic_hersteld` oud→nieuw —
+   anders zou poging 2 op hetzelfde concept opnieuw stranden; guard in `maak_concept_move`: een vals mét pseudo-sleutel = `AnalyticNietOpgelost`
+   vóór er iets naar Odoo gaat; beide schrijfpaden (`vgg-odoo-stap0` stap 1–3, `vgg-odoo-migratie` fase A) lossen op vóór create + herstellen
+   ná zoek-vóór-create; de dry-run toont per document "analytic pand:<code> → bestaand N (hergebruik) | ZOU aanmaken (<adres>, plan P) | STOP —
+   <reden>" en de migratie-dry-run telt "pand-analytics"; zonder `analytic_plan_id` in de doelkoppeling = zichtbare blokkade per document,
+   nooit een pseudo-sleutel naar Odoo. `MoveVoorstel.pand` (code/adres/soort) reist mee vanuit de vertaling voor de naam. Tests:
+   `test_odoo_schrijf.py::TestPandAnalyticOplosser` (7) + `TestStap0PandAnalytic` (4, incl. reproductie van concept 3370 mét pseudo-sleutel →
+   hersteld + gepost) + `test_odoo_migratie_run.py::TestPandAnalytic` (2) + contract `test_replay.py::test_moves_vorm_contract` (veld `pand`).
+   Procesfix `vgg_blok7_odoo_writes.sh::execute`: een mislukte executie (exit ≠ 0) laat onder `set -e` het rapport niet meer stil in Cloud
+   Logging staan — exitcode vasthouden, log altijd tonen, code teruggeven.
+5. **Vervolg (poging 2, ná deploy):** `opdrachten/inbox/2026-09-22-vgg-schrijf-c-poging-2-na-deploy-pand-analytic.md` (`niet vóór:` deploy
+   + marge): deploy-check → `plan` (stap0-dry-run moet "analytic pand:schoffelstraat-29 → ZOU aanmaken (Schoffelstraat 29, plan N)" tonen) →
+   `SCHRIJF c` → verwacht: analytic aangemaakt, concept 3370 "1 regel(s) analytic hersteld", GEPOST; stap 4/5 alleen ná het IBAN-klikpunt.
+   GO Peter op dat rapport vóór SCHRIJF d. **Zevende meting (replay ná de toewijzing, nameting-run 35724142036 onderdeel c, bot `a3b2455`):**
+   bewijspaar = de ene vertaalbare out_invoice (906 niet vertaalbaar, −1), herclassificatie `ongemapt:8000 → 3608` € −400.000,00 (1 regel),
+   per pand `schoffelstraat-29` Verkoop € 400.000,00 / Aanbetalingen € 20.000,00 / Notaris-ontvangst € 50.952,09 → "SIGNAAL: sluit niet
+   (Δ 349.047,91)": de AANKOOP staat in memorialen `RLZ-06-00000110` + `RLZ-06-00000174` (€ 365.000,00, ledgers 1100/1601 zonder Odoo-rekening,
+   soort `balans`/voorstel midden) — ongemapte ledgers = beslispunt 2, geen tweede toewijzing door een CC-run; de JSON-bijlage toont letterlijk
+   `"analytic_distribution": {"pand:schoffelstraat-29": 100}` op account 3608 (bevestigt de oorzaak van punt 3). Replay-oordeel blijft ROOD op
+   uitsluitend de drie afletter-groepen (ongewijzigd sinds de vijfde meting).
 
 ## BUA-KENMERK — LEES-ONLY METING + BULK-VOORSTEL (Peter 21-09)
 
