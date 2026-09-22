@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -384,3 +384,37 @@ def test_onderdeel_veldwerkers_dubbelen_alleen_op_verzoek_en_lees_only(tmp_path:
         },
     )
     assert "TOTAAL 0 kandidaat-cluster(s)" in oordeel
+
+
+def test_onderdeel_corrigeren_alleen_op_verzoek_en_lees_only(tmp_path: Path) -> None:
+    """22-09 (nameting "Corrigeren…" 21-09): de RLZ-testadministratie stond in productie gearchiveerd zonder credential,
+    dus de schrijvende stappen zijn een klikpunt van Peter. De lees-only meetlat (request-log corrigeer-routes +
+    rlz-lezen TEST-CORRIGEREN + db-lezen correcties) staat als dispatch-onderdeel `corrigeren` (regel 21-09: "niet
+    gemeten" = vervolg-opdracht + onderdeel), alleen op verzoek (niet in 'alles'), uitsluitend via de nameting-scripts,
+    uitkomst in verkenning/nameting-corrigeren-<dd-mm>.txt mét eigen oordeelregel (POST corrigeren 200/409/5xx)."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "corrigeren" ]]; then' in meet
+    assert "scripts/gcp/nameting.sh rlz-lezen --administratie \"Nijenhuis (test)\" --pad PurchaseInvoices" in meet
+    assert "scripts/gcp/nameting.sh db-lezen correcties --administratie \"Nijenhuis (test)\"" in meet
+    assert 'httpRequest.requestUrl:"/corrigeren"' in meet and 'httpRequest.requestUrl:"/corrigeer-toets"' in meet
+    assert 'UIT="verkenning/nameting-corrigeren-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "corrigeren"' not in meet, "niet in 'alles'"
+    assert 'OORDEEL_BRON="verkenning/nameting-corrigeren-$DATUM.txt"' in meet
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "corrigeren",
+        {
+            "nameting-corrigeren-14-09.txt": (
+                "kop\nOordeel: POST corrigeren 200 = 0, 409 = 0, 5xx beide routes = 0 — niet gemeten "
+                "(nog geen POST corrigeren mét 200 — klikpunt Peter open) — exit 0\n"
+            )
+        },
+    )
+    assert "POST corrigeren 200 = 0, 409 = 0, 5xx beide routes = 0" in oordeel
+
+
+def test_nameting_sh_kent_onderdeel_corrigeren() -> None:
+    """`via_gh_onderdeel corrigeren` → corrigeren (zelfde patroon als jobs-start: geen CLI-commando, wél een
+    dispatch-onderdeel), zodat een vervolg-opdracht zonder TTY `nameting.sh` niet op exit 3 strandt."""
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    assert re.search(r"^\s*corrigeren\) echo corrigeren ;;", sh, re.M)

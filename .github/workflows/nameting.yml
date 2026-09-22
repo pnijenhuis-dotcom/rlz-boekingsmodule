@@ -30,7 +30,7 @@ on:
         description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -313,6 +313,36 @@ jobs:
             fi
             echo "STATUS jobs-start: rapport in $UIT (exit $rc_js = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "corrigeren" ]]; then
+            # 22-09 (nameting "Corrigeren…" van 21-09; BESLISSINGEN "CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW KLAARZETTEN
+            # (Peter 21-09)" alinea "Gemeten 22-09"): lees-only meetlat ná het klikpunt van Peter op de RLZ-testadministratie
+            # ('Administratiekantoor Nijenhuis (test)', gearchiveerd op 30-08 zonder credential — de run schrijft zelf niets).
+            # (1) request-log van de corrigeer-routes sinds de deploy van 21-09 (methode/status/latency; 0 × 5xx verwacht),
+            # (2) rlz-lezen van de TEST-CORRIGEREN-stukken op de testadministratie (Status 1 = gestorneerd concept, 2 = herboekt;
+            # geen credential/gearchiveerd = exit 1 = uitkomst), (3) db-lezen correcties (audit document_gecorrigeerd mét reden,
+            # oud boekstuk, oud extern id en de huidige stand). Oordeel: aantal POST corrigeren 200/409/5xx.
+            UIT="verkenning/nameting-corrigeren-$DATUM.txt"
+            rc_co=0
+            {
+              echo "== request-log corrigeer-toets / corrigeren sinds 2026-09-21T16:00Z (deploy c43111e, 21-09 17:59 NL) =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" (httpRequest.requestUrl:"/corrigeren" OR httpRequest.requestUrl:"/corrigeer-toets") timestamp>="2026-09-21T16:00:00Z"' \
+                --project "$PROJECT_ID" --limit 200 --order asc \
+                --format='table(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-co-log.txt || rc_co=$?
+              cat nameting-co-log.txt
+              echo
+              echo "== rlz-lezen PurchaseInvoices TEST-CORRIGEREN op 'Administratiekantoor Nijenhuis (test)' (exit 1 = geen credential/gearchiveerd = uitkomst) =="
+              scripts/gcp/nameting.sh rlz-lezen --administratie "Nijenhuis (test)" --pad PurchaseInvoices --filter "startswith(Reference,'TEST-CORRIGEREN')" --top 20 2> nameting-co-rlz.stderr || { echo "(rlz-lezen exit $? — stderr:)"; cat nameting-co-rlz.stderr; }
+              echo
+              echo "== db-lezen correcties (audit document_gecorrigeerd / document_correctie_mislukt, 30 dagen) op de testadministratie =="
+              scripts/gcp/nameting.sh db-lezen correcties --administratie "Nijenhuis (test)" 2> nameting-co-db.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-co-db.stderr; }
+            } > "$UIT"
+            P200="$(awk '$2=="POST" && $3=="200" && $5 ~ /\/corrigeren$/' nameting-co-log.txt | wc -l | tr -d ' ')"
+            P409="$(awk '$2=="POST" && $3=="409" && $5 ~ /\/corrigeren$/' nameting-co-log.txt | wc -l | tr -d ' ')"
+            P5XX="$(awk '($2=="POST" || $2=="GET") && $3 ~ /^5/' nameting-co-log.txt | wc -l | tr -d ' ')"
+            if [[ "$P200" -ge 1 && "$P5XX" -eq 0 ]]; then CO_STAND="werkt in productie: ja (≥ 1 correctie mét 200, 0 × 5xx)"; elif [[ "$P5XX" -ge 1 ]]; then CO_STAND="ROOD — 5xx op de corrigeer-routes"; else CO_STAND="niet gemeten (nog geen POST corrigeren mét 200 — klikpunt Peter open)"; fi
+            echo "Oordeel: POST corrigeren 200 = $P200, 409 = $P409, 5xx beide routes = $P5XX — $CO_STAND — exit $rc_co" >> "$UIT"
+            echo "STATUS corrigeren: rapport in $UIT (exit $rc_co = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
             # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
@@ -351,6 +381,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-bua-kandidaten-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "veldwerkers-dubbelen" ]]; then
             OORDEEL_BRON="verkenning/nameting-veldwerkers-dubbelen-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "corrigeren" ]]; then
+            OORDEEL_BRON="verkenning/nameting-corrigeren-$DATUM.txt"
           else
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           fi

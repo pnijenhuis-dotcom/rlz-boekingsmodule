@@ -32,7 +32,11 @@ def _bearer(gid: uuid.UUID, *, rol: str) -> dict[str, str]:
 class TestBibliotheek:
     def test_alle_queries_laden_en_zijn_select_only_met_kop(self) -> None:
         alle = bibliotheek.laad_alle()
-        assert {"document-feiten", "bankmutatie-feiten", "reconciliatie-bevindingen", "sync-status", "project-cache", "whitelist-doelen", "documenten-zonder"} <= set(alle)
+        verwacht = {
+            "document-feiten", "bankmutatie-feiten", "reconciliatie-bevindingen", "sync-status", "project-cache",
+            "whitelist-doelen", "documenten-zonder", "correcties",
+        }
+        assert verwacht <= set(alle)
         for q in alle.values():
             assert q.versie and q.doel and q.kolommen
             assert q.scope in bibliotheek.SCOPES
