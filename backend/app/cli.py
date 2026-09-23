@@ -3076,11 +3076,85 @@ def _webhook_afleveren(args: argparse.Namespace) -> int:
         return 0
     print(
         f"Afgeleverd: {rapport.afgeleverd}, poging(en) mislukt: {rapport.poging_mislukt}, "
-        f"dead-letter: {rapport.dead_letter}, geweigerd (geen vastgoed): {rapport.geweigerd_geen_vastgoed}"
+        f"dead-letter: {rapport.dead_letter}, geweigerd (geen vastgoed): {rapport.geweigerd_geen_vastgoed}, "
+        f"genegeerd door de ontvanger: {rapport.genegeerd}"
     )
     for fout in rapport.fouten:
         print(f"FOUT  {fout}", file=sys.stderr)
-    return 1 if (rapport.dead_letter or rapport.geweigerd_geen_vastgoed) else 0
+    return 1 if (rapport.dead_letter or rapport.geweigerd_geen_vastgoed or rapport.genegeerd) else 0
+
+
+def _webhook_herzenden(args: argparse.Namespace) -> int:
+    """Herzend-actie (OPEN_ITEMS regel 13, vastgoed 21-09): afgeleverde outbox-rijen op referentie terug naar
+    openstaand mét audit; dry-run (default) toont alleen de rijen. De gewone afleveraar (job rlz-webhook-afleveraar,
+    elke 5 min) verstuurt daarna mét verse timestamp/nonce; uitkomst per rij = audit webhook_afgeleverd(.resultaat) of
+    webhook_genegeerd — lees-only na te lezen mét `db-lezen webhook-outbox --administratie … --param referentie=…`."""
+    from app.documenten.webhook_afleveraar import herzend_afgeleverd
+
+    try:
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    administratie_id = _zoek_administratie_id(args.administratie)
+    if administratie_id is None:
+        return 1
+    dry_run = not args.uitvoeren
+    try:
+        rijen = herzend_afgeleverd(
+            actor_id=beheerder_id,
+            administratie_id=administratie_id,
+            referenties=args.referentie,
+            reden=args.reden or "",
+            event=args.event,
+            dry_run=dry_run,
+        )
+    except ValueError as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    kop = "DRY-RUN — niets gewijzigd" if dry_run else "UITGEVOERD"
+    print(f"webhook-herzenden {kop}: administratie {administratie_id}, event {args.event}, {len(rijen)} regel(s)")
+    print("referentie | outbox_id | status_voor | rlz_document_id | volgnr | afgeleverd_op | pogingen | uitkomst")
+    for r in rijen:
+        print(
+            f"{r.referentie} | {r.outbox_id or '-'} | {r.status_voor or '-'} | {r.rlz_document_id or '-'} | "
+            f"{r.volgnummer if r.volgnummer is not None else '-'} | "
+            f"{r.afgeleverd_op.isoformat(timespec='minutes') if r.afgeleverd_op else '-'} | "
+            f"{r.pogingen if r.pogingen is not None else '-'} | {r.uitkomst}"
+        )
+    herzonden = sum(1 for r in rijen if r.uitkomst == "herzonden")
+    zou = sum(1 for r in rijen if r.uitkomst.startswith("zou herzenden"))
+    niet = [r for r in rijen if r.uitkomst.startswith("niet")]
+    print(f"TOTAAL: herzonden {herzonden}, zou herzenden {zou}, niet gevonden/niet afgeleverd {len(niet)}")
+    for r in niet:
+        print(f"LET-OP  {r.referentie}: {r.uitkomst}", file=sys.stderr)
+    return 1 if niet else 0
+
+
+def _zoek_administratie_id(naam_of_id: str) -> uuid.UUID | None:
+    """UUID of (deel van de) naam — precies één treffer vereist (zelfde contract als rlz-lezen)."""
+    from sqlalchemy import select
+
+    from app.db.models import Administratie
+    from app.db.session import scoped_session
+
+    try:
+        return uuid.UUID(naam_of_id)
+    except ValueError:
+        pass
+    with scoped_session(None) as session:
+        treffers = list(
+            session.execute(
+                select(Administratie.id, Administratie.naam).where(Administratie.naam.ilike(f"%{naam_of_id}%"))
+            )
+        )
+    if len(treffers) != 1:
+        namen = ", ".join(n for _, n in treffers) or "geen"
+        print(
+            f"FOUT: administratie '{naam_of_id}' niet eenduidig ({len(treffers)} treffer(s): {namen})", file=sys.stderr
+        )
+        return None
+    return treffers[0][0]
 
 
 def _webhook_redrive(args: argparse.Namespace) -> int:
@@ -3991,6 +4065,24 @@ def main(argv: list[str] | None = None) -> int:
         help="Alleen deze ene outbox-rij terugzetten (default: alle dead-letters).",
     )
 
+    herzend_parser = subparsers.add_parser(
+        "webhook-herzenden",
+        help="Zet AFGELEVERDE webhook-outbox-rijen op referentie terug naar openstaand (herzenden mét verse "
+        "timestamp/nonce, zelfde payload; audit per rij) — default dry-run, --uitvoeren schrijft. OPEN_ITEMS regel 13.",
+    )
+    herzend_parser.add_argument("--administratie", required=True, help="UUID of (deel van de) naam — één treffer.")
+    herzend_parser.add_argument(
+        "--referentie", action="append", required=True, help="Referentie (payload.data.referentie); herhaalbaar."
+    )
+    herzend_parser.add_argument("--event", default="factuur_geboekt", help="Event (default factuur_geboekt).")
+    herzend_parser.add_argument(
+        "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+    )
+    herzend_parser.add_argument("--reden", default=None, help="Reden (verplicht bij --uitvoeren, ≥ 5 tekens).")
+    herzend_parser.add_argument(
+        "--uitvoeren", action="store_true", help="Schrijf (default = dry-run: alleen de rijen tonen)."
+    )
+
     import_parser = subparsers.add_parser(
         "import-env-credentials",
         help="Zet de bekende .env-logins (RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_) eenmalig "
@@ -4231,6 +4323,8 @@ def main(argv: list[str] | None = None) -> int:
         return _zet_intake_ai(args, ingeschakeld=False)
     if args.commando == "webhook-redrive":
         return _webhook_redrive(args)
+    if args.commando == "webhook-herzenden":
+        return _webhook_herzenden(args)
     if args.commando == "import-env-credentials":
         return _importeer_env_credentials(args)
     if args.commando == "duplicaten-backfill":

@@ -33,7 +33,7 @@ CMD="${1:-}"; [[ -n "$CMD" ]] || { echo "gebruik: $0 <cli-commando> [args…]" >
 # 21-09 (VGG beslispunt 1): pand-toewijzen schrijft pand/pand_boeking (mens-toewijzing) — ook de dry-run hoort niet in een nameting.
 # 21-09 (BUA): bua-kenmerk-zetten schrijft het kenmerk `btw_aftrek_uitgesloten` (ook de dry-run is geen nameting — de meting is bua-kandidaten).
 # 22-09 (btw-plichtig): btw-plichtig-zetten schrijft het kenmerk `btw_plichtig` (ook de dry-run is geen nameting — de meting is btw-in-niet-plichtige-administratie / btw-plichtig-kandidaten).
-for schrijvend in odoo-koppeling-migratiedoel vgg-odoo-stap0 vgg-odoo-migratie pand-toewijzen bua-kenmerk-zetten btw-plichtig-zetten; do
+for schrijvend in odoo-koppeling-migratiedoel vgg-odoo-stap0 vgg-odoo-migratie pand-toewijzen bua-kenmerk-zetten btw-plichtig-zetten webhook-herzenden webhook-redrive; do  # 23-09: herzenden/redrive schrijven de outbox (ook de dry-run is geen nameting — de meting is db-lezen webhook-outbox)
   [[ "$CMD" == "$schrijvend" ]] && { echo "FOUT: $CMD is een schrijvend commando — expliciete opdracht Peter via gcloud run jobs execute, niet via nameting.sh" >&2; exit 2; }
 done
 grep -qw -- "$CMD" <<<"$ALLOWLIST" || { echo "FOUT: '$CMD' staat niet in de lees-only allowlist ($ALLOWLIST)" >&2; exit 2; }

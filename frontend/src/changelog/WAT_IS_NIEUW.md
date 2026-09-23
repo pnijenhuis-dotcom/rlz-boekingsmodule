@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-23 — Koppeling met Vastly: een genegeerd bericht is voortaan een zichtbare fout, en berichten kunnen opnieuw worden aangeleverd
+
+<!-- webhook-herzenden-23-09 -->
+
+- **Antwoordt Vastly "genegeerd" op een geboekte factuur, dan telt dat niet meer als afgeleverd.** De regel gaat zichtbaar op "mislukt" met de reden die Vastly meegeeft; de module probeert het niet blindelings opnieuw.
+- **Opnieuw aanleveren op verzoek.** Voor de elf kostenfacturen van Rubicon Investments en ARVUM die Vastly vóór 20 september niet kon plaatsen komt er een beheeractie die precies die berichten opnieuw verstuurt (zelfde inhoud, verse handtekening), met vastlegging wie en waarom.
+
 ## 2026-09-23 — Activum aanmaken: afschrijvingsrekening automatisch ingevuld, nooit meer stil mislukt
 
 <!-- activa-kaart-afschrijvingsrekening-23-09 -->

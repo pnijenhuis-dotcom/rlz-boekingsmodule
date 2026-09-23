@@ -21,6 +21,14 @@ Failsafes ("niets verdwijnt stil", maar ook: nooit per ongeluk pushen):
   systeem-actor. Dead-letter is géén eindstation: herstel_dead_letters() (CLI webhook-redrive)
   zet rijen als expliciete admin-actie terug naar openstaand — een legitiem mislukte levering
   (vastgoed-endpoint langere tijd down) mag nooit permanent verloren zijn.
+- 200 mét `{"resultaat": "genegeerd", "reden": …}` (Vastly's ontvanger, sinds 23-09 herkend) is GEEN aflevering: de
+  rij gaat zichtbaar op 'mislukt' mét de reden uit de body, audit `webhook_genegeerd`, en wordt NIET herhaald (dezelfde
+  payload geeft hetzelfde antwoord; herzenden is een mens-besluit via `herzend_afgeleverd`/`herstel_dead_letters`).
+  Aanleiding: 11 kostenevents Rubicon/ARVUM (24-08…18-09) stonden bij ons "afgeleverd" terwijl Vastly ze als
+  `onbekende_administratie` negeerde — Platform OPEN_ITEMS regel 13.
+- `herzend_afgeleverd()` (CLI `webhook-herzenden`): zet AFGELEVERDE rijen op referentie(s) binnen één administratie
+  terug naar openstaand (zelfde payload, dus zelfde rlz_document_id/volgnummer; de afleveraar tekent opnieuw mét verse
+  timestamp + nonce), audit `webhook_herzonden` per rij mét reden; dry-run toont de rijen zonder te schrijven.
 
 Uitvoervormen (zelfde patroon als de extractie-worker/sync): in dev een in-process
 achtergrondlus (InProcessWebhookAfleveraar, gestart in de app-lifespan); productie draait
@@ -92,7 +100,40 @@ class AfleverRapport:
     poging_mislukt: int = 0
     dead_letter: int = 0
     geweigerd_geen_vastgoed: int = 0
+    #: 200 mét resultaat "genegeerd" van de ontvanger — zichtbaar mislukt, niet herhaald (23-09).
+    genegeerd: int = 0
     fouten: list[str] = field(default_factory=list)
+
+
+#: Vastly's antwoordveld (rlz_webhook.py): "verwerkt" | "al_verwerkt" | "voorstellen" | "verouderde_stand" | … |
+#: "genegeerd" (+ "reden"). Alleen "genegeerd" is een fout; alles anders is een aflevering.
+RESULTAAT_GENEGEERD = "genegeerd"
+
+
+@dataclass(frozen=True)
+class OntvangerAntwoord:
+    fout: str | None
+    resultaat: str | None = None
+    reden: str | None = None
+    body: str | None = None
+
+
+def _lees_antwoord(response: httpx.Response) -> tuple[str | None, str | None, str | None]:
+    """(resultaat, reden, body-tekst) uit een 2xx-antwoord; geen/ongeldige JSON = (None, None, tekst)."""
+    tekst = response.text[:500] if response.text else None
+    try:
+        data = response.json()
+    except ValueError:
+        return None, None, tekst
+    if not isinstance(data, dict):
+        return None, None, tekst
+    resultaat = data.get("resultaat")
+    reden = data.get("reden")
+    return (
+        str(resultaat) if resultaat is not None else None,
+        str(reden) if reden is not None else None,
+        tekst,
+    )
 
 
 def _backoff_seconds(pogingen: int) -> float:
@@ -102,9 +143,10 @@ def _backoff_seconds(pogingen: int) -> float:
     )
 
 
-def _verstuur(*, client: httpx.Client, config: AfleverConfig, envelope: dict) -> str | None:
-    """POST één getekende envelope. Retourneert None bij succes (2xx), anders de foutomschrijving
-    — exceptions worden hier al platgeslagen zodat de aanroeper altijd één pad heeft."""
+def _verstuur(*, client: httpx.Client, config: AfleverConfig, envelope: dict) -> OntvangerAntwoord:
+    """POST één getekende envelope. `fout` None bij succes (2xx), anders de foutomschrijving — exceptions worden hier
+    al platgeslagen zodat de aanroeper altijd één pad heeft. Bij 2xx reizen `resultaat`/`reden` uit de JSON-body mee
+    (Vastly: "verwerkt" | "al_verwerkt" | "voorstellen" | … | "genegeerd" + reden) — de aanroeper beslist."""
     headers = {
         TIMESTAMP_HEADER: envelope["timestamp"],
         NONCE_HEADER: envelope["nonce"],
@@ -113,10 +155,11 @@ def _verstuur(*, client: httpx.Client, config: AfleverConfig, envelope: dict) ->
     try:
         response = client.post(config.doel_url, json=envelope, headers=headers)
     except httpx.HTTPError as exc:
-        return f"verbindingsfout: {exc}"
+        return OntvangerAntwoord(fout=f"verbindingsfout: {exc}")
     if response.is_success:
-        return None
-    return f"HTTP {response.status_code}: {response.text[:200]}"
+        resultaat, reden, body = _lees_antwoord(response)
+        return OntvangerAntwoord(fout=None, resultaat=resultaat, reden=reden, body=body)
+    return OntvangerAntwoord(fout=f"HTTP {response.status_code}: {response.text[:200]}", body=response.text[:500])
 
 
 def _lever_rij_af(
@@ -170,7 +213,8 @@ def _lever_rij_af(
             return
 
         envelope = onderteken_voor_verzending(payload=rij.payload, secret=config.secret, nu=nu)
-        fout = _verstuur(client=client, config=config, envelope=envelope)
+        antwoord = _verstuur(client=client, config=config, envelope=envelope)
+        fout = antwoord.fout
 
         rij.pogingen += 1
         rij.laatste_poging_op = nu
@@ -179,9 +223,25 @@ def _lever_rij_af(
             "poging": rij.pogingen,
             "timestamp": envelope["timestamp"],
             "nonce": envelope["nonce"],
+            "referentie": (rij.payload.get("data") or {}).get("referentie"),
+            "resultaat": antwoord.resultaat,
         }
 
-        if fout is None:
+        if fout is None and antwoord.resultaat == RESULTAAT_GENEGEERD:
+            # 23-09 (OPEN_ITEMS regel 13): de ontvanger antwoordt 200 maar heeft het event bewust NIET verwerkt — dat
+            # is geen aflevering. Zichtbaar mislukt mét de reden uit de body; niet herhalen (zelfde payload = zelfde
+            # antwoord); herzenden ná een fix aan de ontvangerkant is een mens-besluit (webhook-herzenden/-redrive).
+            fout = f"ontvanger negeerde het event: {antwoord.reden or 'geen reden in het antwoord'}"
+            rij.status = WebhookStatus.MISLUKT.value
+            rij.laatste_fout = fout
+            rij.volgende_poging_op = None
+            actie = "webhook_genegeerd"
+            poging_detail["fout"] = fout
+            poging_detail["ontvanger_reden"] = antwoord.reden
+            rapport.genegeerd += 1
+            rapport.fouten.append(f"{rij.id}: genegeerd door de ontvanger — {antwoord.reden or '?'}")
+            logger.error("Webhook-rij %s door de ontvanger genegeerd: %s", rij.id, antwoord.reden)
+        elif fout is None:
             rij.status = WebhookStatus.AFGELEVERD.value
             rij.afgeleverd_op = nu
             rij.laatste_fout = None
@@ -334,6 +394,123 @@ def herstel_dead_letters(*, actor_id: uuid.UUID, outbox_id: uuid.UUID | None = N
                     "Webhook-rij %s teruggezet naar openstaand (re-drive, was %s pogingen)", rij.id, oude_pogingen
                 )
     return hersteld
+
+
+@dataclass(frozen=True)
+class HerzendRij:
+    """Eén outbox-rij in het herzend-overzicht (dry-run én uitvoering)."""
+
+    outbox_id: uuid.UUID | None
+    referentie: str
+    event: str | None
+    status_voor: str | None
+    rlz_document_id: str | None
+    volgnummer: int | None
+    afgeleverd_op: datetime | None
+    pogingen: int | None
+    uitkomst: str  # "herzonden" | "zou herzenden (dry-run)" | "niet gevonden" | "niet afgeleverd (status …)"
+
+
+def herzend_afgeleverd(
+    *,
+    actor_id: uuid.UUID,
+    administratie_id: uuid.UUID,
+    referenties: list[str],
+    reden: str,
+    event: str = "factuur_geboekt",
+    dry_run: bool = True,
+) -> list[HerzendRij]:
+    """Herzend-actie (Platform OPEN_ITEMS regel 13, vastgoed-verzoek 21-09): AFGELEVERDE outbox-rijen van één
+    administratie, gekozen op `payload.data.referentie`, terug naar `openstaand` zodat de gewone afleveraar ze opnieuw
+    verstuurt — zelfde payload (dus zelfde `rlz_document_id`/`volgnummer`), verse timestamp/nonce/HMAC per poging.
+    Nooit een payload wijzigen. Alleen rijen mét status `afgeleverd` (een `mislukt` herstel je via `webhook-redrive`);
+    een referentie zonder rij of zonder afgeleverde rij komt zichtbaar terug als "niet gevonden"/"niet afgeleverd".
+    Audit `webhook_herzonden` per rij mét de aanroepende Beheerder als actor en de reden. `dry_run=True` schrijft niets.
+    Herbruikbaar: geen eenmalige SQL — élke volgende herzending (nieuwe Vastly-fix, ander event) loopt hierlangs."""
+    reden = (reden or "").strip()
+    if not dry_run and len(reden) < 5:
+        raise ValueError("reden is verplicht bij herzenden (minimaal 5 tekens)")
+    gezocht = [r.strip() for r in referenties if r and r.strip()]
+    uit: list[HerzendRij] = []
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        query = (
+            select(WebhookUitgaand)
+            .outerjoin(Document, WebhookUitgaand.document_id == Document.id)
+            .where(
+                func.coalesce(WebhookUitgaand.administratie_id, Document.administratie_id) == administratie_id,
+                WebhookUitgaand.event == event,
+                WebhookUitgaand.payload["data"]["referentie"].astext.in_(gezocht),
+            )
+            .order_by(WebhookUitgaand.aangemaakt_op)
+        )
+        if not dry_run:
+            query = query.with_for_update(of=WebhookUitgaand, skip_locked=True)
+        rijen = list(session.scalars(query))
+        per_ref: dict[str, list[WebhookUitgaand]] = {r: [] for r in gezocht}
+        for rij in rijen:
+            per_ref.setdefault(str((rij.payload.get("data") or {}).get("referentie")), []).append(rij)
+        for ref in gezocht:
+            kandidaten = per_ref.get(ref) or []
+            if not kandidaten:
+                uit.append(
+                    HerzendRij(
+                        outbox_id=None, referentie=ref, event=event, status_voor=None, rlz_document_id=None,
+                        volgnummer=None, afgeleverd_op=None, pogingen=None, uitkomst="niet gevonden",
+                    )
+                )
+                continue
+            for rij in kandidaten:
+                data = rij.payload.get("data") or {}
+                volg = data.get("volgnummer")
+                basis = dict(
+                    outbox_id=rij.id,
+                    referentie=ref,
+                    event=rij.event,
+                    status_voor=rij.status,
+                    rlz_document_id=str(data.get("rlz_document_id")) if data.get("rlz_document_id") else None,
+                    volgnummer=int(volg) if volg is not None else None,
+                    afgeleverd_op=rij.afgeleverd_op,
+                    pogingen=rij.pogingen,
+                )
+                if rij.status != WebhookStatus.AFGELEVERD.value:
+                    uit.append(HerzendRij(**basis, uitkomst=f"niet afgeleverd (status {rij.status}) — niet herzonden"))
+                    continue
+                if dry_run:
+                    uit.append(HerzendRij(**basis, uitkomst="zou herzenden (dry-run)"))
+                    continue
+                oud = {
+                    "status": rij.status,
+                    "pogingen": rij.pogingen,
+                    "afgeleverd_op": rij.afgeleverd_op.isoformat() if rij.afgeleverd_op else None,
+                    "laatste_poging_op": rij.laatste_poging_op.isoformat() if rij.laatste_poging_op else None,
+                }
+                rij.status = WebhookStatus.OPENSTAAND.value
+                rij.pogingen = 0
+                rij.volgende_poging_op = None
+                rij.afgeleverd_op = None
+                rij.laatste_fout = None
+                record_audit_event(
+                    session,
+                    actor_id=actor_id,
+                    module="boekhouding",
+                    tabel="webhook_uitgaand",
+                    record_id=rij.id,
+                    actie="webhook_herzonden",
+                    correlatie_id=uuid.uuid4(),
+                    oude_waarde=oud,
+                    nieuwe_waarde={
+                        "status": WebhookStatus.OPENSTAAND.value,
+                        "pogingen": 0,
+                        "referentie": ref,
+                        "rlz_document_id": basis["rlz_document_id"],
+                        "volgnummer": basis["volgnummer"],
+                        "reden": reden,
+                    },
+                    administratie_id=administratie_id,
+                )
+                logger.info("Webhook-rij %s (referentie %s) herzonden → openstaand (%s)", rij.id, ref, reden)
+                uit.append(HerzendRij(**basis, uitkomst="herzonden"))
+    return uit
 
 
 class InProcessWebhookAfleveraar:

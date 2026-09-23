@@ -150,7 +150,7 @@ REGISTRY: dict[str, SoortDefinitie] = {
             blok="activa",
             sinds=date(2026, 9, 24),
             default=ACTIE,
-            direct_actie_reden="Peter 23/24-09 (BUG activa-kaart BLOw): een mens koos bewust 'Activum aanmaken' en de "
+            direct_actie_reden="Peter 23/24-09 (opdracht activa-kaart BLOw): een mens koos bewust 'Activum aanmaken' en de "
             "module voerde het niet uit — bevestigde handeling, één deterministische herstelroute (Opnieuw aanmaken); "
             "explosie-rem blijft",
         ),
