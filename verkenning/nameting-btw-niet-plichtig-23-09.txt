@@ -1,0 +1,21 @@
+== btw-in-niet-plichtige-administratie --administratie Vastgoedgroep --jaar 2026 --rlz (lees-only, GET) ==
+btw-in-niet-plichtige-administratie — Vastgoedgroep Nederland B.V. · jaar 2026 (LEES-ONLY)
+  kenmerk btw_plichtig=False bron=mens · RLZ EnableTaxReporting=False · geen-btw-code: NL, Geen BTW (Vrijgesteld)
+MODULE — geboekte inkoopfacturen 2026 mét btw ≠ 0 op een regel: 3
+  boekstuk          leverancier                     referentie        datum            netto       btw      bruto   RLZ post   betaald      open  TE WEINIG
+  RLZ-04-00000924   E.M.S Onroerend Goed            20260014          2026-09-01     3500.00    735.00    4235.00    3500.00   3500.00      0.00     735.00
+  RLZ-04-00000926   Studio Lacy Lion                2026-041          2026-09-10     1638.35    344.05    1982.40    1638.35   1638.35      0.00     344.05
+  RLZ-04-00000925   Studio Lacy Lion                2026-042          2026-09-11     1535.13    322.38    1857.51    1535.13   1535.13      0.00     322.38
+  TOTAAL te weinig betaald (bruto module − crediteurpost RLZ): € 1401.43
+RLZ — inkoopfacturen 2026 mét TotalTaxAmount ≠ 0 zónder module-spoor: 0
+AANGIFTEPOORT — ingediende btw-aangiften in RLZ: 3
+Herstel per document = 'Corrigeren…' (⋯-menu op het geboekte document, 21-09) mét de regel op bruto / btw 0 — de nabetaling aan de leverancier is het verschil in de kolom TE WEINIG. Dit rapport schrijft niets.
+Container called exit(0).
+
+
+== btw-plichtig-kandidaten (lees-only) ==
+btw-plichtig-kandidaten — 0 administratie(s) kandidaat 'niet btw-plichtig' zonder mens-bevestiging
+Bevestigen: Instellingen › Administraties › ‹administratie› › Boeken & AI › Btw-plichtig, of `btw-plichtig-zetten`.
+Container called exit(0).
+
+Oordeel: TOTAAL te weinig betaald (bruto module − crediteurpost RLZ): € 1401.43 · btw-plichtig-kandidaten — 0 administratie(s) — job-exit 0
