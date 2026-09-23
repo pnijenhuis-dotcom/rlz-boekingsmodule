@@ -152,7 +152,10 @@
   bleef `uitgeschakeld` (ontvangerslijst leeg), de bewakingsprobe `automatisering_regressie` is het mailende kanaal. **Vervolg:** de stand van
   22-09 was opnieuw rood (29/35 `fout`, tweede enum-veld `Status` — zie `administraties-instellingen.md`), dus de run van 23-09 06:30 meldt de
   LET-OP nog één keer mét een NIEUWE vingerafdruk (andere set: 29 leden) en de eerste groene stand komt pas van `sync-alles` 23-09 07:00 op
-  de image mét de fix van 22-09; verwacht weg op 24-09 (vervolg-opdracht `niet vóór: 2026-09-23 09:00`).
+  de image mét de fix van 22-09; verwacht weg op 24-09 (vervolg-opdracht `niet vóór: 2026-09-23 09:00`). **Gemeten 23-09 (rapport
+  `docs/rapporten/2026-09-23-nameting-groepssaldi-status-enum-fix.md`): exact zo — run `40b5d45c` (04:30–04:48 UTC) schreef één LET-OP `aantal` 29,
+  `stand_datum` 2026-09-22, vingerafdruk `c5d03e2307a75d02` + één audit `automatisering_regressie` 04:48:43 UTC; de stand van 23-09 is 35 × `ok`,
+  dus verwacht op 24-09: 0 rijen `groep_saldo_fout` (LET-OP's krijgen geen `reconciliatie_auto_gesloten`-audit — dat dekt afwijkingen + fouten).**
 
 <!-- toegevoegd 21-09-2026, opdracht "corrigeren-knop-geboekt-document-storno-plus-opnieuw-klaarzetten" -->
 - **Storno vanuit de module ≠ verdwenen document (21-09; geen migratie; BESLISSINGEN "CORRIGEREN VANUIT DE MODULE — STORNO + OPNIEUW

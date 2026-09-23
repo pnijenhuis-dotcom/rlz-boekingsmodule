@@ -11994,6 +11994,20 @@ schreef de stand van 22-09 als 6 × `ok` / 29 × `fout` mét de 400 op `Status e
 `opdrachten/inbox/2026-09-23-nameting-groepssaldi-status-enum-fix-kempen-groep.md` (`niet vóór: 2026-09-23 09:00`; verwacht 35 × `ok`, LET-OP
 op 23-09 nog één keer mét `aantal` 29 en nieuwe vingerafdruk, weg op 24-09). Les in `docs/regels/werkloop-productie.md` (22-09).
 
+**Gemeten 23-09 (nameting-opdracht `2026-09-23-nameting-groepssaldi-status-enum-fix-kempen-groep`, rapport `docs/rapporten/2026-09-23-nameting-groepssaldi-status-enum-fix.md`) — WERKT IN PRODUCTIE: JA:**
+deploy-check groen (service `rlz-backend` + 18 jobs op `ac7639b`, fix `afd3aca` voorouder; `sync-alles` 23-09 05:00→06:21 UTC op die image, groepssaldi-stap
+05:04→05:37). (a) **Stand 23-09: 35 × `ok`, 0 × `fout`** (leesreplica `groep_saldo_stand`; 21-09 35 fout → 22-09 29 fout/6 ok → 23-09 35 ok); (b) **live
+dispatch-onderdeel `groep-saldi`** (workflow 35829640488, executie `fftpl` 40 min, bot-commit `4e263ec` → `verkenning/nameting-groep-saldi-23-09.txt`):
+35 × `ok`, oordeel "TOTAAL (35 geldig) · alle leden in het totaal · 0 regel(s) status fout"; live ≡ stand op één lid na (Meyer crediteuren +€ 6.352,50 =
+boeking ná 05:04 UTC); TOTAAL live debiteuren bruto € 16.326.273,71 (IC € 5.711.209,75), crediteuren bruto € 14.519.825,08 (IC € 5.521.710,63), bruto =
+zonder-IC + IC cent-exact, 22 leden mét IC ≠ 0 — dat bot-bestand is Peters antwoord van 16-09. (c) **Detector tweede bewijs:** run `40b5d45c` (23-09
+04:30–04:48 UTC) las de stand van 22-09 → precies één LET-OP `groep_saldo_fout` `aantal` 29, `stand_datum` 2026-09-22, NIEUWE vingerafdruk
+`c5d03e2307a75d02` + één audit `automatisering_regressie` 04:48:43 UTC — exact de verwachting van 22-09; verwacht 24-09: 0 rijen (geen derde
+vervolg-opdracht). Beslispunten voor Peter (geen codefout): IC-kolom negatief of > bruto bij vijf leden (Kempen B.V., Molenhof Beheer, Universal
+Materiaal, Midden Nederland Beheer; Oirschot Recreatie debiteuren bruto negatief) = open IC-posten die niet bij het grootboeksaldo passen (twee
+bronnen: `BaseRemainingAmount` vs Debit−Credit) — voorstel LET-OP-soort in `meten` ná Peters ja; looptijd (live 40 min, timeout 3600 s); Odoo
+`159000 VAT tax liabilities` als crediteurenrekening; Odoo-leden € 0,00.
+
 ## CHECKS-CACHE — INVALIDATIE OP DE BRON (IBAN-akkoord) 21-09 — een vier-ogen-akkoord, bevestiging, seed/baseline of crediteur-samenvoeging maakt het gecachte externe rapport (0165) direct ongeldig; vingerafdruk draagt de vertrouwde IBAN-set; IBAN-wissel toetst altijd live; geen migratie
 
 **Status:** GEBOUWD + GETEST (21-09, inbox-run); **werkt in productie: niet gemeten** (deploy volgt ná de run; nazorg-CLI + meetrecept

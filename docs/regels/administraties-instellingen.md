@@ -44,6 +44,13 @@
   Regel aangescherpt: ná een enum-fout op één call álle `$filter`-strings van de motor nalopen (`docs/regels/werkloop-productie.md` 22-09).
   Werkt in productie: RLZ-Ledgers/Odoo JA, open posten NIET GEMETEN tot de deploy van 22-09 + `sync-alles` 23-09 07:00 (vervolg-opdracht
   `niet vóór: 2026-09-23 09:00`).
+  **Gemeten 23-09 (BESLISSINGEN alinea "Gemeten 23-09"; rapport `docs/rapporten/2026-09-23-nameting-groepssaldi-status-enum-fix.md`) — werkt in
+  productie: JA:** stand 23-09 (`sync-alles` op `ac7639b`) 35 × `ok`, 0 × `fout`; live dispatch-onderdeel `groep-saldi` idem (executie 40 min,
+  bot-bestand `verkenning/nameting-groep-saldi-23-09.txt` = Peters antwoord van 16-09: debiteuren bruto € 16.326.273,71 / IC € 5.711.209,75,
+  crediteuren bruto € 14.519.825,08 / IC € 5.521.710,63, bruto = zonder-IC + IC cent-exact); live ≡ stand op één boeking-van-vanochtend na (Meyer).
+  Open voor Peter: bij vijf leden is de IC-kolom negatief of groter dan het bruto-saldo (open IC-posten uit `BaseRemainingAmount` ↔ grootboeksaldo
+  Debit−Credit zijn twee bronnen die alleen gelijklopen als álle IC-facturen geboekt én afgeletterd zijn) — géén codefout, wel een boekhoudkundig
+  signaal; een LET-OP-soort daarvoor start pas ná Peters ja (in `meten`).
 
 <!-- uit CLAUDE.md § Domeinbeslissingen -->
 - **Administratienaam — bewerkbaar + volgt de bron (Peter 15-09; casus Camping Nieuwenhoven → "Strandpark Zilverduynen" in Odoo; migratie 0144):** veld "Naam" op Instellingen › Administraties › ‹administratie› › Algemeen (Beheerder-only, inline, `PUT /administraties/{id}/naam`, audit `administratie_naam_gewijzigd` oud→nieuw, bezet = 409); `naam_bron` 'odoo'|'rlz'|'mens' — ≠ mens volgt de bronnaam (Odoo `res.company.name` / RLZ `Administrations.Name`, één leesbron per backend) bij élke stamgegevens-sync (audit `administratie_naam_gevolgd`), mens = nooit overschrijven maar chip "in Odoo/Reeleezee heet deze administratie nu ‹naam›" + "Naam overnemen"; data-stap CLI `administratie-naam-bron-backfill` (dry-run default) — zie BESLISSINGEN "ADMINISTRATIENAAM — BEWERKBAAR + VOLGT DE BRON (Peter 15-09)".

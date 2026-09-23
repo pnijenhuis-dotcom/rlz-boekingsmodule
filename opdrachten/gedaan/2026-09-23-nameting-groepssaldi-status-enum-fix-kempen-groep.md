@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-23, rapport: docs/rapporten/2026-09-23-nameting-groepssaldi-status-enum-fix.md
+
 Domeinen: administraties-instellingen, reconciliatie, werkloop-productie
 niet vóór: 2026-09-23 09:00
 
