@@ -84,12 +84,21 @@ aanmaken"; de oude `activum_aanmaken_mislukt`-rijen sluiten mét audit `reconcil
 koppeling opnieuw `mislukt` (nette 404-reden) — zichtbaar op de rij, nooit stil.
 
 ## Poort
-- pytest volledige suite: POORT_PYTEST
-- vitest: POORT_VITEST; `tsc -b` schoon (23-09 20:5x).
-- gouden set: casus ag draagt de conventie-assert + POST zonder body; keten-sweep: POORT_KETEN.
+- pytest volledige suite (tweede run, ná herstel uit de WIP-branch — zie "Procesincident"): 7275 passed / 2 skipped / 1 failed (0:59:58); de ene rode = guard `test_geen_bug_in_klanttekst` op het woord "BUG" in `direct_actie_reden` → tekst aangepast in de vervolg-commit; eerste run (7251 passed) telde niet: die draaide op HEAD ná de reset
+- vitest: volledige suite groen (EXIT 0; nieuwe ActivaVoorstelKaart +4, OpnieuwAanmakenActie 4); `tsc -b` schoon (23-09 20:5x).
+- gouden set: casus ag draagt de conventie-assert + POST zonder body; keten-sweep: 11/11 groen in één run (0 nieuwe baselines).
 - Nieuwe tests: `tests/activa/test_afschrijving.py` (14), `test_service.py::TestBug24_09` (4), `test_reconciliatie.py` (+1, 2 aangepast),
   `test_router.py` (422 letterlijk), `test_soort_stand.py` (guard-lijst), `test_nameting_workflow.py` (+1); vitest `ActivaVoorstelKaart.test.tsx`
   (+4), `OpnieuwAanmakenActie.test.tsx` (4).
+
+## Procesincident tijdens de run (les vastgelegd in memory)
+Om 20:59 eindigde de parallel lopende cc-inbox-run "nameting-activa-lees-only-probe poging 2" (gestart vóór deze sessie); zijn poort-stap zag een
+vuile werkboom, veegde ÁLLE ongecommitte wijzigingen — mijn backend-edits van dat moment, 16 bestanden incl. het nieuwe
+`afschrijving.py` — in `wip/2026-09-23-nameting-activa-lees-only-probe-na-deploy` (`e6ec982`) en deed `reset --hard HEAD`. De eerste volledige
+suite draaide daardoor op HEAD (7251 passed, 2 rood op mijn latere test-edits) en was waardeloos. Herstel: `git checkout e6ec982 -- <16 bestanden>` +
+`git reset -q`; targeted tests 178 groen; daarna vroeg gecommit (bescherming tegen een tweede sweep) en de suite opnieuw gedraaid. Les: de
+inbox-runner neemt bij "poort niet gehaald" ook werk van een interactieve sessie mee (cwd-detectie blind voor een run die al liep) —
+`rlz inbox status` bij sessiestart, vroeg committen, en ná een onverklaarbare regressie eerst `git reflog` + `git branch --list 'wip/*'`.
 
 ## Gelezen regels
 Volledig gelezen vóór de start (LEESPLICHT):

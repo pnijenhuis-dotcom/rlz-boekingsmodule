@@ -411,3 +411,18 @@
   `boek-wachtrij/opnieuw-indienen`, één 409 (Bouwadvies Oost Nederland, 08:52 UTC — poort vóór het indienen, geen `wordt_geboekt`). Ook de
   lijst-/balklabels "loopt vast" en "Opnieuw indienen" zijn daarmee ongebruikt in productie. Meting volgt uit gewoon kantoorgebruik of Peters klik
   op de testadministratie (gearchiveerd zonder credential — dearchiveren éérst); vervolg-opdracht poging 2 `niet vóór: 2026-09-23 09:00`.
+
+<!-- toegevoegd 23-09-2026 avond, opdracht "webhook-herzenden 11 factuur_geboekt-events aan Vastly" (OPEN_ITEMS regel 13) -->
+- **Webhook-outbox: "200 genegeerd" is géén aflevering + herzend-actie (23-09; geen migratie; BESLISSINGEN "WEBHOOK-HERZENDEN — 11 KOSTENEVENTS VASTLY
+  (OPEN_ITEMS regel 13, 23-09)"):** de afleveraar (`app/documenten/webhook_afleveraar.py`) leest bij een 2xx het antwoord van de ontvanger
+  (`{"resultaat": …, "reden": …}`, Vastly `rlz_webhook.py`): `resultaat == "genegeerd"` → rij `mislukt` mét "ontvanger negeerde het event: <reden>",
+  audit `webhook_genegeerd`, geen herhaling (zelfde payload = zelfde antwoord; herstel = mens-besluit via `webhook-redrive`); élke aflevering draagt
+  `resultaat` + `referentie` in het audit `webhook_afgeleverd`. Herzenden van AFGELEVERDE rijen = `herzend_afgeleverd` / CLI `webhook-herzenden
+  --administratie … --referentie … --beheerder-id … [--uitvoeren --reden …]` (default dry-run; terug naar openstaand mét pogingen 0, payload
+  onaangeraakt → zelfde `rlz_document_id`/`volgnummer`, verse timestamp/nonce/HMAC bij de volgende poging; audit `webhook_herzonden` mét reden;
+  niet gevonden/niet afgeleverd = zichtbare regel + exit 1). Nooit een eenmalige SQL; `nameting.sh` weigert het commando (schrijvend); meetlat
+  = querybibliotheek `db-lezen webhook-outbox` (status, laatste afleveraudit mét resultaat/ontvanger_reden, herzonden_op). Aanleiding: elf
+  kostenevents Rubicon/ARVUM (24713213, 24713354, 265050202128, 26753012, 26734257, 2026-017; 183727, 26747235, 26752091, 522500062785,
+  537500100925) stonden "afgeleverd" terwijl Vastly ze als `onbekende_administratie` negeerde (fix Vastly 20-09). Uitvoering ná deploy via
+  `gcloud run jobs execute rlz-webhook-afleveraar --args=… webhook-herzenden …` (vervolg-opdracht `2026-09-24-webhook-herzenden-11-events-
+  uitvoeren-na-deploy.md`); rapport `docs/rapporten/2026-09-23-webhook-herzenden-11-kostenevents-vastly.md`. Werkt in productie: niet gemeten.

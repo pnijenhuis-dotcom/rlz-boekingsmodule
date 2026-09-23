@@ -12273,6 +12273,49 @@ leesbaar", bevinding `activa_register_niet_leesbaar` in `meten`).
    Dispatch-onderdeel `activa-kaart` (vier plekken + guard), vervolg-opdracht `2026-09-24-nameting-activa-kaart-na-deploy.md`
    (`niet vóór: 2026-09-24 07:15`). WAT_IS_NIEUW 23-09. Werkt in productie: niet gemeten.
 
+## WEBHOOK-HERZENDEN — 11 KOSTENEVENTS VASTLY (OPEN_ITEMS regel 13, 23-09) — herzend-actie + "200 genegeerd = zichtbaar mislukt"
+
+**Status: GEBOUWD 23-09 avond (geen migratie), UITVOERING ná deploy = vervolg-opdracht `opdrachten/inbox/2026-09-24-webhook-herzenden-11-events-uitvoeren-na-deploy.md`;
+werkt in productie: niet gemeten.** Canonieke vindplaats: `docs/regels/werkvoorraad-controlescherm.md` alinea "Webhook-herzenden", rapport
+`docs/rapporten/2026-09-23-webhook-herzenden-11-kostenevents-vastly.md`, Platform `OPEN_ITEMS.md` regel 12/13, koppelcontract §3.
+
+**Aanleiding (vastgoed 20/21-09, herstelrun 3/5 deel A):** Vastly's ontvanger matchte de administratie op `rlz_admin_id` tegen een kolom mét de
+platform-UUID → élk `factuur_geboekt`-kostenevent van Rubicon Investments (6: 24713213 27-08, 24713354 11-09 — beide doorbelasting-spiegels van
+Kempen Facilities — en 265050202128, 26753012, 26734257, 2026-017 van 18-09) en ARVUM B.V. (5: 183727, 26747235, 26752091, 522500062785,
+537500100925, 18-09) kreeg `200 {"resultaat": "genegeerd", "reden": "onbekende_administratie"}`; onze outbox zei "afgeleverd" (HTTP 2xx = klaar).
+Vastly fixte de matchsleutel op 20-09 (primair `administratie_id`) en kan de events niet zelf herspelen (signaal-rij zonder `regels[]`).
+
+**Gebouwd:**
+1. **200 "genegeerd" is géén aflevering** (`webhook_afleveraar._verstuur` leest `resultaat`/`reden` uit de 2xx-body; `_lever_rij_af`): rij →
+   `mislukt` mét `laatste_fout` "ontvanger negeerde het event: <reden>", audit `webhook_genegeerd` (detail `resultaat`, `ontvanger_reden`,
+   `referentie`), `AfleverRapport.genegeerd`, CLI-exit 1 — NIET herhaald (zelfde payload = zelfde antwoord); herzenden ná een fix aan de
+   ontvangerkant is een mens-besluit (`webhook-redrive` voor `mislukt`). Élke aflevering draagt nu `resultaat` in het audit
+   (verwerkt / al_verwerkt / voorstellen / verouderde_stand / …). Gevolg: de vijf terecht genegeerde events van de testadministratie worden
+   ná deploy zichtbaar `mislukt` — bedoeld (melden, niet herhalen).
+2. **Herzend-actie, herbruikbaar (geen eenmalige SQL):** `webhook_afleveraar.herzend_afgeleverd(actor_id, administratie_id, referenties, reden,
+   event, dry_run)` — AFGELEVERDE rijen van één administratie op `payload.data.referentie` terug naar `openstaand` (pogingen 0, afgeleverd_op leeg;
+   payload ongewijzigd → zelfde `rlz_document_id`/`volgnummer`; de afleveraar tekent per poging opnieuw mét verse timestamp + nonce), audit
+   `webhook_herzonden` per rij mét Beheerder-actor + reden (≥ 5 tekens verplicht); niet gevonden / niet afgeleverd = zichtbare regel, nooit stil;
+   `dry_run` schrijft niets. CLI `webhook-herzenden --administratie <naamdeel|uuid> --referentie … [--referentie …] [--event factuur_geboekt]
+   --beheerder-id <uuid> [--uitvoeren --reden …]` (default dry-run; exit 1 bij een niet-gevonden referentie). `nameting.sh` weigert het commando
+   (schrijvend, ook de dry-run); de meting is de querybibliotheek `db-lezen webhook-outbox --administratie … [--param referentie=…]`
+   (status, pogingen, afgeleverd_op, laatste audit-actie + `resultaat`/`ontvanger_reden`, `herzonden_op`).
+3. **Dry-run 23-09 22:1x op de leesreplica (RLS per administratie):** alle elf rijen bestaan, status `afgeleverd`, 1 poging, schema 1.2,
+   volgnummer 1 — Rubicon `cbce7816` 24713213 (27-08 07:24, eigen administratie_id = spiegel), `79a4322f` 24713354 (11-09 09:20, spiegel),
+   `a3dc2989` 265050202128, `65b14f29` 26753012, `3e0cb16c` 26734257, `a10498c1` 2026-017 (alle 18-09 11:15); ARVUM `df0c005d` 183727,
+   `21732250` 26747235, `524fd2d2` 26752091, `1aae82cf` 522500062785, `9134c1e0` 537500100925 (alle 18-09 11:16). Twee nieuwere Rubicon-rijen
+   (RUB-2026-0025/0031, 23-09 20:21, ná de Vastly-fix afgeleverd) vallen buiten scope. Geen payload-wijziging nodig: de payload draagt al
+   `administratie_id` (platform-UUID) én `rlz_admin_id` — dus geen les in `Platform/registers/verbeteringen.md`.
+4. **Uitvoering = ná deploy** (regel 08-09: schrijvende nazorg alleen als `gcloud run jobs execute` op de gedeployde job-image): stap 1 dry-run,
+   stap 2 `--uitvoeren`, stap 3 controle per referentie via `db-lezen webhook-outbox` (GOED = `webhook_afgeleverd` mét resultaat
+   verwerkt/voorstellen/al_verwerkt; `webhook_genegeerd` = FOUT mét reden, niet herhalen), stap 4 OPEN_ITEMS regel 13 afvinken —
+   vervolg-opdracht in de inbox mét `niet vóór:`. Vastly-kant verandert niets; het contractvoorstel "409 bij niet-koppelbaar + retry-cadans"
+   loopt apart via OPEN_ITEMS.
+
+**Guards:** `tests/documenten/test_webhook_herzenden.py` (genegeerd → mislukt + audit + niet herhaald; verwerkt/al_verwerkt/zonder body =
+aflevering mét resultaat; dry-run schrijft niets; uitvoeren → openstaand + audit → dezelfde payload opnieuw verstuurd mét verse nonce;
+mislukte rij niet herzonden; CLI dry-run/uitvoeren/reden-verplicht/onbekende administratie), `tests/lezen/test_lezen.py` (query laadt).
+
 ## UNIVERSAL — OVERHEAD VIA DE OMZETSLEUTEL, GEEN OVH-PROJECT (Peter 21-09) — capture; sluit beslispunt "OVH-project Universal" (rapporten 18-09/19-09); geen code, geen migratie
 
 **Besluit Peter 21-09 (letterlijk):** "Universal moet juist overhead verdelen over projecten, zo houden." Opdracht

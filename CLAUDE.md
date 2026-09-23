@@ -369,6 +369,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   opgenomen); **en sinds 2026-08-14 óók voor doorbelasting-spiegel-inkoopfacturen in
   vastgoed-doeladministraties** (v1.13 §3, standaard inkoop-veldvorm — zie
   "Kempen-doorbelasting" hierboven).
+- **Webhook-outbox 23-09:** `200 {"resultaat": "genegeerd"}` van Vastly = zichtbaar `mislukt` mét reden (audit `webhook_genegeerd`, niet herhaald), élk `resultaat` in het audit; herzenden van afgeleverde rijen = CLI `webhook-herzenden` (dry-run default, audit `webhook_herzonden`), meetlat `db-lezen webhook-outbox`; elf Rubicon/ARVUM-events (OPEN_ITEMS regel 13) worden ná deploy herzonden — zie BESLISSINGEN "WEBHOOK-HERZENDEN — 11 KOSTENEVENTS VASTLY (OPEN_ITEMS regel 13, 23-09)".
 - **Kostenflow-omkering + boekstand-events (v1.14, GEBOUWD + GETEST)**, **Route A projectaanmaak-naar-RLZ (§5, v1.16,
   LIVE GEVERIFIEERD; systeemanker VERVALLEN)**, **Registersync §8 (v1.18/v1.19, migratie 0081)**, **§2d-uitbreidingen
   v1.10 (AccountingCost, consument-afnemer, waarborg-memoriaal GEBOUWD)**, **v1.11-addenda (creditnota 381 AAN sinds
