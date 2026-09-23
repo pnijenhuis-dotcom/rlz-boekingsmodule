@@ -95,6 +95,7 @@ via_gh_onderdeel() {
     veldwerkers-dubbelen) echo veldwerkers-dubbelen ;;
     intake-postvak-audit) echo intake-postvak-audit ;;  # 23-09: dubbele mailbox-audit kempengroep → ak-nijenhuis → module (lees-only)
     jobs-start) echo jobs-start ;;
+    extern-geboekt) echo extern-geboekt ;;  # 23-09: geen CLI-commando — request-log handelingen extern-geboekt/afwijzen|toch-verschillend + accordeur-409 + job-log HERCONTROLE + db-lezen bevindingen
     checks-cache) echo checks-cache ;;  # 23-09: geen CLI-commando — request-log checks/extern=vers + iban-accordering-statussen + server_timing p50/p95
     corrigeren) echo corrigeren ;;  # 22-09: geen CLI-commando — het workflow-onderdeel doet request-log + rlz-lezen + db-lezen correcties (nameting "Corrigeren…")  # 21-09: geen CLI-commando — het workflow-onderdeel doet gcloud describe + db-lezen boek-wachtrij
     reconciliatie-alles) echo reconciliatie ;;

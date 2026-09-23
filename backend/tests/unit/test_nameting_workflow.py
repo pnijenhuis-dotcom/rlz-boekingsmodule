@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -463,3 +463,39 @@ def test_oordeel_onbekend_onderdeel_zonder_rapport_is_geen_oordeelregel(tmp_path
     """Een onderdeel zonder eigen bestand (btw-default schrijft mét slug) meldt 'geen oordeelregel', nooit de replay-regel."""
     oordeel = _draai_oordeel(tmp_path, "btw-default", {"nameting-vgg-replay-14-09.txt": "kop\n**Oordeel: ROOD**\n"})
     assert oordeel.startswith("geen oordeelregel"), oordeel
+
+
+def test_onderdeel_extern_geboekt_alleen_op_verzoek_en_lees_only(tmp_path: Path) -> None:
+    """23-09 (nameting 'intussen buiten de module geboekt' poging 1): de twee kantoor-handelingen waren op 23-09 ongebruikt
+    (0 POSTs) — "niet gemeten" = vervolg-opdracht + dispatch-onderdeel (regel 21-09). Lees-only: request-log handelingen +
+    accordeur-409 + job-log HERCONTROLE + db-lezen bevindingen per administratie; alleen op verzoek (niet in 'alles'),
+    uitkomst in verkenning/nameting-extern-geboekt-<dd-mm>.txt mét eigen oordeelregel."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "extern-geboekt" ]]; then' in meet
+    assert 'httpRequest.requestUrl:"extern-geboekt"' in meet
+    assert (
+        'scripts/gcp/nameting.sh db-lezen reconciliatie-bevindingen --administratie "$ADM" '
+        "--param afwijking_soort=intussen_extern_geboekt"
+    ) in meet
+    assert 'resource.labels.job_name="rlz-reconciliatie"' in meet and 'textPayload:"HERCONTROLE"' in meet
+    assert 'UIT="verkenning/nameting-extern-geboekt-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "extern-geboekt"' not in meet, "niet in 'alles'"
+    assert 'OORDEEL_BRON="verkenning/nameting-extern-geboekt-$DATUM.txt"' in meet
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "extern-geboekt",
+        {
+            "nameting-extern-geboekt-14-09.txt": (
+                "kop\nOordeel: POST afwijzen 200 = 0, toch-verschillend 200 = 0, 5xx = 0, accordeur-409 = 32, "
+                "bevindingsregels job-log = 11 — niet gemeten (ongebruikt — geen handeling door het kantoor) — exit 0\n"
+            )
+        },
+    )
+    assert "POST afwijzen 200 = 0, toch-verschillend 200 = 0" in oordeel
+
+
+def test_nameting_sh_kent_onderdeel_extern_geboekt() -> None:
+    """`via_gh_onderdeel extern-geboekt` → extern-geboekt (geen CLI-commando, wél een dispatch-onderdeel), zodat de
+    vervolg-opdracht zonder TTY `nameting.sh` niet op exit 3 strandt."""
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    assert re.search(r"^\s*extern-geboekt\) echo extern-geboekt ;;", sh, re.M)

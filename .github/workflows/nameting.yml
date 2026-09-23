@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -451,6 +451,54 @@ jobs:
             echo "Oordeel: server_timing $CC_ST regel(s), extern=vers $CC_VERS, iban-accordering 409 $CC_409 — $CC_STAND — exit $rc_cc" >> "$UIT"
             echo "STATUS checks-cache: rapport in $UIT (exit $rc_cc = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "extern-geboekt" ]]; then
+            # 23-09 (nameting 'intussen buiten de module geboekt' poging 1; BESLISSINGEN "TER ACCORDERING — DAGELIJKSE BESTAANSCHECK
+            # 'INTUSSEN BUITEN DE MODULE GEBOEKT' (Peter 22-09)" alinea "Gemeten 23-09"): lees-only meetlat voor het mens-afhankelijke
+            # deel — de twee kantoor-handelingen (regel 21-09: "niet gemeten" = vervolg-opdracht + dispatch-onderdeel). (1) request-log
+            # POST …/extern-geboekt/afwijzen|toch-verschillend sinds de deploy van 22-09 (200 = gebruikt, 409 = poort, 5xx = rood);
+            # (2) request-log 409 op de accordeur-routes akkoord/afwijzen/herinneren (WachtOpKantoor = de server als poort; 23-09: 32 ×
+            # op één iPhone); (3) job-log rlz-reconciliatie laatste 2 dagen: HERCONTROLE-/OVERGESLAGEN-/intussen_extern_geboekt-regels
+            # van de échte run; (4) db-lezen reconciliatie-bevindingen per administratie mét afwijking_soort=intussen_extern_geboekt
+            # (de vier administraties mét treffers op 23-09). Oordeel: aantal handelingen mét 200 / 5xx / accordeur-409.
+            UIT="verkenning/nameting-extern-geboekt-$DATUM.txt"
+            rc_eg=0
+            SINDS_EG="2026-09-22T21:00:00Z"
+            {
+              echo "== request-log POST …/extern-geboekt/afwijzen|toch-verschillend sinds $SINDS_EG (deploy 8fb41a9, 22-09 23:15 NL) =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestUrl:"extern-geboekt" timestamp>="'"$SINDS_EG"'"' \
+                --project "$PROJECT_ID" --limit 500 --order asc \
+                --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-eg-log.txt || rc_eg=$?
+              cat nameting-eg-log.txt
+              [[ -s nameting-eg-log.txt ]] || echo "(geen handelingen-request — niet gemeten (ongebruikt))"
+              echo
+              echo "== request-log 409 op accordeur-routes …/accordering/documenten/*/akkoord|afwijzen|herinneren sinds $SINDS_EG (WachtOpKantoor = server als poort) =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.status=409 (httpRequest.requestUrl:"/akkoord" OR httpRequest.requestUrl:"/afwijzen" OR httpRequest.requestUrl:"/herinneren") timestamp>="'"$SINDS_EG"'"' \
+                --project "$PROJECT_ID" --limit 1000 --order asc \
+                --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.requestUrl)' > nameting-eg-409.txt || rc_eg=$?
+              awk -F'\t' '{print $4}' nameting-eg-409.txt | sed -E 's#https://[^/]+##' | sort | uniq -c | sort -rn
+              [[ -s nameting-eg-409.txt ]] || echo "(geen 409 op de accordeur-routes)"
+              echo
+              echo "== job-log rlz-reconciliatie laatste 2 dagen: HERCONTROLE / OVERGESLAGEN document / intussen_extern_geboekt (échte runs) =="
+              gcloud logging read 'resource.type="cloud_run_job" resource.labels.job_name="rlz-reconciliatie" timestamp>="'"$(date -u -d '2 days ago' +%Y-%m-%dT00:00:00Z)"'" (textPayload:"HERCONTROLE" OR textPayload:"OVERGESLAGEN document" OR textPayload:"intussen_extern_geboekt")' \
+                --project "$PROJECT_ID" --limit 500 --order asc \
+                --format='value(timestamp,labels."run.googleapis.com/execution_name",textPayload)' > nameting-eg-job.txt || rc_eg=$?
+              cat nameting-eg-job.txt
+              echo
+              for ADM in "Bouwadvies" "Molenhof Beheer" "Rubicon" "Universal Steigerbouw"; do
+                echo "== db-lezen reconciliatie-bevindingen --administratie \"$ADM\" --param afwijking_soort=intussen_extern_geboekt (laatste afgeronde run) =="
+                scripts/gcp/nameting.sh db-lezen reconciliatie-bevindingen --administratie "$ADM" --param afwijking_soort=intussen_extern_geboekt 2> nameting-eg-db.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-eg-db.stderr; }
+                echo
+              done
+            } > "$UIT"
+            EG_AFW="$(awk -F'\t' '$2=="POST" && $3=="200" && $5 ~ /extern-geboekt\/afwijzen$/' nameting-eg-log.txt | wc -l | tr -d ' ')"
+            EG_TV="$(awk -F'\t' '$2=="POST" && $3=="200" && $5 ~ /extern-geboekt\/toch-verschillend$/' nameting-eg-log.txt | wc -l | tr -d ' ')"
+            EG_5XX="$(awk -F'\t' '$3 ~ /^5/' nameting-eg-log.txt | wc -l | tr -d ' ')"
+            EG_409="$(grep -c . nameting-eg-409.txt || true)"
+            EG_BEV="$(grep -c 'soort=intussen_extern_geboekt' nameting-eg-job.txt || true)"
+            if [[ "$EG_5XX" -ge 1 ]]; then EG_STAND="ROOD — 5xx op de handelingen-routes"; elif [[ $((EG_AFW + EG_TV)) -ge 1 ]]; then EG_STAND="werkt in productie: ja (≥ 1 handeling mét 200, 0 × 5xx)"; else EG_STAND="niet gemeten (ongebruikt — geen handeling door het kantoor)"; fi
+            echo "Oordeel: POST afwijzen 200 = $EG_AFW, toch-verschillend 200 = $EG_TV, 5xx = $EG_5XX, accordeur-409 = $EG_409, bevindingsregels job-log = $EG_BEV — $EG_STAND — exit $rc_eg" >> "$UIT"
+            echo "STATUS extern-geboekt: rapport in $UIT (exit $rc_eg = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
             # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
@@ -497,6 +545,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-corrigeren-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "checks-cache" ]]; then
             OORDEEL_BRON="verkenning/nameting-checks-cache-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "extern-geboekt" ]]; then
+            OORDEEL_BRON="verkenning/nameting-extern-geboekt-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "jobs-start" ]]; then
             OORDEEL_BRON="verkenning/nameting-jobs-start-$DATUM.txt"
           elif [[ "$ONDERDEEL" =~ ^(alles|a|b|c|d|e)$ ]]; then
