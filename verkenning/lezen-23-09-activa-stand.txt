@@ -1,12 +1,12 @@
-== db-lezen activa-stand v1 (47 ms) ==
+== db-lezen activa-stand v1 (46 ms) ==
 | administratie | soort | sleutel | waarde | tijdstip | detail |
 |---|---|---|---|---|---|
-| Pilates Bloom B.V. | is_activa_rekening | 0111 | ICT apparatuur (computers e.d.) | 2026-09-23 05:01:45.210348+00:00 | {"soort": 3, "verdwenen_uit_bron_op": null} |
-| Pilates Bloom B.V. | is_activa_rekening | 0113 | Computersoftware | 2026-09-23 05:01:45.210348+00:00 | {"soort": 3, "verdwenen_uit_bron_op": null} |
-| Pilates Bloom B.V. | is_activa_rekening | 0107 | Kantoorinventaris | 2026-09-23 05:01:45.210348+00:00 | {"soort": 3, "verdwenen_uit_bron_op": null} |
-| Pilates Bloom B.V. | is_activa_rekening | 0101 | Gebouwen en terreinen | 2026-09-23 05:01:45.210348+00:00 | {"soort": 3, "verdwenen_uit_bron_op": null} |
-| Pilates Bloom B.V. | instelling | activeringsgrens | 450.00 | 2026-09-22 05:01:50.528161+00:00 | {"grens_rlz": 450.0, "termijnen": {}, "grens_rlz_gelezen_op": "2026-09-23T05:01:45.729765+00:00", "automatisch_aanmak… |
-| Pilates Bloom B.V. | register_probe | leesbaar |  | 2026-09-23 05:01:45.738542+00:00 | {"register_leesbaar": true} |
+| Universal Steigerbouw B.V. | is_activa_rekening | 0101 | Gebouwen en terreinen | 2026-09-23 05:02:42.875648+00:00 | {"soort": 3, "verdwenen_uit_bron_op": null} |
+| Universal Steigerbouw B.V. | is_activa_rekening | 0111 | ICT apparatuur (computers e.d.) | 2026-09-23 05:02:42.875648+00:00 | {"soort": 3, "verdwenen_uit_bron_op": null} |
+| Universal Steigerbouw B.V. | is_activa_rekening | 0113 | Computersoftware | 2026-09-23 05:02:42.875648+00:00 | {"soort": 3, "verdwenen_uit_bron_op": null} |
+| Universal Steigerbouw B.V. | is_activa_rekening | 0107 | Kantoorinventaris | 2026-09-23 05:02:42.875648+00:00 | {"soort": 3, "verdwenen_uit_bron_op": null} |
+| Universal Steigerbouw B.V. | instelling | activeringsgrens | 450.00 | 2026-09-22 05:02:39.738217+00:00 | {"grens_rlz": 450.0, "termijnen": {}, "grens_rlz_gelezen_op": "2026-09-23T05:02:43.557052+00:00", "automatisch_aanmak… |
+| Universal Steigerbouw B.V. | register_probe | niet_leesbaar | recht ontbreekt (403) — RLZ-recht 'Vaste activa' op de webservice-login zetten | 2026-09-23 05:02:43.561762+00:00 | {"register_leesbaar": false} |
 6 rij(en) over 1 administratie(s)
 Container called exit(0).
 
