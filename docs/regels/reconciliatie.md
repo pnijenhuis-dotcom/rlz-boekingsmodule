@@ -295,3 +295,12 @@
   aanbieden van VGG-documenten), tel op documenten, niet op regels; (2) de stand (`actie`/`meten`) staat niet in `reconciliatie_bevinding.detail`
   maar in de registry — een meting op de stand leest `soort_stand.py` of het facet `soort=aandacht`, niet de rij. **Niet gemeten:** de handelingen
   (0 POSTs, 0 audits — ongebruikt) → dispatch-onderdeel `extern-geboekt` + vervolg-opdracht poging 2 (`niet vóór: 2026-09-24 09:00`).
+
+<!-- toegevoegd 23-09-2026, opdracht "nameting-btw-plichtig-vgg-data-stap-en-lacy-lion" (poging 1) -->
+- **Gemeten 23-09 — LET-OP `btw_status_bevestigen`: afwezig-pad JA, aanwezig-pad niet gemeten (BESLISSINGEN "BTW-PLICHTIG PER ADMINISTRATIE —
+  NIET-PLICHTIG = BTW IN DE KOSTEN, HARDE CHECK (Peter 22-09)" alinea "Gemeten 23-09"):** de run van 23-09 04:30 UTC (`40b5d45c`) draaide vóór de
+  eerste sync mét RLZ-signaal en produceerde 0 × `detail.automatisering = btw_status` (verwacht 0); de enige kandidaat (VGG, signaal false uit de
+  sync van 05:03) is om 16:45 door de data-stap bevestigd (bron mens) en valt dus vóór de run van 24-09 uit de detector — de LET-OP-rij is in
+  productie niet gezien en er is geen tweede kandidaat. Meetles: een LET-OP mét `administratie_id` staat onder RLS — een telling zonder
+  `--administratie` op de replica geeft stil 0 (zelfde les als `reconciliatie_bevinding`-sweep en `audit_event`); toets een 0 altijd ook in de
+  scope van de verwachte administratie vóór je 'm "verwacht 0" noemt. Rapport `docs/rapporten/2026-09-23-nameting-btw-plichtig-vgg-data-stap-en-lacy-lion.md`.

@@ -234,6 +234,21 @@
   `tests/doorbelasting/test_btw_niet_plichtig_doel.py`, `tests/verkoop/test_btw_niet_plichtig.py`, `tests/omzet/test_btw_niet_plichtig.py`,
   gouden-set-casus **ak** `tests/keten/test_ak_niet_btw_plichtige_administratie.py`, vitest `BtwPlichtigRij`, `BoekvoorstelPanel.btwPlichtig`. Werkt in productie: niet gemeten (kenmerk staat overal op true tot de data-stap).
 
+<!-- toegevoegd 23-09-2026, opdracht "nameting-btw-plichtig-vgg-data-stap-en-lacy-lion" (poging 1) -->
+- **Gemeten 23-09 — btw-plichtig per administratie WERKT IN PRODUCTIE: JA voor data-stap, sync-signaal, detector-afwezig-pad en nazorgrapport
+  (BESLISSINGEN "BTW-PLICHTIG PER ADMINISTRATIE — NIET-PLICHTIG = BTW IN DE KOSTEN, HARDE CHECK (Peter 22-09)" alinea "Gemeten 23-09"; rapport
+  `docs/rapporten/2026-09-23-nameting-btw-plichtig-vgg-data-stap-en-lacy-lion.md`):** VGG staat sinds 23-09 16:45 UTC op `btw_plichtig=false`
+  bron `mens` (data-stap `btw-plichtig-zetten --uit` op de job-image, dry-run vóór echt, 1 audit); de "geen btw"-code is "NL, Geen BTW
+  (Vrijgesteld)". Nazorgrapport (bot-bestand `verkenning/nameting-btw-niet-plichtig-23-09.txt`): DRIE module-geboekte VGG-facturen 2026 mét
+  21 %-splitsing en een RLZ-crediteurpost op het netto — E.M.S Onroerend Goed 20260014 (RLZ-04-00000924, te weinig 735,00), Studio Lacy Lion
+  2026-041 (RLZ-04-00000926, 344,05) en 2026-042 (RLZ-04-00000925, 322,38 = de casus) — **TOTAAL € 1.401,43 te weinig betaald**, RLZ-kant
+  zonder module-spoor 0. Herstel per document = "Corrigeren…" (regel bruto/btw 0) → boeken → nabetalen; NIET GEMETEN tot Peters klik (poging 2).
+  **Aangiftepoort-nuance:** de CLI telt "ingediende btw-aangiften in RLZ: 3" — dat zijn drie NIHIL-aangiften 2025 (Q1–Q3, Status 3), geen 2026;
+  de teller is een lees-signaal en telt óók nihil-aangiften van eerdere jaren, de poort (`app/rlz/aangifte.py`) beslist per document op de
+  periode. Bijvangst: de 12 open VGG-documenten dragen al btw 0 mét "NL, Nul tarief" (0 %) → check groen, RLZ boekt bruto. Kandidatenlijst ná
+  de data-stap: 0 administraties (ARVUM/Rubicon true) — het detector-aanwezig-pad heeft in productie geen casus meer (bewust: geen dag langer
+  een kapotte prefill voor één LET-OP-rij als bewijs).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Btw-tarief buitenland (CLAUDE.md `ed6d176` r. 354–360)

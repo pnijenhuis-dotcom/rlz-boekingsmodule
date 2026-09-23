@@ -92,6 +92,17 @@
   Data-stap: `btw-plichtig-zetten --administratie "Vastgoedgroep" --uit` op de job-image ná deploy (besluit Peter 13-09), overige
   administraties uit `btw-plichtig-kandidaten` ná Peters besluit. Werkt in productie: niet gemeten.
 
+<!-- toegevoegd 23-09-2026, opdracht "nameting-btw-plichtig-vgg-data-stap-en-lacy-lion" (poging 1) -->
+- **Gemeten 23-09 — kenmerk "Btw-plichtig": sync-signaal en data-stap WERKEN IN PRODUCTIE: JA (BESLISSINGEN "BTW-PLICHTIG PER ADMINISTRATIE —
+  NIET-PLICHTIG = BTW IN DE KOSTEN, HARDE CHECK (Peter 22-09)" alinea "Gemeten 23-09"; rapport `docs/rapporten/2026-09-23-nameting-btw-plichtig-vgg-data-stap-en-lacy-lion.md`):**
+  de identiteit-sync van 23-09 05:03 UTC (job `rlz-sync` = `sync-alles`; er is géén job `rlz-sync-alles`) las `EnableTaxReporting` op alle 75
+  RLZ-administraties: 74 × "btw-plichtig bevestigd uit RLZ" → bron `rlz`, 1 × VGG "EnableTaxReporting=false — kandidaat" → signaal false, kenmerk
+  ongewijzigd (nooit zelf op false); 3 Odoo-administraties NULL. Data-stap `btw-plichtig-zetten --administratie Vastgoedgroep --uit` op de
+  job-image (owner-sessie, dry-run vóór echt): VGG false / bron `mens` / audit `administratie_btw_plichtig_gewijzigd` (1 rij, actor systeem;
+  RLS: alleen leesbaar in de administratie-scope). Detector-afwezig-pad in de run van 04:30 (vóór de sync): 0 = verwacht; `btw-plichtig-kandidaten`
+  ná de stap: 0 → geen tweede kandidaat, het aanwezig-pad is niet gemeten. De rij op Instellingen › Administraties › VGG › Boeken & AI toont nu
+  "niet btw-plichtig · mens · Reeleezee: btw-aangifte uit" (niet geklikt: 0 × `PUT …/btw-plichtig` sinds de deploy).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Stack & platform — Instellingen › Administraties v2 (CLAUDE.md `ed6d176` r. 52–62)
