@@ -35,6 +35,8 @@ SERVICE_ENV_SLEUTELS = {
     "EERSTE_SYNC_JOB_RESOURCE",
     "TERUGKEREND_HERBEREKEN_JOB_RESOURCE",
     "RECONCILIATIE_JOB_RESOURCE",
+    "INTAKE_IMAP_JOB_RESOURCE",  # 23-09: "Nu verwerken" op de postvak-bevinding start de intake-job
+    "INTAKE_KEMPENGROEP_IMAP_JOB_RESOURCE",
     "KVK_BASE_URL",
     # tot 16-09 in losse `services update`-stappen:
     "INTAKE_POSTVAK_ADRES",

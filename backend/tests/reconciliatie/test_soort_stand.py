@@ -76,7 +76,12 @@ class TestRegistry:
                     continue
                 assert d.default == soort_stand.METEN, f"{d.soort} is nieuw maar start niet in meten"
         assert soort_stand.code_default("intussen_extern_geboekt") == "actie"
-        assert [d.soort for d in soort_stand.REGISTRY.values() if d.direct_actie_reden] == ["intussen_extern_geboekt"]
+        # 23-09: `intake_postvak_verschil` (Peter 22-09: telling aan de bron mét Message-ID's als bewijs + "Nu verwerken").
+        assert [d.soort for d in soort_stand.REGISTRY.values() if d.direct_actie_reden] == [
+            "intussen_extern_geboekt",
+            "intake_postvak_verschil",
+        ]
+        assert soort_stand.code_default("intake_postvak_verschil") == "actie"
         assert soort_stand.code_default("dubbele_betaling_vermoed") == "meten"
         assert soort_stand.code_default("bedrag_wijkt_af") == "actie"
         assert soort_stand.code_default("nog_nooit_gezien") == "meten"

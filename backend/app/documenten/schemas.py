@@ -626,6 +626,10 @@ class HerkomstMailDto(BaseModel):
     ontvangen_op: datetime | None = None
     body_tekst: str | None = None
     bron: str
+    # 23-09: kanaal + postvakadres ("via facturen@kempengroep.nl") en spam-herkomst (chip "uit Spam", tijdlijn).
+    kanaal: str = "facturen"
+    postvak_adres: str | None = None
+    uit_spam: bool = False
 
 
 class DocumentDetailResponse(BaseModel):

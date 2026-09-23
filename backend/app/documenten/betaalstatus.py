@@ -54,10 +54,19 @@ HERKOMST_FACTUUR = "factuur"  # deterministische incasso-detectie op de factuurt
 HERKOMST_MENS = "mens"  # keuze op het controlescherm, wint altijd
 HERKOMSTEN: tuple[str, ...] = (HERKOMST_KANAAL, HERKOMST_FACTUUR, HERKOMST_MENS)
 
-# Intake-kanalen (kolom `intake_bericht.kanaal`): het bestaande facturen@-postvak en het nieuwe declaraties@-postvak.
+# Intake-kanalen (kolom `intake_bericht.kanaal`): het bestaande facturen@-postvak, het declaraties@-postvak en — sinds
+# 23-09 (Peter 22-09 "facturen die niet in de module staan", migratie 0171) — facturen@kempengroep.nl als DIRECT gelezen
+# tweede facturenpostvak (geen Gmail-forward meer: die verloor spam-/SPF-gevallen en gelezen berichten).
 KANAAL_FACTUREN = "facturen"
 KANAAL_DECLARATIES = "declaraties"
-KANALEN: tuple[str, ...] = (KANAAL_FACTUREN, KANAAL_DECLARATIES)
+KANAAL_FACTUREN_KEMPENGROEP = "facturen_kempengroep"
+KANALEN: tuple[str, ...] = (KANAAL_FACTUREN, KANAAL_DECLARATIES, KANAAL_FACTUREN_KEMPENGROEP)
+# Leesbaar postvakadres per kanaal (chip "via …" op controlescherm/tijdlijn, reconciliatieblok `intake`).
+POSTVAK_ADRES_PER_KANAAL: dict[str, str] = {
+    KANAAL_FACTUREN: "facturen@ak-nijenhuis.nl",
+    KANAAL_DECLARATIES: "declaraties@ak-nijenhuis.nl",
+    KANAAL_FACTUREN_KEMPENGROEP: "facturen@kempengroep.nl",
+}
 # Wat een kanaal over de betaalstatus zegt: een declaratie is per definitie al door de medewerker betaald.
 BETAALSTATUS_PER_KANAAL: dict[str, str] = {KANAAL_DECLARATIES: BETAALD_PER_BANK}
 

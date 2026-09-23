@@ -180,6 +180,12 @@ BEHEER_CATEGORIEEN = frozenset(
 )
 REGRESSIE_TEKST = "systeemfout — automatisch gemeld"
 
+#: Overslaan-redenen intake-postvakken (23-09; teller INTAKE_POSTVAK hieronder) — zacht, nooit een harde voorwaarde.
+POSTVAK_AL_BEKEND = "postvak_al_bekend"
+POSTVAK_NIET_VERWERKBAAR = "postvak_niet_verwerkbaar"
+POSTVAK_UIT_SPAM = "postvak_uit_spam"
+POSTVAK_DUBBEL_VIA_FORWARD = "postvak_dubbel_via_forward"
+
 REDEN_LABEL: dict[str, str] = {
     RECHTEN_ONDERWEG: "RLZ zet rechten door — wordt herprobeerd",
     RECHTEN_NA_24U: "na 24 uur herproberen weigert RLZ nog steeds (403)",
@@ -189,6 +195,10 @@ REDEN_LABEL: dict[str, str] = {
     VOLUMEREM: "volumerem bereikt",
     VOORVERWARMEN_UIT: "voorverwarmen staat uit (instelling CHECKS_VOORVERWARMEN)",
     VOORVERWARMEN_BEZIG: "al een voorverwarming bezig (max 1 tegelijk) of document niet leesbaar",
+    POSTVAK_AL_BEKEND: "bericht al eerder verwerkt (zelfde Message-ID — bv. via de oude forward of een .eml-upload)",
+    POSTVAK_NIET_VERWERKBAAR: "geen parsebaar e-mailbericht — geregistreerd, blijft in het postvak",
+    POSTVAK_UIT_SPAM: "uit de spam-map verwerkt (LET-OP intake_uit_spam: afzender whitelisten)",
+    POSTVAK_DUBBEL_VIA_FORWARD: "dubbel via de Gmail-forward (zelfde bijlage via het andere postvak) — duplicaat-afvoer vangt het",
     GELDPOORT: "boeken staat uit (kill-switch/administratie)",
     CREDENTIAL: "geen werkende credential",
     API_KEY: "geen API-key",
@@ -288,6 +298,10 @@ UREN_HERINNERING = "uren_herinnering"
 #: (gedaan | uit_cache = gedaan; uit = instelling; overgeslagen_bezig/-fout = overgeslagen).
 BOEK_WACHTRIJ = "boek_wachtrij"
 CHECKS_VOORVERWARMEN = "checks_voorverwarmen"
+#: Intake-postvakken (Peter 22-09, migratie 0171): per job-run per kanaal één audit `intake_postvak_run` mét
+#: gezien/verwerkt/al_bekend/niet_verwerkbaar/uit_spam/dubbel_via_forward (`app/intake/verwerkt.py`) — verwacht =
+#: opgehaald (nieuw in het venster), gedaan = verwerkt, overgeslagen per reden (zacht, nooit een harde voorwaarde).
+INTAKE_POSTVAK = "intake_postvak"
 
 #: Vaste volgorde in mail en scherm (geldpaden eerst).
 VOLGORDE: tuple[str, ...] = (
@@ -310,6 +324,7 @@ VOLGORDE: tuple[str, ...] = (
     NABUNDEL,
     MINI_VOORRAAD,
     EXTRACTIE_WACHTRIJ,
+    INTAKE_POSTVAK,
     OMZETBRON_HERKENNING,
     KASSARAPPORT_AUTOTYPE,
     KASSARAPPORT_INKOOPSTROOM,
@@ -319,6 +334,7 @@ VOLGORDE: tuple[str, ...] = (
 )
 
 LABEL: dict[str, str] = {
+    INTAKE_POSTVAK: "Intake-postvakken (facturen@ak-nijenhuis.nl + facturen@kempengroep.nl — INBOX + Spam, op Message-ID)",
     BOEK_WACHTRIJ: "Boeken in RLZ — achtergrond-schrijver (ingediend → geboekt/mislukt)",
     CHECKS_VOORVERWARMEN: "Externe checks voorverwarmen (volgend document)",
     OMZETBRON_HERKENNING: "Omzetbron-herkenning op inhoud (kassarapporten vóór de AI, store → administratie)",
@@ -383,6 +399,7 @@ VASTE_CATEGORIEEN: dict[str, tuple[str, ...]] = {
     UREN_HERINNERING: (AL_UREN, OPT_OUT, GEEN_KANAAL),
     BOEK_WACHTRIJ: (FOUT,),
     CHECKS_VOORVERWARMEN: (VOORVERWARMEN_UIT, VOORVERWARMEN_BEZIG),
+    INTAKE_POSTVAK: (POSTVAK_AL_BEKEND, POSTVAK_NIET_VERWERKBAAR, POSTVAK_UIT_SPAM, POSTVAK_DUBBEL_VIA_FORWARD),
 }
 
 #: Alle audit-acties die deze motor leest — één query per administratie.
@@ -422,6 +439,8 @@ _ACTIES: tuple[str, ...] = (
     "boek_wachtrij_trigger",
     "boek_wachtrij_opnieuw_ingediend",  # 21-09: mens/reconciliatie-actie startte de verwerker opnieuw
     "checks_voorverwarmd",
+    # 23-09: intake-postvakken op Message-ID (één rij per job-run per kanaal)
+    "intake_postvak_run",
 )
 
 
@@ -878,6 +897,13 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "bij het openen van een document worden de externe checks van het volgende document alvast gecachet",
         "audit checks_voorverwarmd",
     )
+    postvak = maak(
+        INTAKE_POSTVAK,
+        "altijd",
+        "jobs rlz-intake-imap + rlz-intake-imap-kempengroep elke 10 min: INBOX + spam-map, gelezen én ongelezen, "
+        "verwerkt-administratie op Message-ID (intake_bericht_verwerkt)",
+        "audit intake_postvak_run (per run per kanaal)",
+    )
     herkoppeling = maak(
         DOORBELASTING_HERKOPPELING,
         "altijd",
@@ -956,6 +982,21 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
                 tel_over(
                     voorverwarmen, f.tijdstip, VOORVERWARMEN_BEZIG, None, str(nw.get("fout") or ""), hard_registreren=False
                 )
+        elif f.actie == "intake_postvak_run":
+            kanaal = str(nw.get("kanaal") or "")
+            for v in vensters(postvak, f.tijdstip):
+                v.tel_gedaan(int(nw.get("verwerkt") or 0))
+                v.tel_overgeslagen(POSTVAK_AL_BEKEND, int(nw.get("al_bekend") or 0))
+                v.tel_overgeslagen(POSTVAK_NIET_VERWERKBAAR, int(nw.get("niet_verwerkbaar") or 0))
+                v.tel_overgeslagen(POSTVAK_UIT_SPAM, int(nw.get("uit_spam") or 0))
+                v.tel_overgeslagen(POSTVAK_DUBBEL_VIA_FORWARD, int(nw.get("dubbel_via_forward") or 0))
+            if f.tijdstip >= dag_vanaf:
+                postvak.detail = postvak.detail or {}
+                per_kanaal = postvak.detail.setdefault("per_kanaal", {})
+                pk = per_kanaal.setdefault(kanaal, {"runs": 0, "gezien": 0, "verwerkt": 0})
+                pk["runs"] += 1
+                pk["gezien"] += int(nw.get("gezien") or 0)
+                pk["verwerkt"] += int(nw.get("verwerkt") or 0)
         elif f.actie == "uren_herinnering_run":
             for v in vensters(uren_herinnering, f.tijdstip):
                 v.tel_gedaan(int(nw.get("gedaan") or 0))

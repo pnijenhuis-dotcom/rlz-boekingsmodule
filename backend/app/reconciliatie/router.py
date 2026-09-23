@@ -177,6 +177,33 @@ def bevinding_gezien_intrekken(
     return schemas.ActieResultaatDto(id=gezien_id)
 
 
+@router.post(
+    "/reconciliatie/intake/{kanaal}/nu-verwerken",
+    response_model=schemas.IntakeNuVerwerkenDto,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def intake_nu_verwerken(kanaal: str, actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.IntakeNuVerwerkenDto:
+    """ "Nu verwerken" (Peter 22-09; élke kantoorrol — dezelfde handeling als wachten op de 10-minuten-scheduler, maar
+    direct): start de intake-job van het kanaal opnieuw. De job leest het hele venster (INBOX + Spam, gelezen én
+    ongelezen) en verwerkt wat nog niet in de verwerkt-administratie staat — idempotent op Message-ID, nooit dubbel.
+    Audit `intake_postvak_nu_verwerken`; onbekend kanaal = 404; start mislukt = 502 mét reden."""
+    from app.documenten.betaalstatus import POSTVAK_ADRES_PER_KANAAL
+    from app.intake import nu_verwerken
+
+    try:
+        r = nu_verwerken.start(kanaal=kanaal, actor_id=actor.id)
+    except nu_verwerken.OnbekendKanaal as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except nu_verwerken.StartMislukt as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return schemas.IntakeNuVerwerkenDto(
+        kanaal=r.kanaal,
+        postvak_adres=POSTVAK_ADRES_PER_KANAAL.get(r.kanaal),
+        voertuig=r.voertuig,
+        job_resource=r.job_resource,
+    )
+
+
 @router.post("/reconciliatie/run", response_model=schemas.ReconciliatieRunDto, status_code=status.HTTP_202_ACCEPTED)
 def reconciliatie_nu_draaien(actor: CurrentGebruiker = Depends(require_beheerder)) -> schemas.ReconciliatieRunDto:
     """ "Nu draaien" (Beheerder): wachtrij-rij bron 'handmatig' + voertuig (dev thread / cloud on-demand

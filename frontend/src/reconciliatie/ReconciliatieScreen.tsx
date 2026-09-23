@@ -33,6 +33,7 @@ import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
 import { HerboekenAlsOmzetActie, isOmzetInInkoopstroom } from './HerboekenAlsOmzetActie'
 import { isKassarapportInWerkvoorraad, TypeWijzigenKassarapportActie } from './TypeWijzigenKassarapportActie'
 import { isBoekWachtrijGestrand, OpnieuwIndienenActie } from './OpnieuwIndienenActie'
+import { isIntakePostvakVerschil, NuVerwerkenActie } from './NuVerwerkenActie'
 import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
 import {
   accepteerBevinding,
@@ -259,6 +260,19 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
         {!naarDocument ? 'Naar de instelling →' : r.soort === 'let_op' && !isAutomatisering ? 'Naar de doorbelasting →' : 'Naar het document →'}
       </Link>
     ) : null
+
+    // 23-09 (Peter 22-09): berichten in het postvak zonder verwerking → "Nu verwerken" start de intake-job van het kanaal.
+    if (r.soort === 'afwijking' && isIntakePostvakVerschil(r)) {
+      return (
+        <NuVerwerkenActie
+          bevinding={r}
+          onGelukt={(melding) => {
+            toast.meld(melding)
+            herlaad()
+          }}
+        />
+      )
+    }
 
     // 21-09 (BUG rlz-boek-wachtrij): boeking hangt op "Wordt geboekt…" → "Opnieuw indienen" is de primaire handeling.
     if (isBoekWachtrijGestrand(r)) {

@@ -102,6 +102,8 @@ export type BevindingBlok =
   | 'rlz_dubbel'
   | 'projecten'
   | 'intercompany' | 'rekening_courant' | 'doorbelasting_aansluiting'
+  /** 23-09 (Peter 22-09): postvak-bewaking "ontvangen vs verwerkt" per intake-kanaal (INBOX + Spam, op Message-ID). */
+  | 'intake'
 
 export interface BevindingDto {
   id: string
@@ -333,6 +335,7 @@ export const BLOK_LABEL: Record<BevindingBlok, string> = {
   intercompany: 'Intercompany',
   // Blok 3 18-09: reconciliatie-soort `project_nummer_dubbel` (stand meten) in blok `projecten`.
   projecten: 'Projecten',
+  intake: 'Postvak',
 }
 
 /** Leesbare labels van de reden-categorieën (spiegel van REDEN_LABEL in automatiseringen.py). */
@@ -527,3 +530,24 @@ export function tochVerschillend(
     }),
   })
 }
+
+// ---- Postvak-bewaking (Peter 22-09: "er zijn facturen gemaild die niet in onze module staan") ----------------------
+
+/** Is dit de rij "N bericht(en) in het postvak niet verwerkt" mét de knop "Nu verwerken"? */
+export function isIntakePostvakVerschil(r: BevindingDto): boolean {
+  return r.blok === 'intake' && r.detail?.afwijking_soort === 'intake_postvak_verschil' && typeof r.detail?.kanaal === 'string'
+}
+
+export interface IntakeNuVerwerkenDto {
+  kanaal: string
+  postvak_adres: string | null
+  voertuig: 'cloud_run_job' | 'thread' | string
+  job_resource: string | null
+}
+
+/** "Nu verwerken": start de intake-job van het kanaal (202; de job leest INBOX + Spam, gelezen én ongelezen, en
+ * verwerkt wat nog niet in de verwerkt-administratie staat — idempotent op Message-ID). Élke kantoorrol. */
+export function nuVerwerkenPostvak(kanaal: string): Promise<IntakeNuVerwerkenDto> {
+  return apiJson(`/reconciliatie/intake/${encodeURIComponent(kanaal)}/nu-verwerken`, { method: 'POST' })
+}
+

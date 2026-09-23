@@ -359,7 +359,28 @@ function UitDeEmail({ herkomst }: { herkomst: HerkomstMailDto }) {
         <div>
           <dt className="hint">Ontvangen</dt>
           <dd>
-            {ontvangen ?? '—'} <span className="hint">({herkomst.bron === 'imap' ? 'postvak' : '.eml-upload'})</span>
+            {ontvangen ?? '—'}{' '}
+            <span className="hint">
+              (
+              {herkomst.bron !== 'imap'
+                ? '.eml-upload'
+                : herkomst.kanaal && herkomst.kanaal !== 'facturen' && herkomst.postvak_adres
+                  ? `postvak ${herkomst.postvak_adres}`
+                  : 'postvak'}
+              )
+            </span>
+            {herkomst.uit_spam && (
+              <>
+                {' '}
+                <span
+                  className="chip warn"
+                  data-testid="chip-uit-spam"
+                  title="Dit bericht landde in de spam-map van het postvak; de module heeft het van daaruit verwerkt. Zet de afzender in Google Workspace op de toegestane lijst."
+                >
+                  uit Spam
+                </span>
+              </>
+            )}
           </dd>
         </div>
       </dl>
@@ -1485,6 +1506,17 @@ export function DocumentDetailScreen() {
                       ) : (
                         <>
                           Document binnengekomen — status <b>{statusLabel(g.naar_status)}</b>
+                          {/* 23-09 (Peter 22-09): via welk postvak het kwam en of het uit Spam kwam (herkomst intake-bericht). */}
+                          {detail.herkomst_mail?.kanaal && detail.herkomst_mail.kanaal !== 'facturen' && detail.herkomst_mail.postvak_adres && (
+                            <span className="hint" style={{ marginLeft: 6 }}>
+                              via {detail.herkomst_mail.postvak_adres}
+                            </span>
+                          )}
+                          {detail.herkomst_mail?.uit_spam && (
+                            <span className="chip warn" style={{ marginLeft: 6 }} title="Uit de spam-map van het postvak verwerkt">
+                              uit Spam
+                            </span>
+                          )}
                           {detail.mogelijk_duplicaat_van && (
                             <div className="hint" style={{ marginTop: 2 }}>
                               Mogelijk duplicaat van{' '}

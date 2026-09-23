@@ -66,6 +66,10 @@ env:
   MAIL_SECRETS: "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest"
   PUSH_ENVS: "APNS_SANDBOX=false|APPLE_TEAM_ID=VRQP26CX43"
   PUSH_SECRETS: "PUSH_VAPID_PRIVATE_KEY=PUSH_VAPID_PRIVATE_KEY:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest,APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest"
+  # Intake-postvakken (23-09, Peter 22-09): beide IMAP-envsets op beide intake-jobs én op rlz-reconciliatie (blok `intake`
+  # + lees-only audit). Secret INTAKE_KEMPENGROEP_IMAP_WACHTWOORD: user-managed europe-west4, versie door Peter (22-09).
+  INTAKE_ENVS: "INTAKE_IMAP_HOST=imap.gmail.com|INTAKE_IMAP_POORT=993|INTAKE_IMAP_GEBRUIKER=facturen@ak-nijenhuis.nl|INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl|INTAKE_KEMPENGROEP_IMAP_HOST=imap.gmail.com|INTAKE_KEMPENGROEP_IMAP_POORT=993|INTAKE_KEMPENGROEP_IMAP_GEBRUIKER=facturen@kempengroep.nl"
+  INTAKE_SECRETS: "INTAKE_IMAP_WACHTWOORD=INTAKE_IMAP_WACHTWOORD:latest,INTAKE_KEMPENGROEP_IMAP_WACHTWOORD=INTAKE_KEMPENGROEP_IMAP_WACHTWOORD:latest"
   # OTA (Peter 16-09): eigen bucket voor de webbundels van de native app (aanmaken + IAM = scripts/gcp/app_bundels_bucket.sh,
   # eenmalig door de owner); APP_MIN_RUNTIME_VERSIE = minimale schilversie (426 eronder) — ophogen ná een winkelrelease
   # die native wijzigingen draagt, nooit vóór de winkelversie live is.
@@ -211,7 +215,7 @@ jobs:
             --memory 1Gi \
             --cpu 1 \
             --min-instances 1 \
-            --set-env-vars "^|^ENVIRONMENT=production|CLOUD_SQL_VERBINDING=${CLOUD_SQL}|LEES_CLOUD_SQL_VERBINDING=${CLOUD_SQL_LEES}|WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl|WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]|ANDROID_CERT_SHA256_VINGERAFDRUKKEN=[\"2C:EA:32:F9:44:A7:52:F9:DB:1E:87:B4:0F:DF:87:2C:F7:14:09:20:1D:F1:54:C9:16:70:2C:3D:E3:3E:3F:49\",\"4A:B4:3C:F1:E9:86:EA:58:02:D7:3F:7A:78:13:FB:F5:EF:C0:17:0F:E8:35:00:01:2E:2C:45:02:00:E9:8F:A1\"]|CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\",\"https://localhost\"]|DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten|KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey|CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers|BANK_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-bank-sync|EXTRACTIE_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-extractie-wachtrij|BOEK_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-boek-wachtrij|EERSTE_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-eerste-sync|TERUGKEREND_HERBEREKEN_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-terugkerend-herbereken|RECONCILIATIE_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-reconciliatie|KVK_BASE_URL=https://api.kvk.nl/api/v1/basisprofielen|INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl|STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748|STORE_APP_VERSIE_IOS=1.1|FCM_PROJECT_ID=${PROJECT_ID}|APP_BUNDEL_GCS_BUCKET=${APP_BUNDEL_BUCKET}|APP_MIN_RUNTIME_VERSIE=${APP_MIN_RUNTIME_VERSIE}|OTA_UITGESCHAKELD=false|${MAIL_ENVS}|${PUSH_ENVS}" \
+            --set-env-vars "^|^ENVIRONMENT=production|CLOUD_SQL_VERBINDING=${CLOUD_SQL}|LEES_CLOUD_SQL_VERBINDING=${CLOUD_SQL_LEES}|WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl|WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]|ANDROID_CERT_SHA256_VINGERAFDRUKKEN=[\"2C:EA:32:F9:44:A7:52:F9:DB:1E:87:B4:0F:DF:87:2C:F7:14:09:20:1D:F1:54:C9:16:70:2C:3D:E3:3E:3F:49\",\"4A:B4:3C:F1:E9:86:EA:58:02:D7:3F:7A:78:13:FB:F5:EF:C0:17:0F:E8:35:00:01:2E:2C:45:02:00:E9:8F:A1\"]|CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\",\"https://localhost\"]|DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten|KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey|CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers|BANK_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-bank-sync|EXTRACTIE_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-extractie-wachtrij|BOEK_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-boek-wachtrij|EERSTE_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-eerste-sync|TERUGKEREND_HERBEREKEN_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-terugkerend-herbereken|RECONCILIATIE_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-reconciliatie|INTAKE_IMAP_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-intake-imap|INTAKE_KEMPENGROEP_IMAP_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-intake-imap-kempengroep|KVK_BASE_URL=https://api.kvk.nl/api/v1/basisprofielen|INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl|STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748|STORE_APP_VERSIE_IOS=1.1|FCM_PROJECT_ID=${PROJECT_ID}|APP_BUNDEL_GCS_BUCKET=${APP_BUNDEL_BUCKET}|APP_MIN_RUNTIME_VERSIE=${APP_MIN_RUNTIME_VERSIE}|OTA_UITGESCHAKELD=false|${MAIL_ENVS}|${PUSH_ENVS}" \
             --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest,PROJECTAANVRAAG_HMAC_SECRET=PROJECTAANVRAAG_HMAC_SECRET:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,REGISTERSYNC_HMAC_SECRET=REGISTERSYNC_HMAC_SECRET:latest,KVK_API_KEY=KVK_API_KEY:latest,${MAIL_SECRETS},${PUSH_SECRETS}" \
             --quiet
 
@@ -222,6 +226,8 @@ jobs:
       # VOLLEDIGE ENVSET PER JOB (16-09): élke job krijgt in zijn ENE `jobs deploy` de complete envset +
       # secrets (basis + per-job-extra's uit de `case`), geen losse `jobs update --update-env-vars` meer
       # erachter — dezelfde les als bij de service. Per-job-extra's:
+      # - rlz-intake-imap-kempengroep (23-09): facturen@kempengroep.nl DIRECT gelezen (geen Gmail-forward meer); zelfde
+      #   envset als rlz-intake-imap (beide postvakken) + INTAKE_KEMPENGROEP_IMAP_WACHTWOORD; scheduler */10 ACTIEF (f3_jobs.sh).
       # - rlz-intake-imap (F3.4, geactiveerd 15-08 na de Workspace-DPA-check): IMAP-envs + app-wachtwoord
       #   (INTAKE_IMAP_WACHTWOORD, versie door Peter; de scheduler-pauze is de aan/uit-knop) + ANTHROPIC_API_KEY
       #   (intake-AI: extractie + splitsing achter de intake_ai-gate + kostengrens).
@@ -260,10 +266,16 @@ jobs:
         run: |
           BASIS_ENVS="ENVIRONMENT=production|CLOUD_SQL_VERBINDING=${CLOUD_SQL}|LEES_CLOUD_SQL_VERBINDING=${CLOUD_SQL_LEES}|STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748|STORE_APP_VERSIE_IOS=1.1|DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten|KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey|APP_BUNDEL_GCS_BUCKET=${APP_BUNDEL_BUCKET}|APP_MIN_RUNTIME_VERSIE=${APP_MIN_RUNTIME_VERSIE}"
           BASIS_SECRETS="APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest"
+          # Intake-postvakken (23-09, Peter 22-09 "facturen die niet in de module staan"): BEIDE IMAP-envsets + secrets op
+          # beide intake-jobs (de lees-only audit `intake-postvak-audit` leest beide postvakken) én op rlz-reconciliatie
+          # (blok `intake` telt aan de bron: INBOX + Spam ↔ verwerkt). Secret INTAKE_KEMPENGROEP_IMAP_WACHTWOORD:
+          # user-managed europe-west4 (org-policy gcp.resourceLocations weigert automatic/global), versie door Peter.
+          # INTAKE_ENVS / INTAKE_SECRETS staan in het workflow-`env:`-blok (naast MAIL_ENVS) — de delimiter-guard expandeert ze.
           F3_JOBS=(
             "rlz-sync|sync-alles|5400"
             "rlz-reconciliatie|reconciliatie-alles|3600"
             "rlz-intake-imap|intake-postvak-verwerken|900"
+            "rlz-intake-imap-kempengroep|intake-postvak-kempengroep-verwerken|900"
             "rlz-accordeur-herinneringen|accordeur-herinneringen|600"
             "rlz-nieuwe-facturen|nieuwe-facturen-melden|600"
             "rlz-uren-herinneringen|uren-herinneringen|600"
@@ -281,17 +293,20 @@ jobs:
             NAAM="${JOB%%|*}"; REST="${JOB#*|}"; CLI="${REST%%|*}"; TIMEOUT="${REST##*|}"
             ENVS="${BASIS_ENVS}"; SECRETS="${BASIS_SECRETS}"
             case "${NAAM}" in
-              rlz-intake-imap)
-                ENVS="${ENVS}|INTAKE_IMAP_HOST=imap.gmail.com|INTAKE_IMAP_POORT=993|INTAKE_IMAP_GEBRUIKER=facturen@ak-nijenhuis.nl|INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl"
-                SECRETS="${SECRETS},INTAKE_IMAP_WACHTWOORD=INTAKE_IMAP_WACHTWOORD:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" ;;
+              rlz-intake-imap|rlz-intake-imap-kempengroep)
+                ENVS="${ENVS}|${INTAKE_ENVS}"
+                SECRETS="${SECRETS},${INTAKE_SECRETS},ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" ;;
               rlz-extractie-wachtrij)
                 SECRETS="${SECRETS},ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" ;;
               rlz-accordeur-herinneringen|rlz-nieuwe-facturen|rlz-uren-herinneringen)
                 ENVS="${ENVS}|${MAIL_ENVS}|${PUSH_ENVS}|FCM_PROJECT_ID=${PROJECT_ID}"
                 SECRETS="${SECRETS},${MAIL_SECRETS},${PUSH_SECRETS}" ;;
-              rlz-kantoor-digest|rlz-reconciliatie)
+              rlz-kantoor-digest)
                 ENVS="${ENVS}|${MAIL_ENVS}"
                 SECRETS="${SECRETS},${MAIL_SECRETS}" ;;
+              rlz-reconciliatie)
+                ENVS="${ENVS}|${MAIL_ENVS}|${INTAKE_ENVS}"
+                SECRETS="${SECRETS},${MAIL_SECRETS},${INTAKE_SECRETS}" ;;
               rlz-bewaking)
                 ENVS="${ENVS}|${MAIL_ENVS}|BEWAKING_RLZ_ADMINISTRATIE_ID=8dbfb856-d75b-4ec3-9124-c8b739fe3bc5|BEWAKING_SERVICE_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/services/rlz-backend"
                 SECRETS="${SECRETS},${MAIL_SECRETS},ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" ;;

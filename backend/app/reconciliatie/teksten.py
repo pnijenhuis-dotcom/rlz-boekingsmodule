@@ -1095,7 +1095,37 @@ def _activa(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
     return (_titel("Afwijking activa", onderwerp), _terugval_wat(tekst), f"Beoordeel de afwijking; {_DOE_ACCEPTEER}")
 
 
+def _intake(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
+    """Blok `intake` (Peter 22-09): postvak-telling ↔ verwerkt. De handeling is deterministisch (knop "Nu verwerken"
+    start de intake-job van het kanaal); de Message-ID's staan in het detail voor wie het in de mailbox wil nazien."""
+    adres = _s(d, "postvak_adres") or _s(d, "kanaal") or "het postvak"
+    aantal = int(d.get("aantal") or 0)
+    if soort == "intake_postvak_verschil":
+        berichten = d.get("berichten") or []
+        voorbeelden = "; ".join(
+            f"{b.get('afzender') or '?'} — {(b.get('onderwerp') or '')[:40]}" + (" (Spam)" if b.get("map") not in (None, "INBOX") else "")
+            for b in berichten[:3]
+        )
+        spam = sum(1 for b in berichten if b.get("map") not in (None, "INBOX"))
+        return (
+            _titel(f"{aantal} bericht(en) in het postvak niet verwerkt", adres),
+            f"In {adres} staan sinds gisteren {aantal} bericht(en) die de module niet verwerkt heeft"
+            + (f", waarvan {spam} in de spam-map" if spam else "")
+            + (f": {voorbeelden}" if voorbeelden else "")
+            + ".",
+            "Klik 'Nu verwerken' — de intake-job leest het postvak opnieuw (gelezen én ongelezen, INBOX én Spam) en "
+            "verwerkt wat ontbreekt; blijft de rij ná de volgende run staan, dan is het bericht niet verwerkbaar "
+            "(zie de Message-ID's in de details) en is het een storing.",
+        )
+    return (
+        _titel("Postvak-afwijking", adres),
+        _terugval_wat(tekst),
+        "Beoordeel de melding; 'Nu verwerken' start de intake-job opnieuw.",
+    )
+
+
 _BLOK_AFWIJKING = {
+    "intake": _intake,
     "activa": _activa,
     "projecten": _projecten,
     "documenten": _documenten,
@@ -1270,6 +1300,19 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
 def _let_op(d: dict, tekst: str, administratie_naam: str | None) -> tuple[str, str, str]:
     if d.get("automatisering"):
         return _automatisering(d, administratie_naam)
+    if d.get("reden") == "intake_uit_spam":
+        # Peter 22-09: bericht uit de spam-map verwerkt — handeling ligt in Google Workspace (afzender toestaan).
+        adres = _s(d, "postvak_adres") or "het postvak"
+        afzender = _s(d, "afzender") or "onbekende afzender"
+        domein = _s(d, "domein") or afzender
+        aantal = int(d.get("aantal") or 0)
+        return (
+            _titel("Factuur kwam via Spam binnen", afzender),
+            f"{aantal} bericht(en) van {afzender} landden in de spam-map van {adres}; de module heeft ze wél verwerkt "
+            "(chip 'uit Spam' op het document).",
+            f"Zet {domein} in Google Workspace op de lijst met toegestane afzenders (Beheerdersconsole › Gmail › Spam) "
+            "of vraag de afzender zijn DKIM/DMARC te herstellen; 'Gezien' met reden haalt de regel uit de teller.",
+        )
     if d.get("rc_zonder_tegenrekening") or d.get("afwijking_soort") == "rc_zonder_tegenrekening":
         return _rc_zonder_tegenrekening(d, administratie_naam)
     if d.get("afwijking_soort") == "project_naam_afgesloten_status_actief":
@@ -1319,6 +1362,22 @@ def _let_op(d: dict, tekst: str, administratie_naam: str | None) -> tuple[str, s
 
 def _fout(blok: str, d: dict, tekst: str, administratie_naam: str | None) -> tuple[str, str, str]:
     t = tekst or ""
+    if blok == "intake":
+        adres = _s(d, "postvak_adres") or _s(d, "kanaal") or "het postvak"
+        if d.get("reden") == "intake_postvak_niet_geconfigureerd":
+            return (
+                _titel("Postvak niet bewaakt", adres),
+                f"De reconciliatie-job heeft geen IMAP-instellingen voor {adres}; de telling 'ontvangen vs verwerkt' kon "
+                "niet draaien.",
+                "Systeemfout: envs + secret van dit postvak op de job rlz-reconciliatie zetten (deploy.yml) — tot dan "
+                "kan een gemiste factuur onopgemerkt blijven.",
+            )
+        return (
+            _titel("Postvak niet bereikbaar", adres),
+            f"De telling van {adres} mislukte: {zonder_guids(_s(d, 'fout') or re.sub(r'^FOUT\s+', '', t))}.",
+            "Systeemfout: controleer het app-wachtwoord (Secret Manager) en of IMAP voor de mailbox aanstaat; de "
+            "volgende run telt opnieuw.",
+        )
     if "viel om" in t:
         m = re.search(r"viel om:\s*(.*)$", t, re.DOTALL)
         return (

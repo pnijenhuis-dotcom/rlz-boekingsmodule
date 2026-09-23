@@ -111,6 +111,10 @@ class TestBodyOpBericht:
             "ontvangen_op": "2026-08-07T09:00:00+02:00",
             "body_tekst": "Dit is voor BLOW.",
             "bron": "eml_upload",
+            # Postvak-herziening 23-09 (0171): kanaal + adres + spam-markering horen bij de herkomst.
+            "kanaal": "facturen",
+            "postvak_adres": "facturen@ak-nijenhuis.nl",
+            "uit_spam": False,
         }
 
     def test_upload_zonder_mail_heeft_geen_herkomst(

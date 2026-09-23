@@ -79,6 +79,8 @@ BLOKKEN = (
     "projecten",
     # Activa fase 1 (Peter 21-09): aansluiting module-boekingen ↔ RLZ-activaregister (app/activa/reconciliatie.py, meten).
     "activa",
+    # Postvak-bewaking (Peter 22-09): ontvangen in het postvak ↔ verwerkt door de module, per kanaal (app/intake/bewaking.py).
+    "intake",
 )
 #: Sleutel in `samenvatting` voor de tellers per automatisering (géén blokstand — de bevindingen ervan
 #: staan onder blok `automatisering`, enkelvoud).

@@ -21,6 +21,7 @@ from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import storage
 from app.documenten.beeld import BestandenSnapshot, beeld_is_bron, bepaal_beeld
+from app.documenten.betaalstatus import POSTVAK_ADRES_PER_KANAAL
 from app.documenten.geboekt_in_rlz import GeboektInRlz, bepaal_geboekt_in_rlz
 from app.documenten.mime import content_type_voor
 from app.documenten.models import (
@@ -2390,6 +2391,10 @@ class HerkomstMail:
     ontvangen_op: datetime | None
     body_tekst: str | None
     bron: str
+    # 23-09: intake-kanaal + postvakadres ("via facturen@kempengroep.nl") en of het bericht uit de spam-map kwam.
+    kanaal: str = "facturen"
+    postvak_adres: str | None = None
+    uit_spam: bool = False
 
 
 @dataclass(frozen=True)
@@ -2441,6 +2446,9 @@ def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> 
                     ontvangen_op=bericht.ontvangen_op,
                     body_tekst=bericht.body_tekst,
                     bron=bericht.bron,
+                    kanaal=bericht.kanaal,
+                    postvak_adres=POSTVAK_ADRES_PER_KANAAL.get(bericht.kanaal),
+                    uit_spam=((bericht.detail or {}).get("postvak_map") or "INBOX") != "INBOX",
                 )
         geboekt_in_rlz = bepaal_geboekt_in_rlz(session, [document]).get(document.id)
 

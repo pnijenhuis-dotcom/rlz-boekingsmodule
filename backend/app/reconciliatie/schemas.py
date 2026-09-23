@@ -124,6 +124,17 @@ class ActieResultaatDto(BaseModel):
     id: uuid.UUID
 
 
+class IntakeNuVerwerkenDto(BaseModel):
+    """"Nu verwerken" op de postvak-bevinding (blok `intake`, Peter 22-09): de intake-job van het kanaal is gestart
+    (cloud: Cloud Run-job on-demand; dev: thread). De uitkomst staat ná de run in de verwerkt-administratie en bij de
+    volgende reconciliatie-run; een mislukte start is een 502, nooit een stille 202."""
+
+    kanaal: str
+    postvak_adres: str | None
+    voertuig: str
+    job_resource: str | None
+
+
 class SoortStandDto(BaseModel):
     """SPOED 17-09: stand per bevindingssoort — `meten` (telt, geen handeling) of `actie` (actiemail + KPI)."""
 

@@ -1136,4 +1136,5 @@ class TestCliLeesOnly:
             "rlz_dubbel",
             "projecten",  # blok 3 18-09: dubbele projectnummers (soort project_nummer_dubbel, stand meten)
             "activa",  # activa fase 1 21-09: aansluiting module ↔ RLZ-activaregister (vijf soorten, stand meten)
+            "intake",  # postvak-bewaking 23-09 (Peter 22-09): ontvangen in het postvak ↔ verwerkt, per kanaal
         ]

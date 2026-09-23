@@ -48,6 +48,9 @@ JOBS=(
   "rlz-reconciliatie|reconciliatie-alles|3600|30 6 * * *"
   "rlz-webhook-afleveraar|webhook-afleveren|600|*/5 * * * *"
   "rlz-intake-imap|intake-postvak-verwerken|900|*/10 * * * *"
+  # 23-09 (Peter 22-09): facturen@kempengroep.nl DIRECT gelezen — eigen job, zelfde cadans, scheduler ACTIEF (niet
+  # gepauzeerd: het secret INTAKE_KEMPENGROEP_IMAP_WACHTWOORD is door Peter gevuld vóór deze job bestond).
+  "rlz-intake-imap-kempengroep|intake-postvak-kempengroep-verwerken|900|*/10 * * * *"
   # Accordeur-herinneringen (berichten-bouwsteen 2026-08-15, mockup-besluit "dagelijkse push
   # 09:00 alleen bij >0 open"). Secret-slots/accessors: scripts/gcp/notificaties_infra.sh;
   # scheduler start GEPAUZEERD (zie onder) tot de live-verificatie (mail + push op Peters
@@ -170,6 +173,20 @@ gcloud secrets add-iam-policy-binding INTAKE_IMAP_WACHTWOORD \
   --member="serviceAccount:${JOBS_SA}" \
   --role="roles/secretmanager.secretAccessor" --quiet >/dev/null
 echo "   accessor voor ${JOBS_SA} staat."
+
+# 23-09: tweede facturenpostvak. Het secret bestaat al (Peter 22-09, versie 1, user-managed europe-west4 — de org-policy
+# gcp.resourceLocations weigert automatic/global; regel voor élk volgend secret); hier alleen idempotent + accessor.
+if gcloud secrets describe INTAKE_KEMPENGROEP_IMAP_WACHTWOORD >/dev/null 2>&1; then
+  echo "   secret INTAKE_KEMPENGROEP_IMAP_WACHTWOORD bestaat al."
+else
+  gcloud secrets create INTAKE_KEMPENGROEP_IMAP_WACHTWOORD \
+    --replication-policy=user-managed --locations="${REGION}"
+  echo "   secret-slot INTAKE_KEMPENGROEP_IMAP_WACHTWOORD aangemaakt (versie = app-wachtwoord facturen@kempengroep.nl, door Peter)."
+fi
+gcloud secrets add-iam-policy-binding INTAKE_KEMPENGROEP_IMAP_WACHTWOORD \
+  --member="serviceAccount:${JOBS_SA}" \
+  --role="roles/secretmanager.secretAccessor" --quiet >/dev/null
+echo "   accessor INTAKE_KEMPENGROEP_IMAP_WACHTWOORD voor ${JOBS_SA} staat."
 
 echo "== 4. Job-definities (bootstrap — deploy.yml is de canonieke config) =="
 # Default: hetzelfde beeld als de live service. F3_IMAGE_OVERRIDE bestaat voor het geval
@@ -304,6 +321,22 @@ else
   echo "   draai dit script daarna opnieuw voor de IAM-binding, anders faalt de sync-knop"
   echo "   zichtbaar met 'Achtergrondrun starten mislukt' (403)."
 fi
+
+# 23-09 (Peter 22-09): "Nu verwerken" op de postvak-bevinding (Inzicht › Reconciliatie, blok intake) start de intake-job
+# van het kanaal vanuit de service (INTAKE_*_JOB_RESOURCE in deploy.yml) — zelfde least-privilege-binding als hierboven.
+for INTAKE_JOB in rlz-intake-imap rlz-intake-imap-kempengroep; do
+  if gcloud run jobs describe "${INTAKE_JOB}" --region="${REGION}" --format="value(metadata.name)" >/dev/null 2>&1; then
+    gcloud run jobs add-iam-policy-binding "${INTAKE_JOB}" \
+      --region="${REGION}" \
+      --member="serviceAccount:run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+      --role="roles/run.invoker" \
+      --quiet >/dev/null
+    echo "   run-backend@ mag ${INTAKE_JOB} uitvoeren (roles/run.invoker, job-niveau — 'Nu verwerken')."
+  else
+    echo "   LET OP: job ${INTAKE_JOB} bestaat nog niet (eerste deploy-run maakt 'm) — draai dit script daarna opnieuw,"
+    echo "   anders faalt 'Nu verwerken' zichtbaar met 502."
+  fi
+done
 
 echo "== 7. rlz-bank-sync: on-demand job (bank auto-verversing bij openen, 25-08 deel 4) =="
 # Zelfde patroon als stap 6: geen scheduler, de service triggert één uitvoering per

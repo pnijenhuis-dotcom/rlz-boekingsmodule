@@ -758,6 +758,10 @@ export interface HerkomstMailDto {
   /** null = geen tekstdeel óf bericht van vóór migratie 0069 (geen backfill). */
   body_tekst: string | null
   bron: string
+  /** 23-09 (Peter 22-09): intake-kanaal + postvakadres ("via facturen@kempengroep.nl") en of het bericht uit de spam-map kwam. */
+  kanaal?: 'facturen' | 'declaraties' | 'facturen_kempengroep' | string
+  postvak_adres?: string | null
+  uit_spam?: boolean
 }
 
 export interface UploadResponseDto {
@@ -978,7 +982,7 @@ export interface BoekvoorstelDto {
   verwachte_betaaldatum?: string | null
   betaalstatus_bron_tekst?: string | null
   betaalstatus_opties?: string[]
-  intake_kanaal?: 'facturen' | 'declaraties' | null
+  intake_kanaal?: 'facturen' | 'declaraties' | 'facturen_kempengroep' | null
   /** Blok 4 bundel 08-09 (intercompany): de klant-accordering wordt voor dit document overgeslagen op de
    * leveranciersregel ('intercompany' = leverancier met IC-vlag in déze administratie). Alleen gevuld als
    * accordering aanstaat — de knop is dan "Boeken" i.p.v. "Ter accordering". Ontbrekend/null = gewone flow. */

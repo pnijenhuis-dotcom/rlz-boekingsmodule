@@ -50,6 +50,7 @@ auto-toewijzen bij twijfel."""
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -1165,13 +1166,16 @@ def verwerk_eml(
     bron: str = "eml_upload",
     opslag: DocumentOpslag | None = None,
     kanaal: str = "facturen",
+    postvak_map: str | None = None,
 ) -> IntakeResultaat:
-    """Verwerkt één .eml-bericht (upload of — later, via dezelfde route — de live IMAP-fetch).
+    """Verwerkt één .eml-bericht (upload of — via dezelfde route — de live IMAP-fetch).
     Idempotent op Message-ID: hetzelfde bericht wordt nooit twee keer verwerkt.
 
-    `kanaal` (blok 3 bundel 08-09, migratie 0126): 'facturen' (default) of 'declaraties' — het postvak waaruit het
-    bericht kwam; een document uit het declaraties-kanaal krijgt bij de prefill betaalstatus "Betaald per bank"
-    (app/documenten/betaalstatus.py). De markering staat op het intake-bericht (alle documenten eruit delen 'm)."""
+    `kanaal` (blok 3 bundel 08-09, migratie 0126; 23-09 migratie 0171): 'facturen' (default), 'declaraties' of
+    'facturen_kempengroep' — het postvak waaruit het bericht kwam; een document uit het declaraties-kanaal krijgt bij de
+    prefill betaalstatus "Betaald per bank" (app/documenten/betaalstatus.py). De markering staat op het intake-bericht
+    (alle documenten eruit delen 'm). `postvak_map` (23-09): de IMAP-map waaruit het bericht kwam ('INBOX' of de
+    spam-map) — een bericht uit Spam krijgt `detail.postvak_map` + de chip "uit Spam" en een tijdlijnregel."""
     from app.documenten import betaalstatus as _bs  # lokaal: houdt de importgraaf intake → documenten klein
 
     if kanaal not in _bs.KANALEN:
@@ -1204,7 +1208,7 @@ def verwerk_eml(
             bericht = session.get(IntakeBericht, bericht_id)
             assert bericht is not None
             bericht.verwerkt_door = actor_id
-            bericht.detail = {"bijlagen": [], "verwerking": "bezig", "herverwerking": True}
+            bericht.detail = {"bijlagen": [], "verwerking": "bezig", "herverwerking": True, "postvak_map": postvak_map}
             bericht.body_tekst = mail.body_tekst
             bericht.kanaal = kanaal
         else:
@@ -1217,7 +1221,7 @@ def verwerk_eml(
                     bron=bron,
                     ontvangen_op=mail.ontvangen_op,
                     verwerkt_door=actor_id,
-                    detail={"bijlagen": [], "verwerking": "bezig"},
+                    detail={"bijlagen": [], "verwerking": "bezig", "postvak_map": postvak_map},
                     # Mail-body (punt 1a, migratie 0069): dezelfde tekst hoort bij álle
                     # documenten uit dit bericht (via de FK document.intake_bericht_id).
                     body_tekst=mail.body_tekst,
@@ -1227,6 +1231,7 @@ def verwerk_eml(
 
     # Bundeling 02-09: UBL+PDF-paren (ingesloten-PDF-hash, anders naamstam) worden één document
     # vóór de routing — zie app/intake/bundeling.py.
+    bijlage_hashes = sorted({hashlib.sha256(b.inhoud).hexdigest() for b in mail.bijlagen if not b.inline})
     mail_tenaamstelling = _profx_mail_tenaamstelling(mail.bijlagen)
     mail_store = _dagstaat_mail_store(mail.bijlagen)
     resultaten: list[BijlageResultaat] = [
@@ -1249,7 +1254,14 @@ def verwerk_eml(
     with scoped_session(None, actor_id=actor_id) as session:
         bericht = session.get(IntakeBericht, bericht_id)
         assert bericht is not None
-        bericht.detail = {"bijlagen": [r.als_dict() for r in resultaten]}
+        # 23-09: `postvak_map` (INBOX/spam) + sha256 per bijlage op het bericht — de tijdlijn/"Uit de e-mail" tonen
+        # "via <postvak>" en "uit Spam" via `herkomst_mail`; de hashes maken de forward-dubbel-teller en de
+        # postvak-audit mogelijk zonder RLS-doorbraak op `document` (intake_bericht is platformbreed leesbaar).
+        bericht.detail = {
+            "bijlagen": [r.als_dict() for r in resultaten],
+            "postvak_map": postvak_map,
+            "bijlage_hashes": bijlage_hashes,
+        }
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -1263,8 +1275,11 @@ def verwerk_eml(
                 "bijlagen": len(mail.bijlagen),
                 "uitkomsten": [r.uitkomst for r in resultaten],
                 "herverwerking": herverwerking,
+                "kanaal": kanaal,
+                "postvak_map": postvak_map,
             },
             administratie_id=None,
         )
 
     return IntakeResultaat(bericht_id=bericht_id, al_eerder_verwerkt=False, bijlagen=resultaten)
+

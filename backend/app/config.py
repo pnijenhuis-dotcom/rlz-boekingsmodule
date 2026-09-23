@@ -394,6 +394,24 @@ class Settings(BaseSettings):
     intake_declaraties_imap_gebruiker: str | None = None
     intake_declaraties_imap_wachtwoord: str | None = None
     intake_declaraties_postvak_adres: str | None = None
+    # Derde intake-kanaal facturen@kempengroep.nl DIRECT gelezen (Peter 22-09; migratie 0171; kanaal
+    # `facturen_kempengroep`): een groot deel van de facturen komt op dit Workspace-account binnen en werd tot 23-09 via
+    # een Gmail-forward naar facturen@ak-nijenhuis.nl gestuurd — dat verloor Gmail-spamclassificaties, SPF-breuk-gevallen
+    # (strikte DMARC → Spam) en alles wat een mens al gelezen had. Envs op de job rlz-intake-imap-kempengroep:
+    # INTAKE_KEMPENGROEP_IMAP_HOST / _POORT / _GEBRUIKER / _WACHTWOORD (secret INTAKE_KEMPENGROEP_IMAP_WACHTWOORD).
+    intake_kempengroep_imap_host: str | None = None
+    intake_kempengroep_imap_poort: int = 993
+    intake_kempengroep_imap_gebruiker: str | None = None
+    intake_kempengroep_imap_wachtwoord: str | None = None
+    # Postvak-lezen sinds 23-09 (verwerkt-administratie op Message-ID, `intake_bericht_verwerkt`): de fetch leest ALLE
+    # berichten (gelezen én ongelezen) van de laatste `intake_postvak_venster_dagen` dagen in INBOX én de spam-map en
+    # verwerkt wat nog niet in de tabel/`intake_bericht` staat; de gelezen-vlag is alleen nog een bijproduct.
+    intake_postvak_venster_dagen: int = 14
+    intake_imap_spam_map: str = "[Gmail]/Spam"
+    # "Nu verwerken" op de postvak-bevinding (reconciliatieblok `intake`): on-demand start van de intake-job per kanaal
+    # (v2 :run, run.invoker op de job voor het service-SA). Leeg = dev-thread met dezelfde CLI.
+    intake_imap_job_resource: str | None = None
+    intake_kempengroep_imap_job_resource: str | None = None
     # Afzender-leren begrenzen (diagnose 02-09 punt 3): kantoor-/doorstuurdomeinen leren nooit een
     # afzender-regel en wijzen nooit automatisch toe op afzender (de afzender blijft wél zichtbaar
     # als hint op de verzamelbak-rij). Subdomeinen tellen mee. Aanvullen = env-var

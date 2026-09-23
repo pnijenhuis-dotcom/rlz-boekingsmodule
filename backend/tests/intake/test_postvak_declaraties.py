@@ -71,7 +71,7 @@ class TestCliKanaal:
         _koppel_fake(monkeypatch, fake)
         exit_code = cli.main(["intake-postvak-verwerken", "--kanaal", "declaraties"])
         assert exit_code == 0, capsys.readouterr()
-        assert fake.gelezen_gemarkeerd == [b"7"]
+        assert fake.gelezen_gemarkeerd == [("INBOX", b"7")]  # 23-09: (map, uid)
         with admin_engine.connect() as conn:
             rij = conn.execute(
                 text("SELECT kanaal, bron FROM boekhouding.intake_bericht WHERE message_id = :m"), {"m": message_id}

@@ -25,7 +25,9 @@ class IntakeBericht(Base):
             unique=True,
             postgresql_where=text("message_id IS NOT NULL"),
         ),
-        CheckConstraint("kanaal IN ('facturen', 'declaraties')", name="ck_intake_bericht_kanaal"),
+        CheckConstraint(
+            "kanaal IN ('facturen', 'declaraties', 'facturen_kempengroep')", name="ck_intake_bericht_kanaal"
+        ),
         {"schema": "boekhouding"},
     )
 
@@ -47,6 +49,39 @@ class IntakeBericht(Base):
     # betaald →
     # betaalstatus "Betaald per bank", herkomst 'kanaal'). Zie app/documenten/betaalstatus.py::KANALEN.
     kanaal: Mapped[str] = mapped_column(default="facturen", server_default="facturen")
+
+
+class IntakeBerichtVerwerkt(Base):
+    """Verwerkt-administratie van het postvak op Message-ID (migratie 0171, Peter 22-09 "er zijn facturen gemaild die
+    niet in onze module staan"). Tot 23-09 was de IMAP-gelezen-vlag de enige administratie: een mens die de mailbox
+    open had zette berichten op gelezen vóór de intake ze zag, en Spam werd nooit gelezen. Sinds 23-09 leest de fetch
+    ALLE berichten in het venster (INBOX + spam-map) en slaat hij over wat hier (of in `intake_bericht`) al staat; de
+    gelezen-vlag is een bijproduct. Eén rij per (kanaal, message_id) — óók voor berichten die géén `intake_bericht`
+    werden (niet-parsebaar, geen Message-ID → uid-sleutel), zodat "gezien" en "verwerkt" in het reconciliatieblok
+    `intake` tegen elkaar gelegd kunnen worden. FK-loos t.o.v. platform-tabellen (tests: eigen TRUNCATE)."""
+
+    __tablename__ = "intake_bericht_verwerkt"
+    __table_args__ = (
+        Index("ux_intake_bericht_verwerkt_kanaal_message_id", "kanaal", "message_id", unique=True),
+        Index("ix_intake_bericht_verwerkt_verwerkt_op", "verwerkt_op"),
+        CheckConstraint(
+            "uitkomst IN ('verwerkt', 'al_bekend', 'niet_verwerkbaar')", name="ck_intake_bericht_verwerkt_uitkomst"
+        ),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    kanaal: Mapped[str]
+    # RFC 5322 Message-ID; ontbreekt die in het bericht, dan de surrogaatsleutel "uid:<map>:<uid>".
+    message_id: Mapped[str]
+    uid: Mapped[str | None] = mapped_column(default=None)
+    postvak_map: Mapped[str] = mapped_column(default="INBOX", server_default="INBOX")
+    verwerkt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    uitkomst: Mapped[str]
+    intake_bericht_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.intake_bericht.id", ondelete="SET NULL"), default=None
+    )
+    detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
 
 
 class ToewijzingRegelSoort(enum.StrEnum):

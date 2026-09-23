@@ -203,7 +203,10 @@ class TestIntake:
             conn.execute(text("DELETE FROM boekhouding.werkstempel"))
 
     def test_eigen_stempels_en_endpoints(self, administratie_id, project_met_zone, zzper_met_scope) -> None:
-        nu = datetime.now(UTC)
+        # Vast middaguur NL van GISTEREN (altijd verleden, < MAX_LEEFTIJD, beide stempels op één kalenderdag): met
+        # datetime.now() viel `nu - 3 u` tussen 00:00 en 03:00 NL op de vorige dag (rood 23-09 02:45).
+        gisteren = vandaag_nl() - timedelta(days=1)
+        nu = datetime(gisteren.year, gisteren.month, gisteren.day, 12, 0, tzinfo=TIJDZONE).astimezone(UTC)
         body = {
             "stempels": [
                 {

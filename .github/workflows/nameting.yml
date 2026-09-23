@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -258,6 +258,24 @@ jobs:
             echo "Oordeel: ${TOTAAL:-geen totaalregel} · ${FOUTEN:-fouten onbekend} — job-exit $rc_bua" >> "$UIT"
             echo "STATUS bua-kandidaten: rapport in $UIT (job-exit $rc_bua = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "intake-postvak-audit" ]]; then
+            # 23-09 (Peter 22-09 avond "dubbele controle welke facturen wel en niet zijn doorgekomen"): lees-only audit bron
+            # facturen@kempengroep.nl → doorgifte facturen@ak-nijenhuis.nl → module, per bronbericht (Message-ID, bijlage-sha256),
+            # drie uitvalcategorieën + omgekeerde controle. Draait op rlz-reconciliatie (INTAKE-envset + beide secrets sinds 23-09);
+            # BODY.PEEK, geen writes. Meetrecept "werkt in productie": een Oordeel-regel mét tellers; ROOD = er ontbreken
+            # facturen → herstelrun (`intake-postvak-verwerken --sinds`, job-image) is de handeling.
+            UIT="verkenning/nameting-intake-postvak-audit-$DATUM.txt"
+            rc_ipa=0
+            scripts/gcp/nameting.sh intake-postvak-audit --sinds 2026-07-01 --detail > "$UIT" 2> nameting-ipa.stderr || rc_ipa=$?
+            cat nameting-ipa.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-ipa.stderr; then
+              echo "::error::intake-postvak-audit kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_ipa)" >> "$UIT"
+            grep -q '^Oordeel:' "$UIT" || echo "Oordeel: geen oordeelregel — job-exit $rc_ipa (NIET-GECONFIGUREERD/FOUT in stderr?)" >> "$UIT"
+            echo "STATUS intake-postvak-audit: rapport in $UIT (job-exit $rc_ipa = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "btw-niet-plichtig" ]]; then
             # 22-09 (BUG Peter, casus VGG / Studio Lacy Lion): lees-only nazorgrapport — module-geboekte inkoopfacturen 2026 mét
             # btw ≠ 0 in Vastgoedgroep Nederland + RLZ-crediteurpost/betaald/open per document (uitsluitend GET) → kolom
@@ -409,6 +427,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-veldwerkers-dubbelen-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "btw-niet-plichtig" ]]; then
             OORDEEL_BRON="verkenning/nameting-btw-niet-plichtig-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "intake-postvak-audit" ]]; then
+            OORDEEL_BRON="verkenning/nameting-intake-postvak-audit-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "corrigeren" ]]; then
             OORDEEL_BRON="verkenning/nameting-corrigeren-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "jobs-start" ]]; then

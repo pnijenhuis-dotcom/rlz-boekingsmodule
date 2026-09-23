@@ -797,6 +797,9 @@ def document_detail(
                 ontvangen_op=detail.herkomst_mail.ontvangen_op,
                 body_tekst=detail.herkomst_mail.body_tekst,
                 bron=detail.herkomst_mail.bron,
+                kanaal=detail.herkomst_mail.kanaal,
+                postvak_adres=detail.herkomst_mail.postvak_adres,
+                uit_spam=detail.herkomst_mail.uit_spam,
             )
             if detail.herkomst_mail
             else None

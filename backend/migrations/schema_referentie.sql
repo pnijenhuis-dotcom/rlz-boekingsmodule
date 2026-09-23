@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0170
+-- Migratie-head bij deze dump: 0171
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1663,11 +1663,31 @@ CREATE TABLE boekhouding.intake_bericht (
     detail jsonb NOT NULL,
     body_tekst text,
     kanaal text DEFAULT 'facturen'::text NOT NULL,
-    CONSTRAINT ck_intake_bericht_kanaal CHECK ((kanaal = ANY (ARRAY['facturen'::text, 'declaraties'::text]))),
+    CONSTRAINT ck_intake_bericht_kanaal CHECK ((kanaal = ANY (ARRAY['facturen'::text, 'declaraties'::text, 'facturen_kempengroep'::text]))),
     CONSTRAINT intake_bericht_bron_geldig CHECK ((bron = ANY (ARRAY['eml_upload'::text, 'imap'::text])))
 );
 
 ALTER TABLE ONLY boekhouding.intake_bericht FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: intake_bericht_verwerkt; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.intake_bericht_verwerkt (
+    id uuid NOT NULL,
+    kanaal text NOT NULL,
+    message_id text NOT NULL,
+    uid text,
+    postvak_map text DEFAULT 'INBOX'::text NOT NULL,
+    verwerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    uitkomst text NOT NULL,
+    intake_bericht_id uuid,
+    detail jsonb,
+    CONSTRAINT ck_intake_bericht_verwerkt_uitkomst CHECK ((uitkomst = ANY (ARRAY['verwerkt'::text, 'al_bekend'::text, 'niet_verwerkbaar'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.intake_bericht_verwerkt FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -4921,6 +4941,14 @@ ALTER TABLE ONLY boekhouding.intake_bericht
 
 
 --
+-- Name: intake_bericht_verwerkt intake_bericht_verwerkt_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intake_bericht_verwerkt
+    ADD CONSTRAINT intake_bericht_verwerkt_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: intake_splitsing intake_splitsing_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -6766,6 +6794,13 @@ CREATE INDEX ix_factuurmatch_staat_weekstaat_id ON boekhouding.factuurmatch_staa
 
 
 --
+-- Name: ix_intake_bericht_verwerkt_verwerkt_op; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_intake_bericht_verwerkt_verwerkt_op ON boekhouding.intake_bericht_verwerkt USING btree (verwerkt_op);
+
+
+--
 -- Name: ix_intake_splitsing_uitsluiting_afzender_actief; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -7589,6 +7624,13 @@ CREATE UNIQUE INDEX ux_bank_splitsing_actief_per_mutatie ON boekhouding.bank_spl
 --
 
 CREATE UNIQUE INDEX ux_intake_bericht_message_id ON boekhouding.intake_bericht USING btree (message_id) WHERE (message_id IS NOT NULL);
+
+
+--
+-- Name: ux_intake_bericht_verwerkt_kanaal_message_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_intake_bericht_verwerkt_kanaal_message_id ON boekhouding.intake_bericht_verwerkt USING btree (kanaal, message_id);
 
 
 --
@@ -9226,6 +9268,14 @@ ALTER TABLE ONLY boekhouding.iban_accordeur
 
 ALTER TABLE ONLY boekhouding.intake_bericht
     ADD CONSTRAINT intake_bericht_verwerkt_door_fkey FOREIGN KEY (verwerkt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: intake_bericht_verwerkt intake_bericht_verwerkt_intake_bericht_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intake_bericht_verwerkt
+    ADD CONSTRAINT intake_bericht_verwerkt_intake_bericht_id_fkey FOREIGN KEY (intake_bericht_id) REFERENCES boekhouding.intake_bericht(id) ON DELETE SET NULL;
 
 
 --
@@ -12169,6 +12219,19 @@ ALTER TABLE boekhouding.intake_bericht ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY intake_bericht_scope ON boekhouding.intake_bericht USING (true) WITH CHECK (true);
+
+
+--
+-- Name: intake_bericht_verwerkt; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.intake_bericht_verwerkt ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: intake_bericht_verwerkt intake_bericht_verwerkt_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY intake_bericht_verwerkt_scope ON boekhouding.intake_bericht_verwerkt USING (true) WITH CHECK (true);
 
 
 --

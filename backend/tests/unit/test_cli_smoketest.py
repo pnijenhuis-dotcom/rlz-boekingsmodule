@@ -36,6 +36,7 @@ def test_smoketest_parseert_pingt_en_doet_geen_werk(
         "terugkerend-herbereken-wachtrij",
         "projecten-cijfers-wachtrij",
         "intake-postvak-verwerken",
+        "intake-postvak-kempengroep-verwerken",  # 23-09: job rlz-intake-imap-kempengroep
         "accordeur-herinneringen",
         "nieuwe-facturen-melden",
         "uren-herinneringen",

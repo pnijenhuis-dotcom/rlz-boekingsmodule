@@ -2080,6 +2080,17 @@ export function BoekvoorstelPanel({
                   Declaratie zonder betaalstatus — kies hoe deze al betaald is
                 </div>
               )}
+              {intakeKanaal === 'facturen_kempengroep' && (
+                <div style={{ marginTop: 4 }}>
+                  <span
+                    className="chip"
+                    data-testid="chip-kanaal-kempengroep"
+                    title="Binnengekomen op facturen@kempengroep.nl (direct gelezen, sinds 23-09 geen doorstuur meer) — verwerking identiek aan facturen@ak-nijenhuis.nl."
+                  >
+                    via facturen@kempengroep.nl
+                  </span>
+                </div>
+              )}
             </div>
             {afdelingen.ingeschakeld && (
               <div data-testid="afdeling-veld">

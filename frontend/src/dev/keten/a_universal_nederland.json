@@ -67,7 +67,10 @@
    "onderwerp": "Facturen universal steigerbouw deel 8",
    "ontvangen_op": "2026-09-08T12:00:00Z",
    "body_tekst": "Bijgaand de factuur.",
-   "bron": "imap"
+   "bron": "imap",
+   "kanaal": "facturen",
+   "postvak_adres": "facturen@ak-nijenhuis.nl",
+   "uit_spam": false
   },
   "bron_bestandsnaam": "Universal Nederland B.V - RLZ-2080143037 - 2026-08-01.pdf",
   "tenaamstelling": "Universal Steigerbouw B.V.",

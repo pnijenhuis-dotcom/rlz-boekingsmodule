@@ -34,13 +34,12 @@ from app.migratie.cli_replay import VGG_REPLAY_COMMANDO, register_vgg_replay, ru
 from app.odoo.cli_rj220 import VGG_REKENINGEN_COMMANDO, register_vgg_rekeningen, run_vgg_rekeningen  # run 2 VGG blok 4
 from app.omzet import reconciliatie as omzet_reconciliatie
 from app.panden.cli_cmd import register_panden, run_panden
-from app.panden.toewijzen_cli import PAND_TOEWIJZEN_COMMANDO, register_pand_toewijzen, run_pand_toewijzen  # 21-09 VGG bp 1
-from app.projecten.cli_cmd import PROJECTEN_COMMANDOS, register_projecten, run_projecten  # blok 3 18-09
-from app.uren.dubbelen_cli import (  # opdracht 21-09: veldwerkers-dubbelen (lees-only, harde sleutels)
-    VELDWERKERS_DUBBELEN_COMMANDOS,
-    register_veldwerkers_dubbelen,
-    run_veldwerkers_dubbelen,
+from app.panden.toewijzen_cli import (  # 21-09 VGG bp 1
+    PAND_TOEWIJZEN_COMMANDO,
+    register_pand_toewijzen,
+    run_pand_toewijzen,
 )
+from app.projecten.cli_cmd import PROJECTEN_COMMANDOS, register_projecten, run_projecten  # blok 3 18-09
 from app.projectverdeling.cli_cmd import (  # opdracht 19-09: projectverdeling-afgesloten-rapport (lees-only)
     PROJECTVERDELING_COMMANDOS,
     register_projectverdeling,
@@ -52,6 +51,11 @@ from app.rlz.credentials import GeenRlzCredentials
 from app.rlz.feiten_cli import RLZ_FEITEN_COMMANDO, register_rlz_feiten, run_rlz_feiten
 from app.rlz.lezen_cli import RLZ_LEZEN_COMMANDO, register_rlz_lezen, run_rlz_lezen
 from app.sync import service as sync_service
+from app.uren.dubbelen_cli import (  # opdracht 21-09: veldwerkers-dubbelen (lees-only, harde sleutels)
+    VELDWERKERS_DUBBELEN_COMMANDOS,
+    register_veldwerkers_dubbelen,
+    run_veldwerkers_dubbelen,
+)
 from app.verplichting.cli_cmd import VERPLICHTING_COMMANDOS, register_verplichting, run_verplichting  # 18-09
 
 # Dev-gemak: de RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_-logins staan in verkenning/.env
@@ -2346,6 +2350,7 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
     vastgelegd laat de kantoorbrede lijst de andere blokken verliezen en mailt hun afwijkingen als 'hersteld'."""
     from app.activa import reconciliatie as activa_reconciliatie
     from app.doorbelasting import aansluiting as doorbelasting_aansluiting
+    from app.intake import bewaking as intake_bewaking
     from app.intercompany import factuurmatch, rekening_courant
     from app.projecten import nummer as projecten_nummer
     from app.reconciliatie import rlz_dubbel
@@ -2372,6 +2377,9 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
         # Activa fase 1 (Peter 21-09): aansluiting module-boekingen ↔ RLZ-activaregister (vijf soorten, alle in `meten`);
         # schrappen = deze regel + run.BLOKKEN.
         (activa_reconciliatie.BLOK, activa_reconciliatie.cli_blok),
+        # Postvak-bewaking (Peter 22-09): per kanaal berichten in het postvak sinds gisteren (INBOX + spam, gelezen én
+        # ongelezen) ↔ verwerkt-administratie; verschil = actie-bevinding mét "Nu verwerken"; verbinding stuk = FOUT.
+        (intake_bewaking.BLOK, intake_bewaking.cli_blok),
     )
     alleen = set(getattr(args, "alleen", None) or [])
     lees_only = bool(getattr(args, "lees_only", False))
@@ -2576,46 +2584,134 @@ def _reconciliatie_acceptaties(args: argparse.Namespace) -> int:
 
 
 def _intake_postvak_verwerken(args: argparse.Namespace) -> int:
-    """E-mail-intake (F3.4): leest het centrale IMAP-postvak leeg en verwerkt elk bericht via
-    exact hetzelfde codepad als de .eml-upload (verwerk_eml, idempotent op Message-ID). Actor =
-    de systeem-actor (achtergrondverwerking zonder mens). Een ongeldig bericht (geen parsebare
-    .eml) wordt zichtbaar overgeslagen én in het postvak als gelezen gemarkeerd (geen eeuwige
-    retry-lus) — de run eindigt dan wel op exit 1 zodat de job-failure-alert bijt; een
-    verwerkingscrash laat het bericht ongelezen staan (volgende run = retry)."""
-    verwerkt = al_eerder = fouten = 0
-    # Blok 3 bundel 08-09 (B3): --kanaal declaraties leest het tweede postvak (declaraties@) en markeert het bericht.
+    """E-mail-intake (F3.4; herzien 23-09): leest een intake-postvak en verwerkt elk bericht via exact hetzelfde
+    codepad als de .eml-upload (verwerk_eml, idempotent op Message-ID). Actor = de systeem-actor.
+
+    Sinds 23-09 (Peter 22-09 "er zijn facturen gemaild die niet in onze module staan"): de bron leest ALLE berichten
+    (gelezen én ongelezen) van het venster in INBOX én de spam-map en slaat over wat al in de verwerkt-administratie
+    (`intake_bericht_verwerkt` / `intake_bericht`) staat; élk opgehaald bericht krijgt een verwerkt-rij mét uitkomst
+    (verwerkt / al_bekend / niet_verwerkbaar) en de gelezen-vlag is nog slechts een bijproduct. `--sinds JJJJ-MM-DD`
+    = herstelrun over een langer venster (job-image, `gcloud run jobs execute`), rapport per bericht. Eén audit
+    `intake_postvak_run` per run (dagtellers in de reconciliatiemail). Een ongeldig bericht (geen parsebare .eml) wordt
+    zichtbaar overgeslagen én als niet_verwerkbaar geregistreerd (geen eeuwige retry-lus); de run eindigt dan op exit
+    1 zodat de job-failure-alert bijt; een verwerkingscrash laat het bericht ongeregistreerd (volgende run = retry)."""
+    from datetime import date as _date
+
+    from app.intake import verwerkt as intake_verwerkt
+
+    verwerkt_n = al_eerder = fouten = uit_spam_n = dubbel_forward = 0
     kanaal = getattr(args, "kanaal", None) or "facturen"
+    sinds_tekst = getattr(args, "sinds", None)
+    sinds = _date.fromisoformat(sinds_tekst) if sinds_tekst else None
+    bron = ImapPostvakBron(kanaal, sinds=sinds)
     try:
-        for inhoud in ImapPostvakBron(kanaal).nieuwe_berichten():
+        print(f"Postvak {kanaal}: venster vanaf {bron.venster_vanaf().isoformat()} (INBOX + spam-map, gelezen én ongelezen).")
+        for bericht in bron.nieuwe_berichten():
+            kop = bericht.kop
+            spam = " [SPAM]" if bericht.uit_spam else ""
             try:
                 resultaat = intake_verwerking.verwerk_eml(
-                    inhoud, actor_id=SYSTEEM_ACTOR_ID, bron="imap", kanaal=kanaal
+                    bericht.inhoud, actor_id=SYSTEEM_ACTOR_ID, bron="imap", kanaal=kanaal, postvak_map=kop.map
                 )
             except intake_verwerking.GeenGeldigIntakeBericht as exc:
                 fouten += 1
+                intake_verwerkt.registreer(
+                    kanaal=kanaal,
+                    sleutel=bericht.sleutel,
+                    uid=kop.uid,
+                    postvak_map=kop.map,
+                    uitkomst=intake_verwerkt.UITKOMST_NIET_VERWERKBAAR,
+                    intake_bericht_id=None,
+                    detail={"reden": str(exc)[:500], "afzender": kop.afzender, "onderwerp": kop.onderwerp},
+                )
                 print(
-                    f"FOUT  ongeldig bericht overgeslagen (blijft in het postvak, gemarkeerd als gelezen): {exc}",
+                    f"NIET-VERWERKBAAR {bericht.sleutel}{spam}: ongeldig bericht overgeslagen (geregistreerd, blijft in het "
+                    f"postvak): {exc}",
                     file=sys.stderr,
                 )
                 continue
             if resultaat.al_eerder_verwerkt:
                 al_eerder += 1
-                print(f"AL-VERWERKT {resultaat.bericht_id}")
+                uitkomst = intake_verwerkt.UITKOMST_AL_BEKEND
+                print(f"AL-VERWERKT {resultaat.bericht_id}{spam} ({bericht.sleutel})")
             else:
-                verwerkt += 1
+                verwerkt_n += 1
+                uitkomst = intake_verwerkt.UITKOMST_VERWERKT
+                if bericht.uit_spam:
+                    uit_spam_n += 1
                 bijlagen = ", ".join(f"{r.bestandsnaam}={r.uitkomst}" for r in resultaat.bijlagen)
                 print(
-                    f"VERWERKT {resultaat.bericht_id}: {len(resultaat.bijlagen)} bijlage(n)"
+                    f"VERWERKT {resultaat.bericht_id}{spam}: {len(resultaat.bijlagen)} bijlage(n)"
                     + (f" — {bijlagen}" if bijlagen else "")
                 )
+            forward_dubbel = bool(resultaat.bericht_id) and intake_verwerkt.dubbel_via_forward(resultaat.bericht_id)
+            if forward_dubbel:
+                dubbel_forward += 1
+                print(f"DUBBEL-VIA-FORWARD {resultaat.bericht_id}: zelfde bijlage kwam al via een ander kanaal binnen")
+            intake_verwerkt.registreer(
+                kanaal=kanaal,
+                sleutel=bericht.sleutel,
+                uid=kop.uid,
+                postvak_map=kop.map,
+                uitkomst=uitkomst,
+                intake_bericht_id=resultaat.bericht_id,
+                detail={
+                    "afzender": kop.afzender,
+                    "onderwerp": kop.onderwerp,
+                    "gelezen_vooraf": kop.gelezen,
+                    "dubbel_via_forward": forward_dubbel,
+                },
+            )
     except PostvakNietGeconfigureerd as exc:
         print(f"NIET-GECONFIGUREERD {exc}", file=sys.stderr)
         return 1
     except PostvakFout as exc:
         print(f"FOUT  {exc}", file=sys.stderr)
         return 1
-    print(f"Postvak verwerkt: {verwerkt} nieuw, {al_eerder} al eerder verwerkt, {fouten} ongeldig.")
+    telling = intake_verwerkt.RunTelling(
+        kanaal=kanaal,
+        gezien=bron.telling.gezien,
+        gezien_spam=bron.telling.gezien_spam,
+        verwerkt=verwerkt_n,
+        al_bekend=al_eerder,
+        niet_verwerkbaar=fouten,
+        uit_spam=uit_spam_n,
+        dubbel_via_forward=dubbel_forward,
+        overgeslagen_bekend=bron.telling.overgeslagen_bekend,
+        venster_vanaf=bron.venster_vanaf().isoformat(),
+    )
+    intake_verwerkt.schrijf_run_audit(telling)
+    print(
+        f"Postvak verwerkt ({kanaal}): {verwerkt_n} nieuw, {al_eerder} al eerder verwerkt, {fouten} ongeldig; "
+        f"{bron.telling.gezien} in het venster gezien ({bron.telling.gezien_spam} in spam), "
+        f"{bron.telling.overgeslagen_bekend} al bekend overgeslagen, {uit_spam_n} uit spam verwerkt, "
+        f"{dubbel_forward} dubbel via forward."
+    )
     return 1 if fouten else 0
+
+
+def _intake_postvak_audit(args: argparse.Namespace) -> int:
+    """LEES-ONLY dubbele mailbox-audit (Peter 22-09 avond "laat hem de mailbox goed controleren welke facturen wel
+    en niet zijn doorgekomen"): bron facturen@kempengroep.nl ↔ doorgifte facturen@ak-nijenhuis.nl ↔ module.
+    BODY.PEEK op beide postvakken (zet geen vlag), geen writes; draait op de job-image (beide IMAP-credentials)."""
+    from datetime import date as _date
+
+    from app.intake import postvak_audit
+
+    sinds = _date.fromisoformat(args.sinds)
+    try:
+        rapport = postvak_audit.voer_uit(
+            sinds=sinds, kanaal_bron=args.kanaal_bron, kanaal_doel=args.kanaal_doel, detail=bool(args.detail)
+        )
+    except PostvakNietGeconfigureerd as exc:
+        print(f"NIET-GECONFIGUREERD {exc}", file=sys.stderr)
+        return 1
+    except PostvakFout as exc:
+        print(f"FOUT  {exc}", file=sys.stderr)
+        return 1
+    for regel in postvak_audit.rapport_regels(rapport, detail=bool(args.detail)):
+        print(regel)
+    return 0
 
 
 def _accordeur_herinneringen(args: argparse.Namespace) -> int:
@@ -3571,13 +3667,38 @@ def main(argv: list[str] | None = None) -> int:
         "meldt het commando expliciet dat de bron niet geconfigureerd is).",
     )
     # Blok 3 bundel 08-09 (B3): tweede postvak declaraties@ak-nijenhuis.nl (INTAKE_DECLARATIES_IMAP_*-envs).
+    # 23-09: derde postvak facturen@kempengroep.nl DIRECT (INTAKE_KEMPENGROEP_IMAP_*-envs, job rlz-intake-imap-kempengroep).
     intake_postvak_parser.add_argument(
         "--kanaal",
-        choices=("facturen", "declaraties"),
+        choices=("facturen", "declaraties", "facturen_kempengroep"),
         default="facturen",
-        help="Welk postvak: facturen (default, facturen@) of declaraties (declaraties@ — documenten krijgen "
-        "betaalstatus 'Betaald per bank').",
+        help="Welk postvak: facturen (default, facturen@ak-nijenhuis.nl), declaraties (declaraties@ — documenten krijgen "
+        "betaalstatus 'Betaald per bank') of facturen_kempengroep (facturen@kempengroep.nl, direct gelezen).",
     )
+    intake_postvak_parser.add_argument(
+        "--sinds",
+        default=None,
+        help="Herstelrun (23-09): begin van het leesvenster als JJJJ-MM-DD i.p.v. de standaard "
+        "INTAKE_POSTVAK_VENSTER_DAGEN — leest INBOX + spam-map, gelezen én ongelezen; alles wat nog niet in de "
+        "verwerkt-administratie staat wordt alsnog verwerkt (bestaande dedup houdt dubbelen tegen).",
+    )
+    # 23-09: eigen job-alias voor facturen@kempengroep.nl (deploy.yml F3-lus draagt één CLI-woord per job, geen
+    # argumenten — de smoketest start élke job mét `--smoketest <cli>`).
+    subparsers.add_parser(
+        "intake-postvak-kempengroep-verwerken",
+        help="Job rlz-intake-imap-kempengroep: identiek aan `intake-postvak-verwerken --kanaal facturen_kempengroep` "
+        "(facturen@kempengroep.nl direct gelezen, geen Gmail-forward meer).",
+    ).add_argument("--sinds", default=None, help="Herstelrun: begin van het leesvenster (JJJJ-MM-DD).")
+    intake_audit_parser = subparsers.add_parser(
+        "intake-postvak-audit",
+        help="LEES-ONLY (23-09): dubbele mailbox-audit bron facturen@kempengroep.nl → doorgifte facturen@ak-nijenhuis.nl "
+        "→ module, per bronbericht (Message-ID, bijlage-sha256), mét de drie uitvalcategorieën en de omgekeerde "
+        "controle (rechtstreekse leveranciers zonder module-spoor). BODY.PEEK, geen writes; job-image (beide credentials).",
+    )
+    intake_audit_parser.add_argument("--sinds", required=True, help="Begin van het venster, JJJJ-MM-DD (bv. 2026-07-01).")
+    intake_audit_parser.add_argument("--kanaal-bron", default="facturen_kempengroep", choices=("facturen_kempengroep", "facturen"))
+    intake_audit_parser.add_argument("--kanaal-doel", default="facturen", choices=("facturen", "facturen_kempengroep"))
+    intake_audit_parser.add_argument("--detail", action="store_true", help="Ook de rij per bronbericht printen (default: alleen tellers + uitval).")
 
     subparsers.add_parser(
         "accordeur-herinneringen",
@@ -4043,6 +4164,11 @@ def main(argv: list[str] | None = None) -> int:
         return _zet_reconciliatie_uitsluiting(args, uitgesloten=False)
     if args.commando == "intake-postvak-verwerken":
         return _intake_postvak_verwerken(args)
+    if args.commando == "intake-postvak-kempengroep-verwerken":
+        args.kanaal = "facturen_kempengroep"
+        return _intake_postvak_verwerken(args)
+    if args.commando == "intake-postvak-audit":
+        return _intake_postvak_audit(args)
     if args.commando == "accordeur-herinneringen":
         return _accordeur_herinneringen(args)
     if args.commando == "nieuwe-facturen-melden":

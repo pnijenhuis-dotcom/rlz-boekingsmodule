@@ -622,6 +622,11 @@ class TestCliReconciliatieAlles:
         from app.reconciliatie import rlz_dubbel
 
         monkeypatch.setattr(rlz_dubbel, "toets_alle", lambda **kw: rlz_dubbel.RlzDubbelResultaat())
+        # Postvak-blok `intake` (23-09) leeg gestubd: zonder IMAP-instellingen meldt het per kanaal-mét-job een FOUT
+        # (nooit stil) — eigen dekking in tests/reconciliatie/test_intake_bewaking.py.
+        from app.intake import bewaking as intake_bewaking
+
+        monkeypatch.setattr(intake_bewaking, "cli_blok", lambda *a, **kw: 0)
         from app.documenten.reconciliatie import ReconciliatieAfwijking, ReconciliatieRapport
         from app.doorbelasting.reconciliatie import (
             DoorbelastingReconciliatieResultaat,

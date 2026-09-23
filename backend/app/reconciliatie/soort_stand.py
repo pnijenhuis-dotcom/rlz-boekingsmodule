@@ -141,6 +141,18 @@ REGISTRY: dict[str, SoortDefinitie] = {
         SoortDefinitie(soort="activum_zonder_boeking", blok="activa", sinds=date(2026, 9, 21), default=METEN),
         SoortDefinitie(soort="afschrijving_niet_gelopen", blok="activa", sinds=date(2026, 9, 21), default=METEN),
         SoortDefinitie(soort="activum_aanmaken_mislukt", blok="activa", sinds=date(2026, 9, 21), default=METEN),
+        # intake (Peter 22-09): berichten in het postvak sinds gisteren zonder verwerking — het bewijs is de Message-ID
+        # in de mailbox zelf, de handeling is deterministisch ("Nu verwerken" = de intake-job opnieuw starten). Besluit
+        # Peter in de opdracht: "verschil > 0 = actie-bevinding mét de Message-ID's en knop Nu verwerken".
+        SoortDefinitie(
+            soort="intake_postvak_verschil",
+            blok="intake",
+            sinds=date(2026, 9, 23),
+            default=ACTIE,
+            direct_actie_reden="Peter 22-09 (opdracht intake tweede postvak): verschil postvak ↔ verwerkt is een "
+            "telling aan de bron mét de Message-ID's als bewijs en één deterministische handeling (Nu verwerken); "
+            "explosie-rem blijft",
+        ),
     )
 }
 
