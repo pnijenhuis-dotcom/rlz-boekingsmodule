@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-23 (avond), rapport: docs/rapporten/2026-09-23-activa-kaart-afschrijvingsrekening-conventie-422-actie-stap0.md
+
 Domeinen: activa, reconciliatie, werkvoorraad-controlescherm, kantoor-frontend
 
 # BUG — activa-kaart: "Activum aanmaken" slaagt op de kaart, mislukt ná boeken op "geen afschrijvingsrekening" (BLOw 23-09, 2 ×); geen mens ziet het

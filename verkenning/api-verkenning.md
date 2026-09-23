@@ -2619,6 +2619,44 @@ respons 204, altijd terug-lezen; (3) RLZ berekent `CurrentDepreciationValue` zel
 `CurrentDepreciationValue == 0` ná ≥ 12 maanden, zonder eigen berekening; (4) Universal/Rubicon vergen het RLZ-recht "Vaste activa" op de
 webservice-login (klikpunt Peter) — tot dan is het register daar zichtbaar "niet leesbaar".
 
+## FixedAssets — aanmaakroute STAP-0 (BUG 24-09; Peter 23-09 BLOw MK Illumination MK22507863: `PUT FixedAssets/{client-guid}` → 404 `NotFound_FixedAsset`) — deel 1 LEES-ONLY (publieke Help + `nameting.sh rlz-lezen` Pilates Bloom, 23-09 avond); deel 2 SCHRIJVEND = klikpunt Peter op de RLZ-testadministratie
+
+Aanleiding: de eerste PUT die de fase-1-motor ooit tot RLZ bracht (BLOw, geboekte inkoopfactuur MK22507863, 0107 Kantoorinventaris,
+€ 1.078,10, aanschaf 18-12-2025, Lineair 60 mnd, mét afschrijvingsrekening) kreeg `PUT /3d30c36b…/FixedAssets/619639aa-7426-59f5-8cb9-8bf78b2eeebd
+-> 404 {"Message":"NotFound_FixedAsset"}`. De conclusie (2) van "Activa — STAP-0 21-09" ("een activum aanmaken = PUT FixedAssets/{client-GUID}
+… respons 204") was NIET getest en klopt zo niet. GEEN write in deze STAP-0 (CC schrijft nooit op een klantadministratie; de
+testadministratie `faae29c5` is gearchiveerd zonder credential).
+
+| # | Route / bron | Uitkomst |
+|---|---|---|
+| c1 | `GET /Help` (publiek, 591 kB) — alle routes mét "FixedAsset" | **Alleen `PUT {adminId}/FixedAssets/{id}`** (+ zonder adminId), `GET FixedAssets[/{id}]`, `DELETE FixedAssets/{id}`, `GET/POST FixedAssets/{id}/Actions`, `GET FixedAssets/{id}/DocumentTaskHistory`, `GET Products/{id}/FixedAssets`. **Er is GEEN `PUT FixedAssets` (collectie zonder id) en GEEN `POST FixedAssets`** — hypothese (a) uit de opdracht vervalt. Ter vergelijking: PurchaseInvoices heeft óók alleen `PUT …/{id}` als aanmaakroute + `POST PurchaseInvoices/Actions` (collectie-acties); FixedAssets heeft geen collectie-Actions. |
+| c2 | `Help/Api/PUT-adminId-FixedAssets-id` | Beschrijving letterlijk **"Create or Update {1} {0}"** — de Help zégt dus dat PUT-met-id aanmaakt (zelfde tekst als bij de documentroutes). Body-DTO `FixedAsset` = het volledige document-DTO (a2) mét `Entity`, `Currency`, `Language`, `PaymentAccount`, `PaymentMethod`, `Token`, `DocumentCategory`, `DocumentType`, `Status`, `Reference`, `ReceiptNumber`, `Date`, `DueDate`; "Sample not available". Geen enkel veld is als verplicht gemarkeerd ("None."). |
+| c3 | `Help/ResourceModel?modelName=FixedAssetMutation` | Een activum-mutatie draagt `Type` (AssetMutationType), `MutationAmount`, `BookDate`, `Sequence`, `RemainingAmount`, `BaseNetAmount`/`BaseTaxAmount`, `TaxRate`, `Quantity`, **`Document` (FixedAsset) én `DocumentReference` (Document)** — een Purchase-mutatie kan dus naar het inkoopdocument verwijzen. `AssetMutationType`: 1 Purchase, 3 Sale, 4 Revaluate, 5 Depreciate, 6 Manual, **7 OpenBalance, 8 StockCorrection** (21-09 miste 7/8). |
+| c4 | `Help/ResourceModel?modelName=ActionKind` (volledige lijst, 218 waarden) | Activa-relevant: **112 `DepreciateFixedAsset`** (de afschrijf-actie op `FixedAssets/{id}/Actions`), 133 `CalculateDocument`, 160 `ProposeNewDocument`, 161 `LinkNewDocument`. Géén "CreateFixedAsset"/"ActivateFixedAsset": aanmaken loopt niet via een actie op de inkoopfactuur — hypothese (b) uit de opdracht heeft geen ActionKind. |
+| c5 | `GET {adminId}/FixedAssets/<id>?$expand=BalanceAccount,DepreciationAccount,DepreciationMethod,FixedAssetMutationList,JournalEntryList,Entity,Type` Pilates Bloom, record-vorm via `--record-via-filter "ReceiptNumber eq '1'"` (executie `rlz-reconciliatie-mnjhk`) | **200 — de record-vorm geeft WÉL alles wat de collectie op 21-09 verzweeg.** Activum "Computer software", `TotalAmountPurchase` 10.000, `PurchaseDate` 2024-11-18, `FirstDepreciationMonth/Year` 12/2024, `NumberOfMonths` 60, `Type` 1, `Status` 2, `DocumentType` 20, `Entity` NIET in het antwoord (null/afwezig), `InvoiceReference` null. **`BalanceAccount` = 0113 Computersoftware (AccountType 3, `IsFixedAssetAccount` true); `DepreciationAccount` = 4706 Afschrijvingskosten computersoftware (AccountType 2 = KOSTEN, `IsFixedAssetAccount` false).** `DepreciationMethod` {NumberOfMonths 60, "Lineair 5 jaar", DepreciationBaseMethod 1}. `FixedAssetMutationList`: 26 mutaties — **Sequence 1 = Type 6 Manual, MutationAmount 10.000, BookDate 2024-11-18 (= PurchaseDate)**, daarna Type 5 Depreciate à 167,00 per maand (1-12-2024 … 1-12-2026, `RemainingAmount` aflopend 10.000 → 5.825); `JournalEntryList`: één journaalpost per maand, `DocumentType` 20, **`EventID` 61** (= de soortcode van een afschrijvingspost, open punt a8 van 16-09 hiermee beantwoord). |
+
+**Conclusies deel 1 (lees-only):**
+1. **`DepreciationAccount` is in het échte register een KOSTENrekening (4706, AccountType 2), geen 0xxx-balansrekening.** Onze
+   keuzelijst `afschrijving_ledger_opties` (0xxx, soort 3) en de conventie code + 1 uit de BUG-opdracht ("0107 → 0108 Afschrijving
+   kantoormeubilair") wijzen op de cumulatieve-afschrijvingsrekening op de balans. Of RLZ die als `DepreciationAccount` accepteert, of de
+   kostenrekening 4xxx eist (en de balans-tegenrekening zelf afleidt), is een BESLISPUNT dat alleen de schrijvende STAP-0 beantwoordt —
+   het is bewust NIET geraden en de conventie is exact zoals opgedragen gebouwd (geen RLZ-write tot deel 2).
+2. Een bestaand activum heeft altijd ≥ 1 mutatie; het handmatig ingevoerde activum begint met **Type 6 Manual** ter grootte van de
+   aanschafwaarde op de aanschafdatum. Meest waarschijnlijke oorzaak van de 404: RLZ kan een FixedAsset zonder `FixedAssetMutationList`
+   niet materialiseren en antwoordt daarna "NotFound" op het zojuist gePUTte id (het 204-vermoeden van 21-09 was nooit bewezen).
+3. Er is geen aanmaakroute buiten `PUT FixedAssets/{id}`; hypothesen (a) collectie-PUT/POST en (b) actie op de inkoopfactuur vervallen.
+
+**Deel 2 — SCHRIJVENDE STAP-0 = klikpunt Peter (testadministratie "Administratiekantoor Nijenhuis (test)" `faae29c5` dearchiveren mét
+TESTADMIN-login + Boeken AAN; CC schrijft niet, zie werkloop-regel 22-09):** drie PUT-varianten op één TEST-inkoopfactuur (TEST-ACTIVA-…,
+0107 ≥ € 450), élk op een eigen client-GUID, ná élke PUT `GET FixedAssets/{id}`:
+- V0 (controle) = het huidige body van `maak_aan_in_rlz` (BalanceAccount 0107, DepreciationAccount 0108, DepreciationMethod Lineair 5 jaar, geen mutatie) → verwacht 404 (reproductie);
+- V1 = V0 + `FixedAssetMutationList: [{Type: 1, MutationAmount: <aanschaf>, BookDate: <aanschafdatum>, DocumentReference: {id: <TEST-inkoopfactuur>}}]`;
+- V2 = V0 + `FixedAssetMutationList: [{Type: 6, MutationAmount: <aanschaf>, BookDate: <aanschafdatum>}]` (de vorm van het Pilates-Bloom-activum);
+- V3 = de winnaar van V1/V2 mét `DepreciationAccount` = een 4xxx-kostenrekening "Afschrijving…" i.p.v. 0108 — beantwoordt beslispunt 1.
+Uitkomst vastleggen hieronder + `maak_aan_in_rlz` aanpassen; testactiva blijven staan (nooit verwijderen; `IsArchived` alleen door een
+mens in RLZ). Tot dan toont de kaart bij deze fout "aanmaken in Reeleezee nog niet mogelijk — wordt onderzocht" en is de bevinding
+`activum_aanmaken_mislukt_mens` een actie.
+
 ## AdministrationSettings.EnableTaxReporting = de btw-status van de administratie (STAP-0 22-09, BUG "niet-btw-plichtige administratie") — LEES-ONLY via `nameting.sh rlz-lezen`
 
 Aanleiding: Vastgoedgroep Nederland B.V. is niet btw-plichtig (besluit Peter 13-09, `odoo/rj220.py`); de module splitste Studio Lacy Lion

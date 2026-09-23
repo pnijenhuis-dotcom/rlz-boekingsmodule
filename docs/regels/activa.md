@@ -69,3 +69,41 @@
   Bijvangst: `is_activa` staat bij BLOw op 4 van 8 0xxx-balansrekeningen (0103/0105/0109/0115 dragen in RLZ geen `IsFixedAssetAccount`) — een factuur op
   0109 Bedrijfsinventaris krijgt géén kaart; klant-instelling in RLZ, geen module-fout. Klikpunt Peter blijft: RLZ-recht "Vaste activa" op de logins van
   Universal Steigerbouw en Rubicon Investments (register 2 × niet leesbaar).
+
+<!-- toegevoegd 23-09-2026 avond, opdracht "2026-09-24-BUG-activa-kaart-aanmaken-mislukt-geen-afschrijvingsrekening-blow" -->
+- **BUG 24-09 GEBOUWD (23-09 avond; geen migratie; BESLISSINGEN "ACTIVA / MVA — FASE 1 GEBOUWD (Peter 21-09)" alinea "BUG 24-09";
+  rapport `docs/rapporten/2026-09-23-activa-kaart-afschrijvingsrekening-conventie-422-actie-stap0.md`) — vier regels:**
+  (1) **Afschrijvingsrekening deterministisch voorgevuld** (`app/activa/afschrijving.py`, winnaarsvolgorde in `voorstel.bepaal_afschrijving`):
+  vastgelegd op de koppeling > instelling per categorie > CONVENTIE = de rekening van dezelfde administratie mét code = balansrekening-code + 1
+  binnen dezelfde 0xxx-reeks (zelfde lengte, blijft met '0' beginnen: 0107→0108, 0001→0002, 01100→01101, 0999→niets) ÉN naam die begint met
+  "Afschrijving", alleen niet-verdwenen, niet-totaalrekeningen soort 3; precies één treffer = voorgevuld mét herkomst `conventie` (chip
+  "voorgevuld: conventie (code + 1)" op de kaart, `KandidaatDto.afschrijving_bron` koppeling|instelling|conventie|null), nul of meer = leeg.
+  Nooit AI, nooit naam-raden (Peter 23-09: "kunnen wij de afschrijvingsregel ook niet automatiseren obv de gekozen activa-regel?" — ja, zo).
+  Guards `tests/activa/test_afschrijving.py` (BLOw-schema acht paren + Rubicon 01100… zonder conventie + dubbel/verdwenen/totaal/kosten/andere
+  administratie), gouden-set-casus ag (0107 → 0108 zonder instelling, POST zonder body). (2) **Nooit meer "gepland zonder
+  afschrijvingsrekening":** `plan_of_maak_aan` weigert mét `AfschrijvingsrekeningVereist` (→ 422, tekst letterlijk "Kies een afschrijvingsrekening
+  — RLZ vereist er één per activum", route-test) als mens-keuze én voorvulling leeg zijn; de kaart toont de combobox dan verplicht (`vereist`
+  + `fout` = rode rand, `role=alert`-tekst) en de knop staat uit (zelfde patroon als `registerDicht`); "Niet activeren…" blijft aan. Het
+  vangnet in `maak_aan_in_rlz` blijft en kent nu óók de conventie (koppelingen van vóór de fix mét `afschrijving_ledger_id` NULL — de BLOw-stand
+  — krijgen ná boeken alsnog 0108). (3) **`mislukt` ná een MENS-klik = actie, niet meten:** nieuwe bevindingssoort
+  `activum_aanmaken_mislukt_mens` (blok activa, `sinds` 24-09, code-default `actie` via `SoortDefinitie.direct_actie_reden` — derde uitzondering
+  ná `intussen_extern_geboekt` en `intake_postvak_verschil`, guard pint de lijst; explosie-rem blijft) voor koppelingen `mislukt` mét herkomst
+  `mens`; `herkomst automatisch` blijft `activum_aanmaken_mislukt` in `meten`. Handeling op de rij: `OpnieuwAanmakenActie` (Inzicht ›
+  Reconciliatie, blok "Activa") = de bestaande route `POST …/activa-voorstel/{regel}/aanmaken` zonder body (server neemt de voorvulling);
+  422 = de zin van de server op de rij + deeplink naar het controlescherm (`_doel_pad` kent nu blok activa). Detail draagt
+  `herkomst`/`koppeling_id`/`document_id`/`regel_volgnummer`. Verwacht ná deploy: de 2 BLOw-rijen van 23-09 verschijnen in de run van 24-09
+  06:30 als `activum_aanmaken_mislukt_mens` in `actie` (actiemail), de oude `activum_aanmaken_mislukt`-rijen sluiten mét
+  `reconciliatie_auto_gesloten`. (4) **`PUT FixedAssets/{client-guid}` → 404 `NotFound_FixedAsset` (Peter 23-09, BLOw MK Illumination
+  MK22507863):** `maak_aan_in_rlz` vangt een 404 op de PUT en zet de koppeling `mislukt` mét de nette reden `REDEN_AANMAAKROUTE_ONBEKEND`
+  ("aanmaken in Reeleezee nog niet mogelijk — wordt onderzocht …"; ruwe RlzApiError in het audit `rlz_body.rlz_fout`); FakeBoekClient
+  `faal_op="fixed_asset_put_404"`. **STAP-0 deel 1 (lees-only, api-verkenning "FixedAssets — aanmaakroute STAP-0"):** de publieke Help kent
+  ALLEEN `PUT FixedAssets/{id}` ("Create or Update"), geen collectie-PUT/POST en geen aanmaak-ActionKind (112 = DepreciateFixedAsset); het échte
+  Pilates-Bloom-activum (record-vorm) heeft **`DepreciationAccount` = 4706 Afschrijvingskosten (KOSTENrekening, AccountType 2)**, niet een
+  0xxx-rekening, en begint mét een `FixedAssetMutation` Type 6 Manual ter grootte van de aanschaf op de aanschafdatum (afschrijvingsposten
+  `EventID` 61). **Beslispunt/STAP-0 deel 2 = klikpunt Peter** (testadministratie dearchiveren, drie PUT-varianten V0/V1/V2 + V3 met een
+  4xxx-kostenrekening — recept in api-verkenning); pas dan wordt `maak_aan_in_rlz` aangepast. De conventie 0xxx is exact zoals opgedragen
+  gebouwd en niet geraden; of RLZ een balansrekening als `DepreciationAccount` accepteert is open. **Herstel BLOw (23619 € 935,00 /
+  06052 € 680,00 / MK22507863 € 1.078,10) = klikpunt Peter ná deploy én ná STAP-0 deel 2** — vóór de aanmaakroute bewezen is geeft
+  "Opnieuw aanmaken" opnieuw de nette 404-reden. Meetlat: dispatch-onderdeel `activa-kaart` (request-log POST aanmaken 200/422/5xx,
+  job-log mislukt-regels, `db-lezen activa-stand`/`reconciliatie-bevindingen` BLOw + Pilates, `rlz-lezen FixedAssets` BLOw); vervolg-opdracht
+  `opdrachten/inbox/2026-09-24-nameting-activa-kaart-na-deploy.md` (`niet vóór: 2026-09-24 07:15`). Werkt in productie: niet gemeten.
