@@ -12090,6 +12090,31 @@ request-log (route-latency `POST …/checks` zonder voorverwarm): 21-09 n=149 p5
 (regel 19-09) → `TestCliChecksCacheLegen::test_cli_alles_vorm…`. Vervolg-opdracht `2026-09-23-nameting-iban-wissel-cache-mens-en-server-timing.md`
 (`niet vóór: 2026-09-23 09:00`) voor (a)–(c) én de eerste `server_timing`-regels ná deze deploy.
 
+**Gemeten 23-09 (nameting-opdracht `2026-09-23-nameting-iban-wissel-cache-mens-en-server-timing`, rapport `docs/rapporten/2026-09-23-nameting-iban-wissel-cache-mens-en-server-timing.md`):** deploy-check
+groen (service én `rlz-reconciliatie` op `3e17648`; `80aa473` mét `app/logboek.py` live sinds deploy `1018bcf`, klaar 22-09 08:43Z =
+10:43 NL; `main..origin/main` 0). **(4) `server_timing` — werkt in productie: JA:** 126 JSON-regels 22-09 08:52Z → 23-09 07:55Z
+(`boekvoorstel_checks` 35, waarvan 20 mét externe run; `boekvoorstel_checks_voorverwarm` 41; `boekvoorstel_opslaan` 50);
+`checks.extern` op de mens-route n=20 p50 661 ms / p95 1.826 ms (max 3.291), voorverwarm n=35 p50 667 / p95 2.231; `checks.lokaal`
+p50 469 / p95 1.041; cache-lezing p50 46 ms. De doelmeting "externe rijen ≤ 1,5 s bij voorverwarmd" haalt de p95 nog niet (n klein) —
+het beslispunt "15 min omhoog" kan nu wél op data wachten (een week meten). **(3) audit `checks_cache_ongeldig` — werkt in productie: JA
+voor het veld** (replica-sweep per administratie, 79): 9 `leverancier_iban_toegevoegd`-rijen sinds de deploy in drie administraties
+(Kempen Facilities `66e1e296` 3 × rlz_seed + 1 × bevestigd; `5419878c` bevestigd/baseline/rlz_seed; `4e7732c5` baseline/rlz_seed), álle
+mét `checks_cache_ongeldig: 0` (geen geldige cache-rij op dat moment); 0 vier-ogen-akkoorden → het akkoord-pad (≥ 1) blijft niet gemeten.
+**(1) Meyer 0015.21.664.V.51.0112 — niet gemeten:** onveranderd `ter_accordering` sinds 21-09 10:17:59 NL, laag 3 (klant-accordeur) open,
+geen boekstuknummer, 0 requests op het document sinds de deploy; cache-rij `ongeldig:` (nazorg 22-09). **(2) `?extern=vers` — 0 × in
+76 checks-requests (44 op 22-09, 32 op 23-09 tot 10:00 NL; 41 voorverwarm) — én ROOD gevonden:** de al-vertrouwd-route is op 23-09
+07:50:37Z wél door een mens geraakt (Kempen Facilities, document `40ef6c53`, `POST …/iban-accordering` → **400**, 82 ms; de enige
+bereikbare 400 gezien de stand: crediteur `82f817dc` gezet, `te_controleren`, geen open accordering — het aangeboden IBAN stond dus
+al in de set, de factuur-IBAN NL61RABO… niet), maar het scherm (`IbanAanbiedenVorm`) herkende alleen **409** → geen `extern=vers`,
+kale foutmelding, document bleef `te_controleren`; de "één bron"-route van 21-09 had in productie nooit kunnen vuren. **Fix in
+dezelfde run:** router geeft `IbanAlVertrouwd` als 409 (conflict mét de huidige set; `GeenCrediteurOpVoorstel` blijft 400), het
+scherm herkent 409 én 400 op de tekst (`isAlVertrouwdAntwoord`, overgangsveilig), router-test
+`TestAanbiedenRouteStatuscode`, gouden-set-casus af toetst de route (409), vitest `it.each([409, 400])`. **Dispatch-onderdeel
+`checks-cache`** (regel 21-09 (1): tweede "niet gemeten" → workflow): request-log checks/voorverwarm/`extern=vers`, `POST
+…/iban-accordering` per status, `server_timing` p50/p95 per stap (7 dagen); vier plekken + `via_gh_onderdeel`. Vervolg poging 3
+`2026-09-24-nameting-iban-wissel-cache-poging-3.md` (`niet vóór: 2026-09-24 09:00`, laatste poging vóór `mislukt/`). Les: de eerste
+audit-sweep gaf vals 0 door stil mislukte gcloud-calls (`2>/dev/null` + parallelle proxies) — zie `werkloop-productie.md` 23-09.
+
 ## ACTIVA / MVA — FASE 1 GEBOUWD (Peter 21-09)
 
 **Status: AKKOORD Peter 21-09 ("activa, JA") op `docs/ONTWERP_ACTIVA_MVA.md` mét alle defaults §8 → FASE 1 GEBOUWD 21-09 (migratie 0168);

@@ -329,6 +329,18 @@
   `leverancier_iban_toegevoegd`-audit (ook bevestig/seed/baseline); `server_timing`-logregel bereikte Cloud Logging nooit →
   `app/logboek.py`. Vervolg `2026-09-23-nameting-iban-wissel-cache-mens-en-server-timing.md`.
 
+<!-- toegevoegd 23-09-2026, opdracht "nameting-iban-wissel-cache-mens-en-server-timing" -->
+- **Gemeten 23-09 + de al-vertrouwd-route is een 409 (BESLISSINGEN "CHECKS-CACHE — INVALIDATIE OP DE BRON (IBAN-akkoord) 21-09" alinea "Gemeten 23-09"; rapport `docs/rapporten/2026-09-23-nameting-iban-wissel-cache-mens-en-server-timing.md`):**
+  `server_timing` komt sinds de deploy van 22-09 aan (126 regels; `checks.extern` mens-route p50 661 / p95 1.826 ms, n=20) en het
+  audit-veld `checks_cache_ongeldig` staat op élke `leverancier_iban_toegevoegd`-rij (9 sinds de deploy, alle 0, geen akkoord). Meyer
+  0015.21.664.V.51.0112 onveranderd (laag 3 open) en `?extern=vers` 0 × = niet gemeten. **ROOD gevonden en gefixt:** `POST
+  …/iban-accordering` op een IBAN dat al in de vertrouwde set staat gaf **400**, het scherm herkende alleen **409** — op 23-09 07:50Z
+  kreeg een mens (Kempen Facilities) de kale fout zonder verse controle. Regel: `IbanAlVertrouwd` = 409 (conflict mét de huidige
+  set; zonder crediteur blijft 400), het scherm herkent 409 én 400 op de letterlijke tekst (`isAlVertrouwdAntwoord`); een
+  status-contract tussen scherm en server staat in een ROUTE-test (`TestAanbiedenRouteStatuscode`, gouden-set-casus af) en in de
+  vitest aan beide kanten — een service-level `pytest.raises` bewijst niets over de HTTP-status. Meetlat voortaan als
+  dispatch-onderdeel `checks-cache` (`gh workflow run nameting -f onderdeel=checks-cache`).
+
 <!-- toegevoegd 21-09-2026, opdracht "corrigeren-knop-geboekt-document-storno-plus-opnieuw-klaarzetten" -->
 - **"Corrigeren…" op een geboekt document — storno (actie 19) + opnieuw klaarzetten vanuit de module (Peter 21-09 "laten we die
   terugboeken meenemen", casus BLOW RLZ-04-00000357/358 fout btw-bedrag, "ik kan de storno-knop niet meer vinden"; geen migratie;

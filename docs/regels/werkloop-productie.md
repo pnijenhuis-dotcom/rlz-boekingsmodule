@@ -304,3 +304,16 @@
   `gcloud run jobs execute rlz-intake-imap[-kempengroep] --args=…` in Peters owner-sessie ná deploy (regel 08-09), nooit via nameting.sh.
   (3) Een job-alias (`intake-postvak-kempengroep-verwerken`) i.p.v. CLI-argumenten in de F3-lus: `deploy.yml` splitst `--args` op komma's
   en de smoketest op `^|^` — één CLI-woord per job houdt beide guards (`test_deploy_yml_jobs_command`, `test_cli_smoketest`) eenduidig.
+
+<!-- toegevoegd 23-09-2026, opdracht "nameting-iban-wissel-cache-mens-en-server-timing" -->
+- **Een replica-sweep mét `2>/dev/null` bewijst geen 0; en een status-contract scherm↔server hoort in een route-test (23-09;
+  BESLISSINGEN "CHECKS-CACHE — INVALIDATIE OP DE BRON (IBAN-akkoord) 21-09" alinea "Gemeten 23-09"):** (1) de eerste audit-sweep van 23-09 (79 × `db_lezen.sh`, stderr weggegooid,
+  parallel aan een tweede proxy op een andere poort) meldde "0 rijen sinds de deploy" terwijl er 9 stonden — de gcloud-describe in
+  het script faalde transient en élke iteratie eindigde stil; pas de telling op `leverancier_iban` (4 + 3 + 2 nieuwe rijen) ontmaskerde
+  de 0. Regel: een sweep-script logt per iteratie de exitcode én de eerste foutregel, draait nooit parallel aan een andere
+  `db_lezen.sh` (één proxy tegelijk) en een "0" telt pas als een onafhankelijke telling (de brontabel) hetzelfde zegt. (2) De fix van
+  21-09 hing aan "409 → checks vers", maar de router gaf 400 en geen test las de HTTP-status: de service-test deed `pytest.raises
+  (IbanAlVertrouwd)`, de vitest mockte 409 — beide groen, productie kapot. Regel: élk contract tussen scherm en server op statuscode
+  of tekst staat in één route-test (TestClient, letterlijke status + tekst) én de vitest gebruikt exact die status; het scherm
+  herkent daarnaast de TEKST (patroon), zodat een statuswissel nooit stil een route dooft. (3) Een tweede "niet gemeten" op dezelfde
+  meting → dispatch-onderdeel (hier `checks-cache`), poging 3 mét `niet vóór:` is de laatste vóór `mislukt/` (regel 22-09 (3)).
