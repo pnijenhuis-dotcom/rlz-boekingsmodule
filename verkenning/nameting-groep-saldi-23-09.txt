@@ -1,0 +1,155 @@
+== groep-saldi --groep 'Kempen groep' (LIVE, lees-only) ==
+Groepssaldi Kempen groep (KEMPENGROEP) — per 23-09-2026 — bron: live — 35 van 35 administraties
+Administratie                                  Deb. bruto        Deb. IC   Deb. zonder IC      Cred. bruto       Cred. IC  Cred. zonder IC  Status
+ARVUM B.V.                                     € 7.445,57         € 0,00       € 7.445,57     € 348.445,86   € 333.250,00      € 15.195,86  ok
+ARVUM Holding B.V.                                 € 0,00         € 0,00           € 0,00           € 0,00         € 0,00           € 0,00  ok
+Beleggingsmaatschappij Meyer BV                    € 0,00         € 0,00           € 0,00       € 9.896,50         € 0,00       € 9.896,50  ok
+Bonte Hoeve B.V.                                   € 0,00         € 0,00           € 0,00           € 0,00         € 0,00           € 0,00  ok
+Bouwadvies Oost Nederland B.V.             € 8.866.167,50 € 1.497.267,50   € 7.368.900,00   € 7.498.437,60     € 2.246,49   € 7.496.191,11  ok
+BWC Steigers B.V.                              € 2.469,14         € 0,00       € 2.469,14          € 22,00         € 0,00          € 22,00  ok
+Camping "Nieuwenhoven" B.V.                        € 0,00         € 0,00           € 0,00           € 0,00         € 0,00           € 0,00  ok
+Caravanpark "De Visotter" B.V.                   € 423,20         € 0,00         € 423,20       € 6.982,70         € 0,00       € 6.982,70  ok
+Hotel Pax                                     € 14.810,40         € 0,00      € 14.810,40       € 2.733,98         € 0,00       € 2.733,98  ok
+Inpensas Beheer BV                            € 55.962,50    € 40.837,50      € 15.125,00       € 8.507,33     € 1.097,02       € 7.410,31  ok
+J.G.M. Elissen Holding BV                     € 47.176,82         € 0,00      € 47.176,82     € 486.574,81   € 223.850,00     € 262.724,81  ok
+Kempen B.V.                                   € 24.200,00   € -24.200,00      € 48.400,00           € 0,00         € 0,00           € 0,00  ok
+Kempen Chalets B.V.                           € 22.990,50         € 0,00      € 22.990,50     € 640.025,78   € 578.961,94      € 61.063,84  ok
+Kempen Facilities B.V.                       € 568.736,52   € 354.034,65     € 214.701,87     € 126.408,92         € 0,00     € 126.408,92  ok
+Mantelzorgwoningen Midden Nederland          € 179.069,00         € 0,00     € 179.069,00     € 340.857,47   € 335.629,12       € 5.228,35  ok
+Mantelzorgwoningen Oost Nederland B.V.             € 0,00         € 0,00           € 0,00           € 0,00         € 0,00           € 0,00  ok
+Midden Nederland Beheer BV                   € 272.847,36   € 335.726,24     € -62.878,88      € 41.940,36         € 0,00      € 41.940,36  ok
+Molenhof Beheer B.V.                         € 998.100,00  € -187.700,00   € 1.185.800,00     € 424.218,19    € 49.916,23     € 374.301,96  ok
+Molenhof Verhuur B.V.                      € 3.308.205,20 € 2.919.650,00     € 388.555,20     € 628.527,66   € 628.453,24          € 74,42  ok
+Necol Beheer BV                               € 62.617,50    € 62.617,50           € 0,00      € 10.161,46         € 0,00      € 10.161,46  ok
+Necol Energie B.V.                            € 54.781,56    € 54.781,56           € 0,00      € 57.630,30         € 0,00      € 57.630,30  ok
+Novitas Holding B.V.                          € 12.239,15         € 0,00      € 12.239,15           € 0,00         € 0,00           € 0,00  ok
+Oirschot Recreatie B.V.                       € -2.627,21         € 0,00      € -2.627,21     € 710.161,22   € 652.299,94      € 57.861,28  ok
+Oirschot Vastgoed Beheer B.V.                € 381.775,15   € 381.775,15           € 0,00   € 1.992.848,17 € 1.991.687,50       € 1.160,67  ok
+Old Dutch BV                                       € 0,00         € 0,00           € 0,00      € -5.326,77         € 0,00      € -5.326,77  ok
+RB Infra B.V.                                 € 38.443,76         € 0,00      € 38.443,76       € 1.139,49         € 0,00       € 1.139,49  ok
+Recreatiecentrum Dijkstel B.V.                     € 0,00         € 0,00           € 0,00       € 3.590,05         € 0,00       € 3.590,05  ok
+Rubicon Investments B.V.                      € 14.593,06         € 0,00      € 14.593,06     € 160.719,30   € 156.360,71       € 4.358,59  ok
+Stichting Shuto                                  € 504,41         € 0,00         € 504,41         € 387,70         € 0,00         € 387,70  ok
+Universal Materiaal B.V.                      € 21.401,57   € -21.401,57      € 42.803,14      € -8.573,54    € -8.573,54           € 0,00  ok
+Universal Nederland B.V.                     € 441.931,50   € 268.336,70     € 173.594,80     € 262.058,53    € 48.400,00     € 213.658,53  ok
+Universal Steigerbouw B.V.                   € 468.151,82         € 0,00     € 468.151,82      € 76.879,85    € 14.901,63      € 61.978,22  ok
+Universal Verkoop B.V.                       € 289.225,38    € 29.484,52     € 259.740,86      € 59.917,52         € 0,00      € 59.917,52  ok
+Veldhoven Recreatie B.V.                      € 96.372,67         € 0,00      € 96.372,67     € 210.618,56   € 119.980,35      € 90.638,21  ok
+Zilver Beheer B.V.                            € 78.259,68         € 0,00      € 78.259,68     € 424.034,08   € 393.250,00      € 30.784,08  ok
+TOTAAL (35 geldig)                        € 16.326.273,71 € 5.711.209,75  € 10.615.063,96  € 14.519.825,08 € 5.521.710,63   € 8.998.114,45
+Bruto = zonder intercompany + intercompany (cent-exact). Intercompany = open posten op groepsmaatschappijen die zelf in de groep zitten (intercompany_relatie). Rekeningen uit de bron (RGS/naam, Odoo account_type):
+  ARVUM B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  ARVUM Holding B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Beleggingsmaatschappij Meyer BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Bonte Hoeve B.V.: debiteuren 110000 Debtors, 110100 Debtors (PoS) · crediteuren 130000 Creditors, 159000 VAT tax liabilities
+  Bouwadvies Oost Nederland B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  BWC Steigers B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Camping "Nieuwenhoven" B.V.: debiteuren 110000 Debtors, 110100 Debtors (PoS) · crediteuren 130000 Creditors, 159000 VAT tax liabilities
+  Caravanpark "De Visotter" B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Hotel Pax: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Inpensas Beheer BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  J.G.M. Elissen Holding BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Kempen B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Kempen Chalets B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Kempen Facilities B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Mantelzorgwoningen Midden Nederland: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Mantelzorgwoningen Oost Nederland B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Midden Nederland Beheer BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Molenhof Beheer B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Molenhof Verhuur B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Necol Beheer BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Necol Energie B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Novitas Holding B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Oirschot Recreatie B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Oirschot Vastgoed Beheer B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Old Dutch BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  RB Infra B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Recreatiecentrum Dijkstel B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Rubicon Investments B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Stichting Shuto: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Universal Materiaal B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Universal Nederland B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Universal Steigerbouw B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Universal Verkoop B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Veldhoven Recreatie B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Zilver Beheer B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+Container called exit(0).
+
+== groep-saldi --groep 'Kempen groep' --stand (nachtelijke stand uit sync-alles) ==
+Groepssaldi Kempen groep (KEMPENGROEP) — per 23-09-2026 — bron: stand — 35 van 35 administraties
+Administratie                                  Deb. bruto        Deb. IC   Deb. zonder IC      Cred. bruto       Cred. IC  Cred. zonder IC  Status
+ARVUM B.V.                                     € 7.445,57         € 0,00       € 7.445,57     € 348.445,86   € 333.250,00      € 15.195,86  ok
+ARVUM Holding B.V.                                 € 0,00         € 0,00           € 0,00           € 0,00         € 0,00           € 0,00  ok
+Beleggingsmaatschappij Meyer BV                    € 0,00         € 0,00           € 0,00       € 3.544,00         € 0,00       € 3.544,00  ok
+Bonte Hoeve B.V.                                   € 0,00         € 0,00           € 0,00           € 0,00         € 0,00           € 0,00  ok
+Bouwadvies Oost Nederland B.V.             € 8.866.167,50 € 1.497.267,50   € 7.368.900,00   € 7.498.437,60     € 2.246,49   € 7.496.191,11  ok
+BWC Steigers B.V.                              € 2.469,14         € 0,00       € 2.469,14          € 22,00         € 0,00          € 22,00  ok
+Camping "Nieuwenhoven" B.V.                        € 0,00         € 0,00           € 0,00           € 0,00         € 0,00           € 0,00  ok
+Caravanpark "De Visotter" B.V.                   € 423,20         € 0,00         € 423,20       € 6.982,70         € 0,00       € 6.982,70  ok
+Hotel Pax                                     € 14.810,40         € 0,00      € 14.810,40       € 2.733,98         € 0,00       € 2.733,98  ok
+Inpensas Beheer BV                            € 55.962,50    € 40.837,50      € 15.125,00       € 8.507,33     € 1.097,02       € 7.410,31  ok
+J.G.M. Elissen Holding BV                     € 47.176,82         € 0,00      € 47.176,82     € 486.574,81   € 223.850,00     € 262.724,81  ok
+Kempen B.V.                                   € 24.200,00   € -24.200,00      € 48.400,00           € 0,00         € 0,00           € 0,00  ok
+Kempen Chalets B.V.                           € 22.990,50         € 0,00      € 22.990,50     € 640.025,78   € 578.961,94      € 61.063,84  ok
+Kempen Facilities B.V.                       € 568.736,52   € 354.034,65     € 214.701,87     € 126.408,92         € 0,00     € 126.408,92  ok
+Mantelzorgwoningen Midden Nederland          € 179.069,00         € 0,00     € 179.069,00     € 340.857,47   € 335.629,12       € 5.228,35  ok
+Mantelzorgwoningen Oost Nederland B.V.             € 0,00         € 0,00           € 0,00           € 0,00         € 0,00           € 0,00  ok
+Midden Nederland Beheer BV                   € 272.847,36   € 335.726,24     € -62.878,88      € 41.940,36         € 0,00      € 41.940,36  ok
+Molenhof Beheer B.V.                         € 998.100,00  € -187.700,00   € 1.185.800,00     € 424.218,19    € 49.916,23     € 374.301,96  ok
+Molenhof Verhuur B.V.                      € 3.308.205,20 € 2.919.650,00     € 388.555,20     € 628.527,66   € 628.453,24          € 74,42  ok
+Necol Beheer BV                               € 62.617,50    € 62.617,50           € 0,00      € 10.161,46         € 0,00      € 10.161,46  ok
+Necol Energie B.V.                            € 54.781,56    € 54.781,56           € 0,00      € 57.630,30         € 0,00      € 57.630,30  ok
+Novitas Holding B.V.                          € 12.239,15         € 0,00      € 12.239,15           € 0,00         € 0,00           € 0,00  ok
+Oirschot Recreatie B.V.                       € -2.627,21         € 0,00      € -2.627,21     € 710.161,22   € 652.299,94      € 57.861,28  ok
+Oirschot Vastgoed Beheer B.V.                € 381.775,15   € 381.775,15           € 0,00   € 1.992.848,17 € 1.991.687,50       € 1.160,67  ok
+Old Dutch BV                                       € 0,00         € 0,00           € 0,00      € -5.326,77         € 0,00      € -5.326,77  ok
+RB Infra B.V.                                 € 38.443,76         € 0,00      € 38.443,76       € 1.139,49         € 0,00       € 1.139,49  ok
+Recreatiecentrum Dijkstel B.V.                     € 0,00         € 0,00           € 0,00       € 3.590,05         € 0,00       € 3.590,05  ok
+Rubicon Investments B.V.                      € 14.593,06         € 0,00      € 14.593,06     € 160.719,30   € 156.360,71       € 4.358,59  ok
+Stichting Shuto                                  € 504,41         € 0,00         € 504,41         € 387,70         € 0,00         € 387,70  ok
+Universal Materiaal B.V.                      € 21.401,57   € -21.401,57      € 42.803,14      € -8.573,54    € -8.573,54           € 0,00  ok
+Universal Nederland B.V.                     € 441.931,50   € 268.336,70     € 173.594,80     € 262.058,53    € 48.400,00     € 213.658,53  ok
+Universal Steigerbouw B.V.                   € 468.151,82         € 0,00     € 468.151,82      € 76.879,85    € 14.901,63      € 61.978,22  ok
+Universal Verkoop B.V.                       € 289.225,38    € 29.484,52     € 259.740,86      € 59.917,52         € 0,00      € 59.917,52  ok
+Veldhoven Recreatie B.V.                      € 96.372,67         € 0,00      € 96.372,67     € 210.618,56   € 119.980,35      € 90.638,21  ok
+Zilver Beheer B.V.                            € 78.259,68         € 0,00      € 78.259,68     € 424.034,08   € 393.250,00      € 30.784,08  ok
+TOTAAL (35 geldig)                        € 16.326.273,71 € 5.711.209,75  € 10.615.063,96  € 14.513.472,58 € 5.521.710,63   € 8.991.761,95
+Bruto = zonder intercompany + intercompany (cent-exact). Intercompany = open posten op groepsmaatschappijen die zelf in de groep zitten (intercompany_relatie). Rekeningen uit de bron (RGS/naam, Odoo account_type):
+  ARVUM B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  ARVUM Holding B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Beleggingsmaatschappij Meyer BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Bonte Hoeve B.V.: debiteuren 110000 Debtors, 110100 Debtors (PoS) · crediteuren 130000 Creditors, 159000 VAT tax liabilities
+  Bouwadvies Oost Nederland B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  BWC Steigers B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Camping "Nieuwenhoven" B.V.: debiteuren 110000 Debtors, 110100 Debtors (PoS) · crediteuren 130000 Creditors, 159000 VAT tax liabilities
+  Caravanpark "De Visotter" B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Hotel Pax: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Inpensas Beheer BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  J.G.M. Elissen Holding BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Kempen B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Kempen Chalets B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Kempen Facilities B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Mantelzorgwoningen Midden Nederland: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Mantelzorgwoningen Oost Nederland B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Midden Nederland Beheer BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Molenhof Beheer B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Molenhof Verhuur B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Necol Beheer BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Necol Energie B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Novitas Holding B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Oirschot Recreatie B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Oirschot Vastgoed Beheer B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Old Dutch BV: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  RB Infra B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Recreatiecentrum Dijkstel B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Rubicon Investments B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Stichting Shuto: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Universal Materiaal B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Universal Nederland B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Universal Steigerbouw B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Universal Verkoop B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Veldhoven Recreatie B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+  Zilver Beheer B.V.: debiteuren 1200 Debiteuren · crediteuren 1600 Crediteuren
+Container called exit(0).
+
+Oordeel: TOTAAL (35 geldig) · alle leden in het totaal · 0 regel(s) status fout — job-exit 0
