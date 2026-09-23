@@ -1,7 +1,8 @@
 Domeinen: werkvoorraad-controlescherm, werkloop-productie
-niet vóór: 2026-09-23 09:00
+niet vóór: 2026-09-24 09:00
 
 # Nameting "Corrigeren…" — bewijs ná het klikpunt van Peter op de RLZ-testadministratie (onderdeel `corrigeren`)
+herlegd: 1× (23-09 19:13 NL, inbox-run; stap 0 groen: service + 18 jobs op `c74aa2d`, `main..origin/main` 0 vóór de run; onderdeel `corrigeren` gedraaid → bot-bestand `verkenning/nameting-corrigeren-23-09.txt` op main (bot-commit `a2fc4df`, run 35893886457): POST corrigeren 200 = 0, 409 = 0, 5xx = 0, audit `document_gecorrigeerd` 0, rlz-lezen testadministratie = geen credential → klikpunt Peter nog open, geen rapport (tak N = 0 ∧ K = 0); de WIP-branch `wip/2026-09-23-nameting-corrigeren-testadministratie-na-klikpunt` bevat alleen de inbox→lopend-verplaatsing, niets inhoudelijks)
 
 **Context:** rapport `docs/rapporten/2026-09-22-nameting-corrigeren-testadministratie.md` (poging 2, 22-09): de storno-cyclus kon niet
 gedraaid worden omdat de RLZ-testadministratie "Administratiekantoor Nijenhuis (test)" (`faae29c5`) gearchiveerd staat zonder credential;
