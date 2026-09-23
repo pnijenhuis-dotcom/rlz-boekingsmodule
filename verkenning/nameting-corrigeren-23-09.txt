@@ -10,7 +10,7 @@ Container called exit(1).
 
 
 == db-lezen correcties (audit document_gecorrigeerd / document_correctie_mislukt, 30 dagen) op de testadministratie ==
-== db-lezen correcties v1 (44 ms) ==
+== db-lezen correcties v1 (51 ms) ==
 | administratie | tijdstip | actie | document_id | soort | referentie | status | boek_cyclus | rlz_boekstuknummer | detail |
 |---|---|---|---|---|---|---|---|---|---|
 0 rij(en)
