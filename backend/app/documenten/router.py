@@ -2274,9 +2274,14 @@ def iban_accordering_aanbieden(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except leverancier_iban.OngeldigIban as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    except (iban_accordering.GeenCrediteurOpVoorstel, iban_accordering.IbanAlVertrouwd) as exc:
+    except iban_accordering.GeenCrediteurOpVoorstel as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except (iban_accordering.ErIsAlEenOpenAccordering, OngeldigeStatusovergang) as exc:
+    except (
+        # 23-09: conflict mét de huidige set = 409 (was 400 — het scherm herkende alleen 409 en zag de route nooit)
+        iban_accordering.IbanAlVertrouwd,
+        iban_accordering.ErIsAlEenOpenAccordering,
+        OngeldigeStatusovergang,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _naar_iban_accordering_response(data)
 

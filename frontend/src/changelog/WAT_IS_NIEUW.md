@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-23 — Rekeningnummer al vertrouwd? De controles draaien nu écht direct opnieuw
+
+<!-- nameting-iban-wissel-cache-23-09 -->
+
+- Bood je een rekeningnummer ter accordering aan dat intussen al vertrouwd was, dan kreeg je tot vandaag alleen de melding "staat al in de vertrouwde set" terwijl de controle "IBAN-wissel" rood bleef staan. Nu draaien de controles in dat geval direct opnieuw, wordt de regel groen en verdwijnt het aanbieden-paneel — zoals sinds 21-09 bedoeld.
+- De snelheidsmeting van de controles komt sinds 22-09 aan in de logboeken: het externe deel (de Reeleezee-controles) duurt doorgaans zo'n 0,7 seconde.
+
 ## 2026-09-23 — Geen gemiste facturen meer uit de mailbox: tweede postvak direct gelezen, Spam meegenomen, telling aan de bron
 
 <!-- intake-tweede-postvak-kempengroep-23-09 -->

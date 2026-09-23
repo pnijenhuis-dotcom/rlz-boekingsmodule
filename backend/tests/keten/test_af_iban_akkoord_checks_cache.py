@@ -106,6 +106,15 @@ class TestAkkoordWerktDirectDoor:
                 nieuw_iban=FACTUUR_IBAN,
                 soort=IbanSoort.REGULIER,
             )
+        # 23-09 (nameting): over de ROUTE is dat een 409 — het scherm herkende alleen 409, de server gaf tot 23-09 400 en in
+        # productie (Kempen Facilities 23-09 07:50Z) kreeg een mens daardoor de kale fout zonder verse controle.
+        resp = keten.api.post(
+            f"/administraties/{keten.administratie_id}/documenten/{bdo_geblokkeerd}/iban-accordering",
+            headers=keten.headers,
+            json={"nieuw_iban": FACTUUR_IBAN, "soort": IbanSoort.REGULIER.value},
+        )
+        assert resp.status_code == 409, resp.text
+        assert "al in de vertrouwde set" in resp.json()["detail"]
         # Daarna cachet de verse run weer gewoon — de vingerafdruk mét de nieuwe set is stabiel.
         assert keten.checks_dto(bdo_geblokkeerd)["extern_uit_cache"] is True
 

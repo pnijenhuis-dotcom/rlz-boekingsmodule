@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -387,6 +387,70 @@ jobs:
             echo "Oordeel: POST corrigeren 200 = $P200, 409 = $P409, 5xx beide routes = $P5XX — $CO_STAND — exit $rc_co" >> "$UIT"
             echo "STATUS corrigeren: rapport in $UIT (exit $rc_co = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "checks-cache" ]]; then
+            # 23-09 (nameting checks-cache poging 2; BESLISSINGEN "CHECKS-CACHE — INVALIDATIE OP DE BRON (IBAN-akkoord) 21-09"
+            # alinea "Gemeten 23-09"): lees-only meetlat voor de mens-afhankelijke metingen van de IBAN-wissel-fix én de
+            # Server-Timing van "Boeken sneller" (18-09), venster = de laatste 7 dagen. (1) request-log `boekvoorstel/checks`
+            # (totaal / voorverwarm / `extern=vers` = knop "Opnieuw controleren" of de al-vertrouwd-route); (2) request-log
+            # `POST …/iban-accordering` per status (201 aangeboden | 409 al vertrouwd → het scherm draait de checks vers | 400 geen
+            # crediteur | 422 ongeldig IBAN) — een 409 mét binnen 10 s een `extern=vers` is het bewijs van de één-bron-route;
+            # (3) `jsonPayload.message="server_timing"` (app/logboek.py, sinds 22-09): regels per route + p50/p95 per stap in ms.
+            # Het audit-veld `checks_cache_ongeldig` per administratie (RLS zonder Beheerder-clausule) blijft een replica-sweep in
+            # een owner-sessie (`.scratch/audit-iban-sweep-23-09.sh`-recept in het rapport van 23-09).
+            UIT="verkenning/nameting-checks-cache-$DATUM.txt"
+            rc_cc=0
+            SINDS="$(date -u -d '7 days ago' +%Y-%m-%dT00:00:00Z)"
+            {
+              echo "== request-log boekvoorstel/checks sinds $SINDS (rlz-backend) =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestUrl:"boekvoorstel/checks" timestamp>="'"$SINDS"'"' \
+                --project "$PROJECT_ID" --limit 5000 --order asc \
+                --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-cc-checks.txt || rc_cc=$?
+              CC_TOT="$(grep -c 'boekvoorstel/checks' nameting-cc-checks.txt || true)"
+              CC_VOOR="$(grep -c 'voorverwarm=1' nameting-cc-checks.txt || true)"
+              CC_VERS="$(grep -c 'extern=vers' nameting-cc-checks.txt || true)"
+              echo "checks-requests: $CC_TOT (voorverwarm $CC_VOOR, extern=vers $CC_VERS)"
+              grep 'extern=vers' nameting-cc-checks.txt || echo "(geen extern=vers-request)"
+              echo
+              echo "== request-log POST …/iban-accordering sinds $SINDS (201 aangeboden | 409 al vertrouwd → scherm draait vers | 400 geen crediteur | 422 ongeldig) =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="POST" httpRequest.requestUrl:"/iban-accordering" timestamp>="'"$SINDS"'"' \
+                --project "$PROJECT_ID" --limit 500 --order asc \
+                --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-cc-iban.txt || rc_cc=$?
+              cat nameting-cc-iban.txt
+              CC_409="$(awk -F'\t' '$3=="409"' nameting-cc-iban.txt | wc -l | tr -d ' ')"
+              CC_400="$(awk -F'\t' '$3=="400"' nameting-cc-iban.txt | wc -l | tr -d ' ')"
+              CC_201="$(awk -F'\t' '$3=="201"' nameting-cc-iban.txt | wc -l | tr -d ' ')"
+              echo "iban-accordering POST: 201 = $CC_201, 409 = $CC_409, 400 = $CC_400"
+              echo
+              echo "== server_timing (jsonPayload.message=\"server_timing\", app/logboek.py) sinds $SINDS: regels per route, p50/p95 per stap (ms) =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" jsonPayload.message="server_timing" timestamp>="'"$SINDS"'"' \
+                --project "$PROJECT_ID" --limit 5000 --format=json > nameting-cc-st.json || rc_cc=$?
+              python3 - <<'PY'
+          import json
+          d = json.load(open("nameting-cc-st.json"))
+          print(f"server_timing regels: {len(d)}")
+          def pct(v, p):
+              v = sorted(v); n = len(v)
+              return v[max(0, min(n - 1, int(round(p * (n - 1)))))] if n else 0.0
+          per_route = {}
+          for e in d:
+              pl = e.get("jsonPayload") or {}
+              per_route.setdefault(pl.get("route"), []).append(pl.get("stappen_ms") or {})
+          for route, stappen in sorted(per_route.items(), key=lambda kv: str(kv[0])):
+              print(f"route {route}: n={len(stappen)}")
+              for k in sorted({k for s in stappen for k in s}):
+                  v = [s[k] for s in stappen if k in s]
+                  print(f"  {k:20s} n={len(v):4d} p50={pct(v, .5):8.1f} p95={pct(v, .95):8.1f} max={max(v):8.1f}")
+          PY
+              CC_ST="$(python3 -c 'import json;print(len(json.load(open("nameting-cc-st.json"))))' 2>/dev/null || echo 0)"
+              echo "SERVER_TIMING_REGELS=$CC_ST"
+            } > "$UIT"
+            CC_ST="$(grep -m1 '^SERVER_TIMING_REGELS=' "$UIT" | cut -d= -f2)"
+            CC_VERS="$(grep -m1 '^checks-requests:' "$UIT" | sed -E 's/.*extern=vers ([0-9]+).*/\1/')"
+            CC_409="$(grep -m1 '^iban-accordering POST:' "$UIT" | sed -E 's/.*409 = ([0-9]+).*/\1/')"
+            if [[ "${CC_ST:-0}" -ge 1 ]]; then CC_STAND="server_timing komt aan (werkt in productie: ja)"; else CC_STAND="ROOD — 0 server_timing-regels in 7 dagen"; fi
+            echo "Oordeel: server_timing $CC_ST regel(s), extern=vers $CC_VERS, iban-accordering 409 $CC_409 — $CC_STAND — exit $rc_cc" >> "$UIT"
+            echo "STATUS checks-cache: rapport in $UIT (exit $rc_cc = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
             # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
@@ -431,6 +495,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-intake-postvak-audit-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "corrigeren" ]]; then
             OORDEEL_BRON="verkenning/nameting-corrigeren-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "checks-cache" ]]; then
+            OORDEEL_BRON="verkenning/nameting-checks-cache-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "jobs-start" ]]; then
             OORDEEL_BRON="verkenning/nameting-jobs-start-$DATUM.txt"
           elif [[ "$ONDERDEEL" =~ ^(alles|a|b|c|d|e)$ ]]; then

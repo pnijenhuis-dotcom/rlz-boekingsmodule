@@ -32,6 +32,13 @@ interface AanbiedenVormProps {
 /** Tekst-contract met `iban_accordering.bied_aan` (IbanAlVertrouwd) — de backend-test toetst de letterlijke melding. */
 export const IBAN_AL_VERTROUWD_PATROON = /al in de vertrouwde set/i
 
+/** 23-09 (nameting): de server gaf `IbanAlVertrouwd` als 400 terwijl dit scherm alleen 409 herkende — in productie kreeg een
+ * mens op 23-09 07:50Z de kale foutmelding en géén verse controle. De server zegt sinds 23-09 409; 400 blijft herkend voor
+ * de overgang (oude server/nieuwe bundel) — de tekst is het contract, de status alleen een poort tegen vreemde fouten. */
+export function isAlVertrouwdAntwoord(err: ApiError): boolean {
+  return (err.status === 409 || err.status === 400) && IBAN_AL_VERTROUWD_PATROON.test(err.message)
+}
+
 /** Aanbieden-vorm (soort + rekeningnummer): gebruikt bij de geblokkeerde IBAN-wissel-check op
  * het controlescherm (BoekvoorstelPanel) én voor de her-aanvraag na een afwijzing. Het IBAN is
  * vooringevuld vanuit de extractie maar blijft controleerbaar/corrigeerbaar — de backend
@@ -56,7 +63,7 @@ export function IbanAanbiedenVorm({
       await biedIbanAan(administratieId, documentId, { nieuw_iban: iban, soort })
       onAangeboden()
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409 && IBAN_AL_VERTROUWD_PATROON.test(err.message) && onAlVertrouwd) {
+      if (err instanceof ApiError && isAlVertrouwdAntwoord(err) && onAlVertrouwd) {
         // Het IBAN is intussen vertrouwd (akkoord/bevestiging ná de laatste controle): geen accordering nodig — de
         // controles worden vers herdraaid zodat de check-rij en dit paneel weer één stand tonen.
         setFout('Dit rekeningnummer is intussen vertrouwd — de controles worden opnieuw uitgevoerd.')

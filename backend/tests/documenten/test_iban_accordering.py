@@ -580,3 +580,55 @@ class TestZonderCrediteur:
         with pytest.raises(iban_accordering.GeenCrediteurOpVoorstel):
             _bied_aan(administratie_id, resultaat.document_id, gescoopte_gebruiker)
         assert _status(admin_engine, resultaat.document_id) == DocumentStatus.TE_CONTROLEREN.value
+
+
+class TestAanbiedenRouteStatuscode:
+    """23-09 (nameting checks-cache): `POST …/iban-accordering` op een IBAN dat al in de vertrouwde set staat is een
+    CONFLICT mét de huidige stand → **409** — het scherm (`IbanAanbiedenVorm`) draait dan de checks vers (regel 21-09
+    "één bron"). Tot 23-09 gaf de route 400 en herkende het scherm alleen 409: in productie (Kempen Facilities, 23-09
+    07:50Z) kreeg een mens de kale foutmelding zonder verse controle. Zonder crediteur blijft het 400 (geen conflict,
+    een ontbrekende invoer)."""
+
+    def test_al_vertrouwd_is_409_en_zonder_crediteur_400(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        document_met_voorstel: uuid.UUID,
+        vendor_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine: Engine,
+    ) -> None:
+        from fastapi.testclient import TestClient
+
+        from app.documenten.leverancier_iban import bevestig_iban
+        from app.main import app
+        from app.security.tokens import create_access_token
+
+        client = TestClient(app)
+        headers = {"Authorization": f"Bearer {create_access_token(gescoopte_gebruiker, rol='boekhouding')}"}
+        bevestig_iban(
+            administratie_id=administratie_id, vendor_id=vendor_id, iban=NIEUW_IBAN, actor_id=gescoopte_gebruiker
+        )
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_met_voorstel}/iban-accordering",
+            headers=headers,
+            json={"nieuw_iban": NIEUW_IBAN, "soort": IbanSoort.REGULIER.value},
+        )
+        assert resp.status_code == 409, resp.text
+        assert "al in de vertrouwde set" in resp.json()["detail"]
+        assert _status(admin_engine, document_met_voorstel) == DocumentStatus.TE_CONTROLEREN.value
+        # Zonder crediteur op het voorstel: 400 (ontbrekende invoer, geen conflict) — ongewijzigd.
+        zonder = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="factuur-zonder-crediteur.pdf",
+            inhoud=uuid.uuid4().bytes,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{zonder.document_id}/iban-accordering",
+            headers=headers,
+            json={"nieuw_iban": NIEUW_IBAN, "soort": IbanSoort.REGULIER.value},
+        )
+        assert resp.status_code == 400, resp.text
+        assert "geen crediteur" in resp.json()["detail"]

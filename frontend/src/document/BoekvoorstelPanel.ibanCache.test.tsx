@@ -72,7 +72,7 @@ interface Mock {
   aanbiedenCalls: number
 }
 
-function installFetchMock(): Mock {
+function installFetchMock(alVertrouwdStatus: 409 | 400 = 409): Mock {
   const stand: Mock = { checksCalls: [], aanbiedenCalls: 0 }
   vi.stubGlobal(
     'fetch',
@@ -98,7 +98,7 @@ function installFetchMock(): Mock {
       }
       if (url.endsWith('/iban-accordering') && init?.method === 'POST') {
         stand.aanbiedenCalls += 1
-        return Promise.resolve(jsonResponse({ detail: AL_VERTROUWD }, 409))
+        return Promise.resolve(jsonResponse({ detail: AL_VERTROUWD }, alVertrouwdStatus))
       }
       return Promise.resolve(new Response(null, { status: 404 }))
     }),
@@ -132,8 +132,10 @@ describe('BoekvoorstelPanel — IBAN-wissel ná akkoord: één bron voor check-r
     vi.unstubAllGlobals()
   })
 
-  it('409 "staat al in de vertrouwde set" bij aanbieden → checks vers → IBAN-wissel OK en het aanbieden-paneel verdwijnt', async () => {
-    const stand = installFetchMock()
+  // 23-09 (nameting): de server gaf deze melding tot 23-09 als 400 en dit scherm herkende alleen 409 — in productie kreeg een mens
+  // op 23-09 07:50Z de kale fout en géén verse controle. Sinds 23-09 zegt de server 409; 400 blijft herkend voor de overgang.
+  it.each([409, 400] as const)('%i "staat al in de vertrouwde set" bij aanbieden → checks vers → IBAN-wissel OK en het aanbieden-paneel verdwijnt', async (statusCode) => {
+    const stand = installFetchMock(statusCode)
     renderPanel()
     await waitFor(() => expect(ibanRij()).not.toBeNull())
     expect(ibanRij()).toHaveTextContent('Blokkerend')
