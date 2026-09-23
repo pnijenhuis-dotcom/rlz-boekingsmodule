@@ -17,6 +17,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.activa import afschrijving as afschrijving_service
 from app.activa import categorie as cat
 from app.activa import instelling as instelling_service
 from app.activa.instelling import InstellingStand
@@ -44,6 +45,9 @@ class Kandidaat:
     restwaarde: Decimal
     afschrijving_ledger_id: uuid.UUID | None
     afschrijving_ledger_code: str | None
+    #: Herkomst van de voorgevulde afschrijvingsrekening: `koppeling` (vastgelegd bij plannen), `instelling` (per
+    #: categorie), `conventie` (code + 1 mét naam "Afschrijving…", BUG 24-09) of None (leeg → verplicht op de kaart).
+    afschrijving_bron: str | None
     signalen: list[cat.Signaal]
     koppeling: ActivumKoppeling | None
 
@@ -102,6 +106,27 @@ def _omschrijving(regel: BoekvoorstelRegel, *, leverancier: str | None, referent
         return tekst[:200]
     delen = [d for d in (leverancier, referentie) if d]
     return (" ".join(delen) or "Activum")[:200]
+
+
+def bepaal_afschrijving(
+    *,
+    koppeling: ActivumKoppeling | None,
+    stand: InstellingStand,
+    categorie: str,
+    balans: Grootboekrekening,
+    rekeningen: dict[uuid.UUID, Grootboekrekening],
+) -> tuple[uuid.UUID | None, str | None]:
+    """Winnaarsvolgorde afschrijvingsrekening: vastgelegd op de koppeling > instelling per categorie > conventie
+    code + 1 mét naam "Afschrijving…" (BUG 24-09) > leeg. Geeft (ledger_id, bron)."""
+    if koppeling is not None and koppeling.afschrijving_ledger_id:
+        return koppeling.afschrijving_ledger_id, afschrijving_service.BRON_KOPPELING
+    uit_instelling = stand.afschrijving_ledger_voor(categorie)
+    if uit_instelling is not None:
+        return uit_instelling, afschrijving_service.BRON_INSTELLING
+    treffer = afschrijving_service.conventie_rekening(balans, rekeningen.values())
+    if treffer is not None:
+        return treffer.ledger_id, afschrijving_service.BRON_CONVENTIE
+    return None, None
 
 
 def bepaal(session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> VoorstelData:
@@ -167,10 +192,12 @@ def bepaal(session: Session, *, administratie_id: uuid.UUID, document_id: uuid.U
         koppeling = koppelingen.get(regel.volgnummer)
         categorie = koppeling.categorie if koppeling is not None else cat.bepaal_categorie(rek.code, rek.naam)
         termijn = koppeling.termijn_maanden if koppeling is not None else stand.termijn_voor(categorie)
-        afschrijving_id = (
-            koppeling.afschrijving_ledger_id if koppeling is not None and koppeling.afschrijving_ledger_id else None
-        ) or stand.afschrijving_ledger_voor(categorie)
+        afschrijving_id, afschrijving_bron = bepaal_afschrijving(
+            koppeling=koppeling, stand=stand, categorie=categorie, balans=rek, rekeningen=rekeningen
+        )
         afschrijving_rek = rekeningen.get(afschrijving_id) if afschrijving_id is not None else None
+        if afschrijving_rek is None:
+            afschrijving_bron = None
         data.kandidaten.append(
             Kandidaat(
                 regel_volgnummer=regel.volgnummer,
@@ -189,6 +216,7 @@ def bepaal(session: Session, *, administratie_id: uuid.UUID, document_id: uuid.U
                 restwaarde=koppeling.restwaarde if koppeling is not None else RESTWAARDE,
                 afschrijving_ledger_id=afschrijving_id if afschrijving_rek is not None else None,
                 afschrijving_ledger_code=afschrijving_rek.code if afschrijving_rek is not None else None,
+                afschrijving_bron=afschrijving_bron,
                 signalen=cat.fiscale_signalen(
                     categorie=categorie, termijn_maanden=termijn, aanschafwaarde=netto, grens=grens
                 ),

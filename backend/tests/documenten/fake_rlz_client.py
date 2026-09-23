@@ -208,6 +208,9 @@ class FakeBoekClient:
             raise RlzApiError(403, "PUT", "FixedAssets", "Forbidden (simulatie: recht 'Vaste activa' ontbreekt)")
         if self.faal_op == "fixed_asset_put":
             raise RlzApiError(400, "PUT", "FixedAssets", "PUT FixedAssets mislukt (simulatie)")
+        if self.faal_op == "fixed_asset_put_404":
+            # Peter 23-09 (BLOw MK22507863): RLZ kent PUT FixedAssets/{client-guid} niet als aanmaakroute.
+            raise RlzApiError(404, "PUT", f"FixedAssets/{asset_id}", '{"Message":"NotFound_FixedAsset"}')
         rij = {**body, "id": str(asset_id)}
         self.fixed_asset_puts.append(rij)
         methode = next((m for m in self.depreciation_methods if m["id"] == (body.get("DepreciationMethod") or {}).get("id")), None)

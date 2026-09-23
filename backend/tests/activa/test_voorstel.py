@@ -34,7 +34,9 @@ class TestKandidaten:
         assert k.aanschafwaarde == Decimal("1250.00") and k.aanschafdatum == date(2026, 9, 1)
         assert k.categorie == "inventaris" and k.categorie_label == "Inventaris"
         assert k.termijn_maanden == 60 and k.methode_naam == "Lineair 5 jaar" and k.restwaarde == Decimal("0.00")
-        assert k.afschrijving_ledger_id is None  # geen instelling: de mens kiest op de kaart
+        # BUG 24-09 punt 1: geen instelling → conventie code + 1 mét naam "Afschrijving…" (0107 → 0108), herkomst-chip.
+        assert k.afschrijving_ledger_id == GB_0108 and k.afschrijving_ledger_code == "0108"
+        assert k.afschrijving_bron == "conventie"
         assert [s.code for s in k.signalen] == ["kia_mia_mogelijk"]
         assert k.koppeling is None
         # Opties: alle 0xxx-rekeningen soort 3, 'afschrijving' eerst, dan op code.
@@ -97,6 +99,7 @@ class TestKandidaten:
         assert data.stand.effectieve_grens == Decimal("1000.00") and data.stand.grens_bron == "instelling"
         assert k.termijn_maanden == 120 and k.methode_naam == "Lineair 10 jaar"
         assert k.afschrijving_ledger_id == GB_0108 and k.afschrijving_ledger_code == "0108"
+        assert k.afschrijving_bron == "instelling"  # instelling wint van de conventie
 
     def test_rlz_grens_wint_van_de_instelling(self, factuur: uuid.UUID, administratie_id: uuid.UUID) -> None:
         with scoped_session(administratie_id) as session:
@@ -126,6 +129,8 @@ class TestKandidaten:
         k = service.haal_voorstel_op(administratie_id=administratie_id, document_id=doc).kandidaten[0]
         assert k.categorie == "computers_software" and k.termijn_maanden == 36
         assert [s.code for s in k.signalen] == ["afschrijving_boven_20pct", "kia_mia_mogelijk"]
+        # 0170 heeft geen 0171 "Afschrijving…" → geen conventie, leeg (de kaart maakt de combobox dan verplicht).
+        assert k.afschrijving_ledger_id is None and k.afschrijving_bron is None
 
     def test_onbekend_document_is_404_domeinfout(self, stamgegevens: None, administratie_id: uuid.UUID) -> None:
         with pytest.raises(DocumentNietGevonden):

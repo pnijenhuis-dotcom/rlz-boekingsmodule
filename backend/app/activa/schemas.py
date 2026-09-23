@@ -42,6 +42,8 @@ class KandidaatDto(BaseModel):
     restwaarde: str
     afschrijving_ledger_id: uuid.UUID | None = None
     afschrijving_ledger_code: str | None = None
+    #: `koppeling` | `instelling` | `conventie` | None — herkomst-chip op de kaart (BUG 24-09).
+    afschrijving_bron: str | None = None
     signalen: list[SignaalDto]
     koppeling: KoppelingDto | None = None
 

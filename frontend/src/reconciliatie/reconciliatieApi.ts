@@ -104,6 +104,9 @@ export type BevindingBlok =
   | 'intercompany' | 'rekening_courant' | 'doorbelasting_aansluiting'
   /** 23-09 (Peter 22-09): postvak-bewaking "ontvangen vs verwerkt" per intake-kanaal (INBOX + Spam, op Message-ID). */
   | 'intake'
+  /** Activa fase 1 (21-09): aansluiting module-boekingen ↔ RLZ-activaregister; 24-09: `activum_aanmaken_mislukt_mens` mét
+   * handeling "Opnieuw aanmaken" op de rij. */
+  | 'activa'
 
 export interface BevindingDto {
   id: string
@@ -336,6 +339,7 @@ export const BLOK_LABEL: Record<BevindingBlok, string> = {
   // Blok 3 18-09: reconciliatie-soort `project_nummer_dubbel` (stand meten) in blok `projecten`.
   projecten: 'Projecten',
   intake: 'Postvak',
+  activa: 'Activa',
 }
 
 /** Leesbare labels van de reden-categorieën (spiegel van REDEN_LABEL in automatiseringen.py). */

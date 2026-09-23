@@ -112,6 +112,7 @@ class TestToetsPuur:
             koppeling_id=uuid.uuid4(),
             document_id=uuid.uuid4(),
             regel_volgnummer=1,
+            herkomst="automatisch",
             omschrijving="Bureau",
             aanschafwaarde=Decimal("1250.00"),
             reden="geen afschrijvingsrekening",
@@ -120,6 +121,31 @@ class TestToetsPuur:
         )
         uit = rec.toets(module_regels=[_regel()], activa=None, mislukt=[m], vandaag=VANDAAG)
         assert [x.soort for x in uit] == ["activum_aanmaken_mislukt"] and "geen afschrijvingsrekening" in uit[0].tekst
+        assert uit[0].detail["herkomst"] == "automatisch" and uit[0].detail["koppeling_id"] == str(m.koppeling_id)
+
+    def test_mislukt_na_mens_klik_is_eigen_soort_direct_actie(self) -> None:
+        """BUG 24-09 (BLOw 23-09): een `mislukt` mét herkomst `mens` = bevestigde handeling niet uitgevoerd → soort
+        `activum_aanmaken_mislukt_mens`, code-default `actie` (geen meetfase), handeling "Opnieuw aanmaken" op de
+        rij."""
+        m = rec.MislukteKoppeling(
+            koppeling_id=uuid.uuid4(),
+            document_id=uuid.uuid4(),
+            regel_volgnummer=1,
+            herkomst="mens",
+            omschrijving="Kantoorinventaris",
+            aanschafwaarde=Decimal("935.00"),
+            reden="geen afschrijvingsrekening — kies op de kaart of stel in onder Instellingen › Activa",
+            referentie="23619",
+            leverancier_naam="Leverancier",
+        )
+        uit = rec.toets(module_regels=[], activa=None, mislukt=[m], vandaag=VANDAAG)
+        assert [x.soort for x in uit] == ["activum_aanmaken_mislukt_mens"] and "ná een mens-klik" in uit[0].tekst
+        assert uit[0].detail["herkomst"] == "mens" and uit[0].detail["regel_volgnummer"] == 1
+        assert rec.HANDELING["activum_aanmaken_mislukt_mens"].startswith("Opnieuw aanmaken")
+        d = soort_stand.REGISTRY["activum_aanmaken_mislukt_mens"]
+        assert d.default == soort_stand.ACTIE and d.sinds == date(2026, 9, 24)
+        assert "Peter 23/24-09" in (d.direct_actie_reden or "")
+        assert soort_stand.code_default("activum_aanmaken_mislukt") == soort_stand.METEN
 
 
 class TestRegisterLezer:
@@ -164,7 +190,12 @@ class TestRegistryEnTeksten:
     def test_alle_soorten_in_meten_sinds_21_09_met_leesbare_tekst_en_handeling(self) -> None:
         for soort in rec.SOORTEN:
             d = soort_stand.REGISTRY[soort]
-            assert d.blok == "activa" and d.default == soort_stand.METEN and d.sinds == date(2026, 9, 21)
+            assert d.blok == "activa"
+            if soort == rec.SOORT_AANMAKEN_MISLUKT_MENS:
+                # BUG 24-09: de enige activa-soort die direct in `actie` start (besluit Peter, reden in de registry).
+                assert d.default == soort_stand.ACTIE and d.sinds == date(2026, 9, 24) and d.direct_actie_reden
+            else:
+                assert d.default == soort_stand.METEN and d.sinds == date(2026, 9, 21)
             b = Bevinding(
                 blok="activa",
                 soort="afwijking",
@@ -313,17 +344,23 @@ class TestCliBlok:
         boeken_aan: None,
         rlz: FakeBoekClient,
     ) -> None:
+        # BUG 24-09: zonder afschrijvingsrekening kan er niet meer gepland worden (0107 → conventie 0108 vult wél voor);
+        # de mislukking komt hier van RLZ zelf (PUT weigert) — een mens-klik → soort `_mens`, direct actie.
         service.plan_of_maak_aan(
             administratie_id=administratie_id, document_id=factuur, regel_volgnummer=1, actor_id=gescoopte_gebruiker
         )
         boeken.boek_document(administratie_id=administratie_id, document_id=factuur, actor_id=gescoopte_gebruiker)
+        rlz.faal_op = "fixed_asset_put"
         service.verwerk_na_boeken(
             administratie_id=administratie_id, document_id=factuur, actor_id=gescoopte_gebruiker, client=rlz
         )
+        rlz.faal_op = None
         code, verzamelaar, _ = self._run(rlz)
-        mislukt = [b for b in verzamelaar.bevindingen if b.detail["afwijking_soort"] == "activum_aanmaken_mislukt"]
-        assert len(mislukt) == 1 and "geen afschrijvingsrekening" in mislukt[0].tekst
-        assert mislukt[0].detail["handeling"] == "Opnieuw aanmaken op het controlescherm"
+        mislukt = [b for b in verzamelaar.bevindingen if b.detail["afwijking_soort"] == "activum_aanmaken_mislukt_mens"]
+        assert len(mislukt) == 1 and "PUT FixedAssets mislukt" in mislukt[0].tekst
+        assert mislukt[0].detail["handeling"].startswith("Opnieuw aanmaken") and mislukt[0].detail["herkomst"] == "mens"
+        assert mislukt[0].detail["document_id"] == str(factuur) and mislukt[0].detail["regel_volgnummer"] == 1
+        assert not [b for b in verzamelaar.bevindingen if b.detail["afwijking_soort"] == "activum_aanmaken_mislukt"]
 
     def test_geen_credential_is_zichtbare_fout_en_odoo_overgeslagen(
         self, stamgegevens: None, administratie_id: uuid.UUID, admin_engine: Engine
@@ -347,4 +384,5 @@ def test_handeling_per_soort(soort: str) -> None:
 
 def test_koppelingstatus_enum_dekt_de_check_constraint() -> None:
     assert {s.value for s in KoppelingStatus} == {"gepland", "aangemaakt", "overgeslagen", "mislukt", "beoordelen"}
+    assert len(rec.SOORTEN) == 6 and rec.SOORTEN[-1] == "activum_aanmaken_mislukt_mens"
     assert replace(_activum(), boekwaarde=None).boekwaarde is None

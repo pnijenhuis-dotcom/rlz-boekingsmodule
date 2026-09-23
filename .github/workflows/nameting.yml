@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -499,6 +499,52 @@ jobs:
             echo "Oordeel: POST afwijzen 200 = $EG_AFW, toch-verschillend 200 = $EG_TV, 5xx = $EG_5XX, accordeur-409 = $EG_409, bevindingsregels job-log = $EG_BEV — $EG_STAND — exit $rc_eg" >> "$UIT"
             echo "STATUS extern-geboekt: rapport in $UIT (exit $rc_eg = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "activa-kaart" ]]; then
+            # 24-09 (BUG activa-kaart BLOw 23-09; BESLISSINGEN "ACTIVA / MVA — FASE 1 GEBOUWD (Peter 21-09)" alinea "BUG 24-09"):
+            # lees-only meetlat voor de kaart-fix — (1) request-log POST …/activa-voorstel/{regel}/aanmaken sinds de deploy
+            # (200 = gepland/aangemaakt, 422 = "Kies een afschrijvingsrekening" (nooit meer gepland zonder), 5xx = rood);
+            # (2) job-log rlz-reconciliatie laatste 2 dagen: regels soort=activum_aanmaken_mislukt(_mens) van de échte run;
+            # (3) db-lezen activa-stand (rij `koppeling` per status) + reconciliatie-bevindingen (afwijking_soort
+            # activum_aanmaken_mislukt_mens) voor BLOw en Pilates Bloom; (4) rlz-lezen FixedAssets BLOw (herstel-klikpunt:
+            # 0 → 2 records mét InvoiceReference 23619/06052). Oordeel: POST 200/422/5xx + BLOw-register.
+            UIT="verkenning/nameting-activa-kaart-$DATUM.txt"
+            rc_ak=0
+            SINDS_AK="2026-09-23T19:00:00Z"
+            {
+              echo "== request-log POST …/activa-voorstel/*/aanmaken sinds $SINDS_AK (deploy BUG-fix 24-09) =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="POST" httpRequest.requestUrl:"/activa-voorstel/" timestamp>="'"$SINDS_AK"'"' \
+                --project "$PROJECT_ID" --limit 500 --order asc \
+                --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-ak-log.txt || rc_ak=$?
+              cat nameting-ak-log.txt
+              [[ -s nameting-ak-log.txt ]] || echo "(geen POST aanmaken/overslaan sinds de deploy — kaart ongebruikt)"
+              echo
+              echo "== job-log rlz-reconciliatie laatste 2 dagen: activum_aanmaken_mislukt(_mens) (échte runs) =="
+              gcloud logging read 'resource.type="cloud_run_job" resource.labels.job_name="rlz-reconciliatie" timestamp>="'"$(date -u -d '2 days ago' +%Y-%m-%dT00:00:00Z)"'" textPayload:"activum_aanmaken_mislukt"' \
+                --project "$PROJECT_ID" --limit 200 --order asc \
+                --format='value(timestamp,labels."run.googleapis.com/execution_name",textPayload)' > nameting-ak-job.txt || rc_ak=$?
+              cat nameting-ak-job.txt
+              [[ -s nameting-ak-job.txt ]] || echo "(geen activum_aanmaken_mislukt-regels in de job-logs)"
+              echo
+              for ADM in "BLOw" "Pilates"; do
+                echo "== db-lezen activa-stand --administratie $ADM (rij koppeling per status) =="
+                scripts/gcp/nameting.sh db-lezen activa-stand --administratie "$ADM" 2> nameting-ak-db.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-ak-db.stderr; }
+                echo
+                echo "== db-lezen reconciliatie-bevindingen --administratie $ADM --param afwijking_soort=activum_aanmaken_mislukt_mens (laatste afgeronde run) =="
+                scripts/gcp/nameting.sh db-lezen reconciliatie-bevindingen --administratie "$ADM" --param afwijking_soort=activum_aanmaken_mislukt_mens 2> nameting-ak-db2.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-ak-db2.stderr; }
+                echo
+              done
+              echo "== rlz-lezen FixedAssets BLOw (herstel-klikpunt Peter: verwacht 2 records InvoiceReference 23619/06052) =="
+              scripts/gcp/nameting.sh rlz-lezen --administratie "BLOw" --pad FixedAssets --expand DepreciationMethod --top 10 2> nameting-ak-rlz.stderr || { echo "(rlz-lezen exit $? — stderr:)"; cat nameting-ak-rlz.stderr; }
+            } > "$UIT"
+            AK_200="$(awk -F'\t' '$2=="POST" && $3=="200" && $5 ~ /\/aanmaken$/' nameting-ak-log.txt | wc -l | tr -d ' ')"
+            AK_422="$(awk -F'\t' '$2=="POST" && $3=="422" && $5 ~ /\/aanmaken$/' nameting-ak-log.txt | wc -l | tr -d ' ')"
+            AK_5XX="$(awk -F'\t' '$3 ~ /^5/' nameting-ak-log.txt | wc -l | tr -d ' ')"
+            AK_MENS="$(grep -c 'soort=activum_aanmaken_mislukt_mens' nameting-ak-job.txt || true)"
+            AK_FA="$(grep -c '"InvoiceReference"' "$UIT" || true)"
+            if [[ "$AK_5XX" -ge 1 ]]; then AK_STAND="ROOD — 5xx op de kaart-route"; elif [[ "$AK_200" -ge 1 || "$AK_422" -ge 1 ]]; then AK_STAND="werkt in productie: ja (kaart gebruikt ná de fix, 0 × 5xx)"; else AK_STAND="niet gemeten (kaart ongebruikt sinds de deploy — herstel BLOw = klikpunt Peter)"; fi
+            echo "Oordeel: POST aanmaken 200 = $AK_200, 422 = $AK_422, 5xx = $AK_5XX, mislukt_mens-regels job-log = $AK_MENS, FixedAssets-records BLOw = $AK_FA — $AK_STAND — exit $rc_ak" >> "$UIT"
+            echo "STATUS activa-kaart: rapport in $UIT (exit $rc_ak = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
             # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
@@ -549,6 +595,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-extern-geboekt-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "jobs-start" ]]; then
             OORDEEL_BRON="verkenning/nameting-jobs-start-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "activa-kaart" ]]; then
+            OORDEEL_BRON="verkenning/nameting-activa-kaart-$DATUM.txt"
           elif [[ "$ONDERDEEL" =~ ^(alles|a|b|c|d|e)$ ]]; then
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           else

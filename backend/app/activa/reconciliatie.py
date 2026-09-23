@@ -9,7 +9,10 @@ Soorten (alle sinds 21-09 in stand `meten` — `soort_stand.REGISTRY`; promotie 
 - `activum_zonder_boeking` — register-activum (PurchaseDate ≥ 2026-01-01) zonder koppeling en zonder module-regel mét
   gelijk bedrag ± 30 dagen: actie "boeking controleren in RLZ".
 - `afschrijving_niet_gelopen` — CurrentDepreciationValue 0, PurchaseDate ≤ vandaag − 12 maanden, boekwaarde > 0.
-- `activum_aanmaken_mislukt` — koppelingen `mislukt`: actie "Opnieuw aanmaken".
+- `activum_aanmaken_mislukt` — koppelingen `mislukt` mét herkomst `automatisch` (opt-in-pad): actie "Opnieuw aanmaken".
+- `activum_aanmaken_mislukt_mens` — koppelingen `mislukt` mét herkomst `mens` (BUG 24-09, BLOw 23-09): een mens koos
+  bewust "Activum aanmaken" en de handeling is niet uitgevoerd → DIRECT in `actie` (actiemail, handeling "Opnieuw
+  aanmaken" op de rij = de bestaande route `POST …/activa-voorstel/{regel}/aanmaken`), nooit `meten`.
 Odoo-administraties: zichtbaar overgeslagen (fase 1 = RLZ). Geen credential = zichtbare FOUT-regel, nooit stil.
 De vergelijking is pure code (`toets`) — testbaar zonder DB of RLZ.
 """
@@ -29,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.activa import instelling as instelling_service
 from app.activa import register
-from app.activa.models import ActivumKoppeling, KoppelingStatus
+from app.activa.models import ActivumKoppeling, KoppelingHerkomst, KoppelingStatus
 from app.activa.register import Activum
 from app.db.models import Grootboekrekening
 from app.documenten.models import Boekvoorstel, BoekvoorstelRegel, Document, DocumentSoort, DocumentStatus
@@ -46,12 +49,14 @@ SOORT_BOEKING_ZONDER_ACTIVUM = "mva_boeking_zonder_activum"
 SOORT_ACTIVUM_ZONDER_BOEKING = "activum_zonder_boeking"
 SOORT_AFSCHRIJVING_NIET_GELOPEN = "afschrijving_niet_gelopen"
 SOORT_AANMAKEN_MISLUKT = "activum_aanmaken_mislukt"
+SOORT_AANMAKEN_MISLUKT_MENS = "activum_aanmaken_mislukt_mens"
 SOORTEN = (
     SOORT_REGISTER_NIET_LEESBAAR,
     SOORT_BOEKING_ZONDER_ACTIVUM,
     SOORT_ACTIVUM_ZONDER_BOEKING,
     SOORT_AFSCHRIJVING_NIET_GELOPEN,
     SOORT_AANMAKEN_MISLUKT,
+    SOORT_AANMAKEN_MISLUKT_MENS,
 )
 #: Alleen boekingen/activa van dit boekjaar en later — het register van vóór de module is geen
 #: module-verantwoordelijkheid.
@@ -65,6 +70,7 @@ HANDELING = {
     SOORT_ACTIVUM_ZONDER_BOEKING: "boeking controleren in RLZ",
     SOORT_AFSCHRIJVING_NIET_GELOPEN: "afschrijving in RLZ controleren (methode/startmaand)",
     SOORT_AANMAKEN_MISLUKT: "Opnieuw aanmaken op het controlescherm",
+    SOORT_AANMAKEN_MISLUKT_MENS: "Opnieuw aanmaken (knop op deze rij of op het controlescherm)",
 }
 
 
@@ -88,6 +94,8 @@ class MislukteKoppeling:
     koppeling_id: uuid.UUID
     document_id: uuid.UUID
     regel_volgnummer: int
+    #: `mens` = bevestigde handeling niet uitgevoerd → soort `_mens`, direct actie (BUG 24-09); `automatisch` = meten.
+    herkomst: str
     omschrijving: str
     aanschafwaarde: Decimal
     reden: str | None
@@ -199,16 +207,20 @@ def toets(
                     )
                 )
     for m in mislukt:
+        mens = m.herkomst == KoppelingHerkomst.MENS.value
         uit.append(
             Afwijking(
-                soort=SOORT_AANMAKEN_MISLUKT,
+                soort=SOORT_AANMAKEN_MISLUKT_MENS if mens else SOORT_AANMAKEN_MISLUKT,
                 sleutel=str(m.koppeling_id),
                 tekst=(
-                    f"activum '{m.omschrijving}' € {m.aanschafwaarde} niet aangemaakt: {m.reden or 'onbekende reden'}"
+                    f"activum '{m.omschrijving}' € {m.aanschafwaarde} niet aangemaakt"
+                    f"{' ná een mens-klik' if mens else ''}: {m.reden or 'onbekende reden'}"
                 ),
                 detail={
                     "document_id": str(m.document_id),
                     "regel_volgnummer": m.regel_volgnummer,
+                    "koppeling_id": str(m.koppeling_id),
+                    "herkomst": m.herkomst,
                     "omschrijving": m.omschrijving,
                     "bedrag": str(m.aanschafwaarde),
                     "reden": m.reden,
@@ -309,6 +321,7 @@ def mislukte_koppelingen(session: Session, *, administratie_id: uuid.UUID) -> li
                 koppeling_id=k.id,
                 document_id=k.document_id,
                 regel_volgnummer=k.regel_volgnummer,
+                herkomst=k.herkomst,
                 omschrijving=k.omschrijving,
                 aanschafwaarde=Decimal(k.aanschafwaarde).quantize(Decimal("0.01")),
                 reden=k.reden,

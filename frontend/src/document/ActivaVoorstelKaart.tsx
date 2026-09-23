@@ -10,12 +10,16 @@
 // status) / niet geactiveerd mét reden / mislukt mét reden + "Opnieuw aanmaken" / beoordelen ná storno. Onder de grens =
 // oranje regel (kleine aanschaf direct ten laste van het resultaat?). Register niet leesbaar (403 op FixedAssets) =
 // oranje regel + knop uitgeschakeld mét die tekst. Een fout bij het laden blokkeert het scherm nooit (verrijking).
+// BUG 24-09 (BLOw 23-09): de afschrijvingsrekening is voorgevuld uit de koppeling > instelling > CONVENTIE (code + 1 mét
+// naam "Afschrijving…", herkomst-chip); zonder rekening is de combobox verplicht en staat de knop uit (server: 422).
 // Teal = actie, groen = status (designpass v2). Gate: alleen soort `inkoopfactuur`; leeg antwoord = niets tonen.
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
 import {
   activumAanmaken,
   activumOverslaan,
+  AFSCHRIJVING_BRON_LABEL,
+  AFSCHRIJVING_VEREIST_TEKST,
   haalActivaVoorstel,
   KOPPELING_STATUS_LABEL,
   REGISTER_NIET_LEESBAAR_TEKST,
@@ -222,7 +226,16 @@ function KandidaatKaart({
   const stand = kop?.status ?? null
   const definitief = stand === 'aangemaakt' || stand === 'beoordelen'
   const datum = k.aanschafdatum ? formatDatumKort(k.aanschafdatum) : null
-  const knopTitel = registerDicht ? REGISTER_NIET_LEESBAAR_TEKST : undefined
+  // BUG 24-09 punt 2 (BLOw 23-09: twee keer "Aanmaken ná boeken" zonder rekening → mislukt): zonder afschrijvingsrekening
+  // kan er niet gepland worden — combobox verplicht (rode rand + tekst), knop uit; de server weigert het óók (422).
+  const rekeningVereist = !definitief && afschrijvingId === null
+  const knopTitel = registerDicht ? REGISTER_NIET_LEESBAAR_TEKST : rekeningVereist ? AFSCHRIJVING_VEREIST_TEKST : undefined
+  const knopUit = registerDicht || rekeningVereist
+  // Herkomst-chip alleen zolang de mens de voorvulling niet overschreef.
+  const bronLabel =
+    afschrijvingId !== null && afschrijvingId === k.afschrijving_ledger_id && k.afschrijving_bron
+      ? AFSCHRIJVING_BRON_LABEL[k.afschrijving_bron]
+      : undefined
 
   return (
     <div className="vk" data-testid={`activa-kandidaat-${k.regel_volgnummer}`} style={{ maxWidth: 520, flex: '1 1 320px' }}>
@@ -264,7 +277,19 @@ function KandidaatKaart({
             onWijzig={onAfschrijving}
             placeholder={opties.length === 0 ? 'Geen afschrijvingsrekening (0xxx) gevonden' : 'Kies afschrijvingsrekening…'}
             leegTekst="Geen afschrijvingsrekening (0xxx) in deze administratie — stel in onder Instellingen › Activa"
+            vereist
+            fout={rekeningVereist}
           />
+          {bronLabel && (
+            <Badge variant="info" data-testid="activa-chip-afschrijving-bron" title={`code ${k.afschrijving_ledger_code ?? ''}`}>
+              {bronLabel}
+            </Badge>
+          )}
+          {rekeningVereist && (
+            <p className="vk-verschil" role="alert" data-testid="activa-rekening-vereist" style={{ marginTop: 4, marginBottom: 0 }}>
+              ⚠ {AFSCHRIJVING_VEREIST_TEKST}
+            </p>
+          )}
         </div>
       )}
       {definitief && k.afschrijving_ledger_code && <div className="vk-r">afschrijvingsrekening {k.afschrijving_ledger_code}</div>}
@@ -282,7 +307,7 @@ function KandidaatKaart({
       <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }} data-testid="activa-stand">
         {stand === null && (
           <>
-            <button type="button" className="btn" disabled={bezig || registerDicht} title={knopTitel} onClick={onAanmaken}>
+            <button type="button" className="btn" disabled={bezig || knopUit} title={knopTitel} onClick={onAanmaken}>
               {bezig ? 'Bezig…' : aanmaakLabel}
             </button>
             <button type="button" className="linkbtn" disabled={bezig} onClick={onOverslaan}>
@@ -312,7 +337,7 @@ function KandidaatKaart({
               {KOPPELING_STATUS_LABEL.overgeslagen}
             </Badge>
             {kop?.reden && <span className="hint">reden: {kop.reden}</span>}
-            <button type="button" className="linkbtn" disabled={bezig || registerDicht} title={knopTitel} onClick={onAanmaken}>
+            <button type="button" className="linkbtn" disabled={bezig || knopUit} title={knopTitel} onClick={onAanmaken}>
               Toch aanmaken
             </button>
           </>
@@ -323,7 +348,7 @@ function KandidaatKaart({
               {KOPPELING_STATUS_LABEL.mislukt}
               {kop?.reden ? ` — ${kop.reden}` : ''}
             </span>
-            <button type="button" className="btn secondary" disabled={bezig || registerDicht} title={knopTitel} onClick={onAanmaken}>
+            <button type="button" className="btn secondary" disabled={bezig || knopUit} title={knopTitel} onClick={onAanmaken}>
               {bezig ? 'Bezig…' : 'Opnieuw aanmaken'}
             </button>
           </>

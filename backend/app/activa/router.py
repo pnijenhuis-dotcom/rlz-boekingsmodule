@@ -53,6 +53,7 @@ def _voorstel_dto(data: VoorstelData) -> schemas.ActivaVoorstelDto:
                 restwaarde=_geld(k.restwaarde),
                 afschrijving_ledger_id=k.afschrijving_ledger_id,
                 afschrijving_ledger_code=k.afschrijving_ledger_code,
+                afschrijving_bron=k.afschrijving_bron,
                 signalen=[schemas.SignaalDto(code=s.code, tekst=s.tekst) for s in k.signalen],
                 koppeling=(
                     schemas.KoppelingDto(

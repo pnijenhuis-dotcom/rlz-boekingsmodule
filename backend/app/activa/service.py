@@ -28,6 +28,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.activa import afschrijving as afschrijving_service
 from app.activa import categorie as cat
 from app.activa import instelling as instelling_service
 from app.activa import register
@@ -39,9 +40,24 @@ from app.db.models import Grootboekrekening
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
+from app.rlz.client import RlzApiError
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 
 logger = logging.getLogger(__name__)
+
+#: BUG 24-09 punt 2: zonder bekende afschrijvingsrekening geen `gepland` — 422 mét deze letterlijke tekst (route-test +
+#: vitest gebruiken 'm; het scherm herkent de tekst).
+TEKST_AFSCHRIJVING_VEREIST = "Kies een afschrijvingsrekening — RLZ vereist er één per activum"
+#: BUG 24-09 punt 4 (Peter 23-09, BLOw MK22507863): `PUT FixedAssets/{client-guid}` → 404 `NotFound_FixedAsset`. Tot de
+#: STAP-0 op de RLZ-testadministratie de aanmaakroute bewijst, toont de kaart deze nette reden i.p.v. de ruwe
+#: RlzApiError.
+REDEN_AANMAAKROUTE_ONBEKEND = (
+    "aanmaken in Reeleezee nog niet mogelijk — wordt onderzocht (Reeleezee weigert PUT FixedAssets/{id} met 404 "
+    "NotFound_FixedAsset; STAP-0 op de testadministratie loopt, zie api-verkenning 'FixedAssets — aanmaakroute STAP-0')"
+)
+REDEN_GEEN_AFSCHRIJVINGSREKENING = (
+    "geen afschrijvingsrekening — kies op de kaart of stel in onder Instellingen › Activa"
+)
 
 TIJDLIJN_SLEUTEL = "activum"
 MODULE = "boekhouding"
@@ -62,6 +78,14 @@ class AlAangemaakt(ActivaFout):
 
 class OngeldigeInvoer(ActivaFout):
     """Lege reden, ongeldige termijn of onbekende afschrijvingsrekening (422)."""
+
+
+class AfschrijvingsrekeningVereist(OngeldigeInvoer):
+    """Geen afschrijvingsrekening gekozen én geen voorvulling (instelling/conventie) — 422, nooit `gepland`
+    (BUG 24-09)."""
+
+    def __init__(self) -> None:
+        super().__init__(TEKST_AFSCHRIJVING_VEREIST)
 
 
 def client_guid(*, document_id: uuid.UUID, regel_volgnummer: int, boek_cyclus: int) -> uuid.UUID:
@@ -255,12 +279,17 @@ def plan_of_maak_aan(
         assert document is not None
         koppeling = kandidaat.koppeling
         oud: dict | None = None
+        if koppeling is not None and koppeling.status == KoppelingStatus.AANGEMAAKT.value:
+            raise AlAangemaakt(
+                f"activum al aangemaakt in RLZ (nr {koppeling.rlz_receipt_number or '?'}) — "
+                "wijzigen of verwijderen doet een mens in RLZ"
+            )
+        # BUG 24-09 punt 2: nooit meer "gepland zonder afschrijvingsrekening" — mens-keuze > voorvulling (koppeling /
+        # instelling / conventie code + 1), anders 422. Het vangnet in `maak_aan_in_rlz` blijft (instelling kan intussen
+        # gewist zijn), maar is in de praktijk onbereikbaar.
+        if (afschrijving_ledger_id or kandidaat.afschrijving_ledger_id) is None:
+            raise AfschrijvingsrekeningVereist()
         if koppeling is not None:
-            if koppeling.status == KoppelingStatus.AANGEMAAKT.value:
-                raise AlAangemaakt(
-                    f"activum al aangemaakt in RLZ (nr {koppeling.rlz_receipt_number or '?'}) — "
-                    "wijzigen of verwijderen doet een mens in RLZ"
-                )
             oud = _koppeling_snapshot(koppeling)
             koppeling.status = KoppelingStatus.GEPLAND.value
             koppeling.herkomst = KoppelingHerkomst.MENS.value
@@ -351,6 +380,22 @@ def sla_over(
 
 
 # --- de RLZ-write ----------------------------------------------------------------------------------------------------
+
+
+def _conventie_afschrijving(
+    session: Session, administratie_id: uuid.UUID, balans_ledger_id: uuid.UUID
+) -> uuid.UUID | None:
+    rekeningen = session.scalars(
+        select(Grootboekrekening).where(
+            Grootboekrekening.administratie_id == administratie_id,
+            Grootboekrekening.verdwenen_uit_bron_op.is_(None),
+        )
+    ).all()
+    balans = next((r for r in rekeningen if r.ledger_id == balans_ledger_id), None)
+    if balans is None:
+        return None
+    treffer = afschrijving_service.conventie_rekening(balans, rekeningen)
+    return treffer.ledger_id if treffer is not None else None
 
 
 def _open_client(administratie_id: uuid.UUID):  # noqa: ANN202
@@ -447,6 +492,9 @@ def maak_aan_in_rlz(
             referentie = voorstel.referentie if voorstel is not None else None
             stand = instelling_service.lees_stand(session, administratie_id)
             afschrijving_id = koppeling.afschrijving_ledger_id or stand.afschrijving_ledger_voor(koppeling.categorie)
+            if afschrijving_id is None:
+                # vangnet (BUG 24-09 punt 1): dezelfde conventie code + 1 "Afschrijving…" als op de kaart
+                afschrijving_id = _conventie_afschrijving(session, administratie_id, koppeling.balans_ledger_id)
             termijn = koppeling.termijn_maanden
             regel = koppeling.regel_volgnummer
             cyclus = koppeling.boek_cyclus
@@ -477,7 +525,7 @@ def maak_aan_in_rlz(
                 koppeling_id=koppeling_id,
                 actor_id=actor_id,
                 status=KoppelingStatus.MISLUKT.value,
-                reden="geen afschrijvingsrekening — kies op de kaart of stel in onder Instellingen › Activa",
+                reden=REDEN_GEEN_AFSCHRIJVINGSREKENING,
             )
             return KoppelingStatus.MISLUKT.value
         velden["DepreciationAccount"] = {"id": str(afschrijving_id)}
@@ -497,7 +545,22 @@ def maak_aan_in_rlz(
                 return KoppelingStatus.MISLUKT.value
             velden["DepreciationMethod"] = {"id": str(methode.id)}
             guid = client_guid(document_id=document_id, regel_volgnummer=regel, boek_cyclus=cyclus)
-            client.put_fixed_asset(guid, velden)
+            try:
+                client.put_fixed_asset(guid, velden)
+            except RlzApiError as exc:
+                if exc.status_code == 404:
+                    # Peter 23-09 (BLOw MK22507863): RLZ kent de PUT-met-client-GUID hier niet als aanmaakroute. Nette
+                    # reden op de kaart, ruwe fout in het audit (`rlz_fout`); bevinding = actie (herkomst mens).
+                    _zet_uitkomst(
+                        administratie_id=administratie_id,
+                        koppeling_id=koppeling_id,
+                        actor_id=actor_id,
+                        status=KoppelingStatus.MISLUKT.value,
+                        reden=REDEN_AANMAAKROUTE_ONBEKEND,
+                        body={**velden, "id": str(guid), "rlz_fout": str(exc)[:500]},
+                    )
+                    return KoppelingStatus.MISLUKT.value
+                raise
             terug = register.lees_activum(client, guid)
         finally:
             if eigen_client:

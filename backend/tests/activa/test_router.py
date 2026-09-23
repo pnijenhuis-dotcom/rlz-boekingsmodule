@@ -12,9 +12,10 @@ from sqlalchemy import Engine, text
 
 from app.auth import service as auth_service
 from app.documenten import boeken
+from app.documenten.storage import LokaleBestandsopslag
 from app.main import app
 from app.security.tokens import create_access_token
-from tests.activa.conftest import GB_0107, GB_0108, koppelingen
+from tests.activa.conftest import GB_0107, GB_0108, GB_0170, koppelingen, maak_factuur, regel
 from tests.documenten.fake_rlz_client import FakeBoekClient
 
 client = TestClient(app)
@@ -67,8 +68,9 @@ class TestVoorstelRoutes:
             "termijn_maanden": 60,
             "methode_naam": "Lineair 5 jaar",
             "restwaarde": "0.00",
-            "afschrijving_ledger_id": None,
-            "afschrijving_ledger_code": None,
+            "afschrijving_ledger_id": str(GB_0108),
+            "afschrijving_ledger_code": "0108",
+            "afschrijving_bron": "conventie",
             "signalen": [
                 {"code": "kia_mia_mogelijk", "tekst": "KIA/MIA/Vamil mogelijk van toepassing — adviseur beslist"}
             ],
@@ -103,9 +105,30 @@ class TestVoorstelRoutes:
         gescoopte_gebruiker: uuid.UUID,
         boeken_aan: None,
         rlz: FakeBoekClient,
+        opslag: LokaleBestandsopslag,
+        admin_engine: Engine,
     ) -> None:
         h = _bearer(gescoopte_gebruiker)
         assert client.post(f"{_pad(administratie_id, factuur)}/2/aanmaken", headers=h).status_code == 422
+        # BUG 24-09 punt 2 (route-contract, letterlijk): kandidaat zonder voorvulling (0170 → geen 0171) en zonder
+        # keuze = 422.
+        laptop = maak_factuur(
+            administratie_id=administratie_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+            regels=[regel(GB_0170, "2400.00", "Laptop")],
+            referentie="KI-LAPTOP-ROUTE",
+        )
+        resp = client.post(f"{_pad(administratie_id, laptop)}/1/aanmaken", headers=h)
+        assert resp.status_code == 422, resp.text
+        assert resp.json()["detail"] == "Kies een afschrijvingsrekening — RLZ vereist er één per activum"
+        assert koppelingen(admin_engine, laptop) == []  # nooit meer "gepland zonder afschrijvingsrekening"
+        assert (
+            client.post(
+                f"{_pad(administratie_id, laptop)}/1/aanmaken", json={"afschrijving_ledger_id": str(GB_0108)}, headers=h
+            ).status_code
+            == 200
+        )
         assert (
             client.post(
                 f"{_pad(administratie_id, factuur)}/1/aanmaken", json={"termijn_maanden": 7}, headers=h

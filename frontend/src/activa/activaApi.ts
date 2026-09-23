@@ -54,6 +54,9 @@ export interface ActivaKandidaatDto {
   restwaarde: string
   afschrijving_ledger_id: string | null
   afschrijving_ledger_code: string | null
+  /** Herkomst van de voorvulling (BUG 24-09): `koppeling` (vastgelegd), `instelling` (per categorie), `conventie`
+   * (balansrekening-code + 1 mét naam "Afschrijving…"), of null = leeg → de combobox is verplicht, de knop staat uit. */
+  afschrijving_bron?: 'koppeling' | 'instelling' | 'conventie' | string | null
   signalen: ActivaSignaalDto[]
   koppeling: ActivumKoppelingDto | null
 }
@@ -189,6 +192,15 @@ export const KOPPELING_STATUS_LABEL: Record<KoppelingStatus, string> = {
   overgeslagen: 'niet geactiveerd',
   mislukt: 'aanmaken mislukt',
   beoordelen: 'beoordelen in RLZ',
+}
+
+/** Spiegel van `service.TEKST_AFSCHRIJVING_VEREIST` (route 422; het scherm toont dezelfde zin bij een lege combobox). */
+export const AFSCHRIJVING_VEREIST_TEKST = 'Kies een afschrijvingsrekening — Reeleezee vereist er één per activum'
+
+/** Klantleesbaar label van de voorvulling-herkomst (chip op de kaart). */
+export const AFSCHRIJVING_BRON_LABEL: Record<string, string> = {
+  conventie: 'voorgevuld: conventie (code + 1)',
+  instelling: 'voorgevuld: uit de instelling',
 }
 
 export const REGISTER_NIET_LEESBAAR_TEKST =

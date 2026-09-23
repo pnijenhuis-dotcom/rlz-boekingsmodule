@@ -141,6 +141,19 @@ REGISTRY: dict[str, SoortDefinitie] = {
         SoortDefinitie(soort="activum_zonder_boeking", blok="activa", sinds=date(2026, 9, 21), default=METEN),
         SoortDefinitie(soort="afschrijving_niet_gelopen", blok="activa", sinds=date(2026, 9, 21), default=METEN),
         SoortDefinitie(soort="activum_aanmaken_mislukt", blok="activa", sinds=date(2026, 9, 21), default=METEN),
+        # activa (BUG-opdracht 24-09, casus BLOw 23-09: twee keer "Aanmaken ná boeken" → `mislukt` in meten, niemand zag
+        # het): een koppeling `mislukt` mét herkomst `mens` is een bevestigde handeling die niet is uitgevoerd —
+        # kernprincipe 4 + 7(6). Besluit Peter in de opdracht: "actie, niet meten"; de handeling "Opnieuw aanmaken"
+        # is de bestaande kaart-route. `herkomst = automatisch` blijft `activum_aanmaken_mislukt` in meten.
+        SoortDefinitie(
+            soort="activum_aanmaken_mislukt_mens",
+            blok="activa",
+            sinds=date(2026, 9, 24),
+            default=ACTIE,
+            direct_actie_reden="Peter 23/24-09 (BUG activa-kaart BLOw): een mens koos bewust 'Activum aanmaken' en de "
+            "module voerde het niet uit — bevestigde handeling, één deterministische herstelroute (Opnieuw aanmaken); "
+            "explosie-rem blijft",
+        ),
         # intake (Peter 22-09): berichten in het postvak sinds gisteren zonder verwerking — het bewijs is de Message-ID
         # in de mailbox zelf, de handeling is deterministisch ("Nu verwerken" = de intake-job opnieuw starten). Besluit
         # Peter in de opdracht: "verschil > 0 = actie-bevinding mét de Message-ID's en knop Nu verwerken".

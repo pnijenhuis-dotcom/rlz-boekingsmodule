@@ -247,29 +247,45 @@ class TestNaBoeken:
     @pytest.mark.afwezig_pad("activa_instelling.automatisch_aanmaken_ingeschakeld")
     def test_opt_in_aan_zonder_afschrijvingsrekening_is_zichtbaar_mislukt_geen_stille_no_op(
         self,
-        factuur: uuid.UUID,
+        stamgegevens: None,
         administratie_id: uuid.UUID,
         gescoopte_gebruiker: uuid.UUID,
         boeken_aan: None,
         rlz: FakeBoekClient,
         admin_engine: Engine,
+        opslag: LokaleBestandsopslag,
     ) -> None:
+        # BUG 24-09: 0107 krijgt via de conventie 0108 voorgevuld; het afwezig-pad "geen rekening" bestaat alleen nog
+        # voor een rekening zonder conventie-opvolger (0170 Computers — geen 0171 "Afschrijving…").
         _zet_instelling(administratie_id, automatisch_aanmaken_ingeschakeld=True)
-        resultaat = orkestratie.boek_document_met_doorbelasting(
-            administratie_id=administratie_id, document_id=factuur, actor_id=gescoopte_gebruiker
+        laptop = maak_factuur(
+            administratie_id=administratie_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+            regels=[regel(GB_0170, "2400.00", "Laptop")],
+            referentie="KI-LAPTOP-AUTO",
         )
-        assert _status(admin_engine, factuur) == "geboekt"  # de boeking zelf raakt het nooit
+        resultaat = orkestratie.boek_document_met_doorbelasting(
+            administratie_id=administratie_id, document_id=laptop, actor_id=gescoopte_gebruiker
+        )
+        assert _status(admin_engine, laptop) == "geboekt"  # de boeking zelf raakt het nooit
         assert resultaat.activa == {"aangemaakt": 0, "mislukt": 1, "gepland_verwerkt": 0, "automatisch": 1}
-        rij = koppelingen(admin_engine, factuur)[0]
+        rij = koppelingen(admin_engine, laptop)[0]
         assert rij["status"] == "mislukt" and rij["herkomst"] == "automatisch"
         assert rij["reden"] == "geen afschrijvingsrekening — kies op de kaart of stel in onder Instellingen › Activa"
         assert rlz.fixed_asset_puts == []
-        assert "Activum aanmaken mislukt" in tijdlijn_teksten(admin_engine, factuur)[-1]
+        assert "Activum aanmaken mislukt" in tijdlijn_teksten(admin_engine, laptop)[-1]
         assert audit_acties(admin_engine)[-1] == "activum_aanmaken_mislukt"
-        # Opnieuw aanmaken ná herstel (rekening gekozen op de kaart, document is geboekt) → direct in RLZ.
+        # Opnieuw aanmaken zónder rekening = 422 (nooit meer "gepland zonder afschrijvingsrekening"); mét rekening →
+        # RLZ.
+        with pytest.raises(service.AfschrijvingsrekeningVereist, match="Kies een afschrijvingsrekening"):
+            service.plan_of_maak_aan(
+                administratie_id=administratie_id, document_id=laptop, regel_volgnummer=1, actor_id=gescoopte_gebruiker
+            )
+        assert koppelingen(admin_engine, laptop)[0]["status"] == "mislukt"
         data = service.plan_of_maak_aan(
             administratie_id=administratie_id,
-            document_id=factuur,
+            document_id=laptop,
             regel_volgnummer=1,
             actor_id=gescoopte_gebruiker,
             afschrijving_ledger_id=GB_0108,
@@ -406,6 +422,109 @@ class TestNaBoeken:
         assert resultaat.activa["aangemaakt"] == 2 and len(rlz.fixed_asset_puts) == 2
         assert sorted(p["NumberOfMonths"] for p in rlz.fixed_asset_puts) == [36, 60]
         assert [r["rlz_receipt_number"] for r in koppelingen(admin_engine, doc)] == ["1", "2"]
+
+
+class TestBug24_09:
+    """BUG-opdracht 24-09 (BLOw 23-09): afschrijvingsrekening deterministisch voorgevuld (conventie code + 1), nooit
+    meer `gepland` zonder rekening, vangnet in de RLZ-write, en de 404-aanmaakroute als nette reden."""
+
+    def test_plannen_zonder_keuze_neemt_de_conventie_rekening_over(
+        self, factuur: uuid.UUID, administratie_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        data = service.plan_of_maak_aan(
+            administratie_id=administratie_id, document_id=factuur, regel_volgnummer=1, actor_id=gescoopte_gebruiker
+        )
+        k = data.kandidaten[0]
+        assert k.koppeling is not None and k.koppeling.status == "gepland"
+        assert k.afschrijving_ledger_id == GB_0108 and k.afschrijving_bron == "koppeling"  # vastgelegd bij plannen
+        assert koppelingen(admin_engine, factuur)[0]["afschrijving_ledger_id"] == GB_0108
+
+    def test_zonder_conventie_en_zonder_keuze_is_422_en_geen_koppeling(
+        self,
+        stamgegevens: None,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine: Engine,
+    ) -> None:
+        laptop = maak_factuur(
+            administratie_id=administratie_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+            regels=[regel(GB_0170, "2400.00", "Laptop")],
+            referentie="KI-LAPTOP-422",
+        )
+        with pytest.raises(service.AfschrijvingsrekeningVereist) as exc:
+            service.plan_of_maak_aan(
+                administratie_id=administratie_id, document_id=laptop, regel_volgnummer=1, actor_id=gescoopte_gebruiker
+            )
+        assert str(exc.value) == service.TEKST_AFSCHRIJVING_VEREIST
+        assert isinstance(exc.value, service.OngeldigeInvoer)  # router → 422
+        assert koppelingen(admin_engine, laptop) == [] and audit_acties(admin_engine) == []
+
+    def test_vangnet_in_de_rlz_write_gebruikt_de_conventie_als_koppeling_en_instelling_leeg_zijn(
+        self,
+        factuur: uuid.UUID,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        boeken_aan: None,
+        rlz: FakeBoekClient,
+        admin_engine: Engine,
+    ) -> None:
+        """De BLOw-stand van 23-09: koppeling `gepland` mét `afschrijving_ledger_id` NULL (vóór de fix geplant) → ná
+        boeken vult het vangnet de conventie-rekening in en het activum ontstaat wél."""
+        service.plan_of_maak_aan(
+            administratie_id=administratie_id, document_id=factuur, regel_volgnummer=1, actor_id=gescoopte_gebruiker
+        )
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE boekhouding.activum_koppeling SET afschrijving_ledger_id = NULL WHERE document_id = :d"),
+                {"d": factuur},
+            )
+        boeken.boek_document(administratie_id=administratie_id, document_id=factuur, actor_id=gescoopte_gebruiker)
+        uit = service.verwerk_na_boeken(
+            administratie_id=administratie_id, document_id=factuur, actor_id=gescoopte_gebruiker, client=rlz
+        )
+        assert uit.aangemaakt == 1 and rlz.fixed_asset_puts[0]["DepreciationAccount"] == {"id": str(GB_0108)}
+
+    def test_put_404_notfound_fixedasset_is_nette_reden_met_ruwe_fout_in_audit(
+        self,
+        factuur: uuid.UUID,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        boeken_aan: None,
+        rlz: FakeBoekClient,
+        admin_engine: Engine,
+    ) -> None:
+        """Peter 23-09 (BLOw, MK22507863): `PUT FixedAssets/{client-guid}` → 404 NotFound_FixedAsset. Kaart: nette reden
+        i.p.v. de ruwe RlzApiError; audit draagt de ruwe fout; herkomst mens → actie-bevinding."""
+        service.plan_of_maak_aan(
+            administratie_id=administratie_id, document_id=factuur, regel_volgnummer=1, actor_id=gescoopte_gebruiker
+        )
+        boeken.boek_document(administratie_id=administratie_id, document_id=factuur, actor_id=gescoopte_gebruiker)
+        rlz.faal_op = "fixed_asset_put_404"
+        uit = service.verwerk_na_boeken(
+            administratie_id=administratie_id, document_id=factuur, actor_id=gescoopte_gebruiker, client=rlz
+        )
+        assert uit.mislukt == 1 and rlz.fixed_asset_puts == []
+        rij = koppelingen(admin_engine, factuur)[0]
+        assert rij["status"] == "mislukt" and rij["herkomst"] == "mens"
+        assert rij["reden"] == service.REDEN_AANMAAKROUTE_ONBEKEND
+        assert "NotFound_FixedAsset" in rij["reden"] and not rij["reden"].startswith("RlzApiError")
+        with admin_engine.connect() as conn:
+            nieuw = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde FROM platform.audit_event WHERE actie = 'activum_aanmaken_mislukt' "
+                    "ORDER BY tijdstip DESC LIMIT 1"
+                )
+            ).scalar_one()
+        assert "NotFound_FixedAsset" in nieuw["rlz_body"]["rlz_fout"] and nieuw["rlz_body"]["DepreciationAccount"]
+        # Herstel ná de STAP-0: opnieuw aanmaken op de kaart → RLZ accepteert → aangemaakt.
+        rlz.faal_op = None
+        data = service.plan_of_maak_aan(
+            administratie_id=administratie_id, document_id=factuur, regel_volgnummer=1, actor_id=gescoopte_gebruiker
+        )
+        assert data.kandidaten[0].koppeling.status == "aangemaakt" and len(rlz.fixed_asset_puts) == 1
 
 
 class TestStorno:

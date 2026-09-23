@@ -1092,6 +1092,18 @@ def _activa(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             "Herstel de oorzaak (afschrijvingsrekening kiezen, RLZ-recht, methode) en klik 'Opnieuw aanmaken' op het "
             "controlescherm.",
         )
+    if soort == "activum_aanmaken_mislukt_mens":
+        lev = _s(d, "leverancier_naam")
+        nr = _s(d, "factuurnummer")
+        factuur = " ".join(x for x in (lev, nr) if x)
+        return (
+            _titel("Activum niet aangemaakt ná uw klik", onderwerp),
+            f"Iemand koos 'Activum aanmaken' voor '{_s(d, 'omschrijving') or '?'}' ({bedrag or '?'}"
+            f"{f', factuur {factuur}' if factuur else ''}), maar het activum staat niet in Reeleezee: "
+            f"{_s(d, 'reden') or 'onbekende reden'}.",
+            "Klik 'Opnieuw aanmaken' op deze rij (de module gebruikt de voorgevulde afschrijvingsrekening); lukt dat "
+            "niet, open het controlescherm en kies de afschrijvingsrekening.",
+        )
     return (_titel("Afwijking activa", onderwerp), _terugval_wat(tekst), f"Beoordeel de afwijking; {_DOE_ACCEPTEER}")
 
 

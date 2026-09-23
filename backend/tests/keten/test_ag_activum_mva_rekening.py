@@ -90,11 +90,16 @@ def test_ag_regel_op_mva_rekening_wordt_activum_in_rlz_na_boeken(keten: Keten) -
     assert k["categorie"] == "inventaris" and k["methode_naam"] == "Lineair 5 jaar" and k["restwaarde"] == "0.00"
     assert [s["code"] for s in k["signalen"]] == ["kia_mia_mogelijk"] and k["koppeling"] is None
     assert any(o["code"] == "0108" for o in dto["afschrijving_ledger_opties"])
+    # BUG 24-09 punt 1 (BLOw 23-09): zonder instelling is de afschrijvingsrekening deterministisch voorgevuld uit de
+    # conventie code + 1 mét naam "Afschrijving…" (0107 → 0108), mét herkomst — de mens hoeft niets meer te kiezen.
+    assert k["afschrijving_ledger_id"] == str(GB_0108) and k["afschrijving_ledger_code"] == "0108"
+    assert k["afschrijving_bron"] == "conventie"
 
-    # 2. "Aanmaken ná boeken" mét de afschrijvingsrekening → gepland; nog niets in RLZ.
-    gepland = keten.api.post(f"{pad}/1/aanmaken", json={"afschrijving_ledger_id": str(GB_0108)}, headers=keten.headers)
+    # 2. "Aanmaken ná boeken" ZONDER body → de voorvulling wordt vastgelegd → gepland; nog niets in RLZ.
+    gepland = keten.api.post(f"{pad}/1/aanmaken", json={}, headers=keten.headers)
     assert gepland.status_code == 200, gepland.text
     assert gepland.json()["kandidaten"][0]["koppeling"]["status"] == "gepland"
+    assert gepland.json()["kandidaten"][0]["afschrijving_bron"] == "koppeling"
     assert keten.rlz.fixed_asset_puts == []
 
     # 3. Boeken via de boekknop-route (202 + directe achtergrond-schrijver) → inkoopfactuur én activum in RLZ.

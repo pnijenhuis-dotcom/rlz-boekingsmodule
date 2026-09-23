@@ -166,7 +166,8 @@ def _doel_pad(b: ReconciliatieBevinding) -> str | None:
         return None
     if b.blok == "doorbelasting" and d.get("document_id"):
         return f"/doorbelasting/{aid}/{d['document_id']}"
-    if b.blok in ("documenten", "omzet") and d.get("document_id"):
+    # activa (BUG 24-09): de handeling op de rij is "Opnieuw aanmaken"; de deeplink is het controlescherm mét de kaart.
+    if b.blok in ("documenten", "omzet", "activa") and d.get("document_id"):
         return f"/?administratie={aid}&document={d['document_id']}"
     return None
 

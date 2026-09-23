@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -499,3 +499,29 @@ def test_nameting_sh_kent_onderdeel_extern_geboekt() -> None:
     vervolg-opdracht zonder TTY `nameting.sh` niet op exit 3 strandt."""
     sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
     assert re.search(r"^\s*extern-geboekt\) echo extern-geboekt ;;", sh, re.M)
+
+
+def test_onderdeel_activa_kaart_alleen_op_verzoek_en_lees_only(tmp_path: Path) -> None:
+    """24-09 (BUG activa-kaart BLOw 23-09): de kaart-fix (afschrijvingsrekening voorgevuld, 422 zonder rekening,
+    `mislukt` ná mens-klik = actie) is alleen ná deploy en gebruik meetbaar; het herstel van BLOw (2 activa) is een
+    klikpunt. De lees-only meetlat (request-log POST aanmaken 200/422/5xx + job-log mislukt-regels + db-lezen
+    activa-stand/bevindingen + rlz-lezen FixedAssets BLOw) staat als dispatch-onderdeel `activa-kaart` (vier plekken:
+    if-tak, options, via_gh_onderdeel, OORDEEL_BRON), alleen op verzoek (niet in 'alles'), uitsluitend via de
+    nameting-scripts."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "activa-kaart" ]]; then' in meet
+    assert 'httpRequest.requestUrl:"/activa-voorstel/"' in meet
+    assert 'scripts/gcp/nameting.sh db-lezen activa-stand --administratie "$ADM"' in meet
+    assert "--param afwijking_soort=activum_aanmaken_mislukt_mens" in meet
+    assert 'scripts/gcp/nameting.sh rlz-lezen --administratie "BLOw" --pad FixedAssets' in meet
+    assert 'UIT="verkenning/nameting-activa-kaart-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "activa-kaart"' not in meet, "niet in 'alles'"
+    assert 'OORDEEL_BRON="verkenning/nameting-activa-kaart-$DATUM.txt"' in meet
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    assert re.search(r"^\s*activa-kaart\) echo activa-kaart ;;", sh, flags=re.M), "via_gh_onderdeel mist activa-kaart"
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "activa-kaart",
+        {"nameting-activa-kaart-14-09.txt": "kop\nOordeel: POST aanmaken 200 = 2, 422 = 0, 5xx = 0 — werkt: ja\n"},
+    )
+    assert oordeel.startswith("Oordeel: POST aanmaken 200 = 2"), oordeel

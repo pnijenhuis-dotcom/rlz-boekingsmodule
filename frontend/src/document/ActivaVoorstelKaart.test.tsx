@@ -33,6 +33,7 @@ function kandidaat(overrides: Partial<ActivaKandidaatDto> = {}): ActivaKandidaat
     restwaarde: '0.00',
     afschrijving_ledger_id: 'gb-0108',
     afschrijving_ledger_code: '0108',
+    afschrijving_bron: 'conventie',
     signalen: [{ code: 'kia_mia_mogelijk', tekst: 'KIA/MIA/Vamil mogelijk van toepassing — adviseur beslist' }],
     koppeling: null,
     ...overrides,
@@ -109,7 +110,10 @@ describe('ActivaVoorstelKaart', () => {
     expect(kaart).toHaveTextContent(/categorie\s*Inventaris/)
     expect(kaart).toHaveTextContent(/Lineair 5 jaar \(60 mnd\)/)
     expect(within(kaart).getByTestId('activa-signalen')).toHaveTextContent('KIA/MIA/Vamil mogelijk van toepassing')
-    expect(within(kaart).getByRole('combobox', { name: 'Afschrijvingsrekening' })).toHaveValue('0108 · Afschrijving inventaris')
+    expect(within(kaart).getByRole('combobox', { name: /Afschrijvingsrekening/ })).toHaveValue('0108 · Afschrijving inventaris')
+    // BUG 24-09 punt 1: herkomst-chip van de deterministische voorvulling (code + 1, naam "Afschrijving…").
+    expect(within(kaart).getByTestId('activa-chip-afschrijving-bron')).toHaveTextContent('voorgevuld: conventie (code + 1)')
+    expect(within(kaart).queryByTestId('activa-rekening-vereist')).toBeNull()
     // Document nog niet geboekt → de primaire knop zegt dat het activum ná boeken komt.
     expect(within(kaart).getByRole('button', { name: 'Aanmaken ná boeken' })).toBeEnabled()
     expect(within(kaart).getByRole('button', { name: 'Niet activeren…' })).toBeInTheDocument()
@@ -216,6 +220,69 @@ describe('ActivaVoorstelKaart', () => {
       /0107 Inventaris €\s?120,00 staat op een activarekening onder de grens €\s?450,00 — kleine aanschaf direct ten laste van het resultaat\?/,
     )
     expect(screen.queryByTestId('activa-kandidaat-2')).toBeNull()
+  })
+
+  it('zonder voorgevulde afschrijvingsrekening (mét opties) is de combobox verplicht en staat de knop uit tot er een keuze is (BUG 24-09 punt 2)', async () => {
+    const gebruiker = userEvent.setup()
+    const posts: Aanroep[] = []
+    installFetch(voorstel({ kandidaten: [kandidaat({ afschrijving_ledger_id: null, afschrijving_ledger_code: null, afschrijving_bron: null })] }), posts)
+    toon()
+    const kaart = await screen.findByTestId('activa-kandidaat-1')
+    const knop = within(kaart).getByRole('button', { name: 'Aanmaken ná boeken' })
+    expect(knop).toBeDisabled()
+    expect(knop).toHaveAttribute('title', 'Kies een afschrijvingsrekening — Reeleezee vereist er één per activum')
+    expect(within(kaart).getByTestId('activa-rekening-vereist')).toHaveTextContent(/Kies een afschrijvingsrekening — Reeleezee vereist er één per activum/)
+    const combobox = within(kaart).getByRole('combobox', { name: /Afschrijvingsrekening/ })
+    expect(combobox).toHaveClass('warnfield')
+    expect(combobox).toHaveAttribute('aria-required', 'true')
+    expect(within(kaart).queryByTestId('activa-chip-afschrijving-bron')).toBeNull()
+    // "Niet activeren…" blijft mogelijk: dat besluit raakt RLZ niet.
+    expect(within(kaart).getByRole('button', { name: 'Niet activeren…' })).toBeEnabled()
+    // Keuze maken → rode rand weg, knop aan, POST draagt de gekozen rekening.
+    await gebruiker.click(combobox)
+    await gebruiker.click(await screen.findByRole('option', { name: /0118.*Afschrijving machines/ }))
+    await waitFor(() => expect(within(kaart).getByRole('button', { name: 'Aanmaken ná boeken' })).toBeEnabled())
+    expect(within(kaart).queryByTestId('activa-rekening-vereist')).toBeNull()
+    await gebruiker.click(within(kaart).getByRole('button', { name: 'Aanmaken ná boeken' }))
+    await waitFor(() => expect(posts).toHaveLength(1))
+    expect(posts[0].body).toEqual({ afschrijving_ledger_id: 'gb-0118' })
+  })
+
+  it('de mens overschrijft de voorvulling → de herkomst-chip verdwijnt; uit de instelling = eigen chip', async () => {
+    const gebruiker = userEvent.setup()
+    installFetch(voorstel({ kandidaten: [kandidaat({ afschrijving_bron: 'instelling' })] }))
+    toon()
+    const kaart = await screen.findByTestId('activa-kandidaat-1')
+    expect(within(kaart).getByTestId('activa-chip-afschrijving-bron')).toHaveTextContent('voorgevuld: uit de instelling')
+    await gebruiker.click(within(kaart).getByRole('combobox', { name: /Afschrijvingsrekening/ }))
+    await gebruiker.click(await screen.findByRole('option', { name: /0118.*Afschrijving machines/ }))
+    await waitFor(() => expect(within(kaart).queryByTestId('activa-chip-afschrijving-bron')).toBeNull())
+  })
+
+  it('server-422 "Kies een afschrijvingsrekening …" komt letterlijk op de kaart (role=alert)', async () => {
+    const gebruiker = userEvent.setup()
+    installFetch(voorstel(), [], () => json({ detail: 'Kies een afschrijvingsrekening — RLZ vereist er één per activum' }, 422))
+    toon()
+    await gebruiker.click(await screen.findByRole('button', { name: 'Aanmaken ná boeken' }))
+    expect(await screen.findByTestId('activa-fout')).toHaveTextContent('Kies een afschrijvingsrekening — RLZ vereist er één per activum')
+  })
+
+  it('mislukt mét de nette 404-reden ("wordt onderzocht") toont die reden en houdt "Opnieuw aanmaken"', async () => {
+    installFetch(
+      voorstel({
+        document_geboekt: true,
+        kandidaten: [
+          kandidaat({
+            koppeling: { id: 'k1', status: 'mislukt', herkomst: 'mens', rlz_fixed_asset_id: null, rlz_receipt_number: null, reden: 'aanmaken in Reeleezee nog niet mogelijk — wordt onderzocht (Reeleezee weigert PUT FixedAssets/{id} met 404 NotFound_FixedAsset; …)', door: null, gewijzigd_op: null },
+          }),
+        ],
+      }),
+    )
+    toon({ status: 'geboekt' })
+    const k1 = await screen.findByTestId('activa-kandidaat-1')
+    expect(within(k1).getByTestId('activa-mislukt')).toHaveTextContent(/aanmaken mislukt — aanmaken in Reeleezee nog niet mogelijk — wordt onderzocht/)
+    expect(within(k1).getByTestId('activa-mislukt')).not.toHaveTextContent(/RlzApiError/)
+    expect(within(k1).getByRole('button', { name: 'Opnieuw aanmaken' })).toBeEnabled()
   })
 
   it('register niet leesbaar (403 op FixedAssets) → oranje regel en de aanmaak-knop uitgeschakeld mét die tekst', async () => {

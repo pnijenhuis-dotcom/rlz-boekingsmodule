@@ -34,6 +34,7 @@ import { HerboekenAlsOmzetActie, isOmzetInInkoopstroom } from './HerboekenAlsOmz
 import { isKassarapportInWerkvoorraad, TypeWijzigenKassarapportActie } from './TypeWijzigenKassarapportActie'
 import { isBoekWachtrijGestrand, OpnieuwIndienenActie } from './OpnieuwIndienenActie'
 import { isIntakePostvakVerschil, NuVerwerkenActie } from './NuVerwerkenActie'
+import { isActivumAanmakenMislukt, OpnieuwAanmakenActie } from './OpnieuwAanmakenActie'
 import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
 import {
   accepteerBevinding,
@@ -271,6 +272,23 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
             herlaad()
           }}
         />
+      )
+    }
+
+    // 24-09 (BUG activa-kaart BLOw): activum niet aangemaakt ná een mens-klik → "Opnieuw aanmaken" op de rij (zelfde
+    // kaart-route, voorgevulde afschrijvingsrekening); 422 = de rekening kiezen op het controlescherm (deeplink).
+    if (r.soort === 'afwijking' && isActivumAanmakenMislukt(r)) {
+      return (
+        <>
+          <OpnieuwAanmakenActie
+            bevinding={r}
+            onGelukt={(melding, soort) => {
+              toast.meld(melding, soort)
+              herlaad()
+            }}
+          />{' '}
+          {deeplink}
+        </>
       )
     }
 

@@ -6,6 +6,15 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-23 — Activum aanmaken: afschrijvingsrekening automatisch ingevuld, nooit meer stil mislukt
+
+<!-- activa-kaart-afschrijvingsrekening-23-09 -->
+
+- **De afschrijvingsrekening staat nu voorgevuld** op de kaart "Activum aanmaken?": de module kiest de rekening die één nummer hoger ligt dan de gekozen activarekening en met "Afschrijving" begint (bijvoorbeeld 0107 Kantoorinventaris → 0108 Afschrijving kantoormeubilair), met een chip die zegt waar de keuze vandaan komt. Een instelling per categorie wint; u kunt altijd zelf een andere rekening kiezen.
+- **Zonder afschrijvingsrekening kan er niet meer "aangemaakt ná boeken" worden.** Is er geen rekening te vinden, dan is het veld verplicht (rode rand) en staat de knop uit tot u kiest. Tot vandaag kon u plannen zonder rekening; de module weigerde dan ná het boeken en niemand zag het (twee facturen bij BLOw op 23 september).
+- **Mislukt ná uw klik = een actiepunt.** Koos iemand "Activum aanmaken" en staat het activum daarna toch niet in Reeleezee, dan komt dat als actiepunt in Inzicht › Reconciliatie én in de actiemail, met de knop "Opnieuw aanmaken" op de rij.
+- **Reeleezee weigert het aanmaken op dit moment nog** (technische melding op één factuur bij BLOw op 23 september). De kaart toont daarvoor nu een nette melding "aanmaken in Reeleezee nog niet mogelijk — wordt onderzocht" in plaats van een ruwe foutcode; het onderzoek naar de juiste aanmaakroute loopt op de testadministratie.
+
 ## 2026-09-23 — Rekeningnummer al vertrouwd? De controles draaien nu écht direct opnieuw
 
 <!-- nameting-iban-wissel-cache-23-09 -->
