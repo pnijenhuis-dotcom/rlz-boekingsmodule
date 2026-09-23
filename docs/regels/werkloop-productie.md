@@ -292,3 +292,15 @@
   (`cloudscheduler.viewer` ontbreekt → "niet leesbaar") — beslispunt Peter: één owner-binding, dan meet `jobs-start` de vangnetten zelf; tot dan
   meet de owner-sessie ze en noemt het rapport dat expliciet. De testadministratie in een opdrachttekst bij haar RLZ-adminId (`8dbfb856…`) is
   platform-id `faae29c5` — gearchiveerd zonder credential (zie de regel van 22-09 hierboven).
+
+<!-- toegevoegd 23-09-2026, opdracht "intake-tweede-postvak-facturen-kempengroep-direct-plus-postvakbewaking-en-message-id" -->
+- **Secrets: user-managed replicatie in europe-west4; IMAP-metingen alleen op een job mét de credentials (23-09; BESLISSINGEN "INTAKE — TWEEDE POSTVAK KEMPENGROEP DIRECT + MESSAGE-ID-ADMINISTRATIE + POSTVAKBEWAKING (Peter 22-09)"):**
+  (1) élk nieuw Secret Manager-secret wordt aangemaakt mét `--replication-policy=user-managed --locations=europe-west4` — de org-policy
+  `gcp.resourceLocations` weigert `automatic`/global (Peter 22-09 bij `INTAKE_KEMPENGROEP_IMAP_WACHTWOORD`); `f3_jobs.sh` doet dat zo voor
+  beide IMAP-secrets. Secret-VERSIES zet Peter zelf (`gcloud secrets versions add …`), nooit via CC/Cowork. (2) `nameting@` heeft geen
+  secrets en kan dus geen postvak lezen; een IMAP-rakende meting (postvak-audit, herstelrun) draait uitsluitend op een job die de
+  INTAKE-envset draagt — sinds 23-09 óók `rlz-reconciliatie`, zodat het lees-only `intake-postvak-audit` via `nameting.sh`/dispatch-onderdeel
+  `intake-postvak-audit` als bot-bestand op main landt; de SCHRIJVENDE herstelrun (`intake-postvak-verwerken --sinds …`) is een
+  `gcloud run jobs execute rlz-intake-imap[-kempengroep] --args=…` in Peters owner-sessie ná deploy (regel 08-09), nooit via nameting.sh.
+  (3) Een job-alias (`intake-postvak-kempengroep-verwerken`) i.p.v. CLI-argumenten in de F3-lus: `deploy.yml` splitst `--args` op komma's
+  en de smoketest op `^|^` — één CLI-woord per job houdt beide guards (`test_deploy_yml_jobs_command`, `test_cli_smoketest`) eenduidig.

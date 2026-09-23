@@ -6,6 +6,15 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-23 — Geen gemiste facturen meer uit de mailbox: tweede postvak direct gelezen, Spam meegenomen, telling aan de bron
+
+<!-- intake-tweede-postvak-kempengroep-23-09 -->
+
+- **facturen@kempengroep.nl wordt nu rechtstreeks gelezen**, elke tien minuten, net als facturen@ak-nijenhuis.nl. Het doorsturen tussen de twee mailboxen is niet meer nodig (en verloor berichten: spam-classificaties en afzenders met strikte e-mailbeveiliging kwamen nooit aan). Op het controlescherm en in de tijdlijn ziet u via welk postvak een document binnenkwam.
+- **Gelezen berichten en de spam-map tellen mee.** De module keek tot nu alleen naar ongelezen berichten in de inbox; wie de mailbox opende en een bericht las, haalde het daarmee ongemerkt uit de verwerking. Vanaf nu bepaalt de module zelf wat ze al verwerkt heeft (per bericht, op het unieke berichtnummer) en leest ze ook de spam-map. Een document dat uit Spam kwam krijgt de chip "uit Spam" en een aandachtspunt met de afzender, zodat u die in Google Workspace kunt toestaan.
+- **Postvak-bewaking in Inzicht › Reconciliatie (blok "Postvak").** Elke ochtend telt de module per postvak hoeveel berichten er sinds gisteren zijn binnengekomen (inbox én spam, gelezen én ongelezen) en legt dat naast wat ze verwerkt heeft. Een verschil is een actiepunt met de knop "Nu verwerken"; een postvak dat niet bereikbaar is, is een zichtbare storing. De dagtellers staan in de reconciliatiemail.
+- **Eenmalige controle over de afgelopen maanden.** Een lees-only rapport legt alle facturen die op facturen@kempengroep.nl binnenkwamen naast wat er in facturen@ak-nijenhuis.nl aankwam en wat de module verwerkte, met per gemiste factuur de oorzaak; wat ontbreekt wordt daarna alsnog ingelezen (dubbelen worden zoals altijd automatisch afgevoerd).
+
 ## 2026-09-22 — Niet btw-plichtig? Dan boekt de module het volledige factuurbedrag, zonder btw-splitsing
 
 <!-- btw-plichtig-per-administratie-22-09 -->

@@ -657,6 +657,22 @@ bewust kort, niet het app-domein).
   — bewust: dit is het infrastructuurbewijs, de lokale .eml-upload blijft het
   werkkanaal tot de cutover.
 
+
+### F3.4b — tweede facturenpostvak facturen@kempengroep.nl direct + Message-ID-administratie (2026-09-23)
+
+Peter 22-09: "er zijn facturen gemaild die niet in onze module staan". De Gmail-forward kempengroep → ak-nijenhuis verloor
+spam-classificaties, SPF-breuk-gevallen en alles wat een mens al gelezen had. Sinds 23-09 (BESLISSINGEN "INTAKE — TWEEDE POSTVAK KEMPENGROEP DIRECT + MESSAGE-ID-ADMINISTRATIE + POSTVAKBEWAKING (Peter 22-09)"):
+- job **`rlz-intake-imap-kempengroep`** (CLI `intake-postvak-kempengroep-verwerken`, */10 Europe/Amsterdam, scheduler ACTIEF —
+  het secret bestond vóór de job), envset `INTAKE_ENVS` + `INTAKE_SECRETS` (beide postvakken) op beide intake-jobs én op
+  `rlz-reconciliatie` (blok `intake` + lees-only audit); secret `INTAKE_KEMPENGROEP_IMAP_WACHTWOORD` = user-managed europe-west4
+  (org-policy weigert automatic/global), versie door Peter 22-09; accessor run-jobs@ (f3_jobs.sh stap 3).
+- de fetch leest ALLE berichten van de laatste 14 dagen in INBOX + `[Gmail]/Spam` en slaat over wat in
+  `boekhouding.intake_bericht_verwerkt` staat (migratie 0171) — de gelezen-vlag is nog slechts een bijproduct.
+- "Nu verwerken" op de postvak-bevinding: run.invoker voor run-backend@ op beide intake-jobs (f3_jobs.sh stap 6),
+  `INTAKE_IMAP_JOB_RESOURCE` + `INTAKE_KEMPENGROEP_IMAP_JOB_RESOURCE` op de service.
+- Klikpunten Peter: `scripts/gcp/f3_jobs.sh` één keer draaien ná de deploy (scheduler + IAM van de nieuwe job); ná de eerste
+  groene run de automatische forward in Gmail UITZETTEN; ná de audit de herstelrun (`--sinds 2026-07-25`) op beide jobs.
+
 ### ANTHROPIC_API_KEY-mount — UITGEVOERD (2026-08-25, mini-opdracht ná kliktest Peter)
 
 Aanleiding: kliktest 25-08 — zeven verse mail-facturen bij Kempen Facilities kregen

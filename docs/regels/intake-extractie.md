@@ -100,6 +100,39 @@
   tellers-afwijking was dus géén ontbrekende cache-hook maar een dubbele schrijver; de nachtelijke herberekening had 'm 19-09 05:44
   al gelijkgetrokken. Bulk-upload-regel 18-09 "élke AI-upload triggert een executie (geen trigger-dedupe)" is hiermee HERZIEN.
 
+<!-- toegevoegd 23-09-2026, opdracht "intake-tweede-postvak-facturen-kempengroep-direct-plus-postvakbewaking-en-message-id" -->
+- **Tweede facturenpostvak facturen@kempengroep.nl DIRECT gelezen + verwerkt-administratie op Message-ID + spam-map (Peter 22-09
+  "er zijn facturen gemaild die niet in onze module staan"; migratie 0171; BESLISSINGEN "INTAKE — TWEEDE POSTVAK KEMPENGROEP DIRECT + MESSAGE-ID-ADMINISTRATIE + POSTVAKBEWAKING (Peter 22-09)"):** (1) **Kanaal
+  `facturen_kempengroep`** naast `facturen` en `declaraties` (`betaalstatus.KANALEN`, `POSTVAK_ADRES_PER_KANAAL`; CHECK op
+  `intake_bericht.kanaal` verruimd), settings `intake_kempengroep_imap_*`, eigen job `rlz-intake-imap-kempengroep` (CLI-alias
+  `intake-postvak-kempengroep-verwerken` — de F3-lus draagt één CLI-woord per job, de smoketest start élke job mét `--smoketest <cli>`),
+  scheduler */10 ACTIEF, secret `INTAKE_KEMPENGROEP_IMAP_WACHTWOORD` (door Peter gevuld 22-09). Verwerking identiek (tenaamstelling
+  leidend, afzender hint); het kanaal staat op het intake-bericht en op "Uit de e-mail"/de tijdlijn ("via facturen@kempengroep.nl").
+  De Gmail-forward kempengroep → ak-nijenhuis gaat UIT ná de eerste groene run (klikpunt Peter); tot dan vangt de bestaande dedup het:
+  zelfde Message-ID = op de kop `al_bekend` (body wordt niet eens opgehaald), handmatige Fwd mét zelfde bijlage = `mogelijk_duplicaat_van`
+  + duplicaat-afvoer, teller "dubbel via forward" (`detail.bijlage_hashes` op het intake-bericht, `verwerkt.dubbel_via_forward`).
+  (2) **Een gelezen-vlag is geen verwerkt-administratie.** Tot 23-09 las de fetch `UNSEEN` in INBOX; wie de mailbox opende en las haalde
+  het bericht ongemerkt uit de verwerking, en Spam (SPF-breuk door de forward → strikte-DMARC-afzenders) werd nooit gelezen. Sinds 23-09
+  leest `ImapPostvakBron` ALLE berichten van de laatste `intake_postvak_venster_dagen` (14) dagen in INBOX én `intake_imap_spam_map`
+  (`[Gmail]/Spam`; een spam-map die niet SELECT'baar is = PostvakFout, nooit stil), haalt eerst alleen de kop (Message-ID, FLAGS, From,
+  Subject, Date, References) en slaat over wat al in `boekhouding.intake_bericht_verwerkt` (kanaal, message_id, uid, postvak_map,
+  verwerkt_op, uitkomst verwerkt/al_bekend/niet_verwerkbaar, intake_bericht_id, detail) óf als `intake_bericht.message_id` (élk kanaal,
+  ook .eml-upload) staat; sleutel zonder Message-ID = `uid:<map>:<uid>`. De gelezen-vlag wordt ná verwerking nog gezet, maar alleen als
+  bijproduct. Een niet-parsebaar bericht wordt als `niet_verwerkbaar` geregistreerd (geen eeuwige retry-lus, exit 1 blijft). Spam-treffers
+  worden gewoon verwerkt mét `intake_bericht.detail.postvak_map`, chip "uit Spam" op controlescherm/tijdlijn en LET-OP `intake_uit_spam`
+  (afzender + domein, blok `intake`). Élke run schrijft één audit `intake_postvak_run` per kanaal (gezien/verwerkt/al_bekend/
+  niet_verwerkbaar/uit_spam/dubbel_via_forward) → dagteller "Intake-postvakken" in de reconciliatiemail (`automatiseringen.INTAKE_POSTVAK`).
+  **Herstelrun** = `intake-postvak-verwerken --sinds JJJJ-MM-DD` / `intake-postvak-kempengroep-verwerken --sinds …` op de job-image
+  (`gcloud run jobs execute … --args`): laatste 60 dagen van beide postvakken incl. Spam, rapport per bericht VERWERKT / AL-VERWERKT /
+  NIET-VERWERKBAAR / DUBBEL-VIA-FORWARD. (3) **Lees-only audit** `intake-postvak-audit --sinds 2026-07-01 [--detail]`
+  (`app/intake/postvak_audit.py`; allowlist + dispatch-onderdeel `intake-postvak-audit`; draait op `rlz-reconciliatie` mét de
+  INTAKE-envset): bron kempengroep (INBOX + Spam + "[Gmail]/All Mail", mét factuurbijlage) → doorgifte ak-nijenhuis (koppel Message-ID →
+  References/In-Reply-To → bijlage-sha256 → bestandsnaam, gelabeld) → module (`intake_bericht.message_id` / `detail.bijlage_hashes` /
+  `document.sha256_hash` per administratie-scope); uitval (a) nooit doorgestuurd, (b) in Spam overgeslagen, (c) in INBOX niet verwerkt
+  (gelezen vóór de intake / anders) + omgekeerde controle (rechtstreeks in ak-nijenhuis zonder module-spoor). BODY.PEEK, geen writes.
+  Tests `tests/intake/test_postvak_imap.py` (nieuwe FakeImap mét mappen/vlaggen/kop-fetch), `test_postvak_kempengroep.py`,
+  `test_postvak_audit.py`, gouden-set-casus al `tests/keten/test_al_postvak_kempengroep_kanaal.py`. Rapport `docs/rapporten/2026-09-23-intake-tweede-postvak-kempengroep-message-id-postvakbewaking.md`; audit-rapport `docs/rapporten/2026-09-23-intake-postvak-audit.md`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verzamelbak "Niet toegewezen" (preview, optimistisch toewijzen, verplaatsen, documentenlijst) (CLAUDE.md `ed6d176` r. 494–528)

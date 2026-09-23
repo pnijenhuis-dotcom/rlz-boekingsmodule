@@ -165,6 +165,33 @@
   concept (geen nieuwe bevindingssoort). Een kassarapport-correctie die ná het memoriaal strandt zet de registratie op `HALF_GEBOEKT`
   (`half_geboekt_detail.bron = correctie`) — de omzet-reconciliatie rapporteert die rijen al.
 
+<!-- toegevoegd 23-09-2026, opdracht "intake-tweede-postvak-facturen-kempengroep-direct-plus-postvakbewaking-en-message-id" -->
+- **Blok `intake` — postvak-bewaking "ontvangen vs verwerkt" (Peter 22-09; migratie 0171; BESLISSINGEN "INTAKE — TWEEDE POSTVAK KEMPENGROEP DIRECT + MESSAGE-ID-ADMINISTRATIE + POSTVAKBEWAKING (Peter 22-09)"):**
+  `app/intake/bewaking.py::cli_blok` (in `run.BLOKKEN` en `cli._reconciliatie_alles`, ná `activa`) telt per kanaal AAN DE BRON: alle
+  berichten in INBOX + spam-map sinds gisteren 00:00 NL (IMAP `SINCE`, daarna op de Date-kop begrensd), gelezen én ongelezen, en legt dat
+  naast de verwerkt-administratie (`intake_bericht_verwerkt` ∪ `intake_bericht.message_id`) en de uitkomsten per bijlage (documenten /
+  verzamelbak / niet verwerkbaar uit `intake_bericht.detail` — géén Document-query over RLS heen). CLI-regel `INTAKE postvak <adres>
+  (<kanaal>) sinds …: N in het postvak (INBOX a, spam b), K bekend/verwerkt (…), dubbel via forward d, VERSCHIL v`. **Verschil > 0 =
+  afwijking `intake_postvak_verschil`** (platformbreed, administratie NULL, vingerafdruk per kanaal × set Message-ID's; `detail.berichten`
+  ≤ 50 mét message_id/afzender/onderwerp/map/gelezen/datum) — **direct in `actie`** (`SoortDefinitie.direct_actie_reden`, tweede
+  uitzondering ná `intussen_extern_geboekt`; besluit Peter in de opdracht "verschil > 0 = actie-bevinding mét de Message-ID's en knop Nu
+  verwerken": een telling aan de bron mét de Message-ID's als bewijs en één deterministische handeling), explosie-rem blijft. Handeling
+  "Nu verwerken" (`frontend/src/reconciliatie/NuVerwerkenActie.tsx`, élke kantoorrol) = `POST /reconciliatie/intake/{kanaal}/nu-verwerken`
+  → `app/intake/nu_verwerken.py` start de intake-job van het kanaal on-demand (`settings.intake_imap_job_resource` /
+  `intake_kempengroep_imap_job_resource`, v2 `:run`, run.invoker voor run-backend@ — f3_jobs.sh stap 6; dev = thread), 202 + audit
+  `intake_postvak_nu_verwerken`; 404 onbekend kanaal, 502 = start mislukt mét reden. De service leest nooit zelf IMAP (geen credentials).
+  **Uit Spam verwerkt** (laatste 7 dagen) = LET-OP `intake_uit_spam` per (kanaal, afzender) mét domein — handeling: afzender/domein in
+  Google Workspace toestaan of DKIM/DMARC laten fixen; 'Gezien' mét reden. **Verbinding mislukt = FOUT** `intake_postvak_verbinding`; een
+  kanaal MÉT job (`KANALEN_MET_JOB` = facturen, facturen_kempengroep) zonder instellingen op de reconciliatie-job = FOUT
+  `intake_postvak_niet_geconfigureerd` (systeemfout, nooit stil — deploy.yml geeft rlz-reconciliatie de INTAKE-envset + beide secrets);
+  declaraties@ (geen job) = zichtbaar OVERGESLAGEN. Dagtellers: teller `INTAKE_POSTVAK` ("Intake-postvakken …") uit audit
+  `intake_postvak_run` — gedaan = verwerkt, verwacht = verwerkt + overgeslagen, zachte redenen `postvak_al_bekend` /
+  `postvak_niet_verwerkbaar` / `postvak_uit_spam` / `postvak_dubbel_via_forward` (overgangsperiode forward), `detail.per_kanaal`.
+  Leesbare teksten in `teksten.py` (`_intake`, LET-OP `intake_uit_spam`, FOUT blok intake); frontend `BLOK_LABEL.intake` = "Postvak".
+  Meetlat ná deploy: `reconciliatie-alles --alleen intake --lees-only` → per kanaal een `INTAKE`-regel (geen FOUT `niet_geconfigureerd`),
+  en de scheduler-run van 06:30 → blok `intake` mét `gecontroleerd` 2. Tests `tests/reconciliatie/test_intake_bewaking.py` (pure toets,
+  cli_blok mét nep-lezer, FOUT-paden, spam-LET-OP, dagteller, route 202/502/404/401).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Synthetische bewaking + alerting (CLAUDE.md `ed6d176` r. 632–644)
