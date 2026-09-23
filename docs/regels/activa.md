@@ -54,3 +54,18 @@
   lees-only run het sync-moment) — vervolg-opdracht `niet vóór: 2026-09-23 09:00`. Observatie: de sync duurde 79 min (jobtimeout 90) door de
   groepssaldi-stap (34 min, `Status`-enum, gefixt 22-09), niet door de activa-probe (seconden).
 
+<!-- toegevoegd 23-09-2026, opdracht "nameting-activa-lees-only-probe-na-deploy" (poging 2) -->
+- **Gemeten 23-09 — lees-only reconciliatie schrijft de register-probe niet meer: WERKT IN PRODUCTIE JA; activa-kaart gebruikt, activum in RLZ NEE
+  (23-09; BESLISSINGEN "ACTIVA / MVA — FASE 1 GEBOUWD (Peter 21-09)" alinea "Gemeten 23-09"; rapport `docs/rapporten/2026-09-23-nameting-activa-lees-only-probe.md`):**
+  ná de lees-only executie `5sqzm` (17:25–17:47 UTC op `1ca9471`, blok `activa` 75 getoetst) staat `activa_instelling.register_geprobeerd_op` bij 75/75
+  RLZ-administraties nog op het sync-moment (05:00:43–05:03:00 UTC; Pilates Bloom 05:01:45.738542, Universal Steigerbouw 403-pad 05:02:43.561762 — bot
+  `3cab2fe`/`8169f02` vóór, `b6a93be`/`f87b1c9` ná), 0 in het meetvenster. **Eerste échte gebruik van de kaart (BLOw B.V, 23619 + 06052 op 0107):** kaart,
+  "Aanmaken ná boeken" (`activum_gepland`, herkomst mens) en de boeking werken; `maak_aan_in_rlz` weigerde daarna beide keren op "geen
+  afschrijvingsrekening" (combobox optioneel overgeslagen, `afschrijving_ledgers` leeg) → `activum_aanmaken_mislukt` in `meten`, geen `PUT FixedAssets`,
+  register BLOw leeg — een mens koos bewust "aanmaken" en niemand zag dat het niet gebeurde (principe 4 + 7 (6)). Regels die hieruit volgen (BUG-opdracht
+  `2026-09-24-BUG-activa-kaart-aanmaken-mislukt-geen-afschrijvingsrekening-blow.md`, nog te bouwen): (1) de afschrijvingsrekening wordt deterministisch
+  voorgevuld uit de conventie code + 1 mét naam "Afschrijving …" (BLOw 0101→0102 … 0115→0116; precies één treffer, anders leeg); (2) zonder bekende
+  afschrijvingsrekening geen `gepland` (422, combobox verplicht); (3) `activum_aanmaken_mislukt` ná een mens-klik is een actie-bevinding, niet `meten`.
+  Bijvangst: `is_activa` staat bij BLOw op 4 van 8 0xxx-balansrekeningen (0103/0105/0109/0115 dragen in RLZ geen `IsFixedAssetAccount`) — een factuur op
+  0109 Bedrijfsinventaris krijgt géén kaart; klant-instelling in RLZ, geen module-fout. Klikpunt Peter blijft: RLZ-recht "Vaste activa" op de logins van
+  Universal Steigerbouw en Rubicon Investments (register 2 × niet leesbaar).
