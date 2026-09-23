@@ -1,0 +1,19 @@
+== request-log corrigeer-toets / corrigeren sinds 2026-09-21T16:00Z (deploy c43111e, 21-09 17:59 NL) ==
+TIMESTAMP                    REQUEST_METHOD  STATUS  LATENCY       REQUEST_URL
+2026-09-22T08:45:48.573219Z  POST            401     0.006884110s  https://app.administratiekantoornijenhuis.nl/administraties/00000000-0000-0000-0000-000000000000/documenten/00000000-0000-0000-0000-000000000000/corrigeren
+2026-09-22T08:46:25.228525Z  GET             401     0.003633330s  https://app.administratiekantoornijenhuis.nl/administraties/1bda74d3-c2a9-4897-94f4-ed1ef86bd4cf/documenten/29c5c5bf-17a1-4144-90f9-e03129c08caf/corrigeer-toets
+2026-09-22T08:46:25.312183Z  GET             404     0.007483310s  https://app.administratiekantoornijenhuis.nl/administraties/1bda74d3-c2a9-4897-94f4-ed1ef86bd4cf/documenten/29c5c5bf-17a1-4144-90f9-e03129c08caf/corrigeer-toetsX
+
+== rlz-lezen PurchaseInvoices TEST-CORRIGEREN op 'Administratiekantoor Nijenhuis (test)' (exit 1 = geen credential/gearchiveerd = uitkomst) ==
+rlz-lezen: geen Reeleezee-verbinding voor 'Administratiekantoor Nijenhuis (test)': TESTADMIN_USERNAME/TESTADMIN_PASSWORD (of RLZ_TESTADMIN_GEBRUIKER/-_WACHTWOORD) niet gevuld in de omgeving
+Container called exit(1).
+
+
+== db-lezen correcties (audit document_gecorrigeerd / document_correctie_mislukt, 30 dagen) op de testadministratie ==
+== db-lezen correcties v1 (44 ms) ==
+| administratie | tijdstip | actie | document_id | soort | referentie | status | boek_cyclus | rlz_boekstuknummer | detail |
+|---|---|---|---|---|---|---|---|---|---|
+0 rij(en)
+Container called exit(0).
+
+Oordeel: POST corrigeren 200 = 0, 409 = 0, 5xx beide routes = 0 — niet gemeten (nog geen POST corrigeren mét 200 — klikpunt Peter open) — exit 0
