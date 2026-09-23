@@ -283,3 +283,15 @@
   andere rol niet — dan verdwijnt ze bij de volgende run als `reconciliatie_auto_gesloten`. Meetlat ná deploy: nameting-onderdeel `reconciliatie`
   (`reconciliatie-alles --lees-only`) → `HERCONTROLE`-regels per administratie + `intussen_extern_geboekt`-regels; verwacht op de stand van 22-09:
   Bouwadvies 8, Molenhof Beheer 1, Rubicon 1 (RLZ-kant) + de Odoo-kant van Universal Steigerbouw (43 open, vooraf niet meetbaar).
+
+<!-- toegevoegd 23-09-2026, opdracht "nameting-ter-accordering-bestaanscheck-na-deploy" (poging 1) -->
+- **Gemeten 23-09 — hercontrole + `intussen_extern_geboekt` WERKT IN PRODUCTIE: JA (BESLISSINGEN "TER ACCORDERING — DAGELIJKSE BESTAANSCHECK
+  'INTUSSEN BUITEN DE MODULE GEBOEKT' (Peter 22-09)" alinea "Gemeten 23-09"; rapport `docs/rapporten/2026-09-23-nameting-ter-accordering-bestaanscheck-na-deploy.md`):**
+  échte run `40b5d45c` (04:30–04:48 UTC, image `ac7639b`): 12 `HERCONTROLE`-regels, 82 open documenten vers getoetst, 0 overgeslagen, 11
+  bevindingen = exact de verwachting van 22-09 (Bouwadvies 8, Molenhof 1, Rubicon 1) + Universal Steigerbouw 1 van 43 (RLZ-04-00003305; Universal
+  draait in productie op RLZ — het bouwrapport van 22-09 noemde ten onrechte Odoo); `mail_status` `actie=verzonden`, delta nieuwe_afwijkingen 49 /
+  verdwenen 11; het bot-bestand van 13:20 UTC (`3e358ba`, onderdeel `alles`) toont dezelfde 11 treffers. Twee meetlessen: (1) een `HERCONTROLE`-regel
+  verschijnt alleen voor administraties mét open werk op dat moment — het aantal regels verschilt dus per run (12 om 04:30, 15 om 13:20 na het
+  aanbieden van VGG-documenten), tel op documenten, niet op regels; (2) de stand (`actie`/`meten`) staat niet in `reconciliatie_bevinding.detail`
+  maar in de registry — een meting op de stand leest `soort_stand.py` of het facet `soort=aandacht`, niet de rij. **Niet gemeten:** de handelingen
+  (0 POSTs, 0 audits — ongebruikt) → dispatch-onderdeel `extern-geboekt` + vervolg-opdracht poging 2 (`niet vóór: 2026-09-24 09:00`).

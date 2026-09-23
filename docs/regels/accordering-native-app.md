@@ -202,6 +202,23 @@
   (meetlat = nameting-onderdeel `reconciliatie`, `HERCONTROLE`-regels + bevindingen `intussen_extern_geboekt`; vervolg-opdracht 23-09). Meting
   22-09 vooraf (lees-only): 82 open documenten, 39 in RLZ-administraties getoetst, 10 al in RLZ (Bouwadvies 8/13, Molenhof 1/1, Rubicon 1/6).
 
+<!-- toegevoegd 23-09-2026, opdracht "nameting-ter-accordering-bestaanscheck-na-deploy" (poging 1) -->
+- **Gemeten 23-09 — server-poort en herinnering-onderdrukking WERKEN IN PRODUCTIE: JA; banner op het toestel en handelingen NIET GEMETEN
+  (BESLISSINGEN "TER ACCORDERING — DAGELIJKSE BESTAANSCHECK 'INTUSSEN BUITEN DE MODULE GEBOEKT' (Peter 22-09)" alinea "Gemeten 23-09"):** 32 ×
+  `POST …/accordering/documenten/4d25c900…/akkoord` → 409 (09:18–09:20 UTC, één iPhone iOS 18.7 mét WKWebView-user-agent = native app) op het
+  Universal-document mét open treffer RLZ-04-00003305; in het akkoord-pad is 409 uitsluitend `WachtOpKantoor` (`NietAanDeBeurt` = 403) en de
+  besluit-wachtrij (`besluitQueue.ts`) herhaalt alleen bij ≥ 500 — dus 32 handmatige tikken van de laag-2-accordeur, die de knop dus nog zag:
+  in de bundel mét de banner bestaat de review-actiebalk niet (`!huidige.extern_geboekt`). Welke OTA-bundel een toestel draait is niet leesbaar
+  (`platform.app_bundel` registreert bundels, geen toestellen); de bundel mét de feature (`8fb41a9-20260922-2105`) stond klaar sinds 22-09 21:06
+  UTC en wordt bij de volgende start toegepast. **Herinnering:** `platform.accordeur_herinnering` 23-09 = 13 en 45; reconstructie van "aan de
+  beurt om 07:00:30 UTC" uit `document_accordering` × `accordering_stap` (rondes mét `aangeboden_op` < T en status open óf `afgerond_op` > T;
+  eerste vereiste stap mét besluit NULL óf `besloten_op` > T; per administratie in eigen RLS-scope, exitcode per iteratie gelogd) = 15 en 46 —
+  precies min de extern-geboekte documenten op hun beurt (Molenhof + Rubicon resp. Universal). Dit reconstructie-recept is de meetlat voor élke
+  "telt X niet mee"-claim op een teller die niet bewaard wordt. De 8 Bouwadvies-documenten staan in geen wachtrij: hun rondes zijn afgerond
+  (alle lagen akkoord 18/21-09) mét een `boek_fout` van 21-09 17:15 UTC zónder `extern_geboekt`-kern (vóór de deploy) — het controlescherm toont
+  daar de oude tekst tot een nieuwe boekpoging; de reconciliatie-rij draagt de twee knoppen. Handelingen: 0 POSTs, 0 audits sinds de deploy →
+  "niet gemeten (ongebruikt)", dispatch-onderdeel `extern-geboekt` + vervolg-opdracht poging 2.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Accordeur-app koude start + niet-geactiveerd account (CLAUDE.md `ed6d176` r. 690–699)

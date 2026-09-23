@@ -12707,6 +12707,35 @@ IBAN-route eerst — zichtbaar 409 mét tekst); (d) "Toch verschillend" acceptee
 Beheerder-werk); anders is de afmelding zelf de waarheid en verdwijnt de rij bij de volgende run — in de melding benoemd; (e) de meetlat is het
 bestaande onderdeel `reconciliatie` (geen nieuwe CLI): de `HERCONTROLE`-regels en de bevindingssoort zijn direct greppbaar.
 
+**Gemeten 23-09 (poging 1, lees-only; rapport `docs/rapporten/2026-09-23-nameting-ter-accordering-bestaanscheck-na-deploy.md`) — WERKT IN
+PRODUCTIE: JA voor de hercontrole, de bevindingssoort, de stand `actie` + actiemail, de server-poort en de herinnering-onderdrukking;
+NIET GEMETEN: de twee handelingen (ongebruikt), de banner op het toestel en de boekfout-kern.** Stap 0: `main..origin/main` 0; service en jobs op
+`3e17648` (feat `ac87d02` sinds deploy `8fb41a9`, 22-09 21:15Z). Échte run `40b5d45c` (executie `hhhj7`, 04:30–04:48Z, image `ac7639b`): 12
+`HERCONTROLE`-regels, 82 open documenten vers getoetst, 0 overgeslagen; **11 × `intussen_extern_geboekt`** = exact de verwachting van 22-09
+(Bouwadvies 8: RLZ-04-00000516/518/519/520/521/523/524/526; Molenhof RLZ-17-00001131; Rubicon RLZ-04-00002358) + Universal Steigerbouw 1 van 43
+(RLZ-04-00003305, Floor Bouwliftenservice 26191, € 802,23 beide kanten, factuurdatum 13-08, document in de module sinds 21-09) — **correctie op het
+bouwrapport: Universal draait in productie op RLZ, niet op Odoo** (`boekhoud_backend` leesreplica). `mail_status` `actie=verzonden;systeem=
+uitgeschakeld` 04:48:44Z, delta nieuwe_afwijkingen 49 / nieuwe_let_op 12 / verdwenen_afwijkingen 11 / blokken_fout []; 11 < explosie-rem 50.
+Bot-bestand `verkenning/nameting-reconciliatie-23-09.txt` (`3e358ba`, 13:20Z, onderdeel `alles`): 15 HERCONTROLE-regels (119 open), dezelfde 11
+treffers, 0 overgeslagen. **Server als poort bewezen:** 32 × `POST …/documenten/4d25c900…/akkoord` → 409 (09:18–09:20Z, één iPhone iOS 18.7,
+WKWebView; in het akkoord-pad is 409 alleen `WachtOpKantoor`; de besluit-wachtrij herhaalt alleen bij ≥ 500, dus handmatige tikken van de
+laag-2-accordeur van Universal); welke bundel het toestel draaide is niet leesbaar (bundel `8fb41a9-20260922-2105` mét de banner klaar sinds
+22-09 21:06Z) → banner niet gemeten. **Herinnering 09:00 NL onderdrukt extern-geboekte documenten — cent-exact:** `accordeur_herinnering` 23-09
+= 13 en 45; reconstructie aan-de-beurt om 07:00:30Z uit `document_accordering` × `accordering_stap` (rondes open op T, eerste vereiste stap
+zonder besluit of besloten ná T) over de volledige scope per administratie = 15 (incl. Molenhof `07bec3b5` + Rubicon `62639fbf`) en 46 (incl.
+Universal `4d25c900`). Wachtrij `GET /accordering/wachtrij` sinds de run 35 × 200 / 2 × 401 / 0 × 5xx; items mét `extern_geboekt` = 3 (de 8
+Bouwadvies-rondes zijn afgerond mét `boek_fout` van 21-09 17:15Z zónder kern — het controlescherm toont daar de oude tekst tot een nieuwe
+boekpoging; de reconciliatie-rij draagt de knoppen wél). **Handelingen: 0 × POST `extern-geboekt/afwijzen|toch-verschillend`, 0 audits
+`document_afgewezen`/`extern_duplicaat_toch_verschillend`/`accordering_vervallen`, 0 acceptaties sinds de deploy; het kantoor opende
+`/reconciliatie/bevindingen?soort=aandacht` 4 ×** → niet gemeten (ongebruikt). Gebouwd in dezelfde run (regel 21-09): dispatch-onderdeel
+**`extern-geboekt`** in `nameting.yml` (if-tak, `options:`, VGG-uitsluiting, `OORDEEL_BRON`) + `via_gh_onderdeel` in `nameting.sh` + guards
+`test_onderdeel_extern_geboekt_alleen_op_verzoek_en_lees_only` / `test_nameting_sh_kent_onderdeel_extern_geboekt`: request-log handelingen +
+accordeur-409 + job-log HERCONTROLE (2 dagen) + `db-lezen reconciliatie-bevindingen --administratie … --param afwijking_soort=
+intussen_extern_geboekt` voor Bouwadvies/Molenhof Beheer/Rubicon/Universal Steigerbouw; oordeelregel "POST afwijzen 200 = A, toch-verschillend
+200 = B, 5xx = C, accordeur-409 = D, bevindingsregels job-log = E". Vervolg: `opdrachten/inbox/2026-09-24-nameting-ter-accordering-
+bestaanscheck-handelingen-poging-2.md` (`niet vóór: 2026-09-24 09:00`, poging 2 van 3). Beslispunten Peter: 11 rijen wachten op een klik;
+Universal/Floor 26191 op 13-08 buiten de module geboekt (wie: via de API niet leesbaar); Bouwadvies = werkwijze (8 van 13).
+
 ## BTW-PLICHTIG PER ADMINISTRATIE — NIET-PLICHTIG = BTW IN DE KOSTEN, HARDE CHECK (Peter 22-09) — kenmerk `btw_plichtig` (migratie 0170), RLZ `EnableTaxReporting` als bron/detector, prefill bruto mét "geen btw"-code, keuzelijst verborgen, harde check mét één actie voor alle regels; inkoop, verkoop, kassarapport, doorbelasting-doel; lees-only nazorg-CLI met kolom TE WEINIG
 
 **Status: GEBOUWD + GETEST (22-09, opdracht `opdrachten/gedaan/2026-09-22-BUG-niet-btw-plichtige-administratie-btw-gesplitst-vgg-lacy-lion-te-weinig-betaald.md`); werkt in productie: niet gemeten** — het kenmerk staat overal op true tot de data-stap (`btw-plichtig-zetten --administratie "Vastgoedgroep" --uit` op de job-image ná deploy); rapport `docs/rapporten/2026-09-22-btw-plichtig-per-administratie-vgg-lacy-lion.md`. Canonieke regeltekst: `docs/regels/btw.md` (alinea 22-09) + `docs/regels/administraties-instellingen.md`.

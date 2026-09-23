@@ -317,3 +317,16 @@
   of tekst staat in één route-test (TestClient, letterlijke status + tekst) én de vitest gebruikt exact die status; het scherm
   herkent daarnaast de TEKST (patroon), zodat een statuswissel nooit stil een route dooft. (3) Een tweede "niet gemeten" op dezelfde
   meting → dispatch-onderdeel (hier `checks-cache`), poging 3 mét `niet vóór:` is de laatste vóór `mislukt/` (regel 22-09 (3)).
+
+<!-- toegevoegd 23-09-2026, opdracht "nameting-ter-accordering-bestaanscheck-na-deploy" (poging 1) -->
+- **Een teller die niet bewaard wordt, meet je door de stand op het tijdstip te reconstrueren; en een backend-claim in een rapport leest
+  `boekhoud_backend` (23-09; BESLISSINGEN "TER ACCORDERING — DAGELIJKSE BESTAANSCHECK 'INTUSSEN BUITEN DE MODULE GEBOEKT' (Peter 22-09)" alinea
+  "Gemeten 23-09"):** (1) de herinneringsmail bewaart alleen `aantal_open`; de claim "extern-geboekte documenten tellen niet mee" is toch hard
+  te bewijzen door de aan-de-beurt-stand op het jobmoment T uit `document_accordering` × `accordering_stap` te herleiden (rondes open op T:
+  `aangeboden_op` < T en status open óf `afgerond_op` > T; eerste vereiste stap mét besluit NULL óf `besloten_op` > T), per administratie in
+  eigen RLS-scope (loop over de scope van de accordeur, één proxy tegelijk, exitcode per iteratie in het logbestand) — 15 vs 13 en 46 vs 45
+  sloten cent-exact op de extern-geboekte documenten. Een teller zonder bewaarde grondslag is dus geen reden voor "niet meetbaar" zolang de
+  onderliggende rijen tijdstippen dragen. (2) Het bouwrapport van 22-09 schreef "Universal Steigerbouw (43, Odoo)"; in productie is
+  `platform.administratie.boekhoud_backend` = `rlz` (de Odoo-overstap leeft alleen op de dev-administratie, memory "VGG Odoo bron-key"). Regel:
+  een backend-claim per administratie in een rapport komt uit de leesreplica, niet uit het geheugen van een eerdere sessie. (3) `db_lezen.sh`
+  weigert élke `;` — ook in een string-literal (`string_agg(x, '; ')` = "één statement per keer", exit 2); kies een ander scheidingsteken.

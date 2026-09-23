@@ -78,6 +78,15 @@
   van de eerste treffer buiten de module (extern_id, boekstuk, referentie, stand, bedrag, datum) voor de accordering-boekfout. Storing in de
   hercontrole = géén bevinding, wél zichtbaar overgeslagen (`HERCONTROLE`-/`OVERGESLAGEN`-regels in de run).
 
+<!-- toegevoegd 23-09-2026, opdracht "nameting-ter-accordering-bestaanscheck-na-deploy" (poging 1) -->
+- **Gemeten 23-09 — de dagelijkse bestaanscheck over open documenten werkt in productie: JA (BESLISSINGEN "TER ACCORDERING — DAGELIJKSE
+  BESTAANSCHECK 'INTUSSEN BUITEN DE MODULE GEBOEKT' (Peter 22-09)" alinea "Gemeten 23-09"):** run `40b5d45c` toetste 82 open documenten in 12
+  RLZ-administraties vers (0 overgeslagen, geen credential-/storingsregel) en vond 11 blokkerende treffers, 10 op `match_basis` `referentie` en 1 op
+  `referentie_ander_bedrag` (Bouwadvies F/2026/00053: module € 2.381,75 vs RLZ-04-00000516). Universal Steigerbouw (43 open) is in productie een
+  RLZ-administratie en gaf 1 treffer (Floor Bouwliftenservice 26191 → RLZ-04-00003305, € 802,23 beide kanten). "Toch verschillend" is nog door
+  niemand gebruikt (0 audits `extern_duplicaat_toch_verschillend`), dus `afgemelde_extern_ids` is in productie nog leeg — de uitzonderingsroute
+  blijft "niet gemeten" tot de eerste klik (dispatch-onderdeel `extern-geboekt`).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Crediteur-dedup + duplicaat over crediteuren heen (CLAUDE.md `ed6d176` r. 374–386)
