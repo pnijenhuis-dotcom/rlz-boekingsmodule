@@ -366,8 +366,18 @@ class FakeDoorbelastingClient:
         bestaande_vendors: list[dict[str, Any]] | None = None,
         collectie_max_nummer: int = 371,
         aangiften: list[dict[str, Any]] | None = None,
+        rlz_tarieven: dict[str, Decimal] | None = None,
     ) -> None:
         self.faal_op: set[str] = {faal_op} if isinstance(faal_op, str) else set(faal_op or ())
+        # STAP-0 24-09 (166/166 productiedocumenten, verkenning/stap0-doorbelasting-btw-rekenregel-24-09.tsv): RLZ negeert
+        # de meegegeven TaxAmount en rekent zélf — per tarief ROUND_HALF_UP(Σ netto × pct) als document-btw, per regel
+        # ROUND_HALF_UP(netto × pct) en de grootste regel draagt het verschil. De fake speelt dat bewezen gedrag na voor
+        # élke regel waarvan de TaxRate in `rlz_tarieven` staat (default: het vlakke 21 %-tarief van de testopzet); een
+        # onbekende TaxRate (bv. de "geen btw"-code van een niet-btw-plichtig doel) blijft zoals meegegeven (0,00).
+        # Waarden zijn PERCENTAGES (21,00), zoals `geld.btw_rlz_vorm` ze verwacht.
+        self.rlz_tarieven: dict[str, Decimal] = (
+            {str(BTW_TAXRATE_ID): Decimal("21.00")} if rlz_tarieven is None else dict(rlz_tarieven)
+        )
         # Btw-aangiften voor de storno-aangifte-poort (default: géén ingediende aangiften);
         # faal_op "aangiften" simuleert een onleesbare collectie (fail-closed-pad).
         self.aangiften = aangiften or []
@@ -419,6 +429,33 @@ class FakeDoorbelastingClient:
             raise RlzApiError(404, "GET", path, "Niet gevonden (simulatie)")
         return record
 
+    def _rlz_herreken_regels(self, lines: list[dict]) -> list[dict]:
+        """RLZ-vorm (STAP-0 24-09): per tarief document-btw over het subtotaal, grootste regel draagt het verschil;
+        regels mét een TaxRate buiten `rlz_tarieven` blijven zoals meegegeven."""
+        from app.doorbelasting.geld import btw_rlz_vorm_per_tarief
+
+        uit = [dict(line) for line in lines]
+        idx = [
+            i
+            for i, line in enumerate(uit)
+            if isinstance(line.get("TaxRate"), dict) and str(line["TaxRate"].get("id")) in self.rlz_tarieven
+        ]
+        if not idx:
+            return uit
+        _totaal, per_regel = btw_rlz_vorm_per_tarief(
+            [(Decimal(str(uit[i]["NetAmount"])), self.rlz_tarieven[str(uit[i]["TaxRate"]["id"])]) for i in idx]
+        )
+        for i, btw in zip(idx, per_regel, strict=True):
+            uit[i]["TaxAmount"] = float(btw)
+        return uit
+
+    @staticmethod
+    def _rlz_totalen(lines: list[dict]) -> dict[str, float]:
+        """Kop-totalen zoals het RLZ-record ze draagt (STAP-0 24-09): TotalNetAmount / TotalTaxAmount / TotalPayableAmount."""
+        netto = sum((Decimal(str(line.get("NetAmount") or 0)) for line in lines), Decimal(0))
+        btw = sum((Decimal(str(line.get("TaxAmount") or 0)) for line in lines), Decimal(0))
+        return {"TotalNetAmount": float(netto), "TotalTaxAmount": float(btw), "TotalPayableAmount": float(netto + btw)}
+
     # -- bron-kant: verkoopmotor ----------------------------------------------------------
     def get_sales_invoice(self, invoice_id: uuid.UUID | str) -> dict[str, Any]:
         record = self.sales_invoices.get(str(invoice_id))
@@ -447,7 +484,9 @@ class FakeDoorbelastingClient:
             "Reference": f"RLZ-{nummer}",
             "ReceiptNumber": f"RLZ-01-{nummer:08d}",
             "Entity": {"id": str(customer_id)} if customer_id is not None else None,
-            "DocumentLineList": lines,
+            "DocumentLineList": self._rlz_herreken_regels(lines),
+            "regels_zoals_meegegeven": lines,
+            **self._rlz_totalen(self._rlz_herreken_regels(lines)),
             "Date": extra.get("Date"),
             "BookDate": extra.get("BookDate"),
         }
@@ -495,7 +534,9 @@ class FakeDoorbelastingClient:
             "Reference": reference,
             "ReceiptNumber": "RLZ-30-00000012",
             "Entity": {"id": str(vendor_id)},
-            "DocumentLineList": lines,
+            "DocumentLineList": self._rlz_herreken_regels(lines),
+            "regels_zoals_meegegeven": lines,
+            **self._rlz_totalen(self._rlz_herreken_regels(lines)),
             "Date": extra.get("Date"),
             "BookDate": extra.get("BookDate"),
         }

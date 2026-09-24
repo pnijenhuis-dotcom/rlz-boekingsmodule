@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -567,6 +567,8 @@ BUNDEL_ONDERDELEN_24_09 = {
     "doorbelasting-pdf": 'scripts/gcp/nameting.sh doorbelasting-factuur-pdf-toets --administratie "Kempen Facilities" --referentie 261004 --pdf --max 1',
     "bua-jaarrapport": "scripts/gcp/nameting.sh bua-jaarrapport --jaar 2026 --rlz",
     "activa-conventie": 'scripts/gcp/nameting.sh db-lezen activa-stand --administratie "$ADM"',
+    # 24-09 (RLZ-vorm): dry-run van de data-stap (alleen GET) + PDF-toets-telling + bevindingen — vier plekken + oordeelregel.
+    "doorbelasting-btw": "scripts/gcp/nameting.sh doorbelasting-bedragen-gelijktrekken --dry-run",
 }
 
 
@@ -595,8 +597,10 @@ def test_nameting_sh_bundelrun_24_09_allowlist_en_weigerlijst() -> None:
     allow = re.search(r'^ALLOWLIST="([^"]+)"', sh, flags=re.M)
     assert allow
     woorden = allow.group(1).split()
-    for cmd in ("vastly-pdf-tweelingen-herstel", "doorbelasting-factuur-pdf-toets", "bua-jaarrapport"):
+    for cmd in ("vastly-pdf-tweelingen-herstel", "doorbelasting-factuur-pdf-toets", "bua-jaarrapport", "doorbelasting-bedragen-gelijktrekken"):
         assert cmd in woorden, cmd
+    # 24-09 RLZ-vorm: de data-stap via dit script alleen zónder --uitvoeren (de echte run = job-executie ná Peters ja).
+    assert 'if [[ "$CMD" == "doorbelasting-bedragen-gelijktrekken" ]]; then' in sh and 'grep -qx -- "--uitvoeren" &&' in sh
     assert "odoo-stamgegevens-sync" not in woorden
     weiger = re.search(r"^for schrijvend in ([^;]+); do", sh, flags=re.M)
     assert weiger and "odoo-stamgegevens-sync" in weiger.group(1).split()
@@ -608,5 +612,6 @@ def test_nameting_sh_bundelrun_24_09_allowlist_en_weigerlijst() -> None:
         "doorbelasting-factuur-pdf-toets) echo doorbelasting-pdf ;;",
         "bua-jaarrapport) echo bua-jaarrapport ;;",
         "activa-conventie) echo activa-conventie ;;",
+        "doorbelasting-bedragen-gelijktrekken) echo doorbelasting-btw ;;",
     ):
         assert re.search(r"^\s*" + re.escape(regel), sh, flags=re.M), f"via_gh_onderdeel mist: {regel}"

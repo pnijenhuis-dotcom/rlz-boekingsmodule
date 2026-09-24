@@ -33,6 +33,7 @@ import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
 import { HerboekenAlsOmzetActie, isOmzetInInkoopstroom } from './HerboekenAlsOmzetActie'
 import { isKassarapportInWerkvoorraad, TypeWijzigenKassarapportActie } from './TypeWijzigenKassarapportActie'
 import { BundelenActie, isUblPdfOngebundeld } from './BundelenActie'
+import { FactuurPdfHerstellenActie, isDoorbelastingFactuurPdfOntbreekt } from './FactuurPdfHerstellenActie'
 import { isBoekWachtrijGestrand, OpnieuwIndienenActie } from './OpnieuwIndienenActie'
 import { isIntakePostvakVerschil, NuVerwerkenActie } from './NuVerwerkenActie'
 import { isActivumAanmakenMislukt, OpnieuwAanmakenActie } from './OpnieuwAanmakenActie'
@@ -364,6 +365,22 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
             bevindingId={r.id}
             leverancier={typeof d.leverancier_naam === 'string' ? d.leverancier_naam : null}
             factuurnummer={typeof d.factuurnummer === 'string' ? d.factuurnummer : null}
+            onGelukt={(melding) => {
+              toast.meld(melding)
+              herlaad()
+            }}
+          />{' '}
+          {deeplink}
+        </>
+      )
+    }
+    // RLZ-vorm 24-09 stap 4: geboekte doorbelasting zonder factuur-PDF (art. 35a) → één klik "Factuur-PDF herstellen"
+    // (RLZ rendert opnieuw, cent-exacte toets, bijlage op beide kanten; nooit een herboeking).
+    if (r.soort === 'afwijking' && isDoorbelastingFactuurPdfOntbreekt(r)) {
+      return (
+        <>
+          <FactuurPdfHerstellenActie
+            bevinding={r}
             onGelukt={(melding) => {
               toast.meld(melding)
               herlaad()

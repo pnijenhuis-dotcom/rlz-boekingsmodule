@@ -296,3 +296,82 @@ class TestHerstelEnDownload:
         assert acties == ["doorbelasting_factuur_herstel_mislukt"]
         with pytest.raises(doorbelasting_service.DoorbelastingFout):
             doorbelasting_service.factuur_pdf_van_boeking(administratie_id=opzet.administratie_id, boeking_id=boeking.id)
+
+
+class TestRedenTekstEnRouteRlzVorm24_09:
+    """24-09: ontbreken alleen bedragen, dan is het advies de data-stap (RLZ-vorm), niet de lay-out; de PDF-toets-
+    classificatie leest beide adviesvormen; en de handeling "Factuur-PDF herstellen" op de bevinding = één route."""
+
+    def test_advies_bij_alleen_bedragen_is_de_data_stap(self) -> None:
+        from app.doorbelasting.factuur import factuur_herstel_advies
+        from app.doorbelasting.factuur_pdf_toets import KLASSE_CENT, classificeer, ontbrekende_onderdelen
+
+        advies = factuur_herstel_advies(["btw-som € 1.045,52", "totaal incl. € 6.024,15"])
+        assert "doorbelasting-bedragen-gelijktrekken" in advies and "lay-out" not in advies
+        assert "lay-out" in factuur_herstel_advies(["KvK-nummer afzender"])
+        reden = "factuur-PDF onvolledig: btw-som € 1.045,52, totaal incl. € 6.024,15 — " + advies
+        assert ontbrekende_onderdelen(reden) == ("btw-som € 1.045,52", "totaal incl. € 6.024,15")
+        k = classificeer(reden=reden, netto_totaal=Decimal("4741.55"), provisie=Decimal("237.08"), btw_geboekt=Decimal("1045.52"))
+        assert k.klasse == KLASSE_CENT
+
+    def test_route_factuur_herstellen_zet_de_factuur_op_beide_kanten(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fastapi.testclient import TestClient
+
+        from app.documenten import boeken as documenten_boeken
+        from app.main import app
+        from app.security.tokens import create_access_token
+
+        opzet = onboarded_opzet
+        bron, doel = FakeDoorbelastingClient(faal_op="factuur_render"), FakeDoorbelastingClient()
+        _boek(opzet, beheerder_id, bron=bron, doel=doel)
+        boeking = haal_boekingen(opzet.administratie_id, opzet.run.id)[0]
+        assert boeking.factuur_pdf_status == FACTUUR_STATUS_ONTBREEKT
+        bron.faal_op.discard("factuur_render")  # RLZ rendert nu wél
+        monkeypatch.setattr(
+            documenten_boeken, "_rlz_client_voor", lambda aid: bron if aid == opzet.administratie_id else doel
+        )
+        client = TestClient(app)
+        headers = {"Authorization": f"Bearer {create_access_token(beheerder_id, rol='beheerder')}"}
+        r = client.post(
+            f"/reconciliatie/doorbelasting/{boeking.id}/factuur-herstellen",
+            headers=headers,
+            json={"administratie_id": str(opzet.administratie_id)},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["factuur_pdf_status"] == FACTUUR_STATUS_AANWEZIG and body["doel_pad"] == f"/doorbelasting/{opzet.administratie_id}/{opzet.document_id}"
+        na = haal_boekingen(opzet.administratie_id, opzet.run.id)[0]
+        assert na.factuur_pdf_status == FACTUUR_STATUS_AANWEZIG and na.factuur_pdf_reden is None
+        spiegel_id = rlz_doorbelasting_spiegel_id(opzet.document_id, opzet.mapping.doel_customer_guid)
+        # herstel achteraf: de bon stond er al, de factuur komt erbij (bij een verse boeking is de factuur de eerste bijlage)
+        assert na.factuur_pdf_bestandsnaam in [u["FileName"] for u in doel.get(f"PurchaseInvoices/{spiegel_id}/Uploads")["value"]]
+        with scoped_session(opzet.administratie_id) as session:
+            assert session.scalar(select(AuditEvent).where(AuditEvent.actie == "doorbelasting_factuur_hersteld")) is not None
+        # onbekende boeking = 404; zonder token = 401
+        assert client.post(f"/reconciliatie/doorbelasting/{uuid.uuid4()}/factuur-herstellen", headers=headers, json={"administratie_id": str(opzet.administratie_id)}).status_code == 404
+        assert client.post(f"/reconciliatie/doorbelasting/{boeking.id}/factuur-herstellen", json={"administratie_id": str(opzet.administratie_id)}).status_code == 401
+
+    def test_route_mislukt_is_422_met_reden_op_de_boeking(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fastapi.testclient import TestClient
+
+        from app.documenten import boeken as documenten_boeken
+        from app.main import app
+        from app.security.tokens import create_access_token
+
+        opzet = onboarded_opzet
+        bron, doel = FakeDoorbelastingClient(faal_op="factuur_onvolledig"), FakeDoorbelastingClient()
+        _boek(opzet, beheerder_id, bron=bron, doel=doel)
+        boeking = haal_boekingen(opzet.administratie_id, opzet.run.id)[0]
+        monkeypatch.setattr(documenten_boeken, "_rlz_client_voor", lambda aid: bron if aid == opzet.administratie_id else doel)
+        r = TestClient(app).post(
+            f"/reconciliatie/doorbelasting/{boeking.id}/factuur-herstellen",
+            headers={"Authorization": f"Bearer {create_access_token(beheerder_id, rol='beheerder')}"},
+            json={"administratie_id": str(opzet.administratie_id)},
+        )
+        assert r.status_code == 422 and "KvK" in r.json()["detail"]
+        na = haal_boekingen(opzet.administratie_id, opzet.run.id)[0]
+        assert na.factuur_pdf_status == FACTUUR_STATUS_ONTBREEKT and "KvK" in (na.factuur_pdf_reden or "")

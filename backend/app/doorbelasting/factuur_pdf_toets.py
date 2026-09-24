@@ -46,7 +46,9 @@ UITKOMST_COMPLEET = "compleet: PDF toont de geboekte bedragen"
 UITKOMST_ONBEKEND = "onbekend: geen van beide bedragen in de PDF-tekst gevonden"
 
 CENT = Decimal("0.01")
-_ONTBREKEND_RE = re.compile(r"factuur-PDF onvolledig:\s*(.*?)(?:\s+—\s+lay-out|$)", re.S)
+#: De onderdelen staan tussen "factuur-PDF onvolledig:" en het advies ná " — " (24-09: twee adviesvormen — lay-out óf
+#: RLZ-vorm/data-stap — beide beginnen ná hetzelfde scheidingsteken).
+_ONTBREKEND_RE = re.compile(r"factuur-PDF onvolledig:\s*(.*?)(?:\s+—\s+(?:lay-out|de RLZ-factuur)|$)", re.S)
 
 
 @dataclass(frozen=True)

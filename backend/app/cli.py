@@ -2159,6 +2159,13 @@ def _doorbelasting_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> 
         )
     if verzamelaar is not None:
         verzamelaar.gecontroleerd(getattr(resultaat, "gecontroleerd", 0))
+    # 24-09 (RLZ-vorm): cent-verschillen ≤ € 0,05 tussen module en RLZ zijn géén bevinding maar de data-stap
+    # `doorbelasting-bedragen-gelijktrekken` — informatief zichtbaar, nooit stil (principe 4).
+    for administratie_id, aantal in sorted(getattr(resultaat, "centverschillen", {}).items(), key=lambda kv: str(kv[0])):
+        print(
+            f"INFO       {administratie_id}: {aantal} doorbelasting(en) mét een cent-verschil ≤ € 0,05 t.o.v. RLZ "
+            "(oude per-regel-afronding) — nazorg: doorbelasting-bedragen-gelijktrekken [--dry-run]"
+        )
 
     open_totaal = 0
     geaccepteerd_totaal = 0
@@ -2191,6 +2198,8 @@ def _doorbelasting_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> 
                 vingerafdruk=b.vingerafdruk,
                 detail=_afwijking_detail(
                     "doorbelasting", b, uitsluiting, document_id=a.document_id,
+                    boeking_id=a.boeking_id,
+                    **getattr(a, "extra", {}),  # 24-09: rlz_verkoop_incl/rlz_spiegel_incl/factuur_pdf_reden
                     **_verrijk(
                         verzamelaar, "doorbelasting", administratie_id=administratie_id, boeking_id=a.boeking_id
                     ),
@@ -3484,6 +3493,10 @@ def main(argv: list[str] | None = None) -> int:
     from app.doorbelasting.factuur_pdf_toets import register as register_factuur_pdf_toets
 
     register_factuur_pdf_toets(subparsers)
+    from app.doorbelasting.bedragen_gelijktrekken import dispatch as dispatch_bedragen_gelijktrekken  # 24-09 data-stap RLZ-vorm
+    from app.doorbelasting.bedragen_gelijktrekken import register as register_bedragen_gelijktrekken
+
+    register_bedragen_gelijktrekken(subparsers)  # doorbelasting-bedragen-gelijktrekken (dry-run default, --uitvoeren schrijft)
     from app.documenten.btw_tarief_cli import dispatch as dispatch_btw_tarief  # 18-09 (lees-only)
     from app.documenten.btw_tarief_cli import register as register_btw_tarief
 
@@ -4304,6 +4317,8 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_btw_default
     if (uitkomst_bua := dispatch_bua(args)) is not None:  # 21-09: bua-kandidaten (lees-only) / bua-kenmerk-zetten
         return uitkomst_bua
+    if (uitkomst_gelijktrekken := dispatch_bedragen_gelijktrekken(args)) is not None:  # 24-09 data-stap RLZ-vorm
+        return uitkomst_gelijktrekken
     if (uitkomst_pdf_toets := dispatch_factuur_pdf_toets(args)) is not None:  # 24-09 blok 4: lees-only PDF-toets
         return uitkomst_pdf_toets
     if (uitkomst_tweelingen := dispatch_tweelingen(args)) is not None:  # 24-09 blok 1: vastly-pdf-tweelingen-herstel

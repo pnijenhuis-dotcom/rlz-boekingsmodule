@@ -208,6 +208,22 @@ class BundelenResultaatDto(BaseModel):
     doel_pad: str
 
 
+class FactuurPdfHerstellenInvoerDto(BaseModel):
+    """Invoer van "Factuur-PDF herstellen" (24-09 stap 4, bevinding `doorbelasting_factuur_pdf_ontbreekt`): alleen de
+    bron-administratie (scope-toets); de boeking wordt server-side gelezen, nooit uit de client vertrouwd."""
+
+    administratie_id: uuid.UUID
+
+
+class FactuurPdfHerstellenResultaatDto(BaseModel):
+    boeking_id: uuid.UUID
+    document_id: uuid.UUID
+    doelentiteit_naam: str
+    verkoop_referentie: str | None
+    factuur_pdf_status: str
+    doel_pad: str
+
+
 class HerboekenAlsOmzetResultaatDto(BaseModel):
     """Antwoord van "Herboeken als omzet" (Peter 16-09, Van Boxtel): de inkoopfactuur is gestorneerd (of bestond al
     niet meer) en het document is nu een kassarapport in de werkvoorraad; `doel_pad` = waar de mens 'm als omzet boekt."""

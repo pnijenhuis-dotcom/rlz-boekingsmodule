@@ -115,6 +115,23 @@ REGISTRY: dict[str, SoortDefinitie] = {
         _oud("tussenrekening_open", "omzet"),
         # doorbelasting
         _oud("spiegel_open_verouderd", "doorbelasting"),
+        # 24-09 (opdracht "doorbelasting btw per tarief over subtotaal — RLZ-vorm", akkoord Peter "3. ja"): het bedrag
+        # dat RLZ op verkoop en/of spiegel vastlegt wijkt méér dan € 0,05 af van onze registratie, óf verkoop ≠ spiegel
+        # in RLZ. Besluit Peter in de opdracht: "bevinding `doorbelasting_bedrag_afwijking` (actie)" — een bestaande
+        # cent-exacte toets mét twee RLZ-boekstukken als bewijs, geen nieuwe domeinhypothese; ≤ € 0,05 is géén bevinding
+        # maar de data-stap `doorbelasting-bedragen-gelijktrekken`.
+        SoortDefinitie(
+            soort="doorbelasting_bedrag_afwijking",
+            blok="doorbelasting",
+            sinds=date(2026, 9, 24),
+            default=ACTIE,
+            direct_actie_reden="Peter 24-09 (opdracht doorbelasting btw RLZ-vorm): verschil > € 0,05 tussen module en "
+            "RLZ of verkoop ≠ spiegel is een bestaande cent-exacte toets mét twee RLZ-boekstukken als bewijs; "
+            "explosie-rem blijft",
+        ),
+        # 24-09 stap 4: een geboekte doorbelasting zonder factuur-PDF ouder dan een dag — handeling "Factuur-PDF
+        # herstellen" op de rij (bestaand herstelpad per boeking); start in meten (regel 2).
+        SoortDefinitie(soort="doorbelasting_factuur_pdf_ontbreekt", blok="doorbelasting", sinds=date(2026, 9, 24), default=METEN),
         _oud("da_ontbreekt_in_doel", "doorbelasting_aansluiting"),
         _oud("da_bedrag_afwijkt", "doorbelasting_aansluiting"),
         _oud("da_status_verschilt", "doorbelasting_aansluiting"),

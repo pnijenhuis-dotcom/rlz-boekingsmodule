@@ -54,7 +54,8 @@ class FactuurNietBeschikbaar(Exception):
 class FactuurVerwachting:
     """Wat de gerenderde factuur MOET tonen — uitsluitend geboekte waarden (nooit herberekend):
     het RLZ-verkoopnummer (= spiegel-Reference), netto kosten, provisie en de btw-som zoals de
-    motor ze boekte (grootste-rest-centen per regel)."""
+    motor ze boekte — sinds 24-09 in de RLZ-vorm (`geld.btw_rlz_vorm`: document-btw per tarief over het
+    subtotaal, de grootste regel draagt het verschil), exact wat RLZ vastlegt en rendert."""
 
     referentie: str
     netto_totaal: Decimal
@@ -152,13 +153,25 @@ def haal_en_controleer_factuur(
         return None, f"factuur-PDF onleesbaar ({exc.__class__.__name__})"
     ontbrekend = controleer_factuur_tekst(tekst, verwachting)
     if ontbrekend:
-        return None, (
-            "factuur-PDF onvolledig: "
-            + ", ".join(ontbrekend)
-            + " — lay-out/stamgegevens in de RLZ-UI (Instellingen › Factuurlay-out) aanvullen, "
-            "daarna doorbelasting-facturen-herstel"
-        )
+        return None, "factuur-PDF onvolledig: " + ", ".join(ontbrekend) + " — " + factuur_herstel_advies(ontbrekend)
     return pdf, None
+
+
+def factuur_herstel_advies(ontbrekend: list[str]) -> str:
+    """Handelingsperspectief bij een onvolledige factuur (24-09): ontbreken ALLEEN bedragen, dan toont RLZ's factuur
+    andere centen dan onze registratie — sinds 24-09 boekt de motor in de RLZ-vorm, dus bij een bestaande boeking is dat
+    een registratieverschil (data-stap `doorbelasting-bedragen-gelijktrekken`), geen lay-outfout. Ontbreekt een
+    stamgegeven (KvK, btw-nummer, factuurnummer, btw-specificatie), dan is het wél de lay-out in de RLZ-UI."""
+    alleen_bedragen = all(o.startswith(("subtotaal excl.", "btw-som", "totaal incl.")) for o in ontbrekend)
+    if alleen_bedragen:
+        return (
+            "de RLZ-factuur toont andere centen dan de module registreerde (btw per tarief over het subtotaal, "
+            "RLZ-vorm) — eerst doorbelasting-bedragen-gelijktrekken, daarna doorbelasting-facturen-herstel"
+        )
+    return (
+        "lay-out/stamgegevens in de RLZ-UI (Instellingen › Factuurlay-out) aanvullen, daarna "
+        "doorbelasting-facturen-herstel"
+    )
 
 
 def voeg_factuur_als_bijlage_toe(

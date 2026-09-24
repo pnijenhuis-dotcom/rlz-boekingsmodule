@@ -25,7 +25,7 @@ from __future__ import annotations
 import base64
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -67,7 +67,7 @@ from app.documenten.webhook import (
 )
 from app.doorbelasting import factuur as factuur_pdf
 from app.doorbelasting.checks import voer_doorbelasting_checks_uit
-from app.doorbelasting.geld import btw_over, provisie_over
+from app.doorbelasting.geld import btw_rlz_vorm, provisie_over
 from app.doorbelasting.models import (
     DoorbelastingBoeking,
     DoorbelastingBoekingStatus,
@@ -223,7 +223,7 @@ def _spiegel_regelspec(
     regels: list[DoorbelastingRegel],
     bron_regels: dict[uuid.UUID, BoekvoorstelRegel],
     omschrijving_basis: str,
-    btw_pct: Decimal,
+    btw_per_regel: Sequence[Decimal],
     provisie: Decimal,
     provisie_btw: Decimal,
     provisie_kosten_ledger_id: uuid.UUID,
@@ -233,14 +233,18 @@ def _spiegel_regelspec(
     inkoopfactuur, als enige bron voor zowel de RLZ-DocumentLineList als de webhook-regels —
     wat geboekt wordt en wat aan vastgoed gemeld wordt kan zo nooit uit elkaar lopen.
     Doorbelasting × projecten (25-08): één spiegel-regel per verdeelregel = per project; de
-    provisieregel draagt géén project (kantoorkosten van de doelentiteit, geen pandkosten)."""
+    provisieregel draagt géén project (kantoorkosten van de doelentiteit, geen pandkosten).
+    `btw_per_regel` (24-09): de btw per verdeelregel in de RLZ-vorm (`geld.btw_rlz_vorm`, één keer
+    berekend over kostenregels + provisie) — de spiegel draagt exact dezelfde centen als de verkoop."""
+    if len(btw_per_regel) != len(regels):
+        raise ValueError("_spiegel_regelspec: btw_per_regel moet één bedrag per verdeelregel dragen")
     spec: list[tuple[uuid.UUID, Decimal, Decimal, str, uuid.UUID | None]] = []
-    for r in regels:
+    for r, btw in zip(regels, btw_per_regel, strict=True):
         bron_regel = bron_regels[r.bron_regel_id]
         omschrijving = omschrijving_basis
         if bron_regel.omschrijving:
             omschrijving = f"{omschrijving_basis} — {bron_regel.omschrijving}"[:200]
-        spec.append((r.doel_kosten_ledger_id, r.netto_deel, btw_over(r.netto_deel, btw_pct), omschrijving, r.project_id))
+        spec.append((r.doel_kosten_ledger_id, r.netto_deel, btw, omschrijving, r.project_id))
     spec.append((provisie_kosten_ledger_id, provisie, provisie_btw, provisie_omschrijving, None))
     return spec
 
@@ -630,19 +634,23 @@ def _boek_voor_doelentiteit(
 
     netto_totaal = sum((r.netto_deel for r in regels), Decimal(0))
     provisie = provisie_over(netto_totaal, instelling["provisie_pct"])
+    # Btw in de RLZ-vorm (STAP-0 24-09, 166/166): document-btw = ROUND_HALF_UP(Σ netto × tarief) over kostenregels
+    # + provisie samen (één vlak tarief), per regel afgerond en de grootste regel draagt het verschil — precies
+    # wat RLZ zelf vastlegt, ongeacht welke TaxAmount wij meesturen. Eén berekening voor verkoop, spiegel,
+    # registratie, factuur-PDF-toets en webhook, zodat die nooit meer een cent uit elkaar lopen.
+    btw_totaal, btw_per_regel = btw_rlz_vorm([r.netto_deel for r in regels] + [provisie], btw_pct)
+    provisie_btw = btw_per_regel[-1]
+    btw_kosten_regels = btw_per_regel[:-1]
 
     # --- kant 1: verkoop in de bron (Kempen-patroon: bron-referentie in de regelomschrijving,
     # --- provisie als losse laatste regel — §2a, spiegel bevestigd §2c)
     omschrijving_basis = " ".join(x for x in (leverancier, bron_referentie) if x)
     verkoop_lines: list[dict] = []
-    btw_totaal = Decimal(0)
-    for r in regels:
+    for r, btw in zip(regels, btw_kosten_regels, strict=True):
         bron_regel = bron_regels[r.bron_regel_id]
         omschrijving = omschrijving_basis
         if bron_regel.omschrijving:
             omschrijving = f"{omschrijving_basis} — {bron_regel.omschrijving}"[:200]
-        btw = btw_over(r.netto_deel, btw_pct)
-        btw_totaal += btw
         verkoop_lines.append(
             {
                 "Account": {"id": str(instelling["omzet_ledger_id"])},
@@ -652,8 +660,6 @@ def _boek_voor_doelentiteit(
                 "Description": omschrijving,
             }
         )
-    provisie_btw = btw_over(provisie, btw_pct)
-    btw_totaal += provisie_btw
     provisie_pct_tekst = f"{instelling['provisie_pct']:.2f}".rstrip("0").rstrip(".").replace(".", ",")
     verkoop_lines.append(
         {
@@ -853,7 +859,7 @@ def _boek_voor_doelentiteit(
                 regels=regels,
                 bron_regels=bron_regels,
                 omschrijving_basis=omschrijving_basis,
-                btw_pct=btw_pct,
+                btw_per_regel=btw_kosten_regels,
                 provisie=provisie,
                 provisie_btw=provisie_btw,
                 provisie_kosten_ledger_id=mapping.provisie_kosten_ledger_id,
@@ -1055,14 +1061,19 @@ def boek_spiegel_alsnog(
                 )
         omschrijving_basis = " ".join(x for x in (leverancier, bron_referentie) if x)
         doel_btw_plichtig, doel_geen_btw = _doel_btw_stand(doel_administratie_id)  # 22-09
+        # RLZ-vorm (24-09): dezelfde berekening als de motor — kostenregels + provisie samen, grootste regel draagt
+        # het verschil — zodat de spiegel exact de centen van de (al geboekte) bron-verkoop draagt.
+        _btw_totaal_alsnog, btw_alsnog = btw_rlz_vorm(
+            [r.netto_deel for r in regels] + [boeking.provisie_bedrag], btw_pct
+        )
         spiegel_spec = _spec_voor_doel(
             _spiegel_regelspec(
                 regels=regels,
                 bron_regels=bron_regels,
                 omschrijving_basis=omschrijving_basis,
-                btw_pct=btw_pct,
+                btw_per_regel=btw_alsnog[:-1],
                 provisie=boeking.provisie_bedrag,
-                provisie_btw=btw_over(boeking.provisie_bedrag, btw_pct),
+                provisie_btw=btw_alsnog[-1],
                 provisie_kosten_ledger_id=provisie_kosten_ledger_id,
                 provisie_omschrijving="Provisie over nettobedrag (doorbelasting)",
             ),

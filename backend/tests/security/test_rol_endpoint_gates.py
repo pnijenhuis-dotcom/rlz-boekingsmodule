@@ -190,6 +190,7 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/bewust-verwijderd"),  # beheerder-only (blok D 16-09)
         ("POST", f"/reconciliatie/documenten/{DUMMY_ID}/bewust-verwijderd-herstellen"),  # terugweg (blok D 16-09)
         ("POST", f"/reconciliatie/documenten/{DUMMY_ID}/bundelen"),  # "Bundelen" ubl_pdf_ongebundeld — kantoorrol (24-09)
+        ("POST", f"/reconciliatie/doorbelasting/{DUMMY_ID}/factuur-herstellen"),  # "Factuur-PDF herstellen" — kantoorrol (24-09 stap 4)
         ("GET", "/reconciliatie/instelling"),  # gezien-dagen lezen (06-09)
         ("GET", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),  # projectverdeling (blok C 04-09)
         ("PUT", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),

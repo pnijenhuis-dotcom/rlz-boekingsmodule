@@ -79,11 +79,16 @@ class TestRegistry:
         # 23-09: `intake_postvak_verschil` (Peter 22-09: telling aan de bron mét Message-ID's als bewijs + "Nu verwerken").
         # 24-09: `activum_aanmaken_mislukt_mens` (BUG activa-kaart BLOw: een mens-klik "Activum aanmaken" die niet is
         # uitgevoerd is een bevestigde handeling — actie, geen meten; besluit Peter in de opdracht).
+        # 24-09: `doorbelasting_bedrag_afwijking` (opdracht doorbelasting btw RLZ-vorm, akkoord Peter "3. ja": verschil
+        # > € 0,05 module ↔ RLZ of verkoop ≠ spiegel — bestaande cent-exacte toets mét twee RLZ-boekstukken als bewijs).
         assert [d.soort for d in soort_stand.REGISTRY.values() if d.direct_actie_reden] == [
             "intussen_extern_geboekt",
+            "doorbelasting_bedrag_afwijking",
             "activum_aanmaken_mislukt_mens",
             "intake_postvak_verschil",
         ]
+        assert soort_stand.code_default("doorbelasting_bedrag_afwijking") == "actie"
+        assert soort_stand.code_default("doorbelasting_factuur_pdf_ontbreekt") == "meten"
         assert soort_stand.code_default("activum_aanmaken_mislukt_mens") == "actie"
         assert soort_stand.code_default("activum_aanmaken_mislukt") == "meten"
         assert soort_stand.code_default("intake_postvak_verschil") == "actie"

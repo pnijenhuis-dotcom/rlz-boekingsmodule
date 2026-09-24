@@ -219,3 +219,47 @@ def herstel_facturen(
             resultaat.mislukt[kandidaat.boeking_id] = reden
             _registreer_mislukt(kandidaat, actor_id=actor_id, reden=reden)
     return resultaat
+
+
+class BoekingNietHerstelbaar(Exception):
+    """De boeking bestaat niet (meer) in deze administratie of heeft geen herstelbare status."""
+
+
+def herstel_boeking(
+    *,
+    administratie_id: uuid.UUID,
+    boeking_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    client_factory: Callable[[uuid.UUID], RlzClient] | None = None,
+) -> HerstelKandidaat:
+    """Eén boeking herstellen — de handeling "Factuur-PDF herstellen" op de bevinding `doorbelasting_factuur_pdf_ontbreekt`
+    (24-09 stap 4): exact `_herstel_een` voor dít record, mens-actor in audit/kolommen. Mislukt de render/toets, dan
+    werpt dit `FactuurNietBeschikbaar` mét de reden (die staat dan ook op de boeking, `_registreer_mislukt`)."""
+    with scoped_session(administratie_id) as session:
+        boeking = session.get(DoorbelastingBoeking, boeking_id)
+        if boeking is None or boeking.administratie_id != administratie_id:
+            raise BoekingNietHerstelbaar("Onbekende doorbelastings-boeking in deze administratie")
+        if boeking.status not in HERSTELBARE_STATUSSEN:
+            raise BoekingNietHerstelbaar(f"Boeking staat op '{boeking.status}' — alleen geboekt/spiegel_open is herstelbaar")
+        mapping = session.get(DoorbelastingMapping, boeking.mapping_id)
+        administratie = session.get(Administratie, administratie_id)
+        kandidaat = HerstelKandidaat(
+            administratie_id=administratie_id,
+            administratie_naam=administratie.naam if administratie else "?",
+            boeking_id=boeking.id,
+            document_id=boeking.document_id,
+            doelentiteit_naam=mapping.doelentiteit_naam if mapping else "?",
+            verkoop_referentie=boeking.verkoop_referentie,
+            status=boeking.status,
+            huidige_factuur_status=boeking.factuur_pdf_status,
+        )
+    if client_factory is None:
+        from app.documenten.boeken import _rlz_client_voor
+
+        client_factory = _rlz_client_voor
+    try:
+        _herstel_een(kandidaat, actor_id=actor_id, client_factory=client_factory)
+    except (factuur_pdf.FactuurNietBeschikbaar, GeenRlzCredentials) as exc:
+        _registreer_mislukt(kandidaat, actor_id=actor_id, reden=str(exc))
+        raise factuur_pdf.FactuurNietBeschikbaar(str(exc)) from exc
+    return kandidaat

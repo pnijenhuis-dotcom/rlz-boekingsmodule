@@ -422,6 +422,44 @@ def document_bundelen(
     )
 
 
+@router.post(
+    "/reconciliatie/doorbelasting/{boeking_id}/factuur-herstellen",
+    response_model=schemas.FactuurPdfHerstellenResultaatDto,
+)
+def doorbelasting_factuur_herstellen(
+    boeking_id: uuid.UUID,
+    invoer: schemas.FactuurPdfHerstellenInvoerDto,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.FactuurPdfHerstellenResultaatDto:
+    """"Factuur-PDF herstellen" (24-09 stap 4) op de bevinding `doorbelasting_factuur_pdf_ontbreekt`: exact het bestaande
+    herstelpad `doorbelasting-facturen-herstel` voor dít record — RLZ rendert de verkoopfactuur opnieuw, de toets
+    vergelijkt met de GEREGISTREERDE centen (ná de data-stap = de RLZ-vorm), de PDF gaat als bijlage op beide kanten
+    (idempotent op bestandsnaam), status `aanwezig` + audit `doorbelasting_factuur_hersteld`. Mislukt = 422 mét de
+    reden (die staat dan ook op de boeking); 403 buiten scope; 404 onbekende boeking. Nooit een herboeking."""
+    from app.doorbelasting import factuur as factuur_pdf
+    from app.doorbelasting import factuur_herstel
+    from app.doorbelasting.service import actor_heeft_scope
+
+    if not actor_heeft_scope(actor_id=actor.id, administratie_id=invoer.administratie_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Geen toegang tot deze administratie")
+    try:
+        k = factuur_herstel.herstel_boeking(
+            administratie_id=invoer.administratie_id, boeking_id=boeking_id, actor_id=actor.id
+        )
+    except factuur_herstel.BoekingNietHerstelbaar as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except factuur_pdf.FactuurNietBeschikbaar as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return schemas.FactuurPdfHerstellenResultaatDto(
+        boeking_id=k.boeking_id,
+        document_id=k.document_id,
+        doelentiteit_naam=k.doelentiteit_naam,
+        verkoop_referentie=k.verkoop_referentie,
+        factuur_pdf_status=factuur_pdf.FACTUUR_STATUS_AANWEZIG,
+        doel_pad=f"/doorbelasting/{k.administratie_id}/{k.document_id}",
+    )
+
+
 def _vertaal_bewust_verwijderd(exc: Exception) -> HTTPException:
     from app.reconciliatie import bewust_verwijderd
 

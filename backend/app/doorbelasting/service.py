@@ -1301,7 +1301,7 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
                 )
             )
         }
-        from app.doorbelasting.geld import btw_over  # lokale import: geen kringgevaar, wel dichtbij
+        from app.doorbelasting.geld import btw_rlz_vorm  # lokale import: geen kringgevaar, wel dichtbij
         from app.sync.models import TaxRateCache
 
         # btw-preview op het gecónfigureerde tarief (cache draagt de fractie, 0.2100 → 21,00);
@@ -1319,11 +1319,11 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
         for mapping_id, netto in sorted(per_mapping.items(), key=lambda kv: str(kv[0])):
             mapping = naam_per_mapping.get(mapping_id)
             provisie = provisie_over(netto, instelling.provisie_percentage)
-            # btw-preview: per regel afgerond, zoals de motor 'm boekt
-            btw = sum(
-                (btw_over(r.netto_deel, btw_pct) for r in invoer if r.mapping_id == mapping_id),
-                Decimal(0),
-            ) + btw_over(provisie, btw_pct)
+            # btw-preview in de RLZ-vorm (24-09): exact zoals de motor boekt en RLZ vastlegt — document-btw over
+            # kostenregels + provisie samen (geld.btw_rlz_vorm), nooit meer de per-regel-som.
+            btw, _per_regel = btw_rlz_vorm(
+                [r.netto_deel for r in invoer if r.mapping_id == mapping_id] + [provisie], btw_pct
+            )
             boeking_status, boeking_id, factuur_status, factuur_reden, factuur_naam = boekingen.get(
                 mapping_id, (None, None, None, None, None)
             )

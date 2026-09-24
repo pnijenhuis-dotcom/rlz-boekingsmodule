@@ -722,6 +722,28 @@ def _doorbelasting(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             ),
             _DOE_CONTROLE_MISLUKT,
         )
+    if soort == "doorbelasting_bedrag_afwijking":
+        # 24-09: module-registratie ↔ RLZ (verkoop én spiegel) méér dan € 0,05 uit elkaar, of verkoop ≠ spiegel in RLZ.
+        rlz_v, rlz_s = euro(_s(d, "rlz_verkoop_incl")), euro(_s(d, "rlz_spiegel_incl"))
+        rlz_tekst = f"RLZ verkoop {rlz_v}" + (f", spiegel {rlz_s}" if rlz_s else "") if rlz_v else "RLZ een ander bedrag"
+        return (
+            _titel("Doorbelasting: bedrag wijkt af van RLZ", onderwerp),
+            f"De module registreert {aan}; {rlz_tekst} — het verschil is groter dan € 0,05 of beide kanten in RLZ "
+            "verschillen onderling.",
+            "Controleer beide boekstukken in RLZ (is er buiten de module gewijzigd?); klopt RLZ, corrigeer via storno + "
+            f"opnieuw doorbelasten of {_DOE_ACCEPTEER}",
+        )
+    if soort == "doorbelasting_factuur_pdf_ontbreekt":
+        # 24-09 stap 4: geboekt zonder rechtsgeldige factuur-PDF op de spiegel (art. 35a) — één klik herstelt.
+        reden = _s(d, "factuur_pdf_reden")
+        return (
+            _titel("Doorbelasting zonder factuur-PDF", onderwerp),
+            f"De doorbelasting {aan} staat geboekt, maar de factuur op naam van {doel} ontbreekt als bijlage"
+            + (f" ({reden[:140]})" if reden else "")
+            + ".",
+            "Klik 'Factuur-PDF herstellen' (RLZ rendert de factuur opnieuw en zet 'm op beide kanten); lukt dat niet, "
+            "dan staat de reden op de rij — lay-out/stamgegevens in de RLZ-UI aanvullen.",
+        )
     return (
         _titel("Afwijking in de doorbelasting", onderwerp),
         _terugval_wat(d.get("detail") or tekst),

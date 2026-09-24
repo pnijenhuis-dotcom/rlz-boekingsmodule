@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie | doorbelasting-btw)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" && "$ONDERDEEL" != "doorbelasting-btw" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -670,6 +670,35 @@ jobs:
             echo "Oordeel: ${TOTAAL:-geen totaalregel} · Lusso: ${UITK:-geen PDF-toets} — job-exit $rc_dp" >> "$UIT"
             echo "STATUS doorbelasting-pdf: rapport in $UIT (job-exit $rc_dp = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "doorbelasting-btw" ]]; then
+            # 24-09 (BESLISSINGEN "DOORBELASTING — BTW PER TARIEF OVER HET SUBTOTAAL (RLZ-VORM) + DATA-STAP + FACTUUR-PDF-HERSTEL (Peter 24-09)"):
+            # lees-only meetrecept — (1) dry-run van de data-stap (RLZ uitsluitend GET; TOTAAL-regel = telling gelijk / cent-verschil /
+            # afwijking); (2) kantoorbrede factuur-PDF-telling per klasse (ná de data-stap + herstelrun verwacht: 0 × onvolledig_cent);
+            # (3) de bevindingen van het doorbelasting-blok bij Kempen Facilities (doorbelasting_bedrag_afwijking / _factuur_pdf_ontbreekt).
+            UIT="verkenning/nameting-doorbelasting-btw-$DATUM.txt"
+            rc_db=0
+            {
+              echo "== doorbelasting-bedragen-gelijktrekken --dry-run (kantoorbreed; alleen GET, niets geschreven) =="
+              scripts/gcp/nameting.sh doorbelasting-bedragen-gelijktrekken --dry-run 2> nameting-dbg.stderr || rc_db=$?
+              echo
+              echo "== doorbelasting-factuur-pdf-toets (kantoorbreed, zonder --pdf) =="
+              scripts/gcp/nameting.sh doorbelasting-factuur-pdf-toets 2> nameting-dbg2.stderr || rc_db=$?
+              echo
+              echo "== db-lezen reconciliatie-bevindingen --administratie Kempen Facilities (blok doorbelasting) =="
+              scripts/gcp/nameting.sh db-lezen reconciliatie-bevindingen --administratie "Kempen Facilities" --param afwijking_soort=doorbelasting_bedrag_afwijking 2> nameting-dbg3.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-dbg3.stderr; }
+              scripts/gcp/nameting.sh db-lezen reconciliatie-bevindingen --administratie "Kempen Facilities" --param afwijking_soort=doorbelasting_factuur_pdf_ontbreekt 2> nameting-dbg4.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-dbg4.stderr; }
+            } > "$UIT"
+            cat nameting-dbg.stderr nameting-dbg2.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-dbg.stderr nameting-dbg2.stderr; then
+              echo "::error::doorbelasting-btw kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_db)" >> "$UIT"
+            TOTAAL="$(grep -m1 -o 'TOTAAL: [0-9]* doorbelasting(en) in [0-9]* administratie(s) · gelijk [0-9]* · cent-verschil ≤ 0,05: [0-9]* ([a-z ]*) · afwijking > 0,05 of verkoop ≠ spiegel: [0-9]* · niet leesbaar [0-9]* · boekstand-events vastgoed [0-9]* · fouten [0-9]*' "$UIT" || true)"
+            PDF="$(grep -m1 -o 'TOTAAL: [0-9]* boeking(en) zonder factuur-PDF in [0-9]* administratie(s) · [^·]*' "$UIT" || true)"
+            echo "Oordeel: ${TOTAAL:-geen totaalregel data-stap} · PDF: ${PDF:-geen totaalregel} — job-exit $rc_db" >> "$UIT"
+            echo "STATUS doorbelasting-btw: rapport in $UIT (job-exit $rc_db = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "bua-jaarrapport" ]]; then
             # BUA 24-09 (besluit Peter "nee standaard 21 % btw aanhouden … liever een correctie indienen"): géén bulk-zetting van het
             # kenmerk; lees-only jaareinde-rapport per administratie × BUA-rekening (module + bank) mét het voorstel voor de correctie
@@ -786,6 +815,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-doorbelasting-pdf-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "bua-jaarrapport" ]]; then
             OORDEEL_BRON="verkenning/nameting-bua-jaarrapport-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "doorbelasting-btw" ]]; then
+            OORDEEL_BRON="verkenning/nameting-doorbelasting-btw-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "activa-conventie" ]]; then
             OORDEEL_BRON="verkenning/nameting-activa-conventie-$DATUM.txt"
           elif [[ "$ONDERDEEL" =~ ^(alles|a|b|c|d|e)$ ]]; then

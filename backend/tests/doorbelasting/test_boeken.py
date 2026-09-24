@@ -792,3 +792,113 @@ class TestSpiegelAlsnog:
                 doel_client=doel,
             )
         assert doel.purchase_invoices == {}
+
+
+class TestRlzVorm24_09:
+    """Opdracht 24-09 (akkoord Peter "3. ja"): de motor boekt en registreert de btw in de RLZ-vorm — STAP-0 24-09,
+    166/166 productiedocumenten. De fake RLZ speelt het bewezen gedrag na (regel-TaxAmount herrekend, kop-totalen)."""
+
+    def test_lusso_261004_registreert_en_boekt_exact_wat_rlz_vastlegt(
+        self,
+        doorbelasting_aan: None,
+        instelling_compleet: None,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        doel_administratie_id: uuid.UUID,
+        opslag,  # noqa: ANN001
+    ) -> None:
+        from tests.doorbelasting.conftest import maak_geboekt_inkoopfactuur
+
+        # KF → Molenhof Verhuur B.V., Lusso-Design 261004: netto 4.741,55, provisie 5 % = 237,08.
+        document_id, regel_ids = maak_geboekt_inkoopfactuur(
+            administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, nettos=[D("4741.55")], referentie="261004"
+        )
+        mapping = maak_mapping(
+            administratie_id=administratie_id,
+            actor_id=beheerder_id,
+            doel_administratie_id=doel_administratie_id,
+            provisie_kosten_ledger_id=PROVISIE_KOSTEN_LEDGER_ID,
+        )
+        from app.doorbelasting.service import VerdeelRegelInvoerData
+
+        run = start_run_met_verdeling(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=beheerder_id,
+            regels=[VerdeelRegelInvoerData(bron_regel_id=regel_ids[0], mapping_id=mapping.id, percentage=D("100"), doel_kosten_ledger_id=DOEL_KOSTEN_LEDGER_ID)],
+        )
+        opzet = DoorbelastingOpzet(
+            administratie_id=administratie_id, doel_administratie_id=doel_administratie_id, document_id=document_id,
+            regel_ids=regel_ids, mapping=mapping, run=run,
+        )
+        bron, doel = FakeDoorbelastingClient(), FakeDoorbelastingClient()
+        assert _boek(opzet, beheerder_id, bron=bron, doel=doel) == {str(mapping.id): DoorbelastingBoekingStatus.GEBOEKT.value}
+
+        verkoop_id = rlz_doorbelasting_verkoop_id(document_id, mapping.doel_customer_guid)
+        spiegel_id = rlz_doorbelasting_spiegel_id(document_id, mapping.doel_customer_guid)
+        # Wat wij meesturen = wat RLZ vastlegt (995,72 + 49,79 = 1.045,51; tot 24-09 stuurden we 995,73 → RLZ 6.024,14 vs
+        # module 6.024,15).
+        gestuurd = bron.sales_invoices[str(verkoop_id)]["regels_zoals_meegegeven"]
+        assert [r["TaxAmount"] for r in gestuurd] == [995.72, 49.79]
+        rlz = bron.sales_invoices[str(verkoop_id)]
+        assert [r["TaxAmount"] for r in rlz["DocumentLineList"]] == [995.72, 49.79]
+        assert rlz["TotalTaxAmount"] == 1045.51 and rlz["TotalPayableAmount"] == 6024.14
+        spiegel = doel.purchase_invoices[str(spiegel_id)]
+        assert [r["TaxAmount"] for r in spiegel["regels_zoals_meegegeven"]] == [995.72, 49.79]
+        assert spiegel["TotalPayableAmount"] == 6024.14
+
+        boeking = haal_boekingen(administratie_id, run.id)[0]
+        assert boeking.netto_totaal == D("4741.55") and boeking.provisie_bedrag == D("237.08")
+        assert boeking.btw_bedrag == D("1045.51")  # registratie = RLZ, geen tweede waarheid
+        # … en daardoor slaagt de cent-exacte factuur-PDF-toets (de Lusso-chip "factuur ontbreekt" ontstaat niet meer).
+        assert boeking.factuur_pdf_status == "aanwezig", boeking.factuur_pdf_reden
+
+    def test_meerdere_kostenregels_grootste_regel_draagt_het_verschil_op_beide_kanten(
+        self,
+        doorbelasting_aan: None,
+        instelling_compleet: None,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        doel_administratie_id: uuid.UUID,
+        opslag,  # noqa: ANN001
+    ) -> None:
+        """V-24713352 (KF): nettos 375 / 3.840 / 409,50 / 221 + provisie — RLZ 78,75 / 806,39 / 86,00 / 46,41 / provisie;
+        de grootste regel (3.840, niet de eerste) draagt −0,01."""
+        from tests.doorbelasting.conftest import maak_geboekt_inkoopfactuur
+
+        nettos = [D("375.00"), D("3840.00"), D("409.50"), D("221.00")]
+        document_id, regel_ids = maak_geboekt_inkoopfactuur(
+            administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, nettos=nettos, referentie="V-24713352"
+        )
+        mapping = maak_mapping(
+            administratie_id=administratie_id, actor_id=beheerder_id, doel_administratie_id=doel_administratie_id,
+            provisie_kosten_ledger_id=PROVISIE_KOSTEN_LEDGER_ID,
+        )
+        from app.doorbelasting.service import VerdeelRegelInvoerData
+
+        run = start_run_met_verdeling(
+            administratie_id=administratie_id, document_id=document_id, actor_id=beheerder_id,
+            regels=[
+                VerdeelRegelInvoerData(bron_regel_id=rid, mapping_id=mapping.id, percentage=D("100"), doel_kosten_ledger_id=DOEL_KOSTEN_LEDGER_ID)
+                for rid in regel_ids
+            ],
+        )
+        opzet = DoorbelastingOpzet(
+            administratie_id=administratie_id, doel_administratie_id=doel_administratie_id, document_id=document_id,
+            regel_ids=regel_ids, mapping=mapping, run=run,
+        )
+        bron, doel = FakeDoorbelastingClient(), FakeDoorbelastingClient()
+        _boek(opzet, beheerder_id, bron=bron, doel=doel)
+        verkoop_id = rlz_doorbelasting_verkoop_id(document_id, mapping.doel_customer_guid)
+        spiegel_id = rlz_doorbelasting_spiegel_id(document_id, mapping.doel_customer_guid)
+        verkoop_regels = bron.sales_invoices[str(verkoop_id)]["regels_zoals_meegegeven"]
+        spiegel_regels = doel.purchase_invoices[str(spiegel_id)]["regels_zoals_meegegeven"]
+        provisie = D("242.28")  # 5 % over 4.845,50 = 242,275 → 242,28
+        assert [D(str(r["NetAmount"])) for r in verkoop_regels] == [*nettos, provisie]
+        # RLZ-record V-24713352: 78,75 / 806,39 / 86,00 / 46,41 / 50,88 = 1.068,43 (round(3840×0,21)=806,40 → −0,01).
+        assert [D(str(r["TaxAmount"])) for r in verkoop_regels] == [D("78.75"), D("806.39"), D("86.00"), D("46.41"), D("50.88")]
+        assert [D(str(r["TaxAmount"])) for r in spiegel_regels] == [D(str(r["TaxAmount"])) for r in verkoop_regels]
+        boeking = haal_boekingen(administratie_id, run.id)[0]
+        assert boeking.btw_bedrag == D("1068.43") and boeking.factuur_pdf_status == "aanwezig", boeking.factuur_pdf_reden
