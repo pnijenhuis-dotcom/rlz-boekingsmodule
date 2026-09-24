@@ -34,7 +34,7 @@ class TestBibliotheek:
         alle = bibliotheek.laad_alle()
         verwacht = {
             "document-feiten", "bankmutatie-feiten", "reconciliatie-bevindingen", "sync-status", "project-cache",
-            "whitelist-doelen", "documenten-zonder", "correcties", "activa-stand",
+            "whitelist-doelen", "documenten-zonder", "correcties", "activa-stand", "documenten-open", "administratie-stand", "grootboek-taal",
         }
         assert verwacht <= set(alle)
         for q in alle.values():
@@ -203,3 +203,56 @@ class TestCli:
         assert cli.main(["db-lezen", "bankmutatie-feiten", "--param", "kapot"]) == 2
         assert cli.main(["db-lezen", "--sql", "SELECT 1"]) == 2  # zonder --als
         assert cli.main(["db-lezen", "--sql", "SELECT 1", "--als", "niemand@test.local"]) == 2  # geen beheerder
+
+
+class TestDocumentenOpen:
+    """Bundelrun 24-09: meetlat-query `documenten-open` (blok 1 tweelingen / 7a Van Boxtel / 7b samenvoegen) — optionele filters,
+    aantal opgeslagen regels en veldvoorstel-bedragen per open document; afgehandelde statussen vallen weg."""
+
+    def test_documenten_open_filters_en_kolommen(self, administratie_id: uuid.UUID, beheerder_id: uuid.UUID, tmp_path: Path) -> None:
+        from app.documenten import service as documenten_service
+        from app.documenten.models import Document, DocumentStatus
+        from app.documenten.storage import LokaleBestandsopslag
+
+        opslag = LokaleBestandsopslag(tmp_path)
+        open_doc = documenten_service.upload_document(
+            administratie_id=administratie_id, bestandsnaam="factuur-RUB-2026-0031.pdf", inhoud=b"%PDF-1.4 rub", actor_id=beheerder_id, opslag=opslag
+        )
+        oud = documenten_service.upload_document(
+            administratie_id=administratie_id, bestandsnaam="oud.pdf", inhoud=b"%PDF-1.4 oud", actor_id=beheerder_id, opslag=opslag
+        )
+        with scoped_session(administratie_id, actor_id=beheerder_id) as session:
+            session.get(Document, oud.document_id).status = DocumentStatus.GEBOEKT
+        u = service.voer_query_uit("documenten-open", {}, administratie_id=administratie_id)
+        assert u.resultaat.totaal == 1
+        rij = dict(zip(u.resultaat.kolommen, u.resultaat.rijen[0], strict=False))
+        assert rij["bestandsnaam"] == "factuur-RUB-2026-0031.pdf" and str(rij["document_id"]).startswith(str(open_doc.document_id)[:8])
+        assert rij["opgeslagen_regels"] == 0 and rij["veldvoorstel_regels_met_netto"] == 0
+        assert service.voer_query_uit("documenten-open", {"bestandsnaam": "RUB-2026"}, administratie_id=administratie_id).resultaat.totaal == 1
+        assert service.voer_query_uit("documenten-open", {"bestandsnaam": "MEY-2026"}, administratie_id=administratie_id).resultaat.totaal == 0
+        assert service.voer_query_uit("documenten-open", {"soort": "kassarapport"}, administratie_id=administratie_id).resultaat.totaal == 0
+
+
+class TestAdministratieStandEnGrootboekTaal:
+    """Bundelrun 24-09: meetlatten blok 3 (dearchiveren Odoo: actief/gearchiveerd_op/backend/company/probe_op per naamdeel, platformbreed)
+    en blok 2 (Odoo taal-poort: Engelse rekeningnamen per administratie)."""
+
+    def test_administratie_stand_platformbreed_met_naamfilter(self, administratie_id: uuid.UUID) -> None:
+        u = service.voer_query_uit("administratie-stand", {})
+        kolommen = u.resultaat.kolommen
+        assert {"naam", "actief", "gearchiveerd_op", "boekhoud_backend", "odoo_company_id", "odoo_probe_op", "rlz_credential_aanwezig"} <= set(kolommen)
+        rijen = [dict(zip(kolommen, r, strict=False)) for r in u.resultaat.rijen]
+        assert any(str(r["administratie_id"]).startswith(str(administratie_id)[:8]) for r in rijen)
+        assert service.voer_query_uit("administratie-stand", {"naam": "bestaat-niet-zzz"}).resultaat.totaal == 0
+
+    def test_grootboek_taal_telt_engelse_namen(self, administratie_id: uuid.UUID, beheerder_id: uuid.UUID) -> None:
+        from app.db.models import Grootboekrekening
+
+        with scoped_session(administratie_id, actor_id=beheerder_id) as session:
+            for code, naam in (("1300", "Account Receivable"), ("1600", "Crediteuren"), ("4000", "Salaries Expenses")):
+                session.add(
+                    Grootboekrekening(ledger_id=uuid.uuid4(), administratie_id=administratie_id, code=code, naam=naam, soort=2, is_totaalrekening=False)
+                )
+        u = service.voer_query_uit("grootboek-taal", {}, administratie_id=administratie_id)
+        rij = dict(zip(u.resultaat.kolommen, u.resultaat.rijen[0], strict=False))
+        assert rij["totaal"] >= 3 and rij["engels"] == 2 and "1300 Account Receivable" in rij["voorbeelden"]
