@@ -40,6 +40,9 @@ _VINGERAFDRUK_LENGTE = 16
 # --- reden-categorieën (machine-sleutels; labels in REDEN_LABEL) -------------------------------------
 GEEN_EIGENAAR = "geen_eigenaar"
 VOLUMEREM = "volumerem"
+#: 24-09 AI-heraanbieding: zachte overslaan-redenen (geen LET-OP).
+TIJDBUDGET = "tijdbudget"
+MENS_BEZIG = "mens_bezig"
 GELDPOORT = "geldpoort"
 CREDENTIAL = "credential"
 API_KEY = "api_key"
@@ -193,6 +196,8 @@ REDEN_LABEL: dict[str, str] = {
     GROEP_SALDO_FOUT: "groepssaldi-stand mét status fout (bron-/codefout in de nachtelijke meting)",
     BOEK_WACHTRIJ_GESTRAND: "boeking blijft hangen op 'Wordt geboekt…' (achtergrond-schrijver niet gestart/gestrand)",
     VOLUMEREM: "volumerem bereikt",
+    TIJDBUDGET: "tijdbudget van de run op (volgende run pakt 'm op)",
+    MENS_BEZIG: "een mens werkt eraan sinds de limiet — niet overschreven",
     VOORVERWARMEN_UIT: "voorverwarmen staat uit (instelling CHECKS_VOORVERWARMEN)",
     VOORVERWARMEN_BEZIG: "al een voorverwarming bezig (max 1 tegelijk) of document niet leesbaar",
     POSTVAK_AL_BEKEND: "bericht al eerder verwerkt (zelfde Message-ID — bv. via de oude forward of een .eml-upload)",
@@ -302,6 +307,13 @@ CHECKS_VOORVERWARMEN = "checks_voorverwarmen"
 #: gezien/verwerkt/al_bekend/niet_verwerkbaar/uit_spam/dubbel_via_forward (`app/intake/verwerkt.py`) — verwacht =
 #: opgehaald (nieuw in het venster), gedaan = verwerkt, overgeslagen per reden (zacht, nooit een harde voorwaarde).
 INTAKE_POSTVAK = "intake_postvak"
+#: BUG Peter 24-09 (`app/aikosten/heraanbieden.py`): verzamelbak-rijen `ai_limiet_bereikt` + documenten mét overgeslagen
+#: extractie (limiet) opnieuw aanbieden zodra de kostenpoort open is — bron audit `ai_heraanbieding_run` (één rij per
+#: run, status klaar: gedaan/overgeslagen per reden; `kostengrens`/`volumerem`/`avg_gate`/`api_key` = harde voorwaarde →
+#: LET-OP, `tijdbudget`/`mens_bezig` zacht). En de byte-identieke dubbelencheck vóór de AI-stap (`app/intake/
+#: dubbel_voor_ai.py`) — bron audit `ai_dubbel_voor_extractie` (gedaan = één bespaarde AI-call).
+AI_HERAANBIEDING = "ai_heraanbiedingen"
+AI_BESPAARD_DUBBEL = "ai_bespaard_dubbel"
 
 #: Vaste volgorde in mail en scherm (geldpaden eerst).
 VOLGORDE: tuple[str, ...] = (
@@ -325,6 +337,8 @@ VOLGORDE: tuple[str, ...] = (
     MINI_VOORRAAD,
     EXTRACTIE_WACHTRIJ,
     INTAKE_POSTVAK,
+    AI_HERAANBIEDING,
+    AI_BESPAARD_DUBBEL,
     OMZETBRON_HERKENNING,
     KASSARAPPORT_AUTOTYPE,
     KASSARAPPORT_INKOOPSTROOM,
@@ -334,6 +348,8 @@ VOLGORDE: tuple[str, ...] = (
 )
 
 LABEL: dict[str, str] = {
+    AI_HERAANBIEDING: "AI-heraanbieding ná limiet (verzamelbak + overgeslagen extracties)",
+    AI_BESPAARD_DUBBEL: "AI bespaard — byte-identiek dubbel vóór de extractie",
     INTAKE_POSTVAK: "Intake-postvakken (facturen@ak-nijenhuis.nl + facturen@kempengroep.nl — INBOX + Spam, op Message-ID)",
     BOEK_WACHTRIJ: "Boeken in RLZ — achtergrond-schrijver (ingediend → geboekt/mislukt)",
     CHECKS_VOORVERWARMEN: "Externe checks voorverwarmen (volgend document)",
@@ -400,6 +416,7 @@ VASTE_CATEGORIEEN: dict[str, tuple[str, ...]] = {
     BOEK_WACHTRIJ: (FOUT,),
     CHECKS_VOORVERWARMEN: (VOORVERWARMEN_UIT, VOORVERWARMEN_BEZIG),
     INTAKE_POSTVAK: (POSTVAK_AL_BEKEND, POSTVAK_NIET_VERWERKBAAR, POSTVAK_UIT_SPAM, POSTVAK_DUBBEL_VIA_FORWARD),
+    AI_HERAANBIEDING: (KOSTENGRENS,),
 }
 
 #: Alle audit-acties die deze motor leest — één query per administratie.
@@ -441,6 +458,9 @@ _ACTIES: tuple[str, ...] = (
     "checks_voorverwarmd",
     # 23-09: intake-postvakken op Message-ID (één rij per job-run per kanaal)
     "intake_postvak_run",
+    # 24-09: AI-heraanbieding ná limiet (één rij per run) + byte-identiek dubbel vóór de AI-stap (per exemplaar)
+    "ai_heraanbieding_run",
+    "ai_dubbel_voor_extractie",
 )
 
 
@@ -904,6 +924,18 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "verwerkt-administratie op Message-ID (intake_bericht_verwerkt)",
         "audit intake_postvak_run (per run per kanaal)",
     )
+    ai_heraanbieding = maak(
+        AI_HERAANBIEDING,
+        "altijd",
+        "ná élke intake-job-run (beide postvakken, elke 10 min) + dagelijkse stap; alleen bij open kostenpoort, oud → nieuw",
+        "audit ai_heraanbieding_run (per run: gedaan/overgeslagen per reden)",
+    )
+    ai_bespaard = maak(
+        AI_BESPAARD_DUBBEL,
+        "altijd",
+        "vóór élke splitsings-AI-call: sha256 kantoorbreed — bestaat al = exemplaar samengevoegd, geen AI",
+        "audit ai_dubbel_voor_extractie (per bespaard exemplaar)",
+    )
     herkoppeling = maak(
         DOORBELASTING_HERKOPPELING,
         "altijd",
@@ -997,6 +1029,24 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
                 pk["runs"] += 1
                 pk["gezien"] += int(nw.get("gezien") or 0)
                 pk["verwerkt"] += int(nw.get("verwerkt") or 0)
+        elif f.actie == "ai_heraanbieding_run":
+            if nw.get("status") == "klaar" and not nw.get("dry_run"):
+                for v in vensters(ai_heraanbieding, f.tijdstip):
+                    v.tel_gedaan(int(nw.get("gedaan") or 0))
+                for reden, n in (nw.get("overgeslagen") or {}).items():
+                    is_hard = str(reden) in (KOSTENGRENS, VOLUMEREM, AVG_GATE, API_KEY)
+                    for _ in range(int(n or 0)):
+                        tel_over(
+                            ai_heraanbieding,
+                            f.tijdstip,
+                            str(reden),
+                            None,
+                            str(nw.get("gestopt_reden") or "")[:300] or None,
+                            hard_registreren=is_hard,
+                        )
+        elif f.actie == "ai_dubbel_voor_extractie":
+            for v in vensters(ai_bespaard, f.tijdstip):
+                v.tel_gedaan()
         elif f.actie == "uren_herinnering_run":
             for v in vensters(uren_herinnering, f.tijdstip):
                 v.tel_gedaan(int(nw.get("gedaan") or 0))

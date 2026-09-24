@@ -94,8 +94,16 @@ export interface AiKostenStatusDto {
   limiet_eur: string
   percentage: number
   waarschuwing_80: boolean
+  /** Historisch feit van deze maand (éénmaal gezet) — NOOIT de blokkade-stand; die is `geblokkeerd` (BUG 24-09). */
   limiet_bereikt: boolean
+  /** Live: verbruik ≥ limiet. Alleen dit stuurt de rode "geblokkeerd"-tekst. */
   geblokkeerd: boolean
+  /** BUG 24-09: ná een verhoging — wanneer AI weer actief werd, bij welke limiet de grens werd geraakt, en hoeveel
+   * documenten op heraanbieding wachten (verzamelbak `ai_limiet_bereikt` + rest van de jongste heraanbiedingsrun). */
+  limiet_bereikt_op?: string | null
+  limiet_bij_bereiken_eur?: string | null
+  weer_actief_sinds?: string | null
+  wachten_op_heraanbieding?: number
   /** Deterministische extractie-terugval (01-09): veldvoorstellen deze maand per bron + actieve
    * leverancier-templates. Optioneel voor oudere responses/mocks. */
   extracties_template_maand?: number

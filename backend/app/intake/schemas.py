@@ -207,3 +207,49 @@ class BulkVerzamelbakResponse(BaseModel):
     verwerkt: int
     al_verwerkt: int
     fout: int
+
+
+class AiHeraanbiedingAanvraagDto(BaseModel):
+    """202 op `POST /verzamelbak/ai-heraanbieden` (BUG Peter 24-09): de heraanbieding is aangevraagd bij de intake-job
+    (cloud) of gestart als achtergrond-thread (dev); de uitkomst per rij komt via de stand-route."""
+
+    voertuig: str
+    kandidaten_verzamelbak: int
+    kandidaten_documenten: int
+
+
+class AiHeraanbiedingRijDto(BaseModel):
+    document_id: str
+    bestandsnaam: str
+    soort: str
+    # toegewezen | verzamelbak | splitsingsvoorstel | dubbel | geextraheerd | naar_wachtrij | mislukt | wacht_op_budget |
+    # overgeslagen | kandidaat (dry-run)
+    uitkomst: str
+    detail: str | None = None
+    administratie_id: str | None = None
+
+
+class AiHeraanbiedingRunDto(BaseModel):
+    run_id: str
+    bron: str
+    status: str  # bezig | klaar
+    gestart_op: str
+    klaar_op: str | None = None
+    geblokkeerd: bool = False
+    kandidaten: int = 0
+    kandidaten_verzamelbak: int = 0
+    kandidaten_documenten: int = 0
+    gedaan: int = 0
+    rest: int = 0
+    tellers: dict[str, int] = Field(default_factory=dict)
+    overgeslagen: dict[str, int] = Field(default_factory=dict)
+    gestopt_reden: str | None = None
+    uitkomsten: list[AiHeraanbiedingRijDto] = Field(default_factory=list)
+
+
+class AiHeraanbiedingStandDto(BaseModel):
+    bezig: bool
+    geblokkeerd: bool
+    kandidaten_verzamelbak: int
+    wachten: int
+    laatste_run: AiHeraanbiedingRunDto | None = None

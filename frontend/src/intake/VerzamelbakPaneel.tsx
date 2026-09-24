@@ -16,9 +16,11 @@ import {
   type VerzamelbakActieResultaatDto,
   type VerzamelbakItemDto,
 } from './intakeApi'
+import { AiHeraanbiedenKnop, telAiLimietRijen } from './AiHeraanbiedenKnop'
 import { bijlageOmschrijving, NooitSplitsenDialog } from './NooitSplitsenDialog'
 import { SamenvoegDialog } from './SamenvoegDialog'
 import { VerzamelbakPreview } from './VerzamelbakPreview'
+import { VERZAMELBAK_ANKER } from '../werkvoorraad/AiKostenBanner'
 
 /** Kolommen van de verzamelbak-tabel — ÉÉN bron voor breedte (colgroup) én celklasse (C9, fixrun
  * 07-09): `table-layout: fixed` + constante rijhoogte (components.css `.verzamelbak-tabel`), zodat een
@@ -290,7 +292,7 @@ export function VerzamelbakPaneel({
   const bulkDoelNaam = administraties.find((a) => a.id === bulkDoel)?.naam
 
   return (
-    <div className="panel" style={{ borderLeft: '3px solid var(--orange)' }}>
+    <div className="panel" id={VERZAMELBAK_ANKER} style={{ borderLeft: '3px solid var(--orange)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>Niet toegewezen — handmatig koppelen ({items.length})</h2>
         <input
@@ -306,6 +308,17 @@ export function VerzamelbakPaneel({
             {zichtbaar.length} van {items.length}
           </span>
         )}
+      </div>
+      {/* BUG 24-09: rijen die op de AI-limiet strandden worden automatisch opnieuw aangeboden zodra er budget is; de knop
+          start dat nu en toont de uitkomst per rij (bulk-upload-patroon). */}
+      <div style={{ marginTop: 6 }}>
+        <AiHeraanbiedenKnop
+          aantal={telAiLimietRijen(items)}
+          onKlaar={() => {
+            laad()
+            onGewijzigd?.()
+          }}
+        />
       </div>
       {zusjesZichtbaar > 0 && (
         <div className="hint" data-testid="verzamelbak-zusje-banner" style={{ marginTop: 6 }}>

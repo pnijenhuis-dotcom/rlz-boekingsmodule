@@ -901,9 +901,24 @@ def intake_ai_zetten(
 def _ai_kosten_status_dto() -> schemas.AiKostenStatusDto:
     from app.extractie import template_service  # lokaal: houdt de importgraaf van de router klein
 
+    from app.aikosten import heraanbieden  # lokaal: idem
+
     status_ = aikosten_service.haal_status_op()
     templates = template_service.maand_statistiek()
+    wachten = 0
+    if status_.limiet_bereikt_op is not None or status_.geblokkeerd:
+        # Alleen relevant zolang er deze maand een limiet-moment was: N(a) live + rest van de jongste run (goedkoop).
+        try:
+            wachten = int(heraanbieden.stand()["wachten"])
+        except Exception:  # noqa: BLE001 — de telling is informatie op de banner, nooit een 500 op Instellingen
+            wachten = 0
     return schemas.AiKostenStatusDto(
+        limiet_bereikt_op=status_.limiet_bereikt_op.isoformat() if status_.limiet_bereikt_op else None,
+        limiet_bij_bereiken_eur=(
+            f"{status_.limiet_bij_bereiken_eur:.2f}" if status_.limiet_bij_bereiken_eur is not None else None
+        ),
+        weer_actief_sinds=status_.weer_actief_sinds.isoformat() if status_.weer_actief_sinds else None,
+        wachten_op_heraanbieding=wachten,
         extracties_template_maand=templates.via_template,
         extracties_ai_maand=templates.via_ai,
         templates_actief=templates.templates_actief,

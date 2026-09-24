@@ -92,6 +92,8 @@ class HerleesTelling:
     beeld_gezet: int = 0
     gestopt_reden: str | None = None
     details: list[str] = field(default_factory=list)
+    #: 24-09: de administratie van de laatste toewijzing (een toegewezen document is buiten zijn scope onzichtbaar).
+    laatste_toewijzing_administratie_id: uuid.UUID | None = None
 
     def als_dict(self) -> dict:
         return {
@@ -182,7 +184,7 @@ def vind_kandidaten(*, sinds: datetime, alle_redenen: bool = False) -> list[Herl
     return kandidaten
 
 
-def _tijdlijn_notitie(session, document: Document, detail: dict) -> None:
+def _tijdlijn_notitie(session, document: Document, detail: dict, *, sleutel: str = HERLEZEN_SLEUTEL) -> None:
     """Tijdlijnregel zonder statuswijziging (niet_toegewezen → niet_toegewezen): document.status
     wordt níét gemuteerd, dus bewust niet via `_schrijf_overgang` (dat is de enige status-muteerder
     en de statusmachine kent geen zelf-overgang). Systeem-actor mét verplichte `reden`."""
@@ -194,14 +196,23 @@ def _tijdlijn_notitie(session, document: Document, detail: dict) -> None:
             van_status=document.status,
             naar_status=document.status,
             actor_id=SYSTEEM_ACTOR_ID,
-            detail={**detail, HERLEZEN_SLEUTEL: True},
+            detail={**detail, sleutel: True},
         )
     )
 
 
 def _herlees_een(
-    kandidaat: HerleesKandidaat, *, opslag: DocumentOpslag, telling: HerleesTelling, toewijzen: bool = True
+    kandidaat: HerleesKandidaat,
+    *,
+    opslag: DocumentOpslag,
+    telling: HerleesTelling,
+    toewijzen: bool = True,
+    label: str = HERLEZEN_SLEUTEL,
+    ai_bron: str = "intake_herlezen",
 ) -> None:
+    """Eén verzamelbak-PDF opnieuw door de intake-keten (splitsingsdetectie → toewijzing → extractie ná toewijzing).
+    `label`/`ai_bron` (24-09): de AI-heraanbieding ná een limietverhoging (`app/aikosten/heraanbieden.py`) gebruikt
+    exact deze motor mét eigen tijdlijnsleutel/-label (`ai_heraanbieding`) en eigen kostenbron."""
     with scoped_session(None) as session:
         document = session.get(Document, kandidaat.document_id)
         if (
@@ -222,17 +233,17 @@ def _herlees_een(
         segmenten = splitsing_extractie.detecteer_facturen(
             inhoud,
             paginas=paginas,
-            verbruik_referentie=AiVerbruikReferentie(bron="intake_herlezen", intake_bericht_id=intake_bericht_id),
+            verbruik_referentie=AiVerbruikReferentie(bron=ai_bron, intake_bericht_id=intake_bericht_id),
             mail_context=body_hint,
         )
     except AiKostenLimietBereikt:
         raise
     except Exception as exc:  # noqa: BLE001 — élke AI-fout zichtbaar op de tijdlijn, nooit een gok
-        logger.warning("Intake-herlezen mislukt voor %s: %s", kandidaat.bestandsnaam, exc)
+        logger.warning("%s mislukt voor %s: %s", label, kandidaat.bestandsnaam, exc)
         with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
             document = session.get(Document, kandidaat.document_id)
             assert document is not None
-            _tijdlijn_notitie(session, document, {"reden": f"intake_herlezen_mislukt: {exc}"})
+            _tijdlijn_notitie(session, document, {"reden": f"{label}_mislukt: {exc}"}, sleutel=label)
         telling.herlezen += 1
         telling.mislukt += 1
         telling.details.append(f"{kandidaat.bestandsnaam}: mislukt — {exc}")
@@ -241,7 +252,7 @@ def _herlees_een(
     telling.herlezen += 1
     if len(segmenten) >= 2:
         ongeldig = [s for s in segmenten if not s.geldig]
-        reden = f"intake_herlezen: splitsingsvoorstel ter controle ({len(segmenten)} facturen herkend"
+        reden = f"{label}: splitsingsvoorstel ter controle ({len(segmenten)} facturen herkend"
         reden += f", {len(ongeldig)} deel/delen ongeldig)" if ongeldig else ")"
         with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
             document = session.get(Document, kandidaat.document_id)
@@ -256,10 +267,36 @@ def _herlees_een(
                     },
                 )
             )
-            _tijdlijn_notitie(session, document, {"reden": reden})
+            _tijdlijn_notitie(session, document, {"reden": reden}, sleutel=label)
         telling.splitsingsvoorstel += 1
         telling.details.append(f"{kandidaat.bestandsnaam}: {reden}")
         return
+
+    # Documentsoort-herkenning (offerte-matching 04-09), zelfde routering als `_verwerk_pdf`: "onduidelijk" = blijft in
+    # de bak mét de échte reden (factuur of offerte?), "verplichting" = eigen documentsoort vóór de toewijzing.
+    gelezen_soort = segmenten[0].documentsoort
+    if gelezen_soort == splitsing_extractie.DOCUMENTSOORT_ONDUIDELIJK:
+        from app.intake.verwerking import REDEN_DOCUMENTSOORT_ONDUIDELIJK  # lokaal: geen kringimport
+
+        reden = f"{label}: {REDEN_DOCUMENTSOORT_ONDUIDELIJK}"
+        with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+            document = session.get(Document, kandidaat.document_id)
+            assert document is not None
+            document.tenaamstelling = segmenten[0].tenaamstelling
+            _tijdlijn_notitie(
+                session, document, {"reden": reden, "tenaamstelling": segmenten[0].tenaamstelling}, sleutel=label
+            )
+        if segmenten[0].tenaamstelling:
+            telling.tenaamstelling_gezet += 1
+        telling.details.append(f"{kandidaat.bestandsnaam}: {reden}")
+        return
+    if gelezen_soort == splitsing_extractie.DOCUMENTSOORT_VERPLICHTING:
+        from app.documenten.models import DocumentSoort  # lokaal
+
+        with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+            document = session.get(Document, kandidaat.document_id)
+            assert document is not None
+            document.soort = DocumentSoort.VERPLICHTING.value
 
     _rond_toewijzing_af(
         kandidaat,
@@ -268,6 +305,7 @@ def _herlees_een(
         body_hint=body_hint,
         telling=telling,
         toewijzen=toewijzen,
+        label=label,
     )
 
 
@@ -348,6 +386,7 @@ def _rond_toewijzing_af(
     body_hint: str | None,
     telling: HerleesTelling,
     toewijzen: bool,
+    label: str = HERLEZEN_SLEUTEL,
 ) -> None:
     """Gedeelde staart van een herlezing (PDF én UBL): toewijzen bij een eenduidige match — of, met
     `toewijzen=False`, die match als SUGGESTIE op de rij zetten — anders tenaamstelling + suggestie."""
@@ -358,7 +397,7 @@ def _rond_toewijzing_af(
         # Bewust niet toewijzen (CLI --zonder-toewijzen): de eenduidige match wordt de suggestie zodat
         # de bulk-toewijzing in de verzamelbak vooringevuld staat; de mens drukt op de knop.
         reden = (
-            f"intake_herlezen: eenduidig op {besluit.bron} (tenaamstelling {tenaamstelling!r}) — "
+            f"{label}: eenduidig op {besluit.bron} (tenaamstelling {tenaamstelling!r}) — "
             "als suggestie gezet, niet toegewezen"
         )
         with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
@@ -375,13 +414,14 @@ def _rond_toewijzing_af(
                     "tenaamstelling": tenaamstelling,
                     "suggestie_administratie_id": str(besluit.administratie_id),
                 },
+                sleutel=label,
             )
         telling.tenaamstelling_gezet += 1
         telling.details.append(f"{kandidaat.bestandsnaam}: {reden}")
         return
 
     if besluit.administratie_id is not None:
-        reden = f"intake_herlezen: toegewezen op {besluit.bron} (tenaamstelling {tenaamstelling!r})"
+        reden = f"{label}: toegewezen op {besluit.bron} (tenaamstelling {tenaamstelling!r})"
         with scoped_session(besluit.administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
             document = session.get(Document, kandidaat.document_id)
             assert document is not None
@@ -398,7 +438,7 @@ def _rond_toewijzing_af(
                     "reden": reden,
                     "toegewezen_aan_administratie": str(besluit.administratie_id),
                     "vanuit": "verzamelbak",
-                    HERLEZEN_SLEUTEL: True,
+                    label: True,
                 },
             )
             record_audit_event(
@@ -407,7 +447,7 @@ def _rond_toewijzing_af(
                 module="boekhouding",
                 tabel="document",
                 record_id=document.id,
-                actie="intake_herlezen_toegewezen",
+                actie=f"{label}_toegewezen",
                 correlatie_id=uuid.uuid4(),
                 oude_waarde={"administratie_id": None, "tenaamstelling": None},
                 nieuwe_waarde={"administratie_id": str(besluit.administratie_id), "tenaamstelling": tenaamstelling},
@@ -417,13 +457,14 @@ def _rond_toewijzing_af(
             administratie_id=besluit.administratie_id, document_id=kandidaat.document_id, actor_id=SYSTEEM_ACTOR_ID
         )
         telling.toegewezen += 1
+        telling.laatste_toewijzing_administratie_id = besluit.administratie_id
         telling.details.append(f"{kandidaat.bestandsnaam}: {reden}")
         return
 
     reden = (
-        f"intake_herlezen: tenaamstelling {tenaamstelling!r} gelezen, niet eenduidig"
+        f"{label}: tenaamstelling {tenaamstelling!r} gelezen, niet eenduidig"
         if tenaamstelling
-        else "intake_herlezen: geen tenaamstelling gelezen"
+        else f"{label}: geen tenaamstelling gelezen"
     )
     with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
         document = session.get(Document, kandidaat.document_id)
@@ -441,6 +482,7 @@ def _rond_toewijzing_af(
                     str(besluit.suggestie_administratie_id) if besluit.suggestie_administratie_id else None
                 ),
             },
+            sleutel=label,
         )
     if tenaamstelling:
         telling.tenaamstelling_gezet += 1

@@ -233,3 +233,81 @@ export function bulkWijsToe(documentIds: string[], administratieId: string): Pro
 export function bulkHoortNietBijOns(documentIds: string[], reden: string): Promise<BulkVerzamelbakResponseDto> {
   return apiPostJson<BulkVerzamelbakResponseDto>('/verzamelbak/bulk-hoort-niet-bij-ons', { document_ids: documentIds, reden })
 }
+
+// --- AI-heraanbieding ná limiet (BUG Peter 24-09) ---------------------------------------------------------------
+
+export interface AiHeraanbiedingAanvraagDto {
+  voertuig: string
+  kandidaten_verzamelbak: number
+  kandidaten_documenten: number
+}
+
+export type AiHeraanbiedingUitkomst =
+  | 'toegewezen'
+  | 'verzamelbak'
+  | 'splitsingsvoorstel'
+  | 'dubbel'
+  | 'geextraheerd'
+  | 'naar_wachtrij'
+  | 'mislukt'
+  | 'wacht_op_budget'
+  | 'overgeslagen'
+  | 'kandidaat'
+
+export interface AiHeraanbiedingRijDto {
+  document_id: string
+  bestandsnaam: string
+  soort: string
+  uitkomst: AiHeraanbiedingUitkomst | string
+  detail: string | null
+  administratie_id: string | null
+}
+
+export interface AiHeraanbiedingRunDto {
+  run_id: string
+  bron: string
+  status: 'bezig' | 'klaar' | string
+  gestart_op: string
+  klaar_op: string | null
+  geblokkeerd: boolean
+  kandidaten: number
+  kandidaten_verzamelbak: number
+  kandidaten_documenten: number
+  gedaan: number
+  rest: number
+  tellers: Record<string, number>
+  overgeslagen: Record<string, number>
+  gestopt_reden: string | null
+  uitkomsten: AiHeraanbiedingRijDto[]
+}
+
+export interface AiHeraanbiedingStandDto {
+  bezig: boolean
+  geblokkeerd: boolean
+  kandidaten_verzamelbak: number
+  wachten: number
+  laatste_run: AiHeraanbiedingRunDto | null
+}
+
+/** Knop "Opnieuw verwerken (N)": 202 — de intake-job draait de heraanbieding; 409 = poort dicht (reden in de body). */
+export function startAiHeraanbieding(): Promise<AiHeraanbiedingAanvraagDto> {
+  return apiPostJson<AiHeraanbiedingAanvraagDto>('/verzamelbak/ai-heraanbieden', {})
+}
+
+export function haalAiHeraanbiedingStandOp(): Promise<AiHeraanbiedingStandDto> {
+  return apiJson<AiHeraanbiedingStandDto>('/verzamelbak/ai-heraanbieden/stand')
+}
+
+/** Leesbare labels voor de uitkomstlijst (bulk-upload-patroon). */
+export const AI_HERAANBIEDING_UITKOMST_LABEL: Record<string, string> = {
+  toegewezen: 'toegewezen',
+  verzamelbak: 'blijft in de verzamelbak (andere reden)',
+  splitsingsvoorstel: 'splitsingsvoorstel ter controle',
+  dubbel: 'dubbel (al aanwezig — samengevoegd, geen AI)',
+  geextraheerd: 'voorstel opgesteld — ter controle',
+  naar_wachtrij: 'extractie via de wachtrij',
+  mislukt: 'mislukt',
+  wacht_op_budget: 'wacht op AI-budget',
+  overgeslagen: 'overgeslagen',
+  kandidaat: 'kandidaat',
+}

@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { AdministratieDto } from '../api/types'
-import { useAuthOptioneel } from '../auth/AuthContext'
 import { haalDubbelenStandOp } from '../crediteuren/api'
-import { haalAiKostenStatusOp, type AiKostenStatusDto } from '../instellingen/instellingenApi'
 import { VerzamelbakPaneel } from '../intake/VerzamelbakPaneel'
+import { AiKostenBanner } from './AiKostenBanner'
 import { verwerkEml, verwerkLosBestand } from '../intake/intakeApi'
 import { haalStand as haalReconciliatieStand, type StandDto as ReconciliatieStandDto } from '../reconciliatie/reconciliatieApi'
 import { haalHercontroleSignalenOp } from '../document/projectverdelingApi'
@@ -76,36 +75,6 @@ export function WerkvoorraadScreen() {
   }
 
   return <WerkvoorraadIngang administraties={administraties} filter={filter} />
-}
-
-/** AI-kostenmelding (besluit 2026-08-14): de werkvoorraad blijft het meldingskanaal voor de
- * 80%-/100%-drempels (éénmalig per maand, hard besluit AI-kostengrens) — de kóstenmeter zelf
- * leeft sinds de designronde 15-08 alleen nog op Instellingen (Beheerder). */
-function AiKostenBanner() {
-  const rol = useAuthOptioneel()?.rol ?? null
-  const [status, setStatus] = useState<AiKostenStatusDto | null>(null)
-  useEffect(() => {
-    if (rol !== 'beheerder') return
-    haalAiKostenStatusOp()
-      .then(setStatus)
-      .catch(() => undefined) // melding is best-effort; de harde poort zit in de backend
-  }, [rol])
-  if (!status || (!status.waarschuwing_80 && !status.limiet_bereikt)) return null
-  if (status.limiet_bereikt) {
-    return (
-      <div className="fout" role="alert" style={{ marginBottom: 12 }}>
-        AI-maandlimiet bereikt ({status.maand}: € {status.verbruik_eur} van € {status.limiet_eur}) —
-        AI-verwerking is geblokkeerd; nieuwe documenten volgen het handmatige pad. Limiet aanpassen kan op
-        Instellingen.
-      </div>
-    )
-  }
-  return (
-    <div className="hint" role="status" style={{ marginBottom: 12, color: 'var(--orange, #b45309)' }}>
-      AI-kosten op {status.percentage}% van de maandlimiet ({status.maand}: € {status.verbruik_eur} van €{' '}
-      {status.limiet_eur}) — bij 100% wordt AI-verwerking geblokkeerd.
-    </div>
-  )
 }
 
 function somOver(klanten: KlantRij[] | null, kies: (k: KlantRij) => number): number | null {

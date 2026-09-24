@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-24 — AI-limiet: melding klopt weer, wachtende facturen worden vanzelf opnieuw verwerkt, dubbele bestanden kosten geen AI meer
+
+<!-- ai-limiet-heraanbieden-24-09 -->
+
+- **De rode melding "AI-verwerking is geblokkeerd" staat er alleen nog als dat écht zo is.** Ná het verhogen van de maandlimiet (23 september) bleef die melding de hele maand staan terwijl nieuwe facturen gewoon werden verwerkt. Nu ziet u ná een verhoging één regel "AI-verwerking weer actief sinds …" met hoeveel documenten nog op verwerking wachten en een knop naar de verzamelbak.
+- **Wat op de limiet strandde wordt vanzelf opnieuw verwerkt.** De 202 rijen in de verzamelbak met "AI-limiet bereikt — handmatig verwerken" en de facturen waarvan de scan werd overgeslagen worden automatisch opnieuw aangeboden zodra er budget is (bij elke postvakronde, oud naar nieuw) en stoppen zichtbaar als de limiet opnieuw wordt bereikt. Op de verzamelbak staat de knop "Opnieuw verwerken (N)" om het direct te starten; de uitkomst per rij verschijnt eronder.
+- **Een bestand dat al in de module staat gaat niet meer door de AI.** Komt precies hetzelfde bestand nog een keer binnen (doorgestuurde mail, herstelronde), dan wordt het herkend vóór de scan en meteen als duplicaat van het origineel afgevoerd (of als exemplaar bij een rij in de verzamelbak gelegd) — zonder kosten, met een regel op de tijdlijn van beide kanten.
+
 ## 2026-09-23 — Koppeling met Vastly: een genegeerd bericht is voortaan een zichtbare fout, en berichten kunnen opnieuw worden aangeleverd
 
 <!-- webhook-herzenden-23-09 -->

@@ -40,6 +40,7 @@ import {
   SECTIE_PADEN,
   zichtbareNavItems,
 } from './instellingenRegistry'
+import { bepaalAiKostenStand } from './aiKostenStand'
 import {
   haalAiKostenStatusOp,
   haalAutoboekStandOp,
@@ -647,15 +648,32 @@ export function InstellingenScreen() {
                       <strong>
                         {aiKosten.maand}: € {aiKosten.verbruik_eur} van € {aiKosten.limiet_eur} ({aiKosten.percentage}%)
                       </strong>
-                      {aiKosten.limiet_bereikt ? (
-                        <span style={{ color: 'var(--red)', marginLeft: 8 }}>
-                          Limiet bereikt — AI-verwerking geblokkeerd tot de nieuwe maand of een hogere limiet.
-                        </span>
-                      ) : aiKosten.waarschuwing_80 ? (
-                        <span style={{ color: 'var(--orange, #b45309)', marginLeft: 8 }}>
-                          Waarschuwing: 80% van de maandlimiet bereikt.
-                        </span>
-                      ) : null}
+                      {/* BUG 24-09: "geblokkeerd" uitsluitend op de LIVE stand; het maandfeit blijft als historie zichtbaar. */}
+                      {(() => {
+                        const stand = bepaalAiKostenStand(aiKosten)
+                        if (stand.soort === 'geblokkeerd') {
+                          return (
+                            <span style={{ color: 'var(--red)', marginLeft: 8 }} data-testid="ai-kosten-stand">
+                              Limiet bereikt — AI-verwerking geblokkeerd tot de nieuwe maand of een hogere limiet.
+                            </span>
+                          )
+                        }
+                        if (stand.soort === 'weer_actief') {
+                          return (
+                            <span className="hint" style={{ marginLeft: 8 }} data-testid="ai-kosten-stand">
+                              {stand.tekst}
+                            </span>
+                          )
+                        }
+                        if (stand.soort === 'waarschuwing') {
+                          return (
+                            <span style={{ color: 'var(--orange, #b45309)', marginLeft: 8 }} data-testid="ai-kosten-stand">
+                              Waarschuwing: 80% van de maandlimiet bereikt.
+                            </span>
+                          )
+                        }
+                        return null
+                      })()}
                     </p>
                   )}
                   {aiKosten && (

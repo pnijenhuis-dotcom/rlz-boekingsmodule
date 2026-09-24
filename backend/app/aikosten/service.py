@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.audit import record_audit_event
-from app.db.models import AiGebruik, AiKostenInstelling, AiKostenMaandstatus
+from app.db.models import AiGebruik, AiKostenInstelling, AiKostenMaandstatus, AuditEvent
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 
@@ -89,6 +89,12 @@ class AiKostenStatus:
     waarschuwing_80_op: datetime | None
     limiet_bereikt_op: datetime | None
     geblokkeerd: bool
+    # BUG Peter 24-09 (sticky banner): `limiet_bereikt_op` is een HISTORISCH feit (éénmaal per maand gezet, nooit
+    # teruggezet); de blokkade zelf is `geblokkeerd` (live verbruik ≥ limiet). Ná een limietverhoging draagt de status
+    # het moment waarop AI-verwerking weer actief werd (jongste limiet-wijziging ná het bereik-moment) en de limiet die
+    # destijds gold — voor de regel "limiet bereikt op … bij € …; daarna verhoogd naar € …".
+    weer_actief_sinds: datetime | None = None
+    limiet_bij_bereiken_eur: Decimal | None = None
 
 
 def huidige_maand(nu: datetime | None = None) -> date:
@@ -252,6 +258,29 @@ def haal_status_op(nu: datetime | None = None) -> AiKostenStatus:
         status = session.get(AiKostenMaandstatus, maand)
         waarschuwing_op = status.waarschuwing_80_op if status else None
         bereikt_op = status.limiet_bereikt_op if status else None
+        weer_actief_sinds: datetime | None = None
+        limiet_bij_bereiken: Decimal | None = None
+        if bereikt_op is not None:
+            # Audit-spoor van de meter zelf (administratie-loos, dus leesbaar in deze scope): de limiet die gold op het
+            # bereik-moment + de jongste limietwijziging daarná = "weer actief sinds". Een nieuwe maand heeft geen
+            # bereik-moment (maandstatus is per maand), dus daar is niets te tonen.
+            bereikt_audit = session.scalars(
+                select(AuditEvent)
+                .where(
+                    AuditEvent.actie == "ai_kosten_limiet_bereikt",
+                    AuditEvent.nieuwe_waarde["maand"].astext == maand.isoformat(),
+                )
+                .order_by(AuditEvent.tijdstip.desc())
+            ).first()
+            if bereikt_audit is not None and (bereikt_audit.nieuwe_waarde or {}).get("limiet_eur") is not None:
+                limiet_bij_bereiken = Decimal(str(bereikt_audit.nieuwe_waarde["limiet_eur"]))
+            wijziging = session.scalars(
+                select(AuditEvent)
+                .where(AuditEvent.actie == "ai_kosten_maandlimiet_gewijzigd", AuditEvent.tijdstip > bereikt_op)
+                .order_by(AuditEvent.tijdstip.desc())
+            ).first()
+            if wijziging is not None and verbruik < limiet:
+                weer_actief_sinds = wijziging.tijdstip
     percentage = int(verbruik / limiet * 100) if limiet > 0 else 100
     return AiKostenStatus(
         maand=maand,
@@ -261,4 +290,6 @@ def haal_status_op(nu: datetime | None = None) -> AiKostenStatus:
         waarschuwing_80_op=waarschuwing_op,
         limiet_bereikt_op=bereikt_op,
         geblokkeerd=verbruik >= limiet,
+        weer_actief_sinds=weer_actief_sinds,
+        limiet_bij_bereiken_eur=limiet_bij_bereiken,
     )

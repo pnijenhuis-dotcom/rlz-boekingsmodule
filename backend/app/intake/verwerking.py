@@ -77,7 +77,7 @@ from app.documenten.ubl import (
     parseer_ubl_factuur,
 )
 from app.extractie import splitsing as splitsing_extractie
-from app.intake import splitsing_uitsluiting
+from app.intake import dubbel_voor_ai, splitsing_uitsluiting
 from app.intake.bundeling import BijlagePaar, BundelItem, bundel_bijlagen
 from app.intake.eml import GeenGeldigeEml, IntakeBijlage, IntakeMail, parse_eml
 from app.intake.models import IntakeBericht, IntakeSplitsing
@@ -533,6 +533,22 @@ def _verwerk_pdf(
             )
         return uitkomst
 
+    # BUG Peter 24-09: byte-identieke dubbelencheck VÓÓR élke AI-stap (app/intake/dubbel_voor_ai.py) — een bestand dat
+    # kantoorbreed al bestaat wordt nooit meer door de splitsings-AI gehaald: zelfde bericht = bestaande rij, ander
+    # bericht = exemplaar geregistreerd en direct de huls (`samengevoegd`) van het origineel. Nooit stil (tijdlijn beide
+    # kanten, audit, dagteller `ai_bespaard_dubbel`).
+    dubbel = _dubbel_voor_ai(
+        bijlage,
+        afzender=afzender,
+        actor_id=actor_id,
+        intake_bericht_id=intake_bericht_id,
+        opslag=opslag,
+        bron_bestand=bron_bestand,
+        kanaal=kanaal,
+    )
+    if dubbel is not None:
+        return dubbel
+
     uitsluiting = splitsing_uitsluiting.vind_uitsluiting(afzender)
     if uitsluiting is not None:
         # "Nooit splitsen"-regel voor deze afzender (blok B 04-09, cases Universal Nederland/Delta): de
@@ -730,6 +746,89 @@ def _verwerk_pdf(
         uitkomst="splitsingsvoorstel",
         document_id=document_id,
         detail=detail,
+    )
+
+
+def _dubbel_voor_ai(
+    bijlage: IntakeBijlage,
+    *,
+    afzender: str | None,
+    actor_id: uuid.UUID,
+    intake_bericht_id: uuid.UUID | None,
+    opslag: DocumentOpslag | None,
+    bron_bestand: BronBestand | None,
+    kanaal: DocumentBron,
+) -> BijlageResultaat | None:
+    """Zie `app/intake/dubbel_voor_ai.py`. None = geen byte-identiek exemplaar bekend → het normale pad (AI)."""
+    sha = dubbel_voor_ai.sha256_van(bijlage.inhoud)
+    try:
+        treffer = dubbel_voor_ai.zoek_byte_identiek(sha)
+    except Exception:  # noqa: BLE001 — de check is een besparing bovenop het pad, nooit een blokkade van de intake
+        logger.exception("Dubbelencheck vóór de AI-stap mislukt voor %s — normale pad", bijlage.bestandsnaam)
+        return None
+    if treffer is None:
+        return None
+    if documenten_service._DIRECTE_UPLOAD_POORT.get() and intake_bericht_id is None:
+        # Besluit Peter 18-09: een DIRECTE upload van bestaande bytes = 409 "al aanwezig" mét verwijzing, geen nieuw
+        # document. Bestaat het origineel in een administratie, dan geven we die 409 nu al vóór de AI-stap (bespaard);
+        # ligt het alleen in de verzamelbak, dan loopt de bestaande route (routing → 18-09-poort in upload_document).
+        if treffer.administratie_id is None:
+            return None
+        with scoped_session(treffer.administratie_id) as session:
+            origineel = session.get(documenten_service.Document, treffer.document_id)
+            if origineel is None:
+                return None
+            geweigerd = documenten_service.DocumentAlAanwezig(
+                origineel, referentie=documenten_service._referentie_van(session, origineel.id)
+            )
+        documenten_service._audit_upload_geweigerd(
+            administratie_id=treffer.administratie_id,
+            actor_id=actor_id,
+            bestandsnaam=bijlage.bestandsnaam,
+            geweigerd=geweigerd,
+        )
+        raise geweigerd
+    herkomst = dubbel_voor_ai.herkomst_tekst(afzender=afzender, kanaal=kanaal.value)
+    if intake_bericht_id is not None and treffer.intake_bericht_id == intake_bericht_id:
+        dubbel_voor_ai.registreer_zelfde_bericht(
+            treffer=treffer, bestandsnaam=bijlage.bestandsnaam, sha256_hash=sha, actor_id=actor_id, bron="intake"
+        )
+        return BijlageResultaat(
+            bestandsnaam=bijlage.bestandsnaam,
+            uitkomst="dubbel",
+            document_id=treffer.document_id,
+            detail=f"{dubbel_voor_ai.REDEN_PREFIX}: byte-identiek aan '{treffer.bestandsnaam}' uit hetzelfde bericht — niet opnieuw verwerkt",
+        )
+    exemplaar_id = documenten_service.registreer_niet_toegewezen_document(
+        bestandsnaam=bijlage.bestandsnaam,
+        inhoud=bijlage.inhoud,
+        actor_id=actor_id,
+        reden=f"{dubbel_voor_ai.REDEN_PREFIX}: byte-identiek aan '{treffer.bestandsnaam}'",
+        opslag=opslag,
+        intake_bericht_id=intake_bericht_id,
+        afzender_hint=afzender,
+        bron_bestand=bron_bestand,
+        bron=kanaal,
+    )
+    try:
+        eind = dubbel_voor_ai.handel_exemplaar_af(
+            exemplaar_id=exemplaar_id, treffer=treffer, actor_id=actor_id, bron="intake", herkomst=herkomst
+        )
+    except Exception:  # noqa: BLE001 — de rij staat zichtbaar in de verzamelbak mét de reden; nooit een crash
+        logger.exception("Dubbel afhandelen mislukt voor exemplaar %s (origineel %s)", exemplaar_id, treffer.document_id)
+        return BijlageResultaat(
+            bestandsnaam=bijlage.bestandsnaam,
+            uitkomst="verzamelbak",
+            document_id=exemplaar_id,
+            detail=f"{dubbel_voor_ai.REDEN_PREFIX}: byte-identiek aan '{treffer.bestandsnaam}' (afhandelen mislukt — zie log)",
+        )
+    waar = f"administratie {treffer.administratie_id}" if treffer.administratie_id else "de verzamelbak"
+    wat = "afgevoerd als duplicaat" if eind == dubbel_voor_ai.UITKOMST_AFGEVOERD else "samengevoegd als exemplaar"
+    return BijlageResultaat(
+        bestandsnaam=bijlage.bestandsnaam,
+        uitkomst="dubbel",
+        document_id=exemplaar_id,
+        detail=f"{dubbel_voor_ai.REDEN_PREFIX}: byte-identiek aan '{treffer.bestandsnaam}' in {waar} — {wat}, geen AI-call",
     )
 
 

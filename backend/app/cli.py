@@ -203,6 +203,24 @@ def _extractie_heraanbieden(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ai_heraanbieden(args: argparse.Namespace) -> int:
+    """Nazorg-CLI (BUG Peter 24-09): `ai-heraanbieden [--dry-run] [--max N]` — dezelfde motor als de intake-job-run en
+    de dagelijkse stap (`app/aikosten/heraanbieden.py`). Dry-run telt en lijst (N(a) verzamelbak + N(b) documenten), de
+    échte run alleen ná Peters "ja" op de job-image mét de Anthropic-key: `gcloud run jobs execute rlz-intake-imap
+    --args=-m,app.cli,ai-heraanbieden`. Exit 0 = uitkomst (ook bij poort dicht — die staat als regel); exit 1 alleen bij
+    een omgevallen motor."""
+    from app.aikosten import heraanbieden
+
+    try:
+        r = heraanbieden.draai(bron=heraanbieden.BRON_CLI, dry_run=bool(args.dry_run), max_per_run=args.max)
+    except Exception as exc:  # noqa: BLE001 — zichtbaar mét exit 1
+        print(f"FOUT ai-heraanbieden: {exc}", file=sys.stderr)
+        return 1
+    print(f"ai-heraanbieden{' [dry-run]' if args.dry_run else ''} (run {r.run_id}):")
+    _print_heraanbieding(r)
+    return 0
+
+
 def _intake_herlezen(args: argparse.Namespace) -> int:
     """Nazorg intake-splitsingsbug (spoedopdracht 02-09, punt 5): verzamelbak-PDF's die sinds
     --sinds op een verworpen/mislukt intake-AI-voorstel strandden opnieuw door de gefixte keten
@@ -2424,10 +2442,42 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
                 print(f"FOUT       {naam}-reconciliatie viel om: {exc}", file=sys.stderr)
                 code = 1
             exit_code = max(exit_code, 1 if code else 0)
+        if not alleen:
+            _ai_heraanbieding_dagelijks(echte_run=False)
         print("\nLEES-ONLY afgerond — niets vastgelegd.")
         return exit_code
 
-    return reconciliatie_run.voer_uit(blokken=blokken, args=args)
+    code = reconciliatie_run.voer_uit(blokken=blokken, args=args)
+    _ai_heraanbieding_dagelijks(echte_run=True)
+    return code
+
+
+def _ai_heraanbieding_dagelijks(*, echte_run: bool) -> None:
+    """Dagelijkse stap (BUG Peter 24-09, kernprincipe 7.6): telt de kandidaten voor de AI-heraanbieding; in de échte
+    run met open poort wordt de intake-job (facturen@) on-demand gestart — die draagt de Anthropic-key en draait de
+    heraanbieding ná zijn postvak-pas; met de poort dicht schrijft de motor zelf de run mét `kostengrens`-overslaan
+    (LET-OP in de reconciliatiemail). Lees-only = alleen de telling. Een fout hier is een zichtbare regel, nooit een
+    rode reconciliatie."""
+    from app.aikosten import heraanbieden
+
+    print("\n=== AI-heraanbieding ná limiet (dagelijkse stap) ===")
+    try:
+        a, b = heraanbieden.tel_kandidaten()
+        print(f"kandidaten: verzamelbak {a} (reden ai_limiet_bereikt), documenten {b} (extractie overgeslagen: limiet)")
+        if not echte_run:
+            print("LEES-ONLY: niets aangeboden.")
+            return
+        if a + b == 0:
+            heraanbieden.draai(bron=heraanbieden.BRON_DAGELIJKS)  # lege run laat een spoor (dagteller 0/0)
+            print("niets te heraanbieden.")
+            return
+        if heraanbieden.aikosten_service.haal_status_op().geblokkeerd:
+            _print_heraanbieding(heraanbieden.draai(bron=heraanbieden.BRON_DAGELIJKS))
+            return
+        r = heraanbieden.vraag_aan(actor_id=SYSTEEM_ACTOR_ID, bron=heraanbieden.BRON_DAGELIJKS)
+        print(f"intake-job gestart ({r.voertuig}) — de heraanbieding loopt daar ná de postvak-pas.")
+    except Exception as exc:  # noqa: BLE001
+        print(f"FOUT dagelijkse heraanbiedingsstap: {exc}", file=sys.stderr)
 
 
 def _zoek_administraties(tekst: str) -> list[tuple[uuid.UUID, str]]:
@@ -2584,6 +2634,54 @@ def _reconciliatie_acceptaties(args: argparse.Namespace) -> int:
 
 
 def _intake_postvak_verwerken(args: argparse.Namespace) -> int:
+    """Job-entrypoint van beide postvakken: (1) de postvak-pas (`_intake_postvak_pas`), (2) BUG Peter 24-09: de
+    AI-heraanbieding ná een limietverhoging (`app/aikosten/heraanbieden.py`) — élke intake-job-run biedt de verzamelbak-
+    rijen `ai_limiet_bereikt` en de documenten mét `ai_extractie_overgeslagen: ai_limiet_bereikt` opnieuw aan zolang de
+    kostenpoort open is (deze job draagt als enige de Anthropic-key), binnen het tijdbudget van de job (task-timeout
+    900 s). Een postvak-fout (exit 1) laat de heraanbieding niet vervallen; een heraanbiedingsfout maakt de job niet rood
+    (eigen audit/LET-OP)."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.config import settings
+
+    run_start = datetime.now(UTC)
+    exit_code = _intake_postvak_pas(args)
+    _ai_heraanbieding_na_intake(
+        bron=f"intake_job:{getattr(args, 'kanaal', None) or 'facturen'}",
+        deadline=run_start + timedelta(seconds=settings.ai_heraanbieden_tijdbudget_s),
+    )
+    return exit_code
+
+
+def _ai_heraanbieding_na_intake(*, bron: str, deadline) -> None:  # noqa: ANN001 — datetime
+    from app.aikosten import heraanbieden
+
+    print(f"\nAI-heraanbieding ná limiet ({bron}):")
+    try:
+        r = heraanbieden.draai(bron=bron, deadline=deadline)
+    except Exception as exc:  # noqa: BLE001 — zichtbaar, nooit een rode intake-job door de heraanbieding
+        print(f"  FOUT heraanbieding: {exc}", file=sys.stderr)
+        return
+    _print_heraanbieding(r)
+
+
+def _print_heraanbieding(r) -> None:  # noqa: ANN001 — heraanbieden.RunResultaat
+    over = ", ".join(f"{k} {n}" for k, n in sorted(r.overgeslagen.items())) or "—"
+    tellers = ", ".join(f"{k} {n}" for k, n in sorted(r.tellers().items())) or "—"
+    print(
+        f"  kandidaten {r.kandidaten} (verzamelbak {r.kandidaten_verzamelbak}, documenten {r.kandidaten_documenten}), "
+        f"gedaan {r.gedaan}, overgeslagen {sum(r.overgeslagen.values())} ({over}); uitkomsten: {tellers}"
+        + (" [dry-run]" if r.dry_run else "")
+    )
+    if r.geblokkeerd:
+        print("  POORT DICHT: AI-maandlimiet bereikt — niets aangeboden, documenten wachten zichtbaar op budget.")
+    if r.gestopt_reden:
+        print(f"  GESTOPT: {r.gestopt_reden}")
+    for u in r.uitkomsten:
+        print(f"  {u.uitkomst:16} {u.soort:11} {u.bestandsnaam} · {u.document_id}" + (f" — {u.detail}" if u.detail else ""))
+
+
+def _intake_postvak_pas(args: argparse.Namespace) -> int:
     """E-mail-intake (F3.4; herzien 23-09): leest een intake-postvak en verwerkt elk bericht via exact hetzelfde
     codepad als de .eml-upload (verwerk_eml, idempotent op Message-ID). Actor = de systeem-actor.
 
@@ -3460,6 +3558,14 @@ def main(argv: list[str] | None = None) -> int:
         "gestrande claims (> 10 min) worden hervat; lege wachtrij = snelle no-op.",
     )
 
+    ai_heraanbied_parser = subparsers.add_parser(
+        "ai-heraanbieden",
+        help="24-09: verzamelbak-rijen `ai_limiet_bereikt` + documenten mét overgeslagen extractie (limiet) opnieuw "
+        "aanbieden zodra de kostenpoort open is — dezelfde motor als de intake-job-run; --dry-run = alleen tellen/lijsten.",
+    )
+    ai_heraanbied_parser.add_argument("--dry-run", action="store_true", help="Alleen tellen en lijsten, niets aanbieden.")
+    ai_heraanbied_parser.add_argument("--max", type=int, default=None, help="Volumerem per run (default settings 300).")
+
     heraanbied_parser = subparsers.add_parser(
         "extractie-heraanbieden",
         help="Bied documenten waarvan de laatste AI-extractie sinds --sinds faalde opnieuw aan "
@@ -4210,6 +4316,8 @@ def main(argv: list[str] | None = None) -> int:
         return _boek_wachtrij_verwerken(args)
     if args.commando == "extractie-heraanbieden":
         return _extractie_heraanbieden(args)
+    if args.commando == "ai-heraanbieden":
+        return _ai_heraanbieden(args)
     if args.commando == "intake-herlezen":
         return _intake_herlezen(args)
     if args.commando == "toewijzing-regels-opschonen":

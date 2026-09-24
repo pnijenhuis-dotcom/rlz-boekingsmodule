@@ -354,6 +354,13 @@ class Settings(BaseSettings):
     # Een model dat hier niet in staat = fail-closed: de poort blokkeert de call.
     # Tweede laag (klikwerk Peter, geen code): spend-limit ~$110 in de Anthropic-console.
     ai_kosten_maandlimiet_eur: Decimal = Decimal("100")
+    # AI-heraanbieding ná een limietverhoging/nieuwe maand (BUG Peter 24-09, `app/aikosten/heraanbieden.py`): per run
+    # (élke intake-job-run + de dagelijkse run) hoogstens dit aantal documenten (volumerem — de rest staat zichtbaar als
+    # overgeslagen `volumerem`, LET-OP in de reconciliatiemail) en hoogstens dit tijdbudget in seconden, gerekend vanaf de
+    # START van de job (task-timeout 900 s; de postvak-pas gaat vooraf) — de rest is `tijdbudget`, zacht: de volgende run
+    # over 10 min pakt 'm op. Overschrijding ≤ één document (de toets zit vóór élk item): 780 + ~1 min blijft onder de 900.
+    ai_heraanbieden_max_per_run: int = 300
+    ai_heraanbieden_tijdbudget_s: int = 780
     ai_kosten_usd_eur_koers: Decimal = Decimal("1.00")
     ai_kosten_prijzen_usd_per_mtok: dict[str, dict[str, Decimal]] = {
         "claude-sonnet-5": {"input": Decimal("3.00"), "output": Decimal("15.00")},

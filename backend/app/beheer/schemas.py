@@ -32,6 +32,13 @@ class AiKostenStatusDto(BaseModel):
     waarschuwing_80: bool
     limiet_bereikt: bool
     geblokkeerd: bool
+    # BUG Peter 24-09 (sticky banner): `limiet_bereikt` = historisch feit van deze maand, `geblokkeerd` = de live stand.
+    # Ná een verhoging: wanneer AI weer actief werd, bij welke limiet de grens werd geraakt, en hoeveel documenten op
+    # heraanbieding wachten (verzamelbak `ai_limiet_bereikt` + rest van de jongste heraanbiedingsrun).
+    limiet_bereikt_op: str | None = None
+    limiet_bij_bereiken_eur: str | None = None
+    weer_actief_sinds: str | None = None
+    wachten_op_heraanbieding: int = 0
     # Deterministische extractie-terugval (01-09): teller naast het verbruiksblok — veldvoorstellen
     # deze maand per bron + het aantal geldige leverancier-templates. Geen nieuw scherm.
     extracties_template_maand: int = 0

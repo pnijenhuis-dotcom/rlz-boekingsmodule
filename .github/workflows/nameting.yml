@@ -30,7 +30,7 @@ on:
         description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -275,6 +275,33 @@ jobs:
             [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_ipa)" >> "$UIT"
             grep -q '^Oordeel:' "$UIT" || echo "Oordeel: geen oordeelregel — job-exit $rc_ipa (NIET-GECONFIGUREERD/FOUT in stderr?)" >> "$UIT"
             echo "STATUS intake-postvak-audit: rapport in $UIT (job-exit $rc_ipa = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "ai-heraanbieden" ]]; then
+            # 24-09 (BUG AI-limiet, Peter "dat moet nu gefixt worden"; BESLISSINGEN "AI-LIMIET — BANNER OP DE LIVE STAND,
+            # HERAANBIEDING NÁ VERHOGING, DUBBELENCHECK VÓÓR DE AI-STAP (Peter 24-09)"): lees-only meetlat — (1) `ai-heraanbieden
+            # --dry-run` op de job-image: N(a) verzamelbak-rijen `ai_limiet_bereikt` + N(b) documenten mét overgeslagen extractie
+            # (verwacht vóór de échte run: 202 + N; ná Peters "ja" en de échte run: 0 + 0); (2) `db-lezen ai-heraanbieding`:
+            # de runs (bron/gedaan/rest/overgeslagen/tellers) + live telling + bespaarde AI-calls (dubbel vóór extractie).
+            # De échte run is SCHRIJVEND en loopt nooit via dit script (gcloud run jobs execute rlz-intake-imap, owner-sessie).
+            UIT="verkenning/nameting-ai-heraanbieden-$DATUM.txt"
+            rc_ah=0
+            {
+              echo "== ai-heraanbieden --dry-run (job-image, lees-only) =="
+              scripts/gcp/nameting.sh ai-heraanbieden --dry-run 2> nameting-ah.stderr || rc_ah=$?
+              cat nameting-ah.stderr >&2
+              echo
+              echo "== db-lezen ai-heraanbieding --param dagen=7 (runs + live telling + bespaard) =="
+              scripts/gcp/nameting.sh db-lezen ai-heraanbieding --param dagen=7 2> nameting-ah-db.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-ah-db.stderr; }
+            } > "$UIT"
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-ah.stderr; then
+              echo "::error::ai-heraanbieden kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            AH_KAND="$(grep -m1 -o 'kandidaten [0-9]* (verzamelbak [0-9]*, documenten [0-9]*)' "$UIT" || true)"
+            AH_POORT="$(grep -c 'POORT DICHT' "$UIT" || true)"
+            if [[ -z "$AH_KAND" ]]; then AH_STAND="niet gemeten (geen kandidaten-regel — job-exit $rc_ah)"; elif [[ "$AH_KAND" == "kandidaten 0 (verzamelbak 0, documenten 0)" ]]; then AH_STAND="werkt in productie: ja (niets wacht meer op heraanbieding)"; elif [[ "$AH_POORT" -ge 1 ]]; then AH_STAND="poort dicht — documenten wachten zichtbaar op budget"; else AH_STAND="er wachten nog documenten (échte run = klikpunt Peter)"; fi
+            echo "Oordeel: ${AH_KAND:-geen kandidaten-regel} — $AH_STAND — exit $rc_ah" >> "$UIT"
+            echo "STATUS ai-heraanbieden: rapport in $UIT (exit $rc_ah = uitkomst)"
           fi
           if [[ "$ONDERDEEL" == "btw-niet-plichtig" ]]; then
             # 22-09 (BUG Peter, casus VGG / Studio Lacy Lion): lees-only nazorgrapport — module-geboekte inkoopfacturen 2026 mét
@@ -597,6 +624,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-jobs-start-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "activa-kaart" ]]; then
             OORDEEL_BRON="verkenning/nameting-activa-kaart-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "ai-heraanbieden" ]]; then
+            OORDEEL_BRON="verkenning/nameting-ai-heraanbieden-$DATUM.txt"
           elif [[ "$ONDERDEEL" =~ ^(alles|a|b|c|d|e)$ ]]; then
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           else

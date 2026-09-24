@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -525,3 +525,35 @@ def test_onderdeel_activa_kaart_alleen_op_verzoek_en_lees_only(tmp_path: Path) -
         {"nameting-activa-kaart-14-09.txt": "kop\nOordeel: POST aanmaken 200 = 2, 422 = 0, 5xx = 0 — werkt: ja\n"},
     )
     assert oordeel.startswith("Oordeel: POST aanmaken 200 = 2"), oordeel
+
+
+def test_onderdeel_ai_heraanbieden_alleen_op_verzoek_en_lees_only(tmp_path: Path) -> None:
+    """BUG AI-limiet 24-09: dispatch-onderdeel `ai-heraanbieden` = `ai-heraanbieden --dry-run` (telling N(a)+N(b)) +
+    `db-lezen ai-heraanbieding`; alleen op verzoek (niet in 'alles'); de échte (schrijvende) run staat nergens in de
+    workflow; eigen rapport + eigen oordeelregel (vier plekken: if-tak, options, via_gh_onderdeel, OORDEEL_BRON)."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "ai-heraanbieden" ]]; then' in meet
+    assert "scripts/gcp/nameting.sh ai-heraanbieden --dry-run" in meet
+    assert "scripts/gcp/nameting.sh db-lezen ai-heraanbieding" in meet
+    assert 'UIT="verkenning/nameting-ai-heraanbieden-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "ai-heraanbieden"' not in meet, "niet in 'alles'"
+    assert not re.search(r"nameting\.sh ai-heraanbieden(?! --dry-run)", "\n".join(_code_regels())), (
+        "de échte heraanbieding (zonder --dry-run) hoort nooit in de nameting-workflow"
+    )
+    assert 'OORDEEL_BRON="verkenning/nameting-ai-heraanbieden-$DATUM.txt"' in meet
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    allow = re.search(r'^ALLOWLIST="([^"]+)"', sh, flags=re.M)
+    assert allow and "ai-heraanbieden" in allow.group(1).split()
+    assert re.search(r"^\s*ai-heraanbieden\) echo ai-heraanbieden ;;", sh, flags=re.M)
+    assert 'if [[ "$CMD" == "ai-heraanbieden" ]]; then' in sh and "--dry-run" in sh
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "ai-heraanbieden",
+        {
+            "nameting-ai-heraanbieden-14-09.txt": (
+                "kop\nOordeel: kandidaten 202 (verzamelbak 202, documenten 0) — er wachten nog documenten — exit 0\n"
+            ),
+            "nameting-vgg-replay-14-09.txt": REPLAY,
+        },
+    )
+    assert oordeel.startswith("Oordeel: kandidaten 202"), oordeel

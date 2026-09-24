@@ -139,6 +139,10 @@ def _jongste_intake_redenen(session, document_ids: list[uuid.UUID]) -> dict[uuid
         .where(
             DocumentGebeurtenis.document_id.in_(document_ids),
             DocumentGebeurtenis.naar_status == DocumentStatus.NIET_TOEGEWEZEN,
+            # 24-09: een pure NOTITIE op de bak-rij (heraanbieding aangeboden / wacht op AI-budget) is geen nieuwe
+            # intake-uitkomst — de reden blijft die van de laatste échte uitkomst (anders verdween `ai_limiet_bereikt`
+            # als kandidaat-sleutel zodra de motor 'm één keer had aangeraakt).
+            DocumentGebeurtenis.detail["notitie"].astext.is_distinct_from("true"),
         )
         .subquery()
     )

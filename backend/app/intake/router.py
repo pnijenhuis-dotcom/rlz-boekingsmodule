@@ -327,6 +327,82 @@ def verzamelbak_bulk_hoort_niet_bij_ons(
     return _bulk_response(r)
 
 
+def _run_dto(waarde: dict | None) -> schemas.AiHeraanbiedingRunDto | None:
+    if not waarde or not waarde.get("run_id"):
+        return None
+    return schemas.AiHeraanbiedingRunDto(
+        run_id=str(waarde.get("run_id")),
+        bron=str(waarde.get("bron") or ""),
+        status=str(waarde.get("status") or "klaar"),
+        gestart_op=str(waarde.get("gestart_op") or waarde.get("tijdstip") or ""),
+        klaar_op=waarde.get("klaar_op"),
+        geblokkeerd=bool(waarde.get("geblokkeerd")),
+        kandidaten=int(waarde.get("kandidaten") or 0),
+        kandidaten_verzamelbak=int(waarde.get("kandidaten_verzamelbak") or 0),
+        kandidaten_documenten=int(waarde.get("kandidaten_documenten") or 0),
+        gedaan=int(waarde.get("gedaan") or 0),
+        rest=int(waarde.get("rest") or 0),
+        tellers={str(k): int(v or 0) for k, v in (waarde.get("tellers") or {}).items()},
+        overgeslagen={str(k): int(v or 0) for k, v in (waarde.get("overgeslagen") or {}).items()},
+        gestopt_reden=waarde.get("gestopt_reden"),
+        uitkomsten=[schemas.AiHeraanbiedingRijDto(**u) for u in (waarde.get("uitkomsten") or [])],
+    )
+
+
+@router.post(
+    "/verzamelbak/ai-heraanbieden",
+    response_model=schemas.AiHeraanbiedingAanvraagDto,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def verzamelbak_ai_heraanbieden(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.AiHeraanbiedingAanvraagDto:
+    """Knop "Opnieuw verwerken (N)" op de verzamelbak (BUG Peter 24-09): dezelfde motor als de automatische
+    heraanbieding (`app/aikosten/heraanbieden.py`), gestart via de intake-job (die draagt de Anthropic-key; de service
+    doet zelf geen minutenlang AI-werk in een request) — 202 + audit; de uitkomst per rij komt via de stand-route.
+    Poort dicht = 409 mét de reden (verhoog de limiet op Instellingen), nooit een stille no-op."""
+    from app.aikosten import heraanbieden
+    from app.aikosten import service as aikosten_service
+    from app.intake import nu_verwerken
+
+    st = aikosten_service.haal_status_op()
+    if st.geblokkeerd:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"AI-maandlimiet bereikt (€ {st.verbruik_eur:.2f} van € {st.limiet_eur:.2f} in {st.maand:%Y-%m}) — "
+                "opnieuw verwerken kan pas ná een hogere limiet (Instellingen › Boeken & AI) of in de nieuwe maand."
+            ),
+        )
+    try:
+        r = heraanbieden.vraag_aan(actor_id=actor.id, bron=heraanbieden.BRON_KNOP)
+    except nu_verwerken.StartMislukt as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return schemas.AiHeraanbiedingAanvraagDto(
+        voertuig=r.voertuig, kandidaten_verzamelbak=r.kandidaten_verzamelbak, kandidaten_documenten=r.kandidaten_documenten
+    )
+
+
+@router.get("/verzamelbak/ai-heraanbieden/stand", response_model=schemas.AiHeraanbiedingStandDto)
+def verzamelbak_ai_heraanbieden_stand(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.AiHeraanbiedingStandDto:
+    """Stand voor de knop/banner: bezig, live N(a), wachten (N(a) + rest jongste run), jongste run mét uitkomst per rij
+    (bulk-upload-patroon: toegewezen / verzamelbak-andere-reden / dubbel / wacht op budget / …)."""
+    from app.aikosten import heraanbieden
+
+    st = heraanbieden.stand()
+    laatste = st.get("laatste_run")
+    if laatste and laatste.get("status") == "bezig" and isinstance(laatste.get("vorige"), dict):
+        # Bezig: toon de vorige afgeronde run als uitkomstlijst (de lopende heeft er nog geen).
+        run = _run_dto(laatste["vorige"])
+    else:
+        run = _run_dto(laatste)
+    return schemas.AiHeraanbiedingStandDto(
+        bezig=bool(st["bezig"]),
+        geblokkeerd=bool(st["geblokkeerd"]),
+        kandidaten_verzamelbak=int(st["kandidaten_verzamelbak"]),
+        wachten=int(st["wachten"]),
+        laatste_run=run,
+    )
+
+
 @router.post("/intake/splitsingen/{splitsing_id}/bevestigen", response_model=schemas.SplitsingBevestigenResponse)
 def splitsing_bevestigen(
     splitsing_id: uuid.UUID,
