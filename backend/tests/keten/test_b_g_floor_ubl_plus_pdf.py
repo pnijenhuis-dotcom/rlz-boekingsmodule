@@ -126,3 +126,26 @@ class TestPdfZonderUblUitTweeMails:
         assert afwijzing is not None and afwijzing["duplicaat_van_document_id"] == eerste
         assert afwijzing["toegewezen_aan"] is None and afwijzing["automatisch"] is True
         assert keten.status(eerste) == DocumentStatus.TE_CONTROLEREN
+
+
+class TestVastlySuffixStam:
+    """Blok 1 bundelrun 24-09 (Vastly-batch 23-09): de UBL-exporteur plakt `-ubl` achter de factuurstam en de UBL
+    draagt géén ingesloten PDF — de hash-regel kan niets, de oude exacte-stam-regel zag `…-ubl` ≠ `…` en de PDF landde
+    23 keer als losse inkoopfactuur in de werkvoorraad. Sinds 24-09 normaliseert de stam-regel het suffix weg."""
+
+    def test_ubl_met_suffix_zonder_ingesloten_pdf_wordt_alsnog_gebundeld(self, keten: Keten) -> None:
+        pdf = CASUS.pdf()
+        xml_suffix = XML[:-4] + "-ubl.xml"
+        mail = keten.mail([(xml_suffix, CASUS.xml(ingesloten_pdf=b"")), (PDF, pdf)], onderwerp="Facturen oktober")
+        per_naam = {r.bestandsnaam: r for r in mail.bijlagen}
+        assert per_naam[xml_suffix].uitkomst == "toegewezen"
+        assert per_naam[PDF].uitkomst == "gebundeld" and "naamstam" in (per_naam[PDF].detail or "")
+        assert per_naam[PDF].document_id == per_naam[xml_suffix].document_id
+        document_id = per_naam[xml_suffix].document_id
+        assert keten.status(document_id) == DocumentStatus.TE_CONTROLEREN
+        assert keten.ai.aanroepen == []  # de PDF ging nooit naar de AI
+        # Geen tweede werkstuk: precies één document uit deze mail in de standaardlijst.
+        ids = keten.standaardlijst_ids()
+        assert str(document_id) in ids
+        rij = keten.lijst_rij(document_id)
+        assert rij is not None and rij["leverancier"] == "Floor Bouwliftenservice"

@@ -32,6 +32,7 @@ import { ExternGeboektActies } from './ExternGeboektActies'
 import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
 import { HerboekenAlsOmzetActie, isOmzetInInkoopstroom } from './HerboekenAlsOmzetActie'
 import { isKassarapportInWerkvoorraad, TypeWijzigenKassarapportActie } from './TypeWijzigenKassarapportActie'
+import { BundelenActie, isUblPdfOngebundeld } from './BundelenActie'
 import { isBoekWachtrijGestrand, OpnieuwIndienenActie } from './OpnieuwIndienenActie'
 import { isIntakePostvakVerschil, NuVerwerkenActie } from './NuVerwerkenActie'
 import { isActivumAanmakenMislukt, OpnieuwAanmakenActie } from './OpnieuwAanmakenActie'
@@ -363,6 +364,22 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
             bevindingId={r.id}
             leverancier={typeof d.leverancier_naam === 'string' ? d.leverancier_naam : null}
             factuurnummer={typeof d.factuurnummer === 'string' ? d.factuurnummer : null}
+            onGelukt={(melding) => {
+              toast.meld(melding)
+              herlaad()
+            }}
+          />{' '}
+          {deeplink}
+        </>
+      )
+    }
+    // Blok 1 bundelrun 24-09 (Vastly-batch 23-09): losse PDF die de tweeling is van een UBL-verkoopfactuur → één klik
+    // "Bundelen" (PDF wordt beeld van de verkoopfactuur, PDF-document → samengevoegd; geboekt = óók RLZ-bijlage).
+    if (r.soort === 'afwijking' && isUblPdfOngebundeld(r)) {
+      return (
+        <>
+          <BundelenActie
+            bevinding={r}
             onGelukt={(melding) => {
               toast.meld(melding)
               herlaad()

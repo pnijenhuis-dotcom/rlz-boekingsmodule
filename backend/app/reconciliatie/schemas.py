@@ -192,6 +192,22 @@ class TypeWijzigenKassarapportResultaatDto(BaseModel):
     doel_pad: str
 
 
+class BundelenInvoerDto(BaseModel):
+    """Invoer van "Bundelen" (blok 1 bundelrun 24-09, bevinding `ubl_pdf_ongebundeld`): alleen de administratie
+    (scope-toets); het paar wordt server-side opnieuw bepaald, nooit uit de client vertrouwd."""
+
+    administratie_id: uuid.UUID
+
+
+class BundelenResultaatDto(BaseModel):
+    document_id: uuid.UUID
+    ubl_document_id: uuid.UUID
+    status: str
+    match_basis: str | None
+    rlz_bijlage: str | None
+    doel_pad: str
+
+
 class HerboekenAlsOmzetResultaatDto(BaseModel):
     """Antwoord van "Herboeken als omzet" (Peter 16-09, Van Boxtel): de inkoopfactuur is gestorneerd (of bestond al
     niet meer) en het document is nu een kassarapport in de werkvoorraad; `doel_pad` = waar de mens 'm als omzet boekt."""

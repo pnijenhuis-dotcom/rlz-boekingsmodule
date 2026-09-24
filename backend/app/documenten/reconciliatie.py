@@ -530,6 +530,19 @@ def hercontroleer_open_documenten(
     )
 
 
+def _ongebundelde_tweelingen(
+    administratie_id: uuid.UUID, administratie_naam: str | None = None
+) -> list[ReconciliatieAfwijking]:
+    """Blok 1 bundelrun 24-09 (Vastly-PDF-tweelingen 23-09): losse inkoopfactuur-PDF's in de werkvoorraad die de
+    tweeling zijn van een UBL-verkoopfactuur uit dezelfde e-mail — soort `ubl_pdf_ongebundeld` (meten), actie
+    "Bundelen" op de rij. Lees-only, lokaal (geen RLZ-call); één kandidaten-motor mét de nazorg-CLI
+    (`app/intake/tweelingen_herstel`)."""
+    from app.intake import tweelingen_herstel
+
+    naam = administratie_naam or _administratie_naam(administratie_id)
+    return list(tweelingen_herstel.afwijkingen_voor_reconciliatie(administratie_id, naam))
+
+
 def reconcilieer_administratie(
     *,
     administratie_id: uuid.UUID,
@@ -556,7 +569,7 @@ def reconcilieer_administratie(
         return ReconciliatieRapport(
             administratie_id=administratie_id,
             aantal_gecontroleerd=0,
-            afwijkingen=herc.afwijkingen,
+            afwijkingen=(*herc.afwijkingen, *_ongebundelde_tweelingen(administratie_id)),
             hercontrole_getoetst=herc.getoetst,
             hercontrole_overgeslagen=herc.overgeslagen,
         )
@@ -609,6 +622,7 @@ def reconcilieer_administratie(
             administratie_id=administratie_id, port=port, administratie_naam=administratie_naam
         )
         afwijkingen.extend(herc.afwijkingen)
+        afwijkingen.extend(_ongebundelde_tweelingen(administratie_id, administratie_naam))
     finally:
         if verleden_port is not None:
             verleden_port.__exit__(None, None, None)

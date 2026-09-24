@@ -383,6 +383,45 @@ def bevinding_type_wijzigen_kassarapport(
     )
 
 
+@router.post(
+    "/reconciliatie/documenten/{document_id}/bundelen",
+    response_model=schemas.BundelenResultaatDto,
+)
+def document_bundelen(
+    document_id: uuid.UUID,
+    invoer: schemas.BundelenInvoerDto,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.BundelenResultaatDto:
+    """"Bundelen" (blok 1 bundelrun 24-09) op de bevinding `ubl_pdf_ongebundeld`: exact het herstel van de nazorg-CLI
+    `vastly-pdf-tweelingen-herstel` voor dít PDF-document, mens-actor — PDF wordt beeld van het UBL-verkoopfactuur-
+    document, PDF-document → samengevoegd, tijdlijn + audit `gebundeld_achteraf`; geboekt UBL → PDF óók als
+    RLZ-bijlage. 404 geen eenduidig paar, 409 twijfel/intussen verwerkt, 403 buiten scope, 422 mislukt."""
+    from app.intake import tweelingen_herstel as tw
+
+    try:
+        u = tw.bundel_vanuit_bevinding(
+            administratie_id=invoer.administratie_id, document_id=document_id, actor_id=actor.id, rol=actor.rol
+        )
+    except tw.GeenToegang as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except tw.TweelingNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except tw.TweelingTwijfel as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except tw.TweelingFout as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    k = u.kandidaat
+    assert k.ubl_document_id is not None
+    return schemas.BundelenResultaatDto(
+        document_id=k.pdf_document_id,
+        ubl_document_id=k.ubl_document_id,
+        status=u.uitkomst,
+        match_basis=k.match_basis,
+        rlz_bijlage=u.bijlage,
+        doel_pad=f"/verkoop/{k.administratie_id}/{k.ubl_document_id}",
+    )
+
+
 def _vertaal_bewust_verwijderd(exc: Exception) -> HTTPException:
     from app.reconciliatie import bewust_verwijderd
 
