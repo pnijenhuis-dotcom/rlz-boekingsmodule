@@ -77,3 +77,19 @@ def actieve_administraties_per_backend() -> tuple[list[uuid.UUID], list[uuid.UUI
     rlz = [rij.id for rij in rijen if rij.boekhoud_backend != Backend.ODOO.value]
     odoo = [rij.id for rij in rijen if rij.boekhoud_backend == Backend.ODOO.value]
     return rlz, odoo
+
+
+def heractiveer_port_voor(administratie_id: uuid.UUID):  # noqa: ANN201 — HeractiveerPort (Protocol)
+    """Blok 3 bundelrun 24-09: de dearchiveer-adapter per backend (Reeleezee = nieuwe login + probe; Odoo = bestaande
+    koppeling + sleutel opnieuw proben). `backend_voor` leest de sleutel van de GEARCHIVEERDE administratie —
+    archiveren wijzigt `boekhoud_backend` niet."""
+    backend = backend_voor(administratie_id)
+    if backend is Backend.RLZ:
+        from app.backends.rlz_heractiveer import RlzHeractiveerPort
+
+        return RlzHeractiveerPort()
+    if backend is Backend.ODOO:
+        from app.odoo.heractiveer import OdooHeractiveerPort
+
+        return OdooHeractiveerPort()
+    raise OnbekendeBackend(f"Geen dearchiveer-adapter voor backend {backend}")

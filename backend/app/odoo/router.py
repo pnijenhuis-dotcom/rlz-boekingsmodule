@@ -49,6 +49,7 @@ def odoo_verbinding_testen(
                 gekoppeld_aan=g.gekoppeld_aan,
                 migratie_doel=g.migratie_doel,
                 rlz_administratie=g.rlz_administratie,
+                gearchiveerd=g.gearchiveerd,
             )
             for g in uitkomst.companies
         ],

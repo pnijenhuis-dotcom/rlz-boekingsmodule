@@ -217,8 +217,16 @@ export function AdministratiesV2({ administraties, selectie, setSelectie, onHerl
     setDialoogFout(null)
     setRapport(null)
     try {
-      await dearchiveerAdministratie(dearchiveerVoor.id, wsGebruiker.trim(), wsWachtwoord)
-      setMelding(`"${dearchiveerVoor.naam}" teruggezet met een nieuwe webservice-login (rechten-probe groen).`)
+      const isOdoo = dearchiveerVoor.boekhoud_backend === 'odoo'
+      await dearchiveerAdministratie(
+        dearchiveerVoor.id,
+        isOdoo ? undefined : { webservice_username: wsGebruiker.trim(), wachtwoord: wsWachtwoord },
+      )
+      setMelding(
+        isOdoo
+          ? `"${dearchiveerVoor.naam}" teruggezet — de Odoo-koppeling is opnieuw geprobed (groen), de opgeslagen API-sleutel is hergebruikt.`
+          : `"${dearchiveerVoor.naam}" teruggezet met een nieuwe webservice-login (rechten-probe groen).`,
+      )
       setDearchiveerVoor(null)
       setWsGebruiker('')
       setWsWachtwoord('')
@@ -416,36 +424,55 @@ export function AdministratiesV2({ administraties, selectie, setSelectie, onHerl
         }}
       />
 
-      {/* Dearchiveren — nieuwe webservice-login, probe-gated. */}
+      {/* Dearchiveren — backend-bewust (blok 3 bundelrun 24-09): Reeleezee = nieuwe webservice-login, probe-gated;
+          Odoo = geen loginvelden, de opgeslagen API-sleutel wordt opnieuw geprobed (company ongewijzigd). */}
       <Dialog open={dearchiveerVoor !== null} onOpenChange={(open) => !open && !bezig && setDearchiveerVoor(null)}>
         <DialogContent aria-describedby={undefined} data-testid="dearchiveer-dialoog">
           <DialogTitle>Dearchiveren — {dearchiveerVoor?.naam}</DialogTitle>
-          <DialogDescription>
-            Terugzetten vereist een nieuwe webservice-login van Reeleezee; de rechten-probe (10 leesroutes) moet groen zijn
-            (een 403 op SalesInvoices = facturatiemodule niet afgenomen en telt als waarschuwing, geen blokkade).
-            Het wachtwoord wordt server-side versleuteld opgeslagen en is daarna nooit meer uitleesbaar.
-          </DialogDescription>
+          {dearchiveerVoor?.boekhoud_backend === 'odoo' ? (
+            <DialogDescription>
+              De Odoo-koppeling wordt opnieuw geprobed; company {dearchiveerVoor.odoo_company_id ?? '‹onbekend›'} moet
+              ongewijzigd terugkomen. De opgeslagen API-sleutel wordt hergebruikt — er is geen webservice-login nodig.
+              Probe rood of een andere company = niets gewijzigd.
+            </DialogDescription>
+          ) : (
+            <DialogDescription>
+              Terugzetten vereist een nieuwe webservice-login van Reeleezee; de rechten-probe (10 leesroutes) moet groen zijn
+              (een 403 op SalesInvoices = facturatiemodule niet afgenomen en telt als waarschuwing, geen blokkade).
+              Het wachtwoord wordt server-side versleuteld opgeslagen en is daarna nooit meer uitleesbaar.
+            </DialogDescription>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault()
               void dearchiveer()
             }}
           >
-            <FormField label="Webservice-gebruiker" htmlFor="dearch-gebruiker">
-              <input id="dearch-gebruiker" autoFocus value={wsGebruiker} onChange={(e) => setWsGebruiker(e.target.value)} />
-            </FormField>
-            <FormField label="Wachtwoord" htmlFor="dearch-wachtwoord">
-              <input id="dearch-wachtwoord" type="password" value={wsWachtwoord} onChange={(e) => setWsWachtwoord(e.target.value)} />
-            </FormField>
+            {dearchiveerVoor?.boekhoud_backend !== 'odoo' && (
+              <>
+                <FormField label="Webservice-gebruiker" htmlFor="dearch-gebruiker">
+                  <input id="dearch-gebruiker" autoFocus value={wsGebruiker} onChange={(e) => setWsGebruiker(e.target.value)} />
+                </FormField>
+                <FormField label="Wachtwoord" htmlFor="dearch-wachtwoord">
+                  <input id="dearch-wachtwoord" type="password" value={wsWachtwoord} onChange={(e) => setWsWachtwoord(e.target.value)} />
+                </FormField>
+              </>
+            )}
             {dialoogFout && <div className="fout">{dialoogFout}</div>}
             {rapport && <ProbeRapport rapport={rapport} />}
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => setDearchiveerVoor(null)} disabled={bezig}>
                 Annuleren
               </Button>
-              <Button type="submit" disabled={bezig || !wsGebruiker.trim() || !wsWachtwoord}>
-                {bezig ? 'Bezig…' : 'Probe draaien en terugzetten'}
-              </Button>
+              {dearchiveerVoor?.boekhoud_backend === 'odoo' ? (
+                <Button type="submit" disabled={bezig}>
+                  {bezig ? 'Bezig…' : 'Dearchiveren'}
+                </Button>
+              ) : (
+                <Button type="submit" disabled={bezig || !wsGebruiker.trim() || !wsWachtwoord}>
+                  {bezig ? 'Bezig…' : 'Probe draaien en terugzetten'}
+                </Button>
+              )}
             </DialogFooter>
           </form>
         </DialogContent>

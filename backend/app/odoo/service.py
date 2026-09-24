@@ -85,9 +85,12 @@ class CompanyClaim:
         return f"{wie} is al gekoppeld aan administratie ‹{naam}›{vorm}{hint}"
 
     def wizard_label(self) -> str:
-        """Korte grijs-reden voor de wizard-rij (punt 2c)."""
+        """Korte grijs-reden voor de wizard-rij (punt 2c). Gearchiveerde claim (blok 3 24-09): de weg is dearchiveren,
+        nooit een tweede rij — dat zegt het label zelf i.p.v. een klikbare rij die pas bij opslaan 422/409 geeft."""
         if self.migratie_doel:
             return f"migratiedoel ({self.administratie_naam})"
+        if self.gearchiveerd:
+            return f"gearchiveerd — dearchiveer {self.administratie_naam}"
         return f"al gekoppeld ({self.administratie_naam})"
 
 
@@ -102,6 +105,9 @@ class GevondenCompany:
     #: Signaal (geen blokkade): de company-naam matcht een bestaande Reeleezee-administratie in de module — de wizard
     #: eist dan een expliciete vink "toch als nieuwe administratie aanmaken" mét reden.
     rlz_administratie: str | None = None
+    #: Blok 3 24-09: de claim is van een GEARCHIVEERDE administratie — rij grijs mét
+    #: "gearchiveerd — dearchiveer ‹naam›".
+    gearchiveerd: bool = False
 
 
 @dataclass(frozen=True)
@@ -305,6 +311,7 @@ def test_verbinding(*, odoo_url: str, api_key: str) -> VerbindingUitkomst:
                 al_gekoppeld=claim is not None,
                 gekoppeld_aan=claim.wizard_label() if claim else None,
                 migratie_doel=bool(claim and claim.migratie_doel),
+                gearchiveerd=bool(claim and claim.gearchiveerd),
                 rlz_administratie=None if claim else signalen.get(c["id"]),
             )
         )

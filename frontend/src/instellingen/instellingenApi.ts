@@ -38,16 +38,17 @@ export function archiveerAdministratie(administratieId: string): Promise<Archive
   return apiJson<ArchiveringResultaatDto>(`/instellingen/administraties/${administratieId}/archiveren`, { method: 'POST' })
 }
 
-/** Dearchiveren vereist een nieuwe webservice-login (probe groen, 422 mét rapport anders). */
+/** Dearchiveren is backend-bewust (blok 3 bundelrun 24-09): Reeleezee vereist een nieuwe webservice-login (probe groen,
+ * 422 mét rapport anders); een Odoo-administratie stuurt GEEN login mee — de server probet de opgeslagen koppeling
+ * opnieuw (company moet ongewijzigd terugkomen) en weigert een meegegeven login mét 422 "niet van toepassing". */
 export function dearchiveerAdministratie(
   administratieId: string,
-  webservice_username: string,
-  wachtwoord: string,
+  login?: { webservice_username: string; wachtwoord: string },
 ): Promise<{ rapport: Record<string, string> }> {
   return apiJson(`/instellingen/administraties/${administratieId}/dearchiveren`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ webservice_username, wachtwoord }),
+    body: JSON.stringify(login ? { webservice_username: login.webservice_username, wachtwoord: login.wachtwoord } : {}),
   })
 }
 
@@ -625,6 +626,8 @@ export interface OdooCompanyDto {
   /** Signaal (geen blokkade): naam van een bestaande Reeleezee-administratie die met deze company overeenkomt —
    * de wizard eist dan de vink "toch als nieuwe administratie aanmaken" mét reden. */
   rlz_administratie?: string | null
+  /** Blok 3 24-09: de claim is van een GEARCHIVEERDE administratie — rij grijs mét "gearchiveerd — dearchiveer ‹naam›". */
+  gearchiveerd?: boolean
 }
 
 /** Resultaat van koppelen/overstap: probe-rapport + eerste-sync-run (zelfde subrij-patroon als RLZ). Slotstuk

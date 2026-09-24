@@ -256,6 +256,8 @@ class ArchiveringResultaatDto(BaseModel):
     gearchiveerd_op: datetime
     credential_ingetrokken: bool
     open_documenten: int
+    #: Blok 3 24-09: Odoo-administratie — de versleutelde API-sleutel blijft bewaard voor dearchiveren zonder login.
+    odoo_sleutel_behouden: bool = False
 
 
 # --- Administratie toevoegen (wizard, feedbackronde 26-08 punt 5) -------------------------------
@@ -276,6 +278,14 @@ class GevondenAdministratieDto(BaseModel):
 
 class VerbindingTestDto(BaseModel):
     administraties: list[GevondenAdministratieDto]
+
+
+class DearchiverenDto(StrikteInvoer):
+    """Dearchiveren (blok 3 bundelrun 24-09): login OPTIONEEL — Reeleezee vereist 'm (422 zonder), een
+    Odoo-administratie weigert 'm (422 "niet van toepassing"; de opgeslagen API-sleutel wordt hergebruikt)."""
+
+    webservice_username: str | None = Field(default=None, max_length=200)
+    wachtwoord: str | None = Field(default=None, max_length=500)
 
 
 class AdministratiesAanmakenDto(WebserviceGegevensDto):

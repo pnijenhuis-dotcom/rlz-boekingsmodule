@@ -386,6 +386,9 @@ class ArchiveringResultaat:
     gearchiveerd_op: datetime
     credential_ingetrokken: bool
     open_documenten: int
+    #: Blok 3 bundelrun 24-09: een Odoo-administratie heeft geen RLZ-credential; haar `OdooKoppeling` mét versleutelde
+    #: API-sleutel BLIJFT bewust staan (nodig voor dearchiveren zonder loginvelden) — zichtbaar in het resultaat.
+    odoo_sleutel_behouden: bool = False
 
 
 def archiveer_administratie(*, actor_id: uuid.UUID, administratie_id: uuid.UUID) -> ArchiveringResultaat:
@@ -419,6 +422,11 @@ def archiveer_administratie(*, actor_id: uuid.UUID, administratie_id: uuid.UUID)
             nieuwe_waarde={"actief": False, "gearchiveerd_op": nu.isoformat(), "naam": naam},
         )
     ingetrokken = credentialstore_service.trek_credential_in(actor_id=actor_id, administratie_id=administratie_id)
+    with scoped_session(None) as session:
+        from app.odoo.models import OdooKoppeling
+
+        koppeling = session.get(OdooKoppeling, administratie_id)
+        odoo_sleutel_behouden = bool(koppeling is not None and koppeling.api_key_ciphertext)
     with scoped_session(administratie_id) as session:
         open_documenten = int(
             session.scalar(
@@ -431,16 +439,29 @@ def archiveer_administratie(*, actor_id: uuid.UUID, administratie_id: uuid.UUID)
             )
             or 0
         )
-    return ArchiveringResultaat(gearchiveerd_op=nu, credential_ingetrokken=ingetrokken, open_documenten=open_documenten)
+    return ArchiveringResultaat(
+        gearchiveerd_op=nu,
+        credential_ingetrokken=ingetrokken,
+        open_documenten=open_documenten,
+        odoo_sleutel_behouden=odoo_sleutel_behouden,
+    )
 
 
 def dearchiveer_administratie(
-    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, webservice_username: str, wachtwoord: str, client=None
+    *,
+    actor_id: uuid.UUID,
+    administratie_id: uuid.UUID,
+    webservice_username: str | None = None,
+    wachtwoord: str | None = None,
+    client=None,
 ) -> dict[str, str]:
-    """Terugzetten kan alleen mét een nieuwe webservice-login: admin-pin + rechten-probe groen (zelfde
-    poort als de wizard), dan credential opslaan, `actief` terug en archiefspoor gewist. Niets van de
-    tussenliggende historie wordt geraakt. Geeft het probe-rapport terug."""
-    from app.beheer import onboarding
+    """Terugzetten = backend-bewust via de 0016-registry (blok 3 bundelrun 24-09, BUG Peter "Recreatief Vastgoed
+    Nederland"): de adapter doet de backend-kant — Reeleezee: nieuwe webservice-login mét admin-pin + rechten-probe
+    groen (zelfde poort als de wizard) + credential opslaan; Odoo: bestaande koppeling + versleutelde API-sleutel
+    opnieuw proben, company ongewijzigd (geen loginvelden). Groen → `actief` terug en archiefspoor gewist + audit
+    mét backend en probe-rapport. Rood/mismatch = `HeractiverenGeweigerd`/`OnboardingFout`, niets gewijzigd. Niets
+    van de tussenliggende historie wordt geraakt. Geeft het probe-rapport terug."""
+    from app.backends.registry import heractiveer_port_voor
 
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)
@@ -448,24 +469,15 @@ def dearchiveer_administratie(
             raise BeheerFout(f"Onbekende administratie: {administratie_id}")
         if administratie.gearchiveerd_op is None:
             raise BeheerFout("Administratie is niet gearchiveerd")
-        rlz_admin_id, naam = administratie.rlz_admin_id, administratie.naam
-    rapport = onboarding.probe_nieuwe_login(
-        rlz_admin_id=rlz_admin_id,
-        naam=naam,
+    port = heractiveer_port_voor(administratie_id)
+    rapport = port.heractiveer_probe(
+        administratie_id=administratie_id,
+        actor_id=actor_id,
         webservice_username=webservice_username,
         wachtwoord=wachtwoord,
         client=client,
     )
-    credentialstore_service.zet_credential(
-        actor_id=actor_id,
-        administratie_id=administratie_id,
-        webservice_username=webservice_username,
-        wachtwoord=wachtwoord,
-    )
     with scoped_session(None, actor_id=actor_id) as session:
-        credentialstore_service.sla_probe_op(
-            session, administratie_id=administratie_id, rapport=rapport, actor_id=actor_id
-        )
         administratie = session.get(Administratie, administratie_id)
         assert administratie is not None
         oud = administratie.gearchiveerd_op
@@ -481,7 +493,12 @@ def dearchiveer_administratie(
             actie="administratie_gedearchiveerd",
             correlatie_id=uuid.uuid4(),
             oude_waarde={"actief": False, "gearchiveerd_op": oud.isoformat() if oud else None},
-            nieuwe_waarde={"actief": True, "gearchiveerd_op": None},
+            nieuwe_waarde={
+                "actief": True,
+                "gearchiveerd_op": None,
+                "backend": port.backend.value,
+                "probe_rapport": dict(rapport),
+            },
         )
     return rapport
 

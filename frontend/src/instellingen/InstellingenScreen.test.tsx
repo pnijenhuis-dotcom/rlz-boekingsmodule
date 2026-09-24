@@ -159,7 +159,7 @@ function installFetchMock(opties: {
         return Promise.resolve(jsonResponse({ gearchiveerd_op: '2026-08-30T10:00:00Z', credential_ingetrokken: true, open_documenten: 2 }))
       }
       if (url.endsWith('/dearchiveren') && init?.method === 'POST') {
-        const body = JSON.parse(String(init.body)) as { webservice_username: string; wachtwoord: string }
+        const body = JSON.parse(String(init.body)) as { webservice_username?: string; wachtwoord?: string }
         opties.putAanroepen?.push({ url, body: { webservice_username: body.webservice_username } })
         if (body.webservice_username === 'rood') {
           return Promise.resolve(jsonResponse({ detail: { bericht: 'Rechten-probe niet groen (Vendors=403) — niets gewijzigd', rapporten: { 'rlz-1': { Vendors: '403' } } } }, 422))
@@ -1303,6 +1303,41 @@ describe('InstellingenScreen — administraties v2 (30-08)', () => {
       { url: '/instellingen/administraties/bbbbbbbb-0000-0000-0000-000000000002/dearchiveren', body: { webservice_username: 'rood' } },
     ])
     expect(JSON.stringify(putAanroepen)).not.toContain('geheim')
+  })
+
+  it('blok 3 24-09: dearchiveren van een Odoo-administratie = geen loginvelden, tekst "opnieuw geprobed; company N ongewijzigd", knop "Dearchiveren", body zonder login', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      rol: 'beheerder',
+      putAanroepen,
+      administraties: [
+        administratie({ naam: 'Actieve Klant B.V.' }),
+        administratie({
+          id: 'bbbbbbbb-0000-0000-0000-000000000013',
+          naam: 'Recreatief Vastgoed Nederland B.V.',
+          gearchiveerd_op: '2026-09-24T09:30:00Z',
+          gearchiveerd_door_naam: 'Peter',
+          rlz_admin_id: 'odoo:universal-steigers.odoo.com:13',
+          boekhoud_backend: 'odoo',
+          odoo_company_id: 13,
+        }),
+      ],
+    })
+    renderScherm()
+    await waitFor(() => expect(screen.getAllByText('Actieve Klant B.V.').length).toBeGreaterThan(0))
+    await gebruiker.click(screen.getByRole('button', { name: 'gearchiveerd (1)' }))
+    await gebruiker.click(await screen.findByRole('button', { name: 'Dearchiveren Recreatief Vastgoed Nederland B.V.' }))
+    const dearch = await screen.findByTestId('dearchiveer-dialoog')
+    expect(within(dearch).queryByLabelText('Webservice-gebruiker')).not.toBeInTheDocument()
+    expect(within(dearch).queryByLabelText('Wachtwoord')).not.toBeInTheDocument()
+    expect(dearch).toHaveTextContent(/Odoo-koppeling wordt opnieuw geprobed; company 13 moet ongewijzigd terugkomen/)
+    expect(dearch).toHaveTextContent(/opgeslagen API-sleutel wordt hergebruikt/)
+    await gebruiker.click(within(dearch).getByRole('button', { name: 'Dearchiveren' }))
+    await waitFor(() => expect(putAanroepen.filter((p) => p.url.endsWith('/dearchiveren'))).toEqual([
+      { url: '/instellingen/administraties/bbbbbbbb-0000-0000-0000-000000000013/dearchiveren', body: { webservice_username: undefined } },
+    ]))
+    expect(await screen.findByText(/teruggezet — de Odoo-koppeling is opnieuw geprobed/)).toBeInTheDocument()
   })
 })
 

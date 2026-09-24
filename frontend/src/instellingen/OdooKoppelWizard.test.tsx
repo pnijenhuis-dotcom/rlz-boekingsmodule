@@ -67,6 +67,8 @@ function installMock(posts: { url: string; body: unknown }[]) {
                 { company_id: 5, naam: 'Caravanpark "De Visotter"', al_gekoppeld: false, gekoppeld_aan: null, migratie_doel: false, rlz_administratie: 'De Visotter' },
                 { company_id: 6, naam: 'Vastgoedgroep Nederland B.V.', al_gekoppeld: true, gekoppeld_aan: 'migratiedoel (Vastgoedgroep Nederland)', migratie_doel: true, rlz_administratie: null },
                 { company_id: 7, naam: 'Lusso Chalets', al_gekoppeld: false, gekoppeld_aan: null, migratie_doel: false, rlz_administratie: null },
+                // Blok 3 24-09: company 13 hoort bij een GEARCHIVEERDE administratie — grijs mét "gearchiveerd — dearchiveer ‹naam›".
+                { company_id: 13, naam: 'Recreatief Vastgoed Nederland B.V.', al_gekoppeld: true, gekoppeld_aan: 'gearchiveerd — dearchiveer Recreatief Vastgoed Nederland B.V.', migratie_doel: false, rlz_administratie: null, gearchiveerd: true },
               ],
             }),
           )
@@ -291,6 +293,14 @@ describe('OdooKoppelWizard — nazorg 14-09 (URL-normalisatie, grijs mét reden,
     expect(within(screen.getByTestId('odoo-company-6')).getByText('migratiedoel (Vastgoedgroep Nederland)')).toBeInTheDocument()
     // Meerdere vrije companies → niets vooraf aangevinkt.
     expect(screen.getByLabelText('Koppelen Lusso Chalets')).not.toBeChecked()
+  })
+
+  it('blok 3 24-09: company van een gearchiveerde administratie is grijs "gearchiveerd — dearchiveer ‹naam›" — niet aan te vinken', async () => {
+    installMock([])
+    await naarCompanyStap('tien')
+    expect(screen.getByLabelText('Koppelen Recreatief Vastgoed Nederland B.V.')).toBeDisabled()
+    expect(within(screen.getByTestId('odoo-company-13')).getByText('gearchiveerd — dearchiveer Recreatief Vastgoed Nederland B.V.')).toBeInTheDocument()
+    expect(within(screen.getByTestId('odoo-company-13')).getByText(/gearchiveerd — dearchiveer/)).toHaveAttribute('title', expect.stringContaining('nooit een tweede koppeling'))
   })
 
   it('punt 2c: Reeleezee-signaal op company 5 — opslaan pas ná de vink "toch als nieuwe administratie aanmaken" mét reden; de reden reist mee', async () => {

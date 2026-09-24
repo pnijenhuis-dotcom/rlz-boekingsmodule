@@ -177,3 +177,40 @@ class InkoopPort(Protocol):
         tegenboek-pad. Idempotent: al concept = niets schrijven, 404 = `verdwenen`, elke andere backend-fout =
         `BackendBoekFout` mét leesbare reden (er is dan niets lokaal gewijzigd)."""
         ...
+
+
+# --- Heractiveren (dearchiveren) — blok 3 bundelrun 24-09 ------------------------------------------------------------
+
+
+class HeractiverenGeweigerd(Exception):
+    """Dearchiveren geweigerd door de backend-adapter (login ontbreekt/niet van toepassing, probe rood, company
+    komt niet ongewijzigd terug) — `str(exc)` is de leesbare reden, `rapport` het probe-rapport (kan leeg zijn).
+    Niets is gewijzigd. Router → 422 mét bericht + rapport (zelfde vorm als OnboardingFout)."""
+
+    def __init__(self, bericht: str, *, rapport: dict[str, str] | None = None) -> None:
+        super().__init__(bericht)
+        self.rapport = rapport or {}
+
+
+class HeractiveerPort(Protocol):
+    """Backend-bewust dearchiveren (BUG Peter 24-09, Recreatief Vastgoed Nederland: de dialoog eiste een Reeleezee-
+    webservice-login voor een Odoo-administratie — besluit 0016: alle pakketverschillen in de adapter, het domein
+    vertakt nooit). `heractiveer_probe` doet uitsluitend de BACKEND-kant (probe + credential/koppeling bijwerken) en
+    geeft het groene probe-rapport terug; de generieke administratie-stand (actief, archiefspoor, audit) zet
+    `app/beheer/service.dearchiveer_administratie`. Rood = `HeractiverenGeweigerd`, niets gewijzigd.
+
+    Reeleezee: nieuwe webservice-login verplicht (admin-pin + rechten-probe + herprobe in de opgeslagen vorm).
+    Odoo: géén login — de bestaande `OdooKoppeling` + versleutelde API-sleutel worden hergebruikt en opnieuw geprobed;
+    company_id moet ongewijzigd terugkomen."""
+
+    backend: Backend
+
+    def heractiveer_probe(
+        self,
+        *,
+        administratie_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        webservice_username: str | None,
+        wachtwoord: str | None,
+        client: Any = None,
+    ) -> dict[str, str]: ...

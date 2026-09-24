@@ -448,7 +448,12 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
                     {c.al_gekoppeld && (
                       <>
                         {' '}
-                        <span className={`chip ${c.migratie_doel ? 'afwijking' : 'stil'}`}>{c.gekoppeld_aan ?? 'al gekoppeld'}</span>
+                        <span
+                          className={`chip ${c.migratie_doel ? 'afwijking' : 'stil'}`}
+                          title={c.gearchiveerd ? 'Deze company hoort bij een gearchiveerde administratie — dearchiveer die via Instellingen › Administraties › gearchiveerd; nooit een tweede koppeling' : undefined}
+                        >
+                          {c.gekoppeld_aan ?? (c.gearchiveerd ? 'gearchiveerd — dearchiveer' : 'al gekoppeld')}
+                        </span>
                       </>
                     )}
                     <RijStandChip stand={rijStandVan(c.company_id)} />

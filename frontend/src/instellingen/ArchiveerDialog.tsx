@@ -26,7 +26,11 @@ export function ArchiveerDialog({
     try {
       const r = await archiveerAdministratie(administratie.id)
       onGearchiveerd(
-        `"${administratie.naam}" gearchiveerd: webservice-login ${r.credential_ingetrokken ? 'ingetrokken' : 'was er niet'}, syncs gestopt, documenten en historie blijven staan${
+        `"${administratie.naam}" gearchiveerd: ${
+          r.odoo_sleutel_behouden
+            ? 'Odoo-API-sleutel blijft versleuteld bewaard voor dearchiveren'
+            : `webservice-login ${r.credential_ingetrokken ? 'ingetrokken' : 'was er niet'}`
+        }, syncs gestopt, documenten en historie blijven staan${
           r.open_documenten > 0 ? ` — let op: ${r.open_documenten} open document${r.open_documenten === 1 ? '' : 'en'}` : ''
         }.`,
       )

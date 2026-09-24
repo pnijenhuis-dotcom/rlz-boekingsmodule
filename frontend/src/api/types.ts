@@ -959,6 +959,9 @@ export interface BoekvoorstelDto {
   /** BUG 18-09 (Zilver Horeca): de voorkeur zei "samenvoegen" maar er staan > 1 regel opgeslagen — de server laat de
    * modus de data volgen (`regels_samenvoegen` false) en meldt dat hier; chip "weergave hersteld" + tijdlijnregel. */
   regels_modus_hersteld?: boolean
+  /** BUG 23-09 (Van Rumpt 2025135): waarom er bij ≥ 2 regels geen samengevoegde regel te berekenen is
+   * ("verschillende btw-codes", "btw-bedrag van regel n onbekend", …) — chip "samenvoegen niet mogelijk: …". */
+  samenvoegen_niet_mogelijk_reden?: string | null
   /** BUG 18-09 (regel 4): herkomst van het totaal ('factuur' | 'pinbon') + de bon-toets voor de chip. */
   totaal_bron?: 'factuur' | 'pinbon' | null
   totaal_pinbon?: string | null
@@ -1278,6 +1281,8 @@ export interface ArchiveringResultaatDto {
   gearchiveerd_op: string
   credential_ingetrokken: boolean
   open_documenten: number
+  /** Blok 3 24-09: Odoo-administratie — de versleutelde API-sleutel blijft bewaard voor dearchiveren zonder login. */
+  odoo_sleutel_behouden?: boolean
 }
 
 export interface AdministratieInstellingenLijstDto {
@@ -1293,6 +1298,9 @@ export interface VraagDto {
   document_id: string
   document_bestandsnaam: string
   document_status: string
+  /** Documentsoort (24-09, BUG 23-09): "Document bekijken" volgt de soort — kassarapport → omzetreview. Ontbreekt bij
+   * oudere responses → inkoop-controlescherm. */
+  document_soort?: string | null
   /** Totaalbedrag uit het boekvoorstel (Decimal serialiseert als string), null zonder voorstel. */
   totaalbedrag: string | null
   vraag_tekst: string
@@ -2198,6 +2206,8 @@ export interface OpenVraagRijDto {
   wacht_dagen: number
   document_bestandsnaam: string
   document_status: string
+  /** Documentsoort (24-09): route van de rij volgt de soort. */
+  document_soort?: string | null
   leverancier_naam: string | null
   referentie: string | null
   /** Decimal serialiseert als string; null zonder boekvoorstel. */

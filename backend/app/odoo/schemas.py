@@ -26,6 +26,8 @@ class GevondenCompanyDto(BaseModel):
     migratie_doel: bool = False
     #: Signaal (geen blokkade): naam van een bestaande Reeleezee-administratie die met deze company overeenkomt.
     rlz_administratie: str | None = None
+    #: Blok 3 24-09: claim van een gearchiveerde administratie — label "gearchiveerd — dearchiveer ‹naam›".
+    gearchiveerd: bool = False
 
 
 class OdooVerbindingTestDto(BaseModel):
