@@ -12853,3 +12853,36 @@ Universal/Floor 26191 op 13-08 buiten de module geboekt (wie: via de API niet le
 **Keuzes zonder Peter (rapport §keuzes):** (a) `intake_postvak_verschil` direct in `actie` — de opdracht zegt letterlijk "actie-bevinding mét knop"; het bewijs (Message-ID in de mailbox) is deterministisch en de handeling is één knop (regel 2 kent sinds 22-09 de uitzondering `direct_actie_reden`); (b) de bewaking herstelt niet zelf (patroon "vaststaande actie = het systeem doet het" 19-09) omdat de intake-job elke 10 min al ALLES in het venster opnieuw toetst — een verschil om 06:30 betekent dat de job het bericht niet kón verwerken; "Nu verwerken" is dan een zichtbare herkansing, geen tweede schrijver in de reconciliatie-run; (c) CLI-alias i.p.v. `--kanaal` in de F3-lus (zie werkloop-productie 23-09); (d) "via <postvak>" alleen tonen voor niet-default kanalen (facturen@ak-nijenhuis.nl blijft "postvak") zodat de gouden-set-pixelbaseline van bestaande casussen niet verschuift; (e) `bijlage_hashes` op het intake-bericht i.p.v. een Document-query over administraties heen (RLS: `document` is per scope, `intake_bericht` platformbreed) — óók de basis van de audit-koppeling; (f) de audit + herstelrun als vervolg-opdracht mét `niet vóór:` (regel 21-09 "niet gemeten = schuld mét vervaldatum"), de audit als dispatch-onderdeel op rlz-reconciliatie omdat nameting@ geen secrets heeft; (g) INTAKE_ENVS/INTAKE_SECRETS in het workflow-`env:`-blok (de delimiter-guard expandeert alleen constanten dáár).
 
 **Bijvangst voor Peter (niet in deze run):** alle vier de Workspace-domeinen tonen "Status van e-mailconfiguratie: Actie vereist" (DKIM/DMARC incompleet — verklaart mede de spam-classificatie); kevin@kempenrecreatie.nl staat sinds 18-05-2024 als "wachtwoordlek" open terwijl de medewerker weg is; het declaraties@-kanaal (blok 3 bundel 08-09) heeft nooit een job in deploy.yml gekregen — de bewaking meldt 'm als OVERGESLAGEN, geen FOUT.
+
+## AI-LIMIET — BANNER OP DE LIVE STAND, HERAANBIEDING NÁ VERHOGING, DUBBELENCHECK VÓÓR DE AI-STAP (Peter 24-09) — sticky banner gefixt, motor `app/aikosten/heraanbieden.py` (automatisch per intake-job-run + dagelijkse stap, knop "Opnieuw verwerken (N)", CLI `ai-heraanbieden`), `app/intake/dubbel_voor_ai.py`
+
+**Status: GEBOUWD 24-09 (geen migratie); werkt in productie: niet gemeten (échte heraanbieding van de 202 = ná deploy + Peters "ja";
+nameting = dispatch-onderdeel `ai-heraanbieden` + vervolg-opdracht).** Canonieke vindplaats: `docs/regels/intake-extractie.md` alinea
+24-09 (volledige tekst), rapport `docs/rapporten/2026-09-24-ai-limiet-heraanbieden.md`, gespreksverslag `docs/gesprekken/2026-09-24.md`.
+
+**Aanleiding (Peter 24-09 10:xx, letterlijk):** "dat Ai limiet voor alle nieuwe facturen trouwens is nog steeds niet opgelost, dat wil ik nu
+als eerste (medewerkers lopen daar tegenaan en waarschijnlijk vist die er nog wel redelijk wat dubbele uit)" → "doe eerst die opdracht
+maar, dat moet nu gefixt worden". Feiten (Cowork, lees-only): september € 102,23 van € 150 (verhoogd 23-09 21:2x), `geblokkeerd=false`,
+`limiet_bereikt=true`; verzamelbak 202 × `ai_limiet_bereikt` (alle 23-09 19:11, herstelrun kempengroep-postvak `--sinds 2026-09-01`).
+
+| Onderdeel | Besluit / gebouwd | Vindplaats |
+|---|---|---|
+| A Banner | "geblokkeerd" uitsluitend op `geblokkeerd` (live); `limiet_bereikt(_op)` = historie ("limiet bereikt op … bij € …; daarna verhoogd naar € …"); ná verhoging één regel "weer actief sinds … ; N wachten op heraanbieding" + `linkbtn` naar de verzamelbak; DTO-velden `limiet_bereikt_op/limiet_bij_bereiken_eur/weer_actief_sinds/wachten_op_heraanbieding` | `aikosten/service.py::haal_status_op`, `beheer/router.py`, `frontend/src/instellingen/aiKostenStand.ts`, `werkvoorraad/AiKostenBanner.tsx` |
+| B Heraanbieding | populaties (a) bak-rijen `ai_limiet_bereikt` (b) documenten mét `ai_extractie_overgeslagen: ai_limiet_bereikt`; automatisch ná élke intake-job-run (beide postvakken — de enige jobs mét de Anthropic-key) + dagelijkse stap in `reconciliatie-alles` (telling; échte run delegeert aan de intake-job); alleen bij open poort, oud → nieuw, stopt zichtbaar ("wacht op AI-budget"), volumerem 300 + tijdbudget 780 s, tijdlijn + audit `ai_heraanbieding` + run-audit `ai_heraanbieding_run` → dagteller `ai_heraanbiedingen`; knop 202 + stand-route mét uitkomst per rij; CLI `ai-heraanbieden [--dry-run] [--max N]`; `db-lezen ai-heraanbieding` | `app/aikosten/heraanbieden.py`, `app/intake/herlezen.py` (label-parameter + documentsoort), `cli.py`, `intake/router.py`, `frontend/src/intake/AiHeraanbiedenKnop.tsx` |
+| C Dubbel vóór AI | sha256 kantoorbreed (per RLS-scope) vóór de splitsings-AI; zelfde bericht = bestaande rij; ander bericht = exemplaar geregistreerd en volgens de bestaande regels afgehandeld: origineel in een administratie → daar `afgevoerd_duplicaat` mét kruisverwijzing (categorie (a), casus g), origineel in de bak → huls `samengevoegd`; directe mens-upload = 409 al vóór de AI; tijdlijn beide kanten, audit `ai_dubbel_voor_extractie` → dagteller `ai_bespaard_dubbel`; ook in de heraanbieding | `app/intake/dubbel_voor_ai.py`, `verwerking._dubbel_voor_ai` |
+| D Guards | pytest `tests/intake/test_ai_heraanbieden.py` (14), `test_dubbel_voor_ai.py` (4), gouden set casus **am**; vitest `aiKostenStand.test.ts`, `AiKostenBanner.test.tsx`, `AiHeraanbiedenKnop.test.tsx`; workflow-guard onderdeel `ai-heraanbieden` | idem |
+
+**Keuzes zonder Peter (rapport §keuzes):** (1) het exemplaar van een byte-dubbel volgt de bestaande eindstand van gouden-set-casus g
+(`afgevoerd_duplicaat` mét kruisverwijzing in de administratie van het origineel — de eerste bouwvariant "samengevoegd-huls" maakte casus
+g rood en is teruggedraaid); alleen bij een origineel dat zelf nog in de bak ligt is het een `samengevoegd`-huls; (2) de knop start de intake-job on-demand i.p.v. minutenlang
+AI-werk in een request (regel 08-09 + de intake-jobs zijn de enige met de key; `rlz-reconciliatie`/`rlz-sync` hebben 'm niet — daarom
+delegeert ook de dagelijkse stap); (3) een mens-gebeurtenis ná de limiet-uitkomst = `mens_bezig` overslaan, nooit een voorstel over een
+mens heen; (4) `tijdbudget` is een zachte reden (rest in de volgende run over 10 min), `volumerem` hard (LET-OP) zoals de opdracht zegt.
+
+**Nameting (recept vooraf):** ná deploy `gh workflow run nameting -f onderdeel=ai-heraanbieden` → `ai-heraanbieden --dry-run` noemt
+"kandidaten 202 (verzamelbak 202, documenten N)"; `/instellingen/ai-kosten` → `geblokkeerd=false`, `weer_actief_sinds` gevuld,
+`wachten_op_heraanbieding` = 202 + N; banner zonder "geblokkeerd" (screenshot Peter). NB: de eerstvolgende intake-job-run ná de deploy
+draait de heraanbieding AUTOMATISCH (dat is de regel) — Peters "ja" gaat over het moment/de limiet (advies € 250 voor september), de
+CLI is de nazorg-vorm. Daarna: verzamelbak `ai_limiet_bereikt` → 0, uitkomstverdeling uit `db-lezen ai-heraanbieding`, AI-kosten vóór/ná,
+dagtellers `ai_heraanbiedingen`/`ai_bespaard_dubbel` in de reconciliatiemail van de volgende ochtend. Vervolg-opdracht
+`opdrachten/inbox/2026-09-25-nameting-ai-heraanbieden-na-deploy.md` (`niet vóór:`).

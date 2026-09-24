@@ -133,6 +133,64 @@
   Tests `tests/intake/test_postvak_imap.py` (nieuwe FakeImap mét mappen/vlaggen/kop-fetch), `test_postvak_kempengroep.py`,
   `test_postvak_audit.py`, gouden-set-casus al `tests/keten/test_al_postvak_kempengroep_kanaal.py`. Rapport `docs/rapporten/2026-09-23-intake-tweede-postvak-kempengroep-message-id-postvakbewaking.md`; audit-rapport `docs/rapporten/2026-09-23-intake-postvak-audit.md`.
 
+<!-- toegevoegd 24-09-2026, opdracht "BUG-ai-limiet-banner-sticky-plus-heraanbieden-verzamelbak-en-overgeslagen-extracties-plus-dedup-voor-ai" -->
+- **AI-limiet: banner op de LIVE stand, automatische heraanbieding ná een verhoging, byte-identieke dubbelencheck vóór de AI-stap
+  (BUG Peter 24-09 "dat AI limiet voor alle nieuwe facturen is nog steeds niet opgelost, dat wil ik nu als eerste"; geen migratie;
+  BESLISSINGEN "AI-LIMIET — BANNER OP DE LIVE STAND, HERAANBIEDING NÁ VERHOGING, DUBBELENCHECK VÓÓR DE AI-STAP (Peter 24-09)"):**
+  (A) **Banner = werkelijke stand.** `AiKostenMaandstatus.limiet_bereikt_op` is een HISTORISCH maandfeit (éénmaal gezet, nooit
+  teruggezet); de blokkade is uitsluitend `geblokkeerd` (live verbruik ≥ limiet). Werkvoorraad-banner én het verbruiksblok op
+  Instellingen lezen één bron (`frontend/src/instellingen/aiKostenStand.ts`): rood "AI-verwerking is geblokkeerd" alleen op
+  `geblokkeerd`; ná een verhoging één status-regel "AI-verwerking weer actief sinds ‹jongste limietwijziging ná het bereik-moment›
+  (limiet bereikt op … bij € …; daarna verhoogd naar € …); N documenten wachten op heraanbieding" mét `linkbtn` "Naar de verzamelbak"
+  (`AiKostenStatusDto.limiet_bereikt_op/limiet_bij_bereiken_eur/weer_actief_sinds/wachten_op_heraanbieding`; N = verzamelbak-rijen
+  `ai_limiet_bereikt` + de rest van de jongste heraanbiedingsrun). (B) **Heraanbieding automatisch, geen stille no-op** (kernprincipe
+  7.6): één motor `app/aikosten/heraanbieden.py` selecteert (a) verzamelbak-PDF's waarvan de jongste intake-reden `ai_limiet_bereikt`
+  is (zonder open splitsingsvoorstel) en (b) documenten mét administratie (te_controleren/handmatig_afmaken, PDF) waarvan de LAATSTE
+  extractie-uitkomst `ai_extractie_overgeslagen: ai_limiet_bereikt` is — een document waar een mens ná de limiet aan werkte
+  (niet-systeem-actor in de tijdlijn) wordt overgeslagen mét reden `mens_bezig`; oud → nieuw; draait aan het einde van ÉLKE
+  intake-job-run (`intake-postvak-verwerken` én `intake-postvak-kempengroep-verwerken`, elke 10 min — de enige jobs mét de
+  Anthropic-key; ook als de postvak-pas faalde/niet geconfigureerd is) én als dagelijkse stap in `reconciliatie-alles` (échte run:
+  telling + delegatie aan de intake-job via het on-demand `:run`; lees-only: alleen de telling); alleen bij `geblokkeerd=false` —
+  poort dicht = álle kandidaten overgeslagen `kostengrens` mét run-audit, geen exception. (a) loopt door de herbruikbare
+  herlees-motor (`app/intake/herlezen._herlees_een` mét `label=ai_heraanbieding`: splitsingsdetectie → documentsoort → toewijzing
+  op tenaamstelling → `start_extractie_na_toewijzing`, zelfde intake-bericht/afzender-hint/mail-body; het toewijzings-geheugen leert
+  niet — geen mens-besluit), (b) door `herextraheer_document` (AVG-gate administratie, klein/groot via de wachtrij, template-terugval).
+  Stopt zichtbaar zodra de poort tijdens de run dichtgaat: dát document krijgt de tijdlijnregel "wacht op AI-budget", de rest telt als
+  overgeslagen `kostengrens` (geen tijdlijnruis) en is bij de volgende run gewoon weer kandidaat; pure notities op een bak-rij dragen
+  `notitie: true` en veranderen de verzamelbak-reden niet (`verzamelbak._jongste_intake_redenen`). Volumerem `ai_heraanbieden_max_per_run`
+  (300; rest = `volumerem` → LET-OP) en tijdbudget `ai_heraanbieden_tijdbudget_s` (780 s vanaf de jobstart; rest = `tijdbudget`, zacht).
+  Élke heraanbieding = tijdlijnregel + audit `ai_heraanbieding` (oude reden → uitkomst, `run_id`); élke run één audit
+  `ai_heraanbieding_run` (bezig → klaar: kandidaten/gedaan/rest/overgeslagen per reden/uitkomst per rij ≤ 300) → dagteller
+  `ai_heraanbiedingen` verwacht/gedaan/overgeslagen in de reconciliatiemail (`kostengrens`/`volumerem`/`avg_gate`/`api_key` = harde
+  voorwaarde → LET-OP mét deeplink Instellingen; `tijdbudget`/`mens_bezig` zacht). Knop **"Opnieuw verwerken (N)"** op de verzamelbak
+  (kantoorrollen; N = rijen `ai_limiet_bereikt`) = `POST /verzamelbak/ai-heraanbieden` → 202 (start de facturen-intake-job on-demand
+  — dezelfde motor, de service doet zelf geen minutenlang AI-werk in een request; audit `ai_heraanbieding_aangevraagd`), 409 mét reden
+  bij gesloten poort; `GET /verzamelbak/ai-heraanbieden/stand` (bezig, N, wachten, jongste run mét uitkomst per rij) → uitkomstlijst
+  zoals bulk-upload (toegewezen / blijft in de bak mét andere reden / splitsingsvoorstel / dubbel / voorstel opgesteld / via de wachtrij
+  / wacht op AI-budget / overgeslagen / mislukt), `frontend/src/intake/AiHeraanbiedenKnop.tsx`. Nazorg-CLI `ai-heraanbieden [--dry-run]
+  [--max N]` (dry-run = lees-only telling N(a)+N(b) — in de nameting-allowlist; de échte run = `gcloud run jobs execute rlz-intake-imap
+  --args=-m,app.cli,ai-heraanbieden` ná Peters "ja"), querybibliotheek `db-lezen ai-heraanbieding`, dispatch-onderdeel `ai-heraanbieden`.
+  (C) **Dubbelencheck vóór de AI-stap** (`app/intake/dubbel_voor_ai.py`, in `_verwerk_pdf` ná de ProfX-herkenning en vóór de
+  "nooit splitsen"-regel/AVG-gate/AI, én in de heraanbieding vóór de splitsingsdetectie): sha256 kantoorbreed (verzamelbak + élke
+  actieve administratie in haar eigen RLS-scope — geen SECURITY-DEFINER-doorbraak), oudste échte exemplaar (niet verwijderd, geen
+  huls) telt. Zelfde intake-bericht = de bestaande rij is de uitkomst (`dubbel`, geen nieuwe registratie); ander bericht/kanaal = het
+  exemplaar wordt geregistreerd (niets verdwijnt stil) en volgt direct de BESTAANDE duplicatenregels: origineel in een administratie →
+  toegewezen aan die administratie, eerlijke extractie-uitkomst zonder AI (`ai_extractie_overgeslagen: dubbel_voor_ai`, te_controleren)
+  en meteen afgevoerd als duplicaat via `duplicaat_afvoer._voer_af` (categorie (a) sha256, `afgevoerd_duplicaat` mét kruisverwijzing,
+  systeem-actor — exact de eindstand van gouden-set-casus g "PDF twee keer uit twee mails", nu zonder AI-call; zichtbaar onder "Toon
+  afgehandelde documenten → duplicaat van ‹document›", heropenen = bestaande route); origineel zelf nog in de verzamelbak → de huls
+  (`samengevoegd` mét `samengevoegd_in_id`, chip op de bak-rij van het origineel). Tijdlijn "dubbel vóór extractie herkend (bespaard)"
+  op beide kanten, audit `ai_dubbel_voor_extractie` → dagteller `ai_bespaard_dubbel`. Een DIRECTE mens-upload (`/intake/bestand`,
+  poort 18-09) van bytes die in een administratie bestaan krijgt de 409 "al aanwezig" nu al vóór de AI-stap. Nooit verwijderen;
+  referentie-dubbelen (andere bytes) blijven bij de duplicaten-motor ná extractie. Intake-uitkomst `dubbel` naast toegewezen/
+  verzamelbak/splitsingsvoorstel/niet_verwerkbaar. (D) **Guards:** `tests/intake/test_ai_heraanbieden.py` (D5 poort dicht = overgeslagen
+  mét teller; D2 stopt zichtbaar tijdens de run; D3 bak-rij → toegewezen mét zelfde intake-bericht; (b)-route; mens_bezig; dubbel in de
+  heraanbieding; dagteller + LET-OP; CLI `--dry-run` letterlijk; job-entrypoint zonder postvak; routes 202/409/stand; banner-feiten),
+  `tests/intake/test_dubbel_voor_ai.py` (D4: 0 AI-calls, huls, zelfde bericht, bak-origineel, verwijderd origineel), gouden-set-casus
+  **am** `tests/keten/test_am_dubbel_voor_ai.py`, `tests/reconciliatie` via `bereken`, vitest `aiKostenStand.test.ts` (D1),
+  `AiKostenBanner.test.tsx`, `AiHeraanbiedenKnop.test.tsx`, `test_nameting_workflow.py` (onderdeel `ai-heraanbieden`). Geen limiet in
+  code (Peter zet zelf tijdelijk € 250 voor september — advies Cowork), geen tweede extractiepad.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verzamelbak "Niet toegewezen" (preview, optimistisch toewijzen, verplaatsen, documentenlijst) (CLAUDE.md `ed6d176` r. 494–528)
