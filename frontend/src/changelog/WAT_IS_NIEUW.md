@@ -6,6 +6,15 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-24 — Doorbelasting: btw exact zoals Reeleezee rekent, factuur-PDF weer op de spiegel
+
+<!-- doorbelasting-btw-rlz-vorm-24-09 -->
+
+- **De doorbelasting boekt en registreert de btw nu precies zoals Reeleezee die vastlegt.** Reeleezee rekent de btw per tarief over het subtotaal van een factuur en rondt één keer af; de module rondde per regel af en zat daardoor bij ruim een kwart van de doorbelastingen één cent naast Reeleezee (bijvoorbeeld Lusso-Design 261004: € 6.024,15 in de module, € 6.024,14 in Reeleezee). Dat verschil is bewezen op 166 bestaande boekingen en verdwijnt voor alle nieuwe doorbelastingen.
+- **Bestaande doorbelastingen worden gelijkgetrokken met Reeleezee** via een beheeractie die alleen onze eigen registratie aanpast — er wordt niets in Reeleezee gewijzigd of opnieuw geboekt. Eerst een telling, daarna pas de echte stap na akkoord; elke aanpassing staat met oud en nieuw bedrag op de tijdlijn van de factuur.
+- **De factuur op naam van de ontvangende BV komt weer als bijlage op de spiegelfactuur.** De melding "factuur ontbreekt" op zo'n doorbelasting was een gevolg van dat ene centverschil; na het gelijktrekken herstelt een beheeractie de factuur-PDF. Blijft een doorbelasting langer dan een dag zonder factuur-PDF, dan staat die in Inzicht › Reconciliatie (eerst in meting) met de knop "Factuur-PDF herstellen".
+- **Wijkt een doorbelasting in Reeleezee méér dan vijf cent af van de module, of verschillen verkoop en spiegel onderling, dan is dat vanaf nu een actiepunt in Inzicht › Reconciliatie.**
+
 ## 2026-09-24 — Koppeling met Vastly: opnieuw aanleveren toont direct het antwoord, en een tweeledig antwoord wordt goed gelezen
 
 <!-- webhook-herzenden-afleveren-24-09 -->

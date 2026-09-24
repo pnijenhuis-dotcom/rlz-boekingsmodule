@@ -2681,3 +2681,30 @@ voor een niet-btw-plichtige administratie = het vrijgestelde NL-tarief (`IsExcem
 administratie (de casus suggereert: TaxAmount wordt niet in de crediteurpost meegenomen) — de nazorg-CLI `btw-in-niet-plichtige-administratie
 --rlz` leest per module-document `BaseInvoiceAmount`/`TotalTaxAmount`/`BasePaidAmount` terug en maakt dat zichtbaar (kolom TE WEINIG).
 
+
+## RLZ-rekenregel btw per document — STAP-0 24-09 (opdracht "doorbelasting btw per tarief over subtotaal — RLZ-vorm", akkoord Peter "3. ja") — LEES-ONLY via `nameting.sh rlz-lezen` op record-paden, administraties Kempen Facilities B.V. + vijf doorbelastingsdoelen + BLOw B.V.
+
+Aanleiding: blok 4 bundelrun 24-09 (uitkomst B): op de Lusso-doorbelasting legt RLZ 6.024,14 vast waar de motor 6.024,15 boekte. Vraag: hoe
+rekent RLZ de btw van een document precies? Bewijs: 183 records (`GET SalesInvoices/{guid}?$expand=DocumentLineList($expand=TaxRate)` in KF
+voor 85 doorbelastingsverkopen; `GET PurchaseInvoices/{guid}?$expand=…` voor 49 spiegels in Veldhoven/Oirschot/Molenhof Verhuur/Molenhof
+Beheer/Mantelzorgwoningen Midden/Rubicon en 49 module-inkoopfacturen in KF + BLOw). De GUID's kwamen uit onze registratie (leesreplica) resp.
+`uuid5(namespace, document_id)` — de anonimisering van `rlz-lezen` knipt alleen de uitvoer, een volledige GUID in `--pad` werkt. Volledige tabel:
+`verkenning/stap0-doorbelasting-btw-rekenregel-24-09.tsv`.
+
+| # | Feit | Bewijs |
+|---|---|---|
+| 1 | **Document-btw per tarief = ROUND_HALF_UP(Σ netto van de regels mét dat tarief × tarief)**; `TotalTaxAmount` = Σ over de tarieven, `TotalPayableAmount` = `TotalNetAmount` + `TotalTaxAmount`. | 166/166 meetbare documenten (85 V, 49 S, 32 I waarvan 15 mét 21 + 9 %); 0 afwijkingen |
+| 2 | **Afronding half-up, geen bankers.** | 10 exacte halven (subtotaal × 21 % eindigt op ,xx5): 682,50 → 143,33 (half-even 143,32); 1.942,50 → 407,93; 2.362,50 → 496,13; 234,50 → 49,25; 2.026,50 → 425,57; 974,50 à 21 % + 339,18 à 9 % → 235,18 |
+| 3 | **RLZ negeert de meegegeven regel-`TaxAmount` en herrekent per regel**: élke regel ROUND_HALF_UP(netto × tarief), behalve de grootste regel (\|netto\|; bij gelijke grootte de eerste) van dat tarief die het verschil met de document-btw draagt — zodat Σ regel-`TaxAmount` == `TotalTaxAmount`. `BaseTaxAmount` per regel = `TaxAmount`. | Lusso: PUT 995,73 + 49,79 → record 995,72 + 49,79 (`RLZ-01-00002726` én `RLZ-04-00000614`); V-24713352 375 / **3.840** / 409,50 / 221 / 242,28 → 78,75 / **806,39** / 86,00 / 46,41 / 50,88 (grootste ≠ eerste); V-24713368 (8 regels) −0,02 op de grootste; gelijke grootste 139,50 + 139,50 → 29,29 + 29,30 (eerste draagt). "Eerste regel" faalt 9×, "grootste-rest" 30×, "laatste regel" 61×; "grootste regel" 166/166 |
+| 4 | Negatieve regels volgen dezelfde regel; het verschil gaat naar de grootste (positieve) regel. | −300 / −15 → −63,00 / −3,15 = −66,15; 268,31 / −1,00 / 45,60 / 15,65 → 56,34 / −0,21 / 9,58 / 3,29 = 69,00 |
+| 5 | Twee tarieven op één document: per tarief-groep afzonderlijk; de groepen beïnvloeden elkaar niet. | 15/15 (KF RLZ-04-00004480: 974,50 à 21 % + 339,18 à 9 % → 204,65 + 30,53; BLOw RLZ-04-00000386: 8,21 + 1,28 → 1,72 + 0,12 = 1,84 waar de module 1,85 registreerde) |
+| 6 | Een 0 %-/verlegd-`TaxRate` geeft `TaxAmount` 0,00 ongeacht netto; een `TaxAmount` 0 op een 21 %-code wordt teruggerekend naar 21 % (RLZ-04-00004512: twee regels zonder btw bij ons → RLZ 22,18 + 24,95). | 17 inkoopfacturen mét 0 %-regels; RLZ-04-00004512 |
+| 7 | Spiegel-inkoopfactuur = verkoopfactuur tot op de regel-`TaxAmount`. | 49/49 paren |
+| 8 | Een record-pad mét volledige GUID werkt op `SalesInvoices/{guid}` óók voor API-facturen (de COLLECTIE toont ze niet, STAP-0 19-09); `$expand=DocumentLineList($expand=TaxRate)` geeft op het record de regels mét `TaxRate {id}` — géén `Percentage` (de expand op TaxRate levert alleen `id`/`IsMixed`). | alle 183 calls |
+
+**Consequenties (gebouwd 24-09, BESLISSINGEN "DOORBELASTING — BTW PER TARIEF OVER HET SUBTOTAAL (RLZ-VORM) + DATA-STAP + FACTUUR-PDF-HERSTEL (Peter 24-09)"):**
+de doorbelastingsmotor boekt in de RLZ-vorm (`app/doorbelasting/geld.py::btw_rlz_vorm`) en registreert wat RLZ vastlegt; de per-regel-afronding
+van vóór 24-09 (55 van 188 geboekte doorbelastingen 1 ct af) wordt gelijkgetrokken met `doorbelasting-bedragen-gelijktrekken` (alleen onze
+database). Voor het gewone inkooppad betekent feit 3 dat `regelsom.corrigeer_btw_centen` (15-09, cent in de laatste btw-regel) in RLZ géén effect
+heeft — 7 van 49 multi-regel-inkoopfacturen hebben in RLZ een totaal dat 1 ct van het factuurtotaal afwijkt; fix = beslispunt Peter (netto/bruto-
+splitsing), niet in deze run.

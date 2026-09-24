@@ -93,7 +93,7 @@ géén kostenvoorstel ontstaat is geen RLZ-fout meer: het is Vastly's tier-vlag.
 
 ## Gelezen regels
 CLAUDE.md (kernprincipes 3/4/5, migraties n.v.t., Bash-absolute-paden, pre-commit tsc); Platform `OPEN_ITEMS.md` regel 13 + 409-item 24-09;
-koppelcontract §3 via `webhook_afleveraar.py`-docstring; `docs/regels/werkvoorraad-controlescherm.md` alinea webhook-herzenden 23-09; regel 08-09
+koppelcontract §3 via `webhook_afleveraar.py`-docstring; `docs/regels/werkvoorraad-controlescherm.md` (480 regels) alinea webhook-herzenden 23-09; regel 08-09
 "schrijvend alleen via `gcloud run jobs execute` op de gedeployde image" (nageleefd: dry-run-probes + 11 executies op `8fc1cd3`); db_lezen.sh
 (replica, READ ONLY, RLS-scope per administratie); Vastly-prod uitsluitend lees-only via `prod_db_sessie.sh` (geopend + gesloten); gouden-set-guard
 (casus an); parkeerposten-discipline (P-26).
