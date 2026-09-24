@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import type { VraagDto } from '../api/types'
 import { useAuthOptioneel } from '../auth/AuthContext'
+import { documentPad } from '../werkvoorraad/format'
 import { toegewezeneLabel } from './useMedewerkers'
 import { handelVraagAf, heropenVraag, plaatsBericht, trekVraagIn } from './vragenApi'
 
@@ -239,8 +240,16 @@ export function VraagThread({
             </button>
           )}
           {metFactuurlink && (
-            <Link className="btn secondary" to={`/documenten/${administratieId}/${vraag.document_id}`}>
-              Factuur bekijken
+            // BUG 23-09 (Van Boxtel): de link volgt de SOORT van het document — een kassarapport opent het omzetreview-
+            // scherm, nooit meer een leeg inkoopformulier. Verwijst de vraag zelf naar het omzetreview-scherm, dan staat
+            // die knop er expliciet bij.
+            <Link className="btn secondary" to={documentPad(administratieId, { id: vraag.document_id, soort: vraag.document_soort })}>
+              Document bekijken
+            </Link>
+          )}
+          {(vraag.document_soort === 'kassarapport' || /omzetreview/i.test(vraag.vraag_tekst)) && (
+            <Link className="btn secondary" to={documentPad(administratieId, { id: vraag.document_id, soort: 'kassarapport' })}>
+              Naar omzetreview →
             </Link>
           )}
           <button type="button" className="btn secondary" disabled={bezig} onClick={() => setIntrekkenOpen((v) => !v)}>

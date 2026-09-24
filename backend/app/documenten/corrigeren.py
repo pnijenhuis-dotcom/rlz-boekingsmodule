@@ -200,12 +200,11 @@ class CorrigeerResultaat:
 
 
 def review_pad(soort: str, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str:
-    """Spiegelt `frontend/src/zoeken/reviewPad.ts`."""
-    if soort == DocumentSoort.KASSARAPPORT.value:
-        return f"/omzet/{administratie_id}/{document_id}"
-    if soort == DocumentSoort.VERKOOPFACTUUR.value:
-        return f"/verkoop/{administratie_id}/{document_id}"
-    return f"/documenten/{administratie_id}/{document_id}"
+    """Dunne laag op de ene bron `app/documenten/deeplink.py::document_pad` (24-09, BUG 23-09) — spiegel van
+    `frontend/src/werkvoorraad/format.ts::documentPad`."""
+    from app.documenten.deeplink import document_pad
+
+    return document_pad(administratie_id, document_id, soort)
 
 
 # --- hulpfuncties -------------------------------------------------------------------------------------------------

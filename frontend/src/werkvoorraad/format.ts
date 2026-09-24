@@ -61,21 +61,47 @@ export function soortLabel(soort: string): string {
  * (deel 4 punt 1). Onbekende soorten volgen achteraan. */
 export const SOORT_VOLGORDE = ['inkoopfactuur', 'verplichting', 'verkoopfactuur', 'kassarapport', 'waarborg']
 
-/** Route per documentsoort/-status — één plek voor het klik-doel van een documentregel
- * (mockup: klik op een vraag-regel opent de vráág, niet het controlescherm). Mét lijstcontext
- * (punt 1) reist de tab/filter/zoekterm als query mee naar het inkoop-controlescherm; de andere
- * reviewschermen kennen die context (nog) niet en krijgen 'm bewust niet. */
-export function documentRoute(administratieId: string, d: DocumentListItemDto, context: LijstContext | null = null): string {
-  const isVerwijderd = d.status === 'verwijderd'
-  if (d.status === 'vraag_open' && !isVerwijderd) {
-    return `/?administratie=${administratieId}&sectie=vragen&document=${d.id}`
+/** Documentsoorten mét een eigen reviewscherm — de rest opent het inkoop-controlescherm. */
+const REVIEW_ROUTE_PER_SOORT: Record<string, string> = {
+  kassarapport: 'omzet',
+  verkoopfactuur: 'verkoop',
+  waarborg: 'waarborg',
+  verplichting: 'verplichting',
+}
+
+export interface DocumentLinkDoel {
+  id: string
+  /** Documentsoort; ontbreekt hij (oudere DTO's zonder soort), dan valt de link terug op het inkoop-controlescherm. */
+  soort?: string | null
+  status?: string | null
+}
+
+/** DE ENE bron voor "open dit document" (BUG 23-09: de vraag-thread linkte hard naar `/documenten/…` en opende een
+ * kassarapport in een leeg inkoopformulier). Route volgt de SOORT: kassarapport → omzetreview, verkoopfactuur →
+ * verkoopreview, waarborg → waarborg, verplichting → verplichting-review, al het andere → inkoop-controlescherm.
+ * Een open vraag (status `vraag_open`, niet verwijderd) opent de vráág op de klantpagina (mockup). Mét lijstcontext
+ * reist tab/filter/zoekterm als query mee naar het inkoop-controlescherm; de andere reviewschermen kennen die context
+ * (nog) niet en krijgen 'm bewust niet. Server-spiegel: `app/documenten/deeplink.py::document_pad`. Guard:
+ * `werkvoorraad/documentPad.guard.test.ts` — nergens anders een letterlijke `/documenten/${…}`-link. */
+export function documentPad(administratieId: string, doel: DocumentLinkDoel, context: LijstContext | null = null): string {
+  const isVerwijderd = doel.status === 'verwijderd'
+  if (doel.status === 'vraag_open' && !isVerwijderd) {
+    return `/?administratie=${administratieId}&sectie=vragen&document=${doel.id}`
   }
-  if (d.soort === 'kassarapport') return `/omzet/${administratieId}/${d.id}`
-  if (d.soort === 'verkoopfactuur') return `/verkoop/${administratieId}/${d.id}`
-  if (d.soort === 'waarborg') return `/waarborg/${administratieId}/${d.id}`
-  if (d.soort === 'verplichting') return `/verplichting/${administratieId}/${d.id}`
+  const review = doel.soort ? REVIEW_ROUTE_PER_SOORT[doel.soort] : undefined
+  if (review) return `/${review}/${administratieId}/${doel.id}`
   const q = lijstContextNaarParams(context)
-  return `/documenten/${administratieId}/${d.id}${q ? `?${q}` : ''}`
+  return `/documenten/${administratieId}/${doel.id}${q ? `?${q}` : ''}`
+}
+
+/** Opent deze soort een ander scherm dan het inkoop-controlescherm? (redirect in DocumentDetailScreen) */
+export function heeftEigenReviewscherm(soort: string | null | undefined): boolean {
+  return Boolean(soort && REVIEW_ROUTE_PER_SOORT[soort])
+}
+
+/** Route per documentsoort/-status voor een documentregel uit de lijst — dunne laag op `documentPad`. */
+export function documentRoute(administratieId: string, d: DocumentListItemDto, context: LijstContext | null = null): string {
+  return documentPad(administratieId, { id: d.id, soort: d.soort, status: d.status }, context)
 }
 
 /** Terminale statussen — zelfde definitie als de backend-overzichtstellers

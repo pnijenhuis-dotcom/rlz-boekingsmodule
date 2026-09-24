@@ -4,6 +4,7 @@
 // elk aan een brondocument (instroom/storno) of een geregistreerde gebeurtenis (beschadiging mét
 // verplicht project) hangen. Aantallen als string (Decimal) — de client formatteert alleen.
 import { apiJson } from '../api/client'
+import { documentPad as documentLink } from '../werkvoorraad/format'
 
 export type MutatieSoort = 'instroom' | 'storno' | 'uitstroom' | 'beschadiging'
 export type ProductFilter = 'alle' | 'nieuw' | 'gearchiveerd'
@@ -178,5 +179,5 @@ export function getekendAantal(waarde: string): string {
 /** Deep-link naar het controlescherm van het bron-document (bestaand pad, zelfde vorm als het
  * duplicaat-spoor in DocumentDetailScreen). */
 export function documentPad(administratieId: string, documentId: string): string {
-  return `/documenten/${administratieId}/${documentId}`
+  return documentLink(administratieId, { id: documentId })
 }

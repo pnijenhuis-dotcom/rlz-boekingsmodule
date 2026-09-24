@@ -13,7 +13,7 @@ from decimal import Decimal
 import pytest
 
 from app.accordering import service as accordering_service
-from app.documenten import boeken, boekvoorstel, vragen
+from app.documenten import boeken, boekvoorstel, deeplink, vragen
 from app.documenten.models import DocumentStatus
 from tests.accordering.conftest import maak_accordeur, zet_schema
 from tests.keten import casussen
@@ -162,3 +162,22 @@ class TestStandaardlijst:
         assert rij is not None and rij["status"] == "vraag_open"
         assert rij["toegewezen_aan"] is None  # casus j: geen eigenaar → vraag loopt door, niet toegewezen
         assert PROJECT_25011 is not None
+
+
+class TestDocumentlinkVolgtDeSoort:
+    """Bundelrun 24-09 blok 7a (BUG 23-09, Van Boxtel): de vraag-thread linkte hard naar `/documenten/…`. De vraag-data
+    draagt nu de documentsoort en de server-spiegel `deeplink.document_pad` kiest het scherm — voor de Floor-vraag
+    (inkoopfactuur) blijft dat het inkoop-controlescherm; een kassarapport gaat naar het omzetreview-scherm."""
+
+    def test_vraag_data_draagt_de_soort_en_de_link_volgt_die(self, keten: Keten, statussen) -> None:
+        vraag_ids = vragen.open_vraag_ids_van_document(
+            administratie_id=keten.administratie_id, document_id=statussen["vraag_open"]
+        )
+        assert vraag_ids
+        data = [v for v in vragen.lijst_vragen(administratie_id=keten.administratie_id) if v.id == vraag_ids[0]]
+        assert data and data[0].document_soort == "inkoopfactuur"
+        pad = deeplink.document_pad(keten.administratie_id, statussen["vraag_open"], data[0].document_soort)
+        assert pad == f"/documenten/{keten.administratie_id}/{statussen['vraag_open']}"
+        assert deeplink.document_pad(keten.administratie_id, statussen["vraag_open"], "kassarapport") == (
+            f"/omzet/{keten.administratie_id}/{statussen['vraag_open']}"
+        )

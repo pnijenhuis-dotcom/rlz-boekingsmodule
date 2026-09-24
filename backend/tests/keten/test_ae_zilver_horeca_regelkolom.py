@@ -143,6 +143,11 @@ class TestOpslaanHoudtDeKolomtarievenVast:
             False,
             False,
         )
+        # BUG 23-09 (Van Rumpt 2025135): bij ≥ 2 opgeslagen regels berekent de server de één-regel-variant uit díe
+        # regels of geeft een reden. Onder projectplicht is samenvoegen hard uitgesloten → géén variant en géén
+        # reden-chip (er valt niets te kiezen), het veld reist wél mee op de DTO.
+        assert "samenvoegen_niet_mogelijk_reden" in opnieuw and opnieuw["samenvoegen_niet_mogelijk_reden"] is None
+        assert opnieuw["samengevoegde_regel"] is None
         emballage = next(
             r
             for r in opnieuw["regels"]

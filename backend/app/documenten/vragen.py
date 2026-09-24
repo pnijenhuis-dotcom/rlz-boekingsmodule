@@ -146,6 +146,8 @@ class VraagData:
     document_id: uuid.UUID
     document_bestandsnaam: str
     document_status: DocumentStatus
+    #: Documentsoort (24-09, BUG 23-09): de vraag-link volgt de soort (kassarapport → omzetreview).
+    document_soort: str
     # Totaalbedrag uit het boekvoorstel (mockup #vragen toont het bedrag per vraag) — None als
     # er (nog) geen boekvoorstel is.
     totaalbedrag: Decimal | None
@@ -250,6 +252,7 @@ def _naar_data(
         document_id=vraag.document_id,
         document_bestandsnaam=document.bestandsnaam,
         document_status=document.status,
+        document_soort=document.soort,
         totaalbedrag=totaalbedrag,
         vraag_tekst=vraag.vraag_tekst,
         status=vraag.status,

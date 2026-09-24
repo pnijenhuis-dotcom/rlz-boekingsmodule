@@ -1607,3 +1607,49 @@ describe('DocumentDetailScreen — boeken sneller (202 wordt_geboekt)', () => {
     expect(opties.lijstAanroepen).toHaveLength(lijstFetchesVoor)
   })
 })
+
+describe('DocumentDetailScreen — redirect naar het reviewscherm van de soort (BUG 23-09)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('een kassarapport op /documenten/… gaat door naar /omzet/… (nooit een leeg inkoopformulier)', async () => {
+    installFetchMock({
+      id: DOCUMENT_ID,
+      administratie_id: ADMINISTRATIE_ID,
+      bestandsnaam: 'Journaal 19-9.pdf',
+      status: 'vraag_open',
+      bron: 'email',
+      soort: 'kassarapport',
+      mogelijk_duplicaat_van: null,
+      toegewezen_aan: null,
+      aangemaakt_op: '2026-09-19T10:00:00Z',
+      laatst_gewijzigd_op: '2026-09-21T06:10:00Z',
+      veldvoorstel: null,
+      tijdlijn: [],
+    })
+    renderScherm()
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/omzet/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`))
+    expect(screen.getByText('elders')).toBeInTheDocument()
+  })
+
+  it('een inkoopfactuur blijft op het controlescherm', async () => {
+    installFetchMock({
+      id: DOCUMENT_ID,
+      administratie_id: ADMINISTRATIE_ID,
+      bestandsnaam: 'factuur.pdf',
+      status: 'te_controleren',
+      bron: 'upload',
+      soort: 'inkoopfactuur',
+      mogelijk_duplicaat_van: null,
+      toegewezen_aan: null,
+      aangemaakt_op: '2026-09-19T10:00:00Z',
+      laatst_gewijzigd_op: '2026-09-19T10:00:00Z',
+      veldvoorstel: null,
+      tijdlijn: [],
+    })
+    renderScherm()
+    await screen.findByText('factuur.pdf', { exact: false })
+    expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`)
+  })
+})

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { documentPad } from './format'
 import { Button } from '../ui/basis'
 import {
   aantalHerkansbaar,
@@ -162,7 +163,7 @@ export function UploadBatchStatus({
               // Besluit Peter 18-09: "al aanwezig" is geen doodlopende melding — direct naar het bestaande document.
               <Link
                 className="linkbtn"
-                to={`/documenten/${i.bestaandAdministratieId ?? administratieId}/${i.bestaandDocumentId}`}
+                to={documentPad((i.bestaandAdministratieId ?? administratieId) as string, { id: i.bestaandDocumentId })}
                 data-testid="upload-bestaand-document-link"
               >
                 → bestaand document

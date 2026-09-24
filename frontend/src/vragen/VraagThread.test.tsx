@@ -68,6 +68,37 @@ function renderThread(v: VraagDto, onGewijzigd = vi.fn()) {
   return onGewijzigd
 }
 
+describe('VraagThread — documentlink volgt de soort (BUG 23-09, Van Boxtel Journaal 19-9.pdf)', () => {
+  beforeAll(() => installeerLocalStorage())
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    window.localStorage.clear()
+  })
+
+  it('kassarapport: "Document bekijken" opent het omzetreview-scherm en "Naar omzetreview →" staat erbij', () => {
+    renderThread(
+      vraag({
+        document_soort: 'kassarapport',
+        vraag_tekst: 'Nieuwe rapportcategorie(ën) zonder GB/btw-mapping: Dranken, Edible … stel op het omzetreview-scherm de mapping in',
+      }),
+    )
+    expect(screen.getByRole('link', { name: 'Document bekijken' })).toHaveAttribute('href', `/omzet/${ADM}/d1`)
+    expect(screen.getByRole('link', { name: 'Naar omzetreview →' })).toHaveAttribute('href', `/omzet/${ADM}/d1`)
+    expect(screen.queryByRole('link', { name: 'Factuur bekijken' })).not.toBeInTheDocument()
+  })
+
+  it('inkoopfactuur (ook zonder soort in de DTO): inkoop-controlescherm, geen omzetreview-knop', () => {
+    renderThread(vraag({ document_soort: undefined }))
+    expect(screen.getByRole('link', { name: 'Document bekijken' })).toHaveAttribute('href', `/documenten/${ADM}/d1`)
+    expect(screen.queryByRole('link', { name: 'Naar omzetreview →' })).not.toBeInTheDocument()
+  })
+
+  it('vraag-tekst die naar het omzetreview-scherm verwijst krijgt de knop óók als de soort ontbreekt', () => {
+    renderThread(vraag({ document_soort: null, vraag_tekst: 'Stel op het omzetreview-scherm de mapping in.' }))
+    expect(screen.getByRole('link', { name: 'Naar omzetreview →' })).toHaveAttribute('href', `/omzet/${ADM}/d1`)
+  })
+})
+
 describe('VraagThread — dialoog open tot Afgehandeld (Peter 16-09, casus Barbara → Sophia)', () => {
   beforeAll(() => installeerLocalStorage())
   afterEach(() => {

@@ -35,6 +35,7 @@ import {
   useToastOptioneel,
 } from '../ui/basis'
 import { formatBedrag, formatDatum, formatDatumKort } from '../werkvoorraad/format'
+import { documentPad } from '../werkvoorraad/format'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { statusLabel } from '../werkvoorraad/status'
 import { VerbruiksBalk } from './VerbruiksBalk'
@@ -452,7 +453,7 @@ export function VerplichtingReviewScreen() {
                       {voorstel.gekoppelde_facturen.map((f) => (
                         <tr key={f.document_id}>
                           <td>
-                            <Link to={`/documenten/${administratieId}/${f.document_id}`}>
+                            <Link to={documentPad(administratieId, { id: f.document_id })}>
                               {f.referentie ?? f.document_id.slice(0, 8)}
                             </Link>
                           </td>

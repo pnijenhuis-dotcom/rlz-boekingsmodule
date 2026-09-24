@@ -27,7 +27,7 @@ import { actorLabel, NIET_TOEGEWEZEN, useMedewerkers } from '../vragen/useMedewe
 import { haalVragenOp } from '../vragen/vragenApi'
 import { Breadcrumb } from './Breadcrumb'
 import { useDichtheid } from './dichtheid'
-import { SOORT_VOLGORDE, documentRoute, amountKlasse, formatBedrag, formatBinnenkomst, formatDatum, formatDatumKort, isOpenstaand, soortLabel } from './format'
+import { SOORT_VOLGORDE, documentPad, documentRoute, amountKlasse, formatBedrag, formatBinnenkomst, formatDatum, formatDatumKort, isOpenstaand, soortLabel } from './format'
 import { KlantUpload } from './KlantStanden'
 import {
   SOORT_ALLE,
@@ -1151,7 +1151,7 @@ export function DocumentenDeelscherm({
                                 </span>{' '}
                                 {d.afwijzing.duplicaat_van_document_id && (
                                   <Link
-                                    to={`/documenten/${administratieId}/${d.afwijzing.duplicaat_van_document_id}`}
+                                    to={documentPad(administratieId, { id: d.afwijzing.duplicaat_van_document_id })}
                                     onClick={(e) => e.stopPropagation()}
                                     style={{ fontSize: 11.5 }}
                                   >
@@ -1170,7 +1170,7 @@ export function DocumentenDeelscherm({
                         {d.status === 'samengevoegd' && d.samengevoegd_in && (
                           <div style={{ marginTop: 4 }}>
                             <Link
-                              to={`/documenten/${administratieId}/${d.samengevoegd_in.document_id}`}
+                              to={documentPad(administratieId, { id: d.samengevoegd_in.document_id })}
                               onClick={(e) => e.stopPropagation()}
                               style={{ fontSize: 11.5 }}
                               title="Dit exemplaar is opgegaan in het leidende document; controleren en boeken gebeurt dáár"
@@ -1207,7 +1207,7 @@ export function DocumentenDeelscherm({
                             </span>{' '}
                             {d.duplicaat_werkvoorraad_van.document_id && (
                               <Link
-                                to={`/documenten/${administratieId}/${d.duplicaat_werkvoorraad_van.document_id}`}
+                                to={documentPad(administratieId, { id: d.duplicaat_werkvoorraad_van.document_id })}
                                 onClick={(e) => e.stopPropagation()}
                                 style={{ fontSize: 11.5 }}
                               >
@@ -1221,7 +1221,7 @@ export function DocumentenDeelscherm({
                           <div style={{ marginTop: 4 }}>
                             <span className="chip vraag">Mogelijk duplicaat</span>{' '}
                             <Link
-                              to={`/documenten/${administratieId}/${d.mogelijk_duplicaat_van.document_id}`}
+                              to={documentPad(administratieId, { id: d.mogelijk_duplicaat_van.document_id })}
                               onClick={(e) => e.stopPropagation()}
                               style={{ fontSize: 11.5 }}
                             >
@@ -1382,7 +1382,7 @@ export function DocumentenDeelscherm({
                                   role="menuitem"
                                   onClick={() => {
                                     setMenuOpen(null)
-                                    navigate(`/documenten/${administratieId}/${origineelVan.document_id}`)
+                                    navigate(documentPad(administratieId, { id: origineelVan.document_id }))
                                   }}
                                 >
                                   Toon origineel

@@ -24,6 +24,7 @@ import {
   useToastOptioneel,
 } from '../ui/basis'
 import { formatBedrag, formatDatumKort } from '../werkvoorraad/format'
+import { documentPad } from '../werkvoorraad/format'
 import { statusLabel } from '../werkvoorraad/status'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { VerbruiksBalk } from './VerbruiksBalk'
@@ -346,7 +347,7 @@ export function VerplichtingenScreen() {
                             ) : (
                               r.facturen.map((f) => (
                                 <div key={f.document_id}>
-                                  <Link to={`/documenten/${r.administratie_id}/${f.document_id}`}>
+                                  <Link to={documentPad(r.administratie_id, { id: f.document_id })}>
                                     <b style={{ color: 'var(--text)' }}>
                                       {f.referentie ?? f.document_id.slice(0, 8)}
                                     </b>

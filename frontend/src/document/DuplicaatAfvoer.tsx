@@ -11,7 +11,7 @@ import type {
   DuplicaatOrigineelDto,
 } from '../api/types'
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../ui/basis'
-import { formatDatumKort } from '../werkvoorraad/format'
+import { documentPad, formatDatumKort } from '../werkvoorraad/format'
 
 /** Duplicaat-afvoer (besluit Peter 04-09, migratie 0105). Eén-klik "Afvoeren als duplicaat" — altijd
  * beschikbaar, ook zonder de per-administratie opt-in voor het automatische pad — mét bevestigingsdialoog
@@ -57,7 +57,7 @@ export function OrigineelRegel({ administratieId, origineel }: { administratieId
         {origineel.document_id && (
           <>
             {' · '}
-            <Link to={`/documenten/${administratieId}/${origineel.document_id}`} onClick={(e) => e.stopPropagation()}>
+            <Link to={documentPad(administratieId, { id: origineel.document_id })} onClick={(e) => e.stopPropagation()}>
               open origineel
             </Link>
           </>
@@ -273,7 +273,7 @@ export function DuplicaatAfvoerSectie({ administratieId, documentId, bestandsnaa
             <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5 }} data-testid="duplicaat-module-lijst">
               {moduleTreffers.map((t) => (
                 <li key={t.document_id}>
-                  <Link to={`/documenten/${administratieId}/${t.document_id}`} onClick={(e) => e.stopPropagation()}>
+                  <Link to={documentPad(administratieId, { id: t.document_id })} onClick={(e) => e.stopPropagation()}>
                     {t.bestandsnaam}
                   </Link>{' '}
                   — {MODULE_CATEGORIE_LABEL[t.categorie] ?? t.categorie}
@@ -318,7 +318,7 @@ export function DuplicaatAfvoerSectie({ administratieId, documentId, bestandsnaa
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             {afgevoerde.map((d) => (
               <li key={d.afwijzing_id} style={{ fontSize: 12.5 }}>
-                <Link to={`/documenten/${administratieId}/${d.document_id}`}>{d.bestandsnaam}</Link> ({formatDatumKort(d.aangemaakt_op)}) —
+                <Link to={documentPad(administratieId, { id: d.document_id })}>{d.bestandsnaam}</Link> ({formatDatumKort(d.aangemaakt_op)}) —
                 afgevoerd {formatDatumKort(d.afgewezen_op)} door {d.automatisch ? '⚙ systeem' : naamVoor(d.afgewezen_door)}
               </li>
             ))}

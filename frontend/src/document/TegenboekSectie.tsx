@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { documentPad } from '../werkvoorraad/format'
 import { ApiError } from '../api/client'
 import type { TegenboekToetsDto } from '../api/types'
 import { haalTegenboekToetsOp, voerTegenboekingUit } from './tegenboekenApi'
@@ -162,7 +163,7 @@ export function TegenboekSectie({ administratieId, documentId, status, soort, on
           {toets.duplicaat_van_geboekt.map((d, i) => (
             <span key={d.document_id}>
               {i > 0 && ', '}
-              <Link to={`/documenten/${administratieId}/${d.document_id}`}>
+              <Link to={documentPad(administratieId, { id: d.document_id })}>
                 {d.referentie ?? d.bestandsnaam}
               </Link>
               {d.rlz_boekstuknummer ? ` (boekstuk ${d.rlz_boekstuknummer})` : ''} — {categorieTekst(d.categorie)}

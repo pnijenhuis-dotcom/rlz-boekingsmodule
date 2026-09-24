@@ -12,6 +12,7 @@
 // benoemt altijd het aantal.
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { documentPad } from '../werkvoorraad/format'
 import { ApiError } from '../api/client'
 import type { AutoboekAanzetUitkomstDto, AutoboekKandidaatRijDto, AutoboekTellersDto } from '../api/types'
 import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField, Paginering, SkeletonRegels } from '../ui/basis'
@@ -408,7 +409,7 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
                     </td>
                     <td className="hint" style={{ fontSize: 11.5 }}>
                       {r.laatste_document_id ? (
-                        <Link to={`/documenten/${r.administratie_id}/${r.laatste_document_id}`} className="text-primary no-underline hover:underline">
+                        <Link to={documentPad(r.administratie_id, { id: r.laatste_document_id })} className="text-primary no-underline hover:underline">
                           {datumKort(r.laatste_factuur_datum)}
                         </Link>
                       ) : (

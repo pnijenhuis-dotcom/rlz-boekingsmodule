@@ -27,6 +27,7 @@ class OpenVraagRijDto(BaseModel):
     wacht_dagen: int
     document_bestandsnaam: str
     document_status: str
+    document_soort: str = "inkoopfactuur"
     leverancier_naam: str | None
     referentie: str | None
     totaalbedrag: Decimal | None

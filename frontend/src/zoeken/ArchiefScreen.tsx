@@ -14,6 +14,7 @@ import {
 } from './archiefSortering'
 import { amountKlasse, formatBedrag, formatDatum, formatDatumKort } from './format'
 import { reviewPad } from './reviewPad'
+import { documentPad } from '../werkvoorraad/format'
 import { ARCHIEF_PER_PAGINA, haalArchiefKantoorbreedOp } from './zoekenApi'
 
 /** Blob-URL's van geopende PDF's na een ruime marge weer vrijgeven — het nieuwe tabblad heeft
@@ -337,7 +338,7 @@ export function ArchiefScreen() {
                             <>
                               {' '}
                               <Link
-                                to={`/documenten/${doc.administratie_id}/${doc.afgevoerd_als_duplicaat_van.document_id}`}
+                                to={documentPad(doc.administratie_id, { id: doc.afgevoerd_als_duplicaat_van.document_id })}
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 open origineel

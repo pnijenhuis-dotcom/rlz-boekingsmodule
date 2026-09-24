@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { documentPad } from '../werkvoorraad/format'
 import { ApiError, apiJson } from '../api/client'
 import type {
   BoekvoorstelDto,
@@ -128,7 +129,7 @@ export function DoorbelastingReviewScreen() {
     <div>
       <div className="topbar">
         <h1>
-          <Link to={`/documenten/${administratieId}/${documentId}`}>← Document</Link>{' '}
+          <Link to={documentPad(administratieId, { id: documentId })}>← Document</Link>{' '}
           <span style={{ color: 'var(--muted)', fontWeight: 400 }}>/</span> {detail.bestandsnaam}
         </h1>
         <div className="adm-select">

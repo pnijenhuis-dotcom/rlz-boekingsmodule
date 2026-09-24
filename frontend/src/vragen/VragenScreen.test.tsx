@@ -121,7 +121,7 @@ describe('VragenScreen (mockup #vragen)', () => {
     expect(screen.getByText(/\(eigenaar administratie\)/)).toBeInTheDocument()
     expect(screen.getByText(/Weet jij van wie dit is\?/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reageren' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Factuur bekijken' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Document bekijken' })).toHaveAttribute(
       'href',
       `/documenten/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`,
     )
@@ -230,7 +230,7 @@ describe('VragenScreen (mockup #vragen)', () => {
     expect(screen.getByText(/Het document is verwijderd/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Reageren' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Intrekken…' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Factuur bekijken' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Document bekijken' })).not.toBeInTheDocument()
   })
 
   it('een legacy-beantwoorde vraag is historie: antwoord als laatste bericht, geen actieknoppen', async () => {

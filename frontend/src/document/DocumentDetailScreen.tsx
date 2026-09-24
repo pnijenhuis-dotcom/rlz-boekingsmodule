@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
 import type {
   AfwijzingDto,
@@ -12,7 +12,7 @@ import type {
 import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { GeboektInRlzChip } from './GeboektInRlz'
-import { documentRoute, TERMINALE_STATUSSEN } from '../werkvoorraad/format'
+import { documentPad, documentRoute, heeftEigenReviewscherm, TERMINALE_STATUSSEN } from '../werkvoorraad/format'
 import { kiesVolgendDocument } from '../werkvoorraad/volgendDocument'
 import { filterDocumenten, lijstContextUitParams, lijstPositie, lijstRoute, type LijstContext } from '../werkvoorraad/lijstContext'
 import { SNELTOETSEN_CONTROLESCHERM, useSneltoetsen } from './sneltoetsen'
@@ -781,6 +781,12 @@ export function DocumentDetailScreen() {
     }
   }
 
+  // BUG 23-09: opent iemand /documenten/<adm>/<id> van een kassarapport/verkoopfactuur/waarborg/verplichting (oude link,
+  // handmatig getypte URL), dan door naar het juiste reviewscherm — nooit een leeg inkoopformulier voor een niet-inkoopdocument.
+  if (detail && administratieId && heeftEigenReviewscherm(detail.soort)) {
+    return <Navigate replace to={documentPad(administratieId, { id: detail.id, soort: detail.soort })} />
+  }
+
   return (
     <div>
       <div className="topbar">
@@ -1520,7 +1526,7 @@ export function DocumentDetailScreen() {
                           {detail.mogelijk_duplicaat_van && (
                             <div className="hint" style={{ marginTop: 2 }}>
                               Mogelijk duplicaat van{' '}
-                              <Link to={`/documenten/${administratieId}/${detail.mogelijk_duplicaat_van.document_id}`}>
+                              <Link to={documentPad(administratieId, { id: detail.mogelijk_duplicaat_van.document_id })}>
                                 {detail.mogelijk_duplicaat_van.bestandsnaam} (
                                 {formatDatumKort(detail.mogelijk_duplicaat_van.aangemaakt_op)})
                               </Link>
@@ -1909,7 +1915,7 @@ export function DocumentDetailScreen() {
                 setVerplaatsModalOpen(false)
                 meld(`Verplaatst naar ${resultaat.naar_administratie_naam} — extractie draait opnieuw`)
                 // Het document is in de bron-scope niet meer zichtbaar: door naar het doel.
-                void navigate(`/documenten/${resultaat.naar_administratie_id}/${documentId}`)
+                void navigate(documentPad(resultaat.naar_administratie_id, { id: documentId, soort: detail?.soort }))
               }}
               onAnnuleren={() => setVerplaatsModalOpen(false)}
             />

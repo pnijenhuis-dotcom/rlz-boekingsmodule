@@ -103,6 +103,8 @@ class OpenVraagRij:
     wacht_dagen: int
     document_bestandsnaam: str
     document_status: str
+    #: Documentsoort (24-09): de kantoorbrede lijst kan de rij naar het juiste reviewscherm sturen.
+    document_soort: str
     leverancier_naam: str | None
     referentie: str | None
     totaalbedrag: Decimal | None
@@ -203,6 +205,7 @@ def _alle_open_vragen(*, actor_id: uuid.UUID, rol: GebruikerRol, nu: datetime) -
                         wacht_dagen=_wacht_dagen(vraag.gesteld_op, nu),
                         document_bestandsnaam=document.bestandsnaam,
                         document_status=document.status.value,
+                        document_soort=document.soort,
                         leverancier_naam=leverancier,
                         referentie=voorstel.referentie if voorstel else None,
                         totaalbedrag=voorstel.totaalbedrag if voorstel else None,

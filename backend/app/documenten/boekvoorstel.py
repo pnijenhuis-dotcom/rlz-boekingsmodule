@@ -21,7 +21,7 @@ from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import betaalstatus as betaalstatus_regels
-from app.documenten import checks_extern, leverancier_iban, veldvoorstel_regels
+from app.documenten import checks_extern, leverancier_iban, regelsom, veldvoorstel_regels
 from app.documenten import kop_omschrijving as kop_omschrijving_regels
 from app.documenten import periode as periode_regels
 from app.documenten.checks import (
@@ -174,6 +174,11 @@ class BoekvoorstelData:
     regels_samenvoegen: bool = True
     samenvoegen_toegestaan: bool = True
     samengevoegde_regel: BoekvoorstelRegelData | None = None
+    # BUG 23-09 (Van Rumpt 2025135, BLOW): waaróm er geen samengevoegde regel te berekenen is terwijl er wél ≥ 2
+    # regels zijn ("verschillende btw-codes", "btw-bedrag van regel n onbekend", "regelbedragen uit de scan
+    # onvolledig"). None = samenvoegen kan (of er is niets samen te voegen: < 2 regels). Chip in het scherm — niets
+    # verdwijnt stil.
+    samenvoegen_niet_mogelijk_reden: str | None = None
     # Tegenboek-pad (migratie 0061): bepaalt het RLZ-GUID van de (her)boeking — cyclus 0 is de
     # oorspronkelijke boeking, elke "tegenboeken én opnieuw boeken" verhoogt 'm.
     boek_cyclus: int = 0
@@ -611,6 +616,59 @@ def _samengevoegde_regel(veldvoorstel: dict) -> BoekvoorstelRegelData | None:
     )
 
 
+REDEN_SAMENVOEGEN_BTW_CODES = "verschillende btw-codes"
+REDEN_SAMENVOEGEN_SCAN_ONVOLLEDIG = "regelbedragen uit de scan onvolledig (geen totaal, niet alle regels gelezen)"
+
+
+def _samengevoegde_regel_uit_opgeslagen(
+    regels: list[BoekvoorstelRegelData],
+    *,
+    percentages: dict[uuid.UUID, Decimal | None],
+    factuurnummer: str | None,
+) -> tuple[BoekvoorstelRegelData | None, str | None]:
+    """BUG 23-09 (Peter, BLOW Van Rumpt 2025135 € 1.277,50: 7 opgeslagen regels, scan zonder regelbedragen → vinkje
+    weg). Tweede bron voor de één-regel-variant: de OPGESLAGEN regels (≥ 2). Σ netto, Σ btw (regel-btw leeg → uit het
+    tarief van die regel via `regelsom.btw_uit_tarief`, cent-exact; geen percentage → niet berekenbaar), één btw-code
+    als alle regels dezelfde dragen (anders geen samenvoegen mét reden), grootboek alleen als alle regels hetzelfde
+    dragen, omschrijving in de bestaande factuurnummer-vorm. Geeft (regel, None) of (None, reden); < 2 regels =
+    (None, None) — er is dan niets samen te voegen. Puur; geld = code."""
+    if len(regels) < 2:
+        return None, None
+    netto_totaal = Decimal(0)
+    btw_totaal = Decimal(0)
+    for n, r in enumerate(regels, start=1):
+        if r.netto_bedrag is None:
+            return None, f"nettobedrag van regel {n} onbekend"
+        netto_totaal += r.netto_bedrag
+        if r.btw_bedrag is not None:
+            btw_totaal += r.btw_bedrag
+            continue
+        pct = percentages.get(r.taxrate_id) if r.taxrate_id is not None else None
+        if pct is None:
+            return None, f"btw-bedrag van regel {n} onbekend"
+        btw_totaal += regelsom.btw_uit_tarief(r.netto_bedrag, Decimal(pct))
+    taxrate_ids = {r.taxrate_id for r in regels}
+    if len(taxrate_ids) != 1:
+        return None, REDEN_SAMENVOEGEN_BTW_CODES
+    ledger_ids = {r.ledger_id for r in regels}
+    omschrijving = (
+        f"Factuur {factuurnummer} — samengevoegd ({len(regels)} regels)"
+        if factuurnummer
+        else f"Samengevoegd ({len(regels)} regels)"
+    )
+    return (
+        BoekvoorstelRegelData(
+            ledger_id=next(iter(ledger_ids)) if len(ledger_ids) == 1 else None,
+            taxrate_id=next(iter(taxrate_ids)),
+            project_id=None,
+            netto_bedrag=netto_totaal,
+            btw_bedrag=btw_totaal,
+            omschrijving=omschrijving,
+        ),
+        None,
+    )
+
+
 def _verlegd_vermelding(veldvoorstel: dict | None) -> str | None:
     waarde = veldvoorstel.get("btw_verlegd_vermelding") if veldvoorstel else None
     return waarde if isinstance(waarde, str) and waarde else None
@@ -811,14 +869,27 @@ def _samenvoeg_velden(
     """Fix 3: effectieve samenvoeg-stand (projectplicht = hard gesplitst; anders de onthouden
     leverancier-voorkeur, default = backend-capability) + de berekende één-regel-variant."""
     if project_verplicht:
-        return {"regels_samenvoegen": False, "samenvoegen_toegestaan": False, "samengevoegde_regel": None}
+        return {
+            "regels_samenvoegen": False,
+            "samenvoegen_toegestaan": False,
+            "samengevoegde_regel": None,
+            "samenvoegen_niet_mogelijk_reden": None,
+        }
     voorkeur = _voorkeur_samenvoegen(session, administratie_id=administratie_id, vendor_id=vendor_id)
+    samengevoegd = _samengevoegde_regel(veldvoorstel) if veldvoorstel else None
+    # BUG 23-09: ≥ 2 gelezen regels zonder berekenbare één-regel-variant = zichtbare reden (chip), nooit stil weg.
+    reden = (
+        REDEN_SAMENVOEGEN_SCAN_ONVOLLEDIG
+        if samengevoegd is None and veldvoorstel and len(veldvoorstel_regels.boekbare_regels(veldvoorstel)) >= 2
+        else None
+    )
     return {
         # Default zonder leverancier-voorkeur = backend-capability (RLZ AAN; Odoo UIT — regelniveau-
         # data moet in Odoo landen, eis Peter 03-09); de leverancier-voorkeur wint altijd.
         "regels_samenvoegen": voorkeur if voorkeur is not None else standaard_samenvoegen,
         "samenvoegen_toegestaan": True,
-        "samengevoegde_regel": _samengevoegde_regel(veldvoorstel) if veldvoorstel else None,
+        "samengevoegde_regel": samengevoegd,
+        "samenvoegen_niet_mogelijk_reden": reden,
     }
 
 
@@ -1433,6 +1504,16 @@ def _lees_opgeslagen_voorstel(
         project_verplicht=project_verplicht,
         standaard_samenvoegen=standaard_samenvoegen,
     )
+    # BUG 23-09 (Van Rumpt 2025135): staan er ≥ 2 OPGESLAGEN regels, dan is DÍE data de bron van de samengevoegde
+    # regel — niet de scan (die kan zonder regelbedragen zijn). Niet berekenbaar = reden op de respons (chip), nooit stil.
+    if samenvoeg["samenvoegen_toegestaan"] and len(regel_data) >= 2:
+        samenvoeg["samengevoegde_regel"], samenvoeg["samenvoegen_niet_mogelijk_reden"] = (
+            _samengevoegde_regel_uit_opgeslagen(
+                regel_data,
+                percentages=_taxrate_percentages_in_sessie(session, administratie_id),
+                factuurnummer=bestaand.referentie,
+            )
+        )
     # BUG 18-09 (Zilver Horeca): één waarheid voor de modus — zegt de voorkeur "samenvoegen" maar staan er > 1 regel
     # opgeslagen (de autosave persisteerde de gesplitste set omdat er geen samengevoegde variant was), dan volgt de
     # modus de data. Het scherm toont dan de losse regels mét vinkje aan en de chip "weergave hersteld".
@@ -2278,6 +2359,16 @@ def _naar_check_regels(
         )
         for r in voorstel.regels
     ]
+
+
+def _taxrate_percentages_in_sessie(session: Session, administratie_id: uuid.UUID) -> dict[uuid.UUID, Decimal | None]:
+    """Als `_taxrate_percentages`, binnen een bestaande sessie (leesroute van het opgeslagen voorstel, BUG 23-09)."""
+    from app.sync.models import TaxRateCache
+
+    rijen = session.execute(
+        select(TaxRateCache.id, TaxRateCache.percentage).where(TaxRateCache.administratie_id == administratie_id)
+    ).all()
+    return {r.id: r.percentage for r in rijen}
 
 
 def _taxrate_percentages(administratie_id: uuid.UUID) -> dict[uuid.UUID, Decimal | None]:

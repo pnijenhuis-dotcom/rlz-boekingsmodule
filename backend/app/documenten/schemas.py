@@ -774,6 +774,9 @@ class BoekvoorstelResponse(BaseModel):
     # BUG 18-09 (Zilver Horeca): True = de voorkeur zei "samenvoegen" maar er staan > 1 regel opgeslagen — de modus volgt
     # de data (`regels_samenvoegen` is dan False), chip "weergave hersteld" + tijdlijnregel.
     regels_modus_hersteld: bool = False
+    # BUG 23-09 (Van Rumpt 2025135): waarom er geen samengevoegde regel te berekenen is bij ≥ 2 regels
+    # ("verschillende btw-codes", "btw-bedrag van regel n onbekend", …) — chip in het scherm, nooit stil weg.
+    samenvoegen_niet_mogelijk_reden: str | None = None
     # BUG 18-09 (regel 4): herkomst van het totaal ("factuur" | "pinbon" | None) + de bon-toets voor de chip.
     totaal_bron: str | None = None
     totaal_pinbon: DecimalMetKomma | None = None
@@ -958,6 +961,8 @@ class VraagResponse(BaseModel):
     document_id: uuid.UUID
     document_bestandsnaam: str
     document_status: str
+    #: Soort van het document (24-09): de link "Document bekijken" volgt de soort — zie app/documenten/deeplink.py.
+    document_soort: str = "inkoopfactuur"
     totaalbedrag: Decimal | None = None
     vraag_tekst: str
     status: str

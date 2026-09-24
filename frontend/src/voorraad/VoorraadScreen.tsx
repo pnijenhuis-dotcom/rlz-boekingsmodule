@@ -14,6 +14,7 @@
 // drill-down voorgefilterd). Regels/diensten/codes zijn server-side gepagineerd (B3.3).
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { documentPad } from '../werkvoorraad/format'
 import { ApiError } from '../api/client'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
@@ -627,7 +628,7 @@ export function VoorraadAdministratieDetail({ administratieId }: { administratie
                         </td>
                         <td>
                           {r.document_id ? (
-                            <Link to={`/documenten/${administratieId}/${r.document_id}`}>{bronLabel(r)} →</Link>
+                            <Link to={documentPad(administratieId, { id: r.document_id })}>{bronLabel(r)} →</Link>
                           ) : (
                             <span className="hint" title="Gelezen uit RLZ (dagelijkse leesroute, alleen geboekte facturen) — geen app-document">
                               {bronLabel(r)}

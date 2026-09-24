@@ -126,5 +126,8 @@ def doel_pad_voor_route(route: str) -> str:
         route,
     )
     if m:
-        return f"/documenten/{m.group(1)}/{m.group(2)}"
+        from app.documenten.deeplink import document_pad
+
+        # Soort onbekend op routeniveau → inkoop-controlescherm; dat scherm stuurt een kassarapport zelf door (24-09).
+        return document_pad(m.group(1), m.group(2))
     return "/reconciliatie"

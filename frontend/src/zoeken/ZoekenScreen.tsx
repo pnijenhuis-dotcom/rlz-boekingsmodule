@@ -5,6 +5,7 @@ import { FoutMelding } from '../ui/FoutMelding'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { amountKlasse, formatBedrag, formatDatumKort, formatDatum } from './format'
 import { reviewPad } from './reviewPad'
+import { documentPad } from '../werkvoorraad/format'
 import { zoek } from './zoekenApi'
 
 /** Zoeken vanaf 2 tekens, met debounce — geen aanroep per toetsaanslag. */
@@ -235,7 +236,7 @@ export function ZoekenScreen() {
                                 <>
                                   {' '}
                                   <Link
-                                    to={`/documenten/${hit.administratie_id}/${hit.afgevoerd_als_duplicaat_van.document_id}`}
+                                    to={documentPad(hit.administratie_id, { id: hit.afgevoerd_als_duplicaat_van.document_id })}
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     open origineel

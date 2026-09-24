@@ -839,6 +839,9 @@ export function BoekvoorstelPanel({
   const [totaalPinbon, setTotaalPinbon] = useState<{ bedrag: string; status: string | null } | null>(null)
   const [samenvoegenToegestaan, setSamenvoegenToegestaan] = useState(true)
   const [samenvoegenBeschikbaar, setSamenvoegenBeschikbaar] = useState(false)
+  // BUG 23-09 (Van Rumpt 2025135, BLOW): kan er niet worden samengevoegd bij ≥ 2 regels, dan zegt het scherm waaróm
+  // (reden van de server, anders de generieke tekst) — het vinkje verdwijnt nooit stil.
+  const [samenvoegenNietMogelijkReden, setSamenvoegenNietMogelijkReden] = useState<string | null>(null)
   const [inactieveRegels, setInactieveRegels] = useState<RegelState[]>([])
 
   // Fix 2: "nieuwe crediteur aanmaken in RLZ" vanaf het voorstelblok onder het crediteur-veld.
@@ -976,6 +979,11 @@ export function BoekvoorstelPanel({
           toegestaan && Boolean(dto.regels_samenvoegen) && samengevoegd !== null && !meerdereOpgeslagen
         setSamenvoegenToegestaan(toegestaan)
         setSamenvoegenBeschikbaar(toegestaan && samengevoegd !== null && gesplitst.length > 1)
+        setSamenvoegenNietMogelijkReden(
+          toegestaan && samengevoegd === null && gesplitst.length > 1
+            ? (dto.samenvoegen_niet_mogelijk_reden ?? 'geen samengevoegde regel te berekenen')
+            : null,
+        )
         setRegelsSamenvoegen(samenvoegenActief)
         setRegels(samenvoegenActief && samengevoegd !== null ? samengevoegd : gesplitst)
         setInactieveRegels(samenvoegenActief || samengevoegd === null ? gesplitst : samengevoegd)
@@ -2227,15 +2235,26 @@ export function BoekvoorstelPanel({
             )}
           </div>
         )}
-        {!isReadOnly && !samenvoegenBeschikbaar && modusHersteld !== null && (
-          <div style={{ marginBottom: 10 }}>
-            <span
-              className="chip afwijking"
-              data-testid="modus-hersteld-chip"
-              title={`De leverancier-voorkeur zegt "samenvoegen", maar er staan ${modusHersteld} losse regels opgeslagen. De weergave volgt de opgeslagen regels; de tijdlijn vermeldt het herstel.`}
-            >
-              weergave hersteld: {modusHersteld} opgeslagen regels, modus stond op samengevoegd
-            </span>
+        {!isReadOnly && !samenvoegenBeschikbaar && (modusHersteld !== null || samenvoegenNietMogelijkReden !== null) && (
+          <div style={{ marginBottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {modusHersteld !== null && (
+              <span
+                className="chip afwijking"
+                data-testid="modus-hersteld-chip"
+                title={`De leverancier-voorkeur zegt "samenvoegen", maar er staan ${modusHersteld} losse regels opgeslagen. De weergave volgt de opgeslagen regels; de tijdlijn vermeldt het herstel.`}
+              >
+                weergave hersteld: {modusHersteld} opgeslagen regels, modus stond op samengevoegd
+              </span>
+            )}
+            {samenvoegenNietMogelijkReden !== null && (
+              <span
+                className="chip stil"
+                data-testid="samenvoegen-niet-mogelijk-chip"
+                title="Het vinkje 'Splitsen per regel' ontbreekt omdat de module uit deze regels geen samengevoegde boekingsregel kan berekenen. Vul de ontbrekende bedragen/btw-codes aan of boek de regels los."
+              >
+                samenvoegen niet mogelijk: {samenvoegenNietMogelijkReden}
+              </span>
+            )}
           </div>
         )}
         <div className="tabel-scroll">
