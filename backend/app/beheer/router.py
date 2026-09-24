@@ -163,6 +163,7 @@ def administratie_archiveren(
         gearchiveerd_op=r.gearchiveerd_op,
         credential_ingetrokken=r.credential_ingetrokken,
         open_documenten=r.open_documenten,
+        odoo_sleutel_behouden=r.odoo_sleutel_behouden,
     )
 
 
@@ -172,22 +173,30 @@ def administratie_archiveren(
 )
 def administratie_dearchiveren(
     administratie_id: uuid.UUID,
-    invoer: schemas.WebserviceGegevensDto,
+    invoer: schemas.DearchiverenDto | None = None,
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.ProbeRapportDto:
-    """Dearchiveren vereist een nieuwe webservice-login: admin-pin + rechten-probe groen (422 mét
-    rapport, niets gewijzigd), dan credential opgeslagen en actief terug. Het wachtwoord reist
-    alleen inkomend."""
+    """Dearchiveren is backend-bewust (blok 3 bundelrun 24-09): Reeleezee vereist een nieuwe webservice-login
+    (admin-pin + rechten-probe groen, 422 mét rapport als het niet klopt); Odoo hergebruikt de opgeslagen
+    API-sleutel en weigert een meegegeven login mét 422 "niet van toepassing". De body mag leeg zijn. Het
+    wachtwoord reist alleen inkomend."""
+    from app.backends.port import HeractiverenGeweigerd
+
     try:
         rapport = service.dearchiveer_administratie(
             actor_id=actor.id,
             administratie_id=administratie_id,
-            webservice_username=invoer.webservice_username,
-            wachtwoord=invoer.wachtwoord,
+            webservice_username=invoer.webservice_username if invoer else None,
+            wachtwoord=invoer.wachtwoord if invoer else None,
         )
     except service.BeheerFout as exc:
         code = status.HTTP_409_CONFLICT if "niet gearchiveerd" in str(exc) else status.HTTP_404_NOT_FOUND
         raise HTTPException(status_code=code, detail=str(exc)) from exc
+    except HeractiverenGeweigerd as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"bericht": str(exc), "rapporten": {str(administratie_id): exc.rapport}, "meldingen": {}},
+        ) from exc
     except Exception as exc:  # noqa: BLE001 — OnboardingFout (422 mét rapport) / verbindingsfout (502)
         raise _onboarding_fout(exc) from exc
     return schemas.ProbeRapportDto(rapport=rapport)
@@ -1102,6 +1111,29 @@ def btw_aftrek_uitgesloten_zetten(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except btw_aftrek.BtwAftrekOnbekendeRekening as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+@router.get("/administraties/{administratie_id}/bua-jaarrapport")
+def bua_jaarrapport_ophalen(
+    administratie_id: uuid.UUID,
+    jaar: int = 2026,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> dict:
+    """BUA-jaarrapport (Peter 24-09 "standaard 21 % btw aanhouden" — geen kenmerk in bulk, wél een jaareinde-rapport):
+    per BUA-kandidaat-rekening de in `jaar` afgetrokken btw (module + bank) mét het voorstel voor de correctie in de
+    laatste aangifte; lees-only, kantoorrollen binnen hun scope (router-brede poort + administratie-scope). De RLZ-kant
+    leest alleen de CLI (`--rlz`) — hier nooit een RLZ-call vanuit een request."""
+    from app.beheer import bua_cli
+    from app.db.models import Administratie
+    from app.db.session import scoped_session
+
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onbekende administratie")
+        naam = administratie.naam
+    a = bua_cli.jaarrapport_voor(administratie_id, naam, jaar=jaar)
+    return {"jaar": jaar, **bua_cli._jaar_als_dict(a), "let_op": bua_cli.LET_OP_DREMPEL}
 
 
 @router.put(

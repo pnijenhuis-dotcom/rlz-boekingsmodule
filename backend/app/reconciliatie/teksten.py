@@ -438,11 +438,40 @@ def _documenten(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             "Wijs het document af als 'al geboekt' (de accordering wordt ingetrokken), of kies 'Toch verschillend — "
             "doorgaan' als het écht een andere factuur is.",
         )
+    if soort == "bua_correctie_open":
+        # Peter 24-09 ("standaard 21 % btw aanhouden"): de btw op BUA-rekeningen is het hele jaar afgetrokken; de
+        # BUA-correctie hoort in de laatste aangifte van het jaar — vanaf 1 december één rij per administratie.
+        jaar = _s(d, "jaar") or ""
+        som = euro(d.get("btw_som")) or "een bedrag"
+        return (
+            _titel(f"BUA-correctie {jaar} nog te beoordelen", _s(d, "administratie_naam") or ""),
+            f"In {jaar} is {som} btw afgetrokken op representatie-/relatiegeschenk-/personeelsrekeningen (BUA); die "
+            "aftrek moet in de laatste btw-aangifte van het jaar worden gecorrigeerd voor zover de € 227-drempel per "
+            "begunstigde is overschreden.",
+            "Open het BUA-jaarrapport (Instellingen › administratie › Boeken & AI) en geef de correctie door aan de "
+            "accountant; de module past niets toe. Beoordeeld = 'Gezien' met reden.",
+        )
     if soort == "teruggedraaid_in_odoo":
         return (
             _titel("Teruggedraaid in Odoo", onderwerp),
             "In Odoo staat een tegenboeking (reversal) op deze factuur; bij ons staat ze nog als geboekt.",
             "Verwerk de terugdraaiing ook hier (storno) of boek opnieuw; klopt het, accepteer met reden.",
+        )
+    if soort == "ubl_pdf_ongebundeld":
+        # Blok 1 bundelrun 24-09 (Vastly-batch 23-09): de PDF van een verkoopfactuur kwam los als inkoopfactuur in de
+        # werkvoorraad terwijl de UBL van dezelfde factuur al verkoopfactuur is — één klik "Bundelen" op de rij.
+        pdf = _s(d, "bestandsnaam") or "deze PDF"
+        ubl = _s(d, "ubl_bestandsnaam") or "de UBL-verkoopfactuur"
+        basis = {"naamstam": "dezelfde bestandsnaam", "factuurnummer": "het factuurnummer"}.get(
+            _s(d, "match_basis") or "", "dezelfde factuur"
+        )
+        geboekt = " (die verkoopfactuur is al geboekt)" if _s(d, "ubl_geboekt") == "ja" else ""
+        return (
+            _titel("Losse PDF hoort bij een verkoopfactuur", pdf),
+            f"{pdf} staat als inkoopfactuur in de werkvoorraad, maar hoort op {basis} bij de UBL-verkoopfactuur {ubl} "
+            f"uit dezelfde e-mail{geboekt} — de twee zijn niet gebundeld.",
+            "Klik 'Bundelen': de PDF wordt het beeld van de verkoopfactuur en verdwijnt uit de werkvoorraad "
+            "(nooit geboekt als inkoop). Is het écht een andere factuur, accepteer dan met reden.",
         )
     return (
         _titel(f"Afwijking in {sys_}", onderwerp),

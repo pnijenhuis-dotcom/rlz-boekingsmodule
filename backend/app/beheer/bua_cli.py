@@ -32,13 +32,16 @@ import json
 import re
 import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
 COMMANDO_KANDIDATEN = "bua-kandidaten"
 COMMANDO_ZETTEN = "bua-kenmerk-zetten"
-COMMANDOS = (COMMANDO_KANDIDATEN, COMMANDO_ZETTEN)
+#: 24-09 (besluit Peter "nee standaard 21 % btw aanhouden"): geen bulk-zetting maar een jaareinde-rapport — lees-only.
+COMMANDO_JAARRAPPORT = "bua-jaarrapport"
+COMMANDOS = (COMMANDO_KANDIDATEN, COMMANDO_ZETTEN, COMMANDO_JAARRAPPORT)
 
 #: Naamdelen die een 4xxx-kostenrekening tot BUA-kandidaat maken (meting 21-09; breder dan het scherm-voorstel).
 BUA_NAAMDELEN = (
@@ -106,6 +109,28 @@ def advies_voor(code: str, naam: str) -> tuple[str, str]:
         if any(w in n for w in woorden):
             return advies, reden
     return ADVIES_BEOORDELEN, "naam past bij geen BUA-categorie uit de regeltabel — mens beoordeelt"
+
+
+#: Jaarrapport 24-09: categorie per kandidaat-rekening. "bua" telt in het correctievoorstel; kantine (kantineregeling:
+#: aftrek is het uitgangspunt, correctie alleen bij bevoordeling > € 227) en sponsoring (reclame, aftrekbaar) worden
+#: apart getoond en tellen NIET mee in de som — dezelfde nuance als `advies_voor` (beoordelen / niet_zetten).
+CATEGORIE_BUA = "BUA"
+CATEGORIE_KANTINE = "kantine"
+CATEGORIE_SPONSORING = "sponsoring — reclame"
+LET_OP_DREMPEL = (
+    "LET OP: de € 227-drempel per begunstigde per jaar is niet uit de boekhouding te halen — voorstel = volledige "
+    "btw-som; de accountant toetst de drempel, de module past niets toe"
+)
+
+
+def categorie_voor(code: str, naam: str) -> str:
+    """Pure regel: BUA (representatie/relatiegeschenken/personeel/horeca) · kantine · sponsoring — reclame."""
+    n = (naam or "").lower()
+    if "kantine" in n:
+        return CATEGORIE_KANTINE
+    if "sponsoring" in n or "promotie" in n:
+        return CATEGORIE_SPONSORING
+    return CATEGORIE_BUA
 
 
 def is_kandidaat(*, code: str, naam: str, soort: int) -> bool:
@@ -185,6 +210,18 @@ def register(subparsers) -> None:  # noqa: ANN001 — argparse-subparsers-actie
     )
     z.add_argument("--dry-run", action="store_true", dest="dry_run", help="Alleen tellen en tonen, niets schrijven.")
 
+    j = subparsers.add_parser(
+        COMMANDO_JAARRAPPORT,
+        help="LEES-ONLY (24-09, besluit Peter 'standaard 21 % btw aanhouden'): jaareinde-rapport btw afgetrokken op "
+        "BUA-rekeningen per administratie × rekening (module + bank; --rlz = óók RLZ-JournalEntryLines, alleen GET) "
+        "mét kolom 'correctie laatste aangifte (voorstel)' = de btw-som van de BUA-rekeningen. Geen write, geen "
+        "kenmerk.",
+    )
+    j.add_argument("--jaar", type=int, default=2026, help="Boekjaar (default 2026).")
+    j.add_argument("--administratie", default=None, help="Beperk tot één administratie (uuid of naamdeel).")
+    j.add_argument("--rlz", action="store_true", help="Lees óók de RLZ-kant (JournalEntryLines, uitsluitend GET).")
+    j.add_argument("--json-uit", action="store_true", dest="json_uit", help="Machineleesbare uitvoer (JSON).")
+
 
 def dispatch(args: argparse.Namespace) -> int | None:
     """None = niet ons commando (cli.py gaat verder); anders de exit-code."""
@@ -193,6 +230,8 @@ def dispatch(args: argparse.Namespace) -> int | None:
         return kandidaten(args)
     if commando == COMMANDO_ZETTEN:
         return kenmerk_zetten(args)
+    if commando == COMMANDO_JAARRAPPORT:
+        return jaarrapport(args)
     return None
 
 
@@ -538,3 +577,323 @@ def kenmerk_zetten(args: argparse.Namespace) -> int:
         f"{sum(len(u.niet_gevonden) for u in uitkomsten)} code(s) niet gevonden · {fouten} fout(en)"
     )
     return 0
+
+
+# ---- jaarrapport (lees-only, 24-09) --------------------------------------------------------------------------------
+# Besluit Peter 24-09 (gesprek 08:xx): "nee standaard 21% btw aanhouden. Ik heb liever dat we er achter komen iets fout
+# te hebben gedaan en een correctie indienen dan onjuist te veel geld betalen" → géén bulk-zetting van het kenmerk (0163
+# blijft per rekening beschikbaar); de btw op representatie-/relatiegeschenkrekeningen wordt gedurende het jaar gewoon
+# afgetrokken en de BUA-correctie hoort in de LAATSTE aangifte van het jaar. Dit rapport is de meetlat daarvoor.
+
+MAX_RLZ_PAGINAS_PER_REKENING = 10
+
+
+@dataclass
+class JaarRekening:
+    ledger_id: str
+    code: str
+    naam: str
+    categorie: str
+    kenmerk: bool
+    mod_n: int = 0
+    mod_netto: str = "0.00"
+    mod_btw: str = "0.00"
+    bank_n: int = 0
+    bank_netto: str = "0.00"
+    bank_btw: str = "0.00"
+    rlz_n: int | None = None  # None = RLZ-kant niet gemeten
+    rlz_netto: str | None = None
+    rlz_btw: str | None = None
+
+    @property
+    def btw_totaal(self) -> Decimal:
+        """Module + bank (de eigen boekingen); de RLZ-kant staat er náást (andere bron, kan overlappen)."""
+        return Decimal(self.mod_btw) + Decimal(self.bank_btw)
+
+    @property
+    def documenten(self) -> int:
+        return self.mod_n + self.bank_n
+
+
+@dataclass
+class JaarAdministratie:
+    administratie_id: str
+    administratie: str
+    rekeningen: list[JaarRekening] = field(default_factory=list)
+    rlz_kant: str = "niet gemeten"
+
+    def som(self, categorie: str) -> Decimal:
+        return sum((r.btw_totaal for r in self.rekeningen if r.categorie == categorie), Decimal("0"))
+
+    @property
+    def bua_btw(self) -> Decimal:
+        return self.som(CATEGORIE_BUA)
+
+    @property
+    def correctie_voorstel(self) -> Decimal:
+        return self.bua_btw
+
+
+@dataclass
+class Jaarrapport:
+    jaar: int
+    administraties: int
+    per_administratie: list[JaarAdministratie] = field(default_factory=list)
+    fouten: list[str] = field(default_factory=list)
+
+
+def _rlz_client_voor(administratie_id: uuid.UUID):  # noqa: ANN202
+    from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
+
+    rid = rlz_admin_id_voor(administratie_id)
+    return client_voor_rlz_admin_id(rid).for_administration(rid)
+
+
+def rlz_jaarsom(client, ledger_id: str, *, jaar: int) -> tuple[int, Decimal, Decimal]:  # noqa: ANN001
+    """(regels, netto Debit−Credit, btw Σ VatAmount) over `JournalEntryLines` van één rekening, uitsluitend GET,
+    gepagineerd en begrensd; `$filter` alleen op `Account/id` (bewezen vorm, activa-nulmeting), het boekjaar client-side
+    op `JournalEntry/BookDate` (enum-/datumfilters niet server-side — guard rlz-filter-enum)."""
+    from app.rlz.client import bedrag_cent_exact
+
+    n = 0
+    netto = btw = Decimal("0.00")
+    for pagina in range(MAX_RLZ_PAGINAS_PER_REKENING):
+        params = {
+            "$filter": f"Account/id eq {ledger_id}",
+            "$expand": "JournalEntry",
+            "$top": "200",
+            "$skip": str(pagina * 200),
+        }
+        deel = client.get("JournalEntryLines", params=params).get("value", [])
+        for r in deel:
+            bookdate = str(((r.get("JournalEntry") or {}).get("BookDate")) or "")
+            if not bookdate.startswith(f"{jaar}-"):
+                continue
+            n += 1
+            netto += (bedrag_cent_exact(r.get("DebitAmount")) or Decimal(0)) - (
+                bedrag_cent_exact(r.get("CreditAmount")) or Decimal(0)
+            )
+            btw += bedrag_cent_exact(r.get("VatAmount")) or Decimal(0)
+        if len(deel) < 200:
+            break
+    return n, netto, btw
+
+
+def jaarrapport_voor(
+    administratie_id: uuid.UUID,
+    administratie_naam: str,
+    *,
+    jaar: int,
+    rlz: bool = False,
+    rlz_client_voor=None,  # noqa: ANN001 — test-seam (administratie_id → client mét .get)
+) -> JaarAdministratie:
+    """Eén administratie in haar eigen scope; hergebruikt exact de tel-logica van `kandidaten_voor` (module = geboekte
+    inkoopfacturen op factuurdatum, bank = geboekte bank-direct-boekingen op boekmoment)."""
+    uit = JaarAdministratie(administratie_id=str(administratie_id), administratie=administratie_naam)
+    for k in kandidaten_voor(administratie_id, administratie_naam, jaar=jaar):
+        uit.rekeningen.append(
+            JaarRekening(
+                ledger_id=k.ledger_id,
+                code=k.code,
+                naam=k.naam,
+                categorie=categorie_voor(k.code, k.naam),
+                kenmerk=k.kenmerk,
+                mod_n=k.mod_n,
+                mod_netto=k.mod_netto,
+                mod_btw=k.mod_btw,
+                bank_n=k.bank_n,
+                bank_netto=k.bank_netto,
+                bank_btw=k.bank_btw,
+            )
+        )
+    if not rlz or not uit.rekeningen:
+        return uit
+    from app.backends.registry import Backend, backend_voor
+    from app.rlz.credentials import GeenRlzCredentials
+
+    if backend_voor(administratie_id) == Backend.ODOO:
+        uit.rlz_kant = "niet gemeten (Odoo-administratie — rapport is RLZ-only aan de bronkant)"
+        return uit
+    try:
+        client = (rlz_client_voor or _rlz_client_voor)(administratie_id)
+    except (GeenRlzCredentials, Exception) as exc:  # noqa: BLE001 — geen credential = zichtbaar, geen fout
+        uit.rlz_kant = f"niet gemeten (geen RLZ-verbinding: {exc})"
+        return uit
+    try:
+        for r in uit.rekeningen:
+            n, netto, btw = rlz_jaarsom(client, r.ledger_id, jaar=jaar)
+            r.rlz_n, r.rlz_netto, r.rlz_btw = n, _d(netto), _d(btw)
+        uit.rlz_kant = "gemeten (JournalEntryLines, alleen GET)"
+    except Exception as exc:  # noqa: BLE001 — RLZ-fout = zichtbaar per administratie, module-kant blijft staan
+        uit.rlz_kant = f"niet gemeten (RLZ-fout: {type(exc).__name__}: {str(exc)[:160]})"
+    finally:
+        sluit = getattr(client, "close", None)
+        if callable(sluit):
+            sluit()
+    return uit
+
+
+def meet_jaarrapport(
+    *,
+    administratie: str | None,
+    jaar: int,
+    rlz: bool = False,
+    rlz_client_voor=None,  # noqa: ANN001
+) -> Jaarrapport | None:
+    adms = _administraties(administratie)
+    if adms is None:
+        return None
+    rapport = Jaarrapport(jaar=jaar, administraties=len(adms))
+    for aid, naam in adms:
+        try:
+            rapport.per_administratie.append(
+                jaarrapport_voor(aid, naam, jaar=jaar, rlz=rlz, rlz_client_voor=rlz_client_voor)
+            )
+        except Exception as exc:  # noqa: BLE001 — per administratie zichtbaar, de rest gaat door
+            rapport.fouten.append(f"{naam} ({aid}): {type(exc).__name__}: {exc}")
+    return rapport
+
+
+def _jaar_als_dict(a: JaarAdministratie) -> dict:
+    return {
+        "administratie_id": a.administratie_id,
+        "administratie": a.administratie,
+        "rlz_kant": a.rlz_kant,
+        "bua_btw": _d(a.bua_btw),
+        "correctie_voorstel": _d(a.correctie_voorstel),
+        "kantine_btw": _d(a.som(CATEGORIE_KANTINE)),
+        "sponsoring_btw": _d(a.som(CATEGORIE_SPONSORING)),
+        "rekeningen": [
+            {**asdict(r), "btw_totaal": _d(r.btw_totaal), "documenten": r.documenten} for r in a.rekeningen
+        ],
+    }
+
+
+def jaarrapport_totaal(rapport: Jaarrapport) -> str:
+    """De TOTAAL-regel (= de oordeelregel van het dispatch-onderdeel `bua-jaarrapport`)."""
+    met_btw = [a for a in rapport.per_administratie if any(r.btw_totaal != 0 for r in a.rekeningen)]
+    return (
+        f"TOTAAL {len(met_btw)} administratie(s) mét BUA-btw van {rapport.administraties} · "
+        f"BUA-btw € {sum((a.bua_btw for a in rapport.per_administratie), Decimal(0)):.2f} · "
+        f"voorstel correctie € {sum((a.correctie_voorstel for a in rapport.per_administratie), Decimal(0)):.2f} · "
+        f"kantine € {sum((a.som(CATEGORIE_KANTINE) for a in rapport.per_administratie), Decimal(0)):.2f} · "
+        f"sponsoring € {sum((a.som(CATEGORIE_SPONSORING) for a in rapport.per_administratie), Decimal(0)):.2f} · "
+        f"fouten {len(rapport.fouten)}"
+    )
+
+
+def jaarrapport(args: argparse.Namespace) -> int:
+    rapport = meet_jaarrapport(administratie=args.administratie, jaar=args.jaar, rlz=bool(args.rlz))
+    if rapport is None:
+        print(f"FOUT  administratie {args.administratie!r} onbekend", file=sys.stderr)
+        return 2
+    if args.json_uit:
+        print(
+            json.dumps(
+                {
+                    "jaar": rapport.jaar,
+                    "administraties": rapport.administraties,
+                    "per_administratie": [_jaar_als_dict(a) for a in rapport.per_administratie],
+                    "fouten": rapport.fouten,
+                    "let_op": LET_OP_DREMPEL,
+                    "totaal": jaarrapport_totaal(rapport),
+                },
+                ensure_ascii=False,
+                indent=1,
+            )
+        )
+        return 0
+    print(
+        f"BUA-jaarrapport {rapport.jaar} — {rapport.administraties} administratie(s) (lees-only; btw afgetrokken op de "
+        f"BUA-kandidaat-rekeningen: module = geboekte inkoopfacturen op factuurdatum, bank = geboekte bank-direct-"
+        f"boekingen; RLZ-kant {'gelezen via JournalEntryLines (alleen GET)' if args.rlz else 'niet gemeten (--rlz)'})"
+    )
+    for a in rapport.per_administratie:
+        if not a.rekeningen:
+            continue
+        print(f"\n{a.administratie}  ·  RLZ-kant: {a.rlz_kant}")
+        print(
+            f"  {'code':<6}{'rekening':<42}{'categorie':<22}{'kenm':<5}{'docs':>5}{'netto':>11}{'btw':>9}"
+            f"{'rlz_n':>6}{'rlz_netto':>11}{'rlz_btw':>9}"
+        )
+        for r in a.rekeningen:
+            print(
+                f"  {r.code:<6}{r.naam[:40]:<42}{r.categorie:<22}{('aan' if r.kenmerk else 'uit'):<5}{r.documenten:>5}"
+                f"{Decimal(r.mod_netto) + Decimal(r.bank_netto):>11.2f}{r.btw_totaal:>9.2f}"
+                f"{(r.rlz_n if r.rlz_n is not None else '—')!s:>6}"
+                f"{(r.rlz_netto if r.rlz_netto is not None else '—')!s:>11}"
+                f"{(r.rlz_btw if r.rlz_btw is not None else '—')!s:>9}"
+            )
+        print(
+            f"  → BUA-btw € {a.bua_btw:.2f} · correctie laatste aangifte (voorstel) € {a.correctie_voorstel:.2f} · "
+            f"kantine € {a.som(CATEGORIE_KANTINE):.2f} (apart) · sponsoring € {a.som(CATEGORIE_SPONSORING):.2f} (apart)"
+        )
+    for fout in rapport.fouten:
+        print(f"FOUT  {fout}")
+    print()
+    print(jaarrapport_totaal(rapport))
+    print(LET_OP_DREMPEL)
+    return 0
+
+
+# ---- dagelijkse bevinding vanaf 1 december (blok documenten, soort `bua_correctie_open`, meten) --------------------
+
+SOORT_BUA_CORRECTIE_OPEN = "bua_correctie_open"
+BUA_BEVINDING_VANAF_MAAND = 12
+
+
+def reconciliatie_stap(
+    verzamelaar=None,  # noqa: ANN001 — app.reconciliatie.run.Verzamelaar | None (lees-only)
+    *,
+    stdout: Callable[[str], None] = print,
+    vandaag: date | None = None,
+) -> int:
+    """Stap in het blok `documenten` (24-09): vanaf 1 december van het boekjaar per administratie mét BUA-btw > 0 één
+    afwijking `bua_correctie_open` (start in `meten`) mét actie "Rapport openen". Lees-only in beide modi (geen writes,
+    geen RLZ-call); vóór 1 december niets. Geeft het aantal bevindingen terug."""
+    from app.reconciliatie.models import BevindingSoort
+    from app.tijd import vandaag_nl
+
+    dag = vandaag or vandaag_nl()
+    if dag.month < BUA_BEVINDING_VANAF_MAAND:
+        stdout(f"BUA-jaarcorrectie: nog niet aan de orde (pas vanaf 1 december {dag.year})")
+        return 0
+    rapport = meet_jaarrapport(administratie=None, jaar=dag.year)
+    if rapport is None:
+        return 0
+    aantal = 0
+    for a in rapport.per_administratie:
+        if a.bua_btw <= 0:
+            continue
+        aantal += 1
+        aid = uuid.UUID(a.administratie_id)
+        tekst = (
+            f"AFWIJKING  administratie={aid} soort={SOORT_BUA_CORRECTIE_OPEN}: btw op BUA-rekeningen {dag.year} "
+            f"€ {a.bua_btw:.2f} afgetrokken — BUA-correctie in de laatste aangifte van {dag.year} nog te beoordelen"
+        )
+        stdout(f"{tekst}  [{a.administratie}]")
+        if verzamelaar is not None:
+            verzamelaar.bevinding(
+                soort=BevindingSoort.AFWIJKING.value,
+                administratie_id=aid,
+                vingerafdruk=f"documenten:{aid}:{SOORT_BUA_CORRECTIE_OPEN}:{dag.year}",
+                tekst=tekst,
+                blok="documenten",
+                detail={
+                    "afwijking_soort": SOORT_BUA_CORRECTIE_OPEN,
+                    "administratie_naam": a.administratie,
+                    "jaar": dag.year,
+                    "btw_som": _d(a.bua_btw),
+                    "kantine_btw": _d(a.som(CATEGORIE_KANTINE)),
+                    "sponsoring_btw": _d(a.som(CATEGORIE_SPONSORING)),
+                    "rekeningen": [
+                        {"code": r.code, "naam": r.naam, "categorie": r.categorie, "btw": _d(r.btw_totaal)}
+                        for r in a.rekeningen
+                        if r.btw_totaal != 0
+                    ],
+                },
+            )
+    for fout in rapport.fouten:
+        stdout(f"FOUT       BUA-jaarcorrectie: {fout}")
+    stdout(f"BUA-jaarcorrectie {dag.year}: {aantal} administratie(s) mét BUA-btw > 0 · {len(rapport.fouten)} fout(en)")
+    return aantal

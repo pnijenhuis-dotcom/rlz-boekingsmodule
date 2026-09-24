@@ -166,6 +166,9 @@ def _doel_pad(b: ReconciliatieBevinding) -> str | None:
         return None
     if b.blok == "doorbelasting" and d.get("document_id"):
         return f"/doorbelasting/{aid}/{d['document_id']}"
+    # BUA-jaarcorrectie (24-09): de handeling is "Rapport openen" — het lees-only blok op de tab Boeken & AI.
+    if d.get("afwijking_soort") == "bua_correctie_open":
+        return f"/instellingen/administraties/{aid}?tab=boeken-ai#bua-jaarrapport"
     # activa (BUG 24-09): de handeling op de rij is "Opnieuw aanmaken"; de deeplink is het controlescherm mét de kaart.
     if b.blok in ("documenten", "omzet", "activa") and d.get("document_id"):
         return f"/?administratie={aid}&document={d['document_id']}"

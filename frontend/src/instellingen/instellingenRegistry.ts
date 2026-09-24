@@ -410,6 +410,16 @@ export const REGISTRY: readonly RegistryEntry[] = [
     doel: { soort: 'tab', tab: 'boeken-ai', anker: 'btw-aftrek' },
     beheerder: true,
   },
+  // 24-09 (besluit Peter "standaard 21 % btw aanhouden" — geen BUA-kenmerk in bulk): lees-only jaareinde-rapport btw op
+  // BUA-rekeningen + voorstel correctie laatste aangifte; deeplink-doel van de bevinding `bua_correctie_open` (vanaf 1 december).
+  {
+    id: 'bua-jaarrapport',
+    naam: 'BUA-jaarrapport — btw afgetrokken op representatie/relatiegeschenken, correctie laatste aangifte',
+    waar: 'Administraties › <administratie> › tab Boeken & AI › BUA-jaarrapport',
+    synoniemen: ['bua jaarrapport', 'jaarrapport', 'jaareinde', 'bua-correctie', 'bua correctie', 'laatste aangifte', 'suppletie', 'representatie btw', '227'],
+    doel: { soort: 'tab', tab: 'boeken-ai', anker: 'bua-jaarrapport' },
+    beheerder: false,
+  },
   // 21-09 (Activa / MVA fase 1, akkoord Peter, migratie 0168): activum aanmaken ná boeken (opt-in), activeringsgrens,
   // termijn + afschrijvingsrekening per categorie, registerstand.
   {

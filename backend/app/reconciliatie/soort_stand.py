@@ -94,6 +94,9 @@ REGISTRY: dict[str, SoortDefinitie] = {
             direct_actie_reden="Peter 22-09 (opdracht ter-accordering-bestaanscheck): bestaande harde-check-soort mét "
             "een bestaand boekstuk als bewijs — geen meetfase; explosie-rem blijft",
         ),
+        # blok 1 bundelrun 24-09 (Vastly-PDF-tweelingen 23-09): losse inkoopfactuur-PDF die de tweeling is van een
+        # UBL-verkoopfactuur uit dezelfde e-mail/dag — actie "Bundelen" op de rij; start in meten.
+        SoortDefinitie(soort="ubl_pdf_ongebundeld", blok="documenten", sinds=date(2026, 9, 24), default=METEN),
         # bank
         _oud("document_ontbreekt_in_rlz", "bank"),
         _oud("boeking_teruggedraaid_in_rlz", "bank"),
@@ -136,6 +139,9 @@ REGISTRY: dict[str, SoortDefinitie] = {
             soort="project_naam_afgesloten_status_actief", blok="projecten", sinds=date(2026, 9, 19), default=METEN
         ),
         # activa (fase 1, Peter 21-09): aansluiting module-boekingen ↔ RLZ-activaregister — alles eerst meten.
+        # BUA-jaarcorrectie (Peter 24-09 "standaard 21 % btw aanhouden", geen kenmerk in bulk): vanaf 1 december per
+        # administratie mét BUA-btw in het jaar één afwijking mét "Rapport openen" — start in meten (beheer/bua_cli.py).
+        SoortDefinitie(soort="bua_correctie_open", blok="documenten", sinds=date(2026, 9, 24), default=METEN),
         SoortDefinitie(soort="activa_register_niet_leesbaar", blok="activa", sinds=date(2026, 9, 21), default=METEN),
         SoortDefinitie(soort="mva_boeking_zonder_activum", blok="activa", sinds=date(2026, 9, 21), default=METEN),
         SoortDefinitie(soort="activum_zonder_boeking", blok="activa", sinds=date(2026, 9, 21), default=METEN),

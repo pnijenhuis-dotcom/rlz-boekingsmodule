@@ -18,6 +18,7 @@ import { AfdelingenBeheer } from './AfdelingenBeheer'
 import { IntakeRegels } from './IntakeRegels'
 import { BtwDefaultRij } from './BtwDefaultRij'
 import { BtwAftrekUitgeslotenBlok } from './BtwAftrekUitgeslotenBlok'
+import { BuaJaarrapportBlok } from './BuaJaarrapportBlok'
 import { BtwPlichtigRij } from './BtwPlichtigRij'
 import { ActivaInstellingenBlok } from './ActivaInstellingenBlok'
 import { AutoboekenLerenRij } from './AutoboekenLerenRij'
@@ -339,6 +340,9 @@ export function AdministratieDetailPagina({
           </div>
           {/* 18-09 (Peter, casus Rituals — BUA, migratie 0163): btw niet aftrekbaar per grootboekrekening; anker `btw-aftrek`. */}
           <BtwAftrekUitgeslotenBlok administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />
+          {/* 24-09 (besluit Peter "standaard 21 % btw aanhouden", geen kenmerk in bulk): lees-only BUA-jaarrapport mét voorstel
+              correctie laatste aangifte; anker `bua-jaarrapport` (registry-entry) = deeplink van de bevinding `bua_correctie_open`. */}
+          <BuaJaarrapportBlok administratieId={a.id} naam={a.naam} />
           {/* Activa / MVA fase 1 (akkoord Peter 21-09, migratie 0168): opt-in automatisch aanmaken ná boeken, activeringsgrens,
               termijn + afschrijvingsrekening per categorie, registerstand; anker `activa` (registry-entry 'activa'). */}
           <ActivaInstellingenBlok administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />

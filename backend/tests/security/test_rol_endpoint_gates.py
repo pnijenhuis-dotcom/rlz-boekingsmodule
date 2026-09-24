@@ -189,6 +189,7 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/opnieuw-boeken"),  # opnieuw boeken ná verdwenen document — kantoorrol (A11 07-09)
         ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/bewust-verwijderd"),  # beheerder-only (blok D 16-09)
         ("POST", f"/reconciliatie/documenten/{DUMMY_ID}/bewust-verwijderd-herstellen"),  # terugweg (blok D 16-09)
+        ("POST", f"/reconciliatie/documenten/{DUMMY_ID}/bundelen"),  # "Bundelen" ubl_pdf_ongebundeld — kantoorrol (24-09)
         ("GET", "/reconciliatie/instelling"),  # gezien-dagen lezen (06-09)
         ("GET", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),  # projectverdeling (blok C 04-09)
         ("PUT", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),
@@ -232,6 +233,7 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("PUT", f"/administraties/{aid}/verlegd-voorkeur"),  # voorkeurs-verlegd-code (blok 6 08-09, beheerder-only)
         ("GET", f"/administraties/{aid}/btw-aftrek-uitgesloten"),  # BUA-kenmerk (Peter 18-09, migratie 0163, beheerder-only)
         ("PUT", f"/administraties/{aid}/btw-aftrek-uitgesloten"),
+        ("GET", f"/administraties/{aid}/bua-jaarrapport"),  # BUA-jaarrapport (Peter 24-09, lees-only; kantoorrol + scope)
         # Verplichtingen / offerte-matching (04-09) — router-breed vereis_kantoorrol + scope.
         ("GET", f"/administraties/{aid}/verplichtingen/documenten/{DUMMY_ID}/voorstel"),
         ("PUT", f"/administraties/{aid}/verplichtingen/documenten/{DUMMY_ID}/voorstel"),

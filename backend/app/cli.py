@@ -1891,6 +1891,18 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
         elif storno_resultaat:
             print(f"STORNO     {administratie_id}: {storno_resultaat} factuur_gestorneerd-event(s) aangemaakt")
 
+    # 24-09 (besluit Peter "standaard 21 % btw aanhouden", géén BUA-kenmerk in bulk): vanaf 1 december per administratie
+    # mét BUA-btw > 0 één afwijking `bua_correctie_open` (meten) mét "Rapport openen" — lees-only, geen RLZ-call.
+    from app.beheer import bua_cli
+
+    try:
+        afwijkingen_totaal += bua_cli.reconciliatie_stap(verzamelaar)
+    except Exception as exc:  # noqa: BLE001 — zichtbaar, nooit een rode documenten-toets door het jaarrapport
+        fouten += 1
+        tekst = f"FOUT       BUA-jaarcorrectie viel om: {exc}"
+        print(tekst, file=sys.stderr)
+        _meld(verzamelaar, soort="fout", administratie_id=None, tekst=tekst)
+
     return 1 if (fouten or afwijkingen_totaal) else 0
 
 
@@ -3395,10 +3407,21 @@ def main(argv: list[str] | None = None) -> int:
     from app.geheugen.btw_default_cli import register as register_btw_default
 
     register_btw_default(subparsers)  # btw-default-rapport (lees-only)
+    from app.intake.tweelingen_herstel import dispatch as dispatch_tweelingen  # 24-09 blok 1: tweelingen-herstel
+    from app.intake.tweelingen_herstel import register as register_tweelingen
+
+    register_tweelingen(subparsers)  # dry-run default; --uitvoeren schrijft
     from app.beheer.bua_cli import dispatch as dispatch_bua  # 21-09: bua-kandidaten (lees-only) + bua-kenmerk-zetten
     from app.beheer.bua_cli import register as register_bua
+    from app.odoo.sync_cli import dispatch as dispatch_odoo_sync  # 24-09 blok 2: hersync NL-namen via de eerste-sync-route
+    from app.odoo.sync_cli import register as register_odoo_sync
 
     register_bua(subparsers)
+    register_odoo_sync(subparsers)
+    from app.doorbelasting.factuur_pdf_toets import dispatch as dispatch_factuur_pdf_toets  # 24-09 blok 4 (lees-only)
+    from app.doorbelasting.factuur_pdf_toets import register as register_factuur_pdf_toets
+
+    register_factuur_pdf_toets(subparsers)
     from app.documenten.btw_tarief_cli import dispatch as dispatch_btw_tarief  # 18-09 (lees-only)
     from app.documenten.btw_tarief_cli import register as register_btw_tarief
 
@@ -4210,6 +4233,12 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_btw_default
     if (uitkomst_bua := dispatch_bua(args)) is not None:  # 21-09: bua-kandidaten (lees-only) / bua-kenmerk-zetten
         return uitkomst_bua
+    if (uitkomst_pdf_toets := dispatch_factuur_pdf_toets(args)) is not None:  # 24-09 blok 4: lees-only PDF-toets
+        return uitkomst_pdf_toets
+    if (uitkomst_tweelingen := dispatch_tweelingen(args)) is not None:  # 24-09 blok 1: vastly-pdf-tweelingen-herstel
+        return uitkomst_tweelingen
+    if (uitkomst_odoo_sync := dispatch_odoo_sync(args)) is not None:  # 24-09 blok 2: odoo-stamgegevens-sync
+        return uitkomst_odoo_sync
     if (uitkomst_btw_tarief := dispatch_btw_tarief(args)) is not None:  # 18-09, lees-only
         return uitkomst_btw_tarief
     if (uitkomst_btw_plichtig := dispatch_btw_plichtig(args)) is not None:  # 22-09: btw-plichtig per administratie
