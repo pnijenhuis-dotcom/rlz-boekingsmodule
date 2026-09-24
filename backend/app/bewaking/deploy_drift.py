@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -55,7 +55,10 @@ class DeployStand:
     service_image: str
     service_revisie: str  # korte revisienaam
     service_revisie_op: datetime
-    jobs: dict[str, str]  # korte jobnaam → image
+    jobs: dict[str, str]  # korte jobnaam → image (alleen jobs uit hetzelfde beeld-repo als de service)
+    #: 24-09 avond: jobs in dezelfde locatie uit een ÁNDER beeld-repo (`jarvis/backend:…` naast `rlz/backend:…` — Jarvis
+    #: deployt sinds 24-09 in hetzelfde GCP-project) — buiten de drift-toets, wél zichtbaar in de samenvatting.
+    andere_repo: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -86,6 +89,15 @@ def _kort(resource_naam: str) -> str:
     return resource_naam.rsplit("/", 1)[-1]
 
 
+def beeld_repo(image: str) -> str:
+    """`…/rlz/backend:58feacb…` / `…/rlz/backend@sha256:…` → `…/rlz/backend` — het repo-pad zonder tag/digest."""
+    zonder_digest = image.split("@", 1)[0]
+    laatste = zonder_digest.rsplit("/", 1)[-1]
+    if ":" in laatste:
+        return zonder_digest.rsplit(":", 1)[0]
+    return zonder_digest
+
+
 def kort_beeld(image: str) -> str:
     """`…/backend:58feacb99ff2…` → `58feacb`; digest → `sha256:fe47a479…`."""
     if "@sha256:" in image:
@@ -110,15 +122,24 @@ def lees_stand(*, service_resource: str, token: str) -> DeployStand:
     revisie_op = datetime.fromisoformat(str(rev["createTime"]).replace("Z", "+00:00"))
     ouder = service_resource.rsplit("/services/", 1)[0]
     jobs: dict[str, str] = {}
+    andere_repo: dict[str, str] = {}
+    eigen_repo = beeld_repo(service_image)
     pagina: str | None = None
     while True:
         pad = f"{ouder}/jobs?pageSize=100" + (f"&pageToken={pagina}" if pagina else "")
         antwoord = _get(pad, token=token)
         for job in antwoord.get("jobs") or []:
             try:
-                jobs[_kort(job["name"])] = job["template"]["template"]["containers"][0]["image"]
+                image = job["template"]["template"]["containers"][0]["image"]
             except (KeyError, IndexError):
                 jobs[_kort(job.get("name", "?"))] = "(geen beeld in de template)"
+                continue
+            # 24-09 avond: een job uit een ander beeld-repo (Jarvis in hetzelfde project) hoort niet bij déze deploy —
+            # anders is élke RLZ-deploy rood en alarmeert de probe elk kwartier (deploy 5a9be94: "4 van 22 achter").
+            if beeld_repo(image) == eigen_repo:
+                jobs[_kort(job["name"])] = image
+            else:
+                andere_repo[_kort(job["name"])] = image
         pagina = antwoord.get("nextPageToken")
         if not pagina:
             break
@@ -128,6 +149,7 @@ def lees_stand(*, service_resource: str, token: str) -> DeployStand:
         service_revisie=_kort(revisie),
         service_revisie_op=revisie_op,
         jobs=jobs,
+        andere_repo=andere_repo,
     )
 
 
@@ -172,16 +194,22 @@ def beoordeel(stand: DeployStand, *, nu: datetime, gratie: timedelta = GRATIE) -
 
 def samenvatting(stand: DeployStand, oordeel: DriftOordeel) -> str:
     """Leesbare detailregel voor statusrij, alert en LET-OP (beelden verkort; geen GUID's)."""
+    buiten = (
+        f" (buiten beschouwing: {len(stand.andere_repo)} job(s) uit een ander beeld-repo: "
+        + ", ".join(sorted(stand.andere_repo)) + ")"
+        if stand.andere_repo
+        else ""
+    )
     if not oordeel.achter:
         beeld = kort_beeld(stand.service_image)
-        return f"service en {len(stand.jobs)} job(s) op {beeld} (revisie {stand.service_revisie})"
+        return f"service en {len(stand.jobs)} job(s) op {beeld} (revisie {stand.service_revisie}){buiten}"[:1000]
     delen = ", ".join(f"{naam} op {kort_beeld(image)}" for naam, image in oordeel.achter.items())
     kop = (
         f"{len(oordeel.achter)} van {len(stand.jobs)} job(s) achter op de service ({kort_beeld(stand.service_image)}, "
         f"revisie {stand.service_revisie} van {stand.service_revisie_op:%d-%m %H:%M} UTC)"
     )
     staart = " — deploy loopt nog (binnen de gratieperiode)" if oordeel.binnen_gratie else ""
-    return f"{kop}: {delen}{staart}"[:1000]
+    return f"{kop}: {delen}{staart}{buiten}"[:1000]
 
 
 def audit_record_id(stand: DeployStand, oordeel: DriftOordeel) -> uuid.UUID:

@@ -105,6 +105,27 @@ class TestLeesStand:
         assert stand.jobs == jobs
         assert any("pageToken=p2" in p for p in paden)
 
+    def test_jobs_uit_een_ander_beeld_repo_tellen_niet_mee(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """24-09 avond: Jarvis deployt jobs (`jarvis/backend:…`) in hetzelfde GCP-project — deploy 5a9be94 werd rood op
+        "4 van 22 job(s) achter op de service" en de kwartier-probe alarmeerde. Een job uit een ander beeld-repo hoort niet
+        bij déze deploy: buiten de drift-toets, wél zichtbaar in de samenvatting."""
+        jarvis = "europe-west4-docker.pkg.dev/p/jarvis/backend:edfc268ae318244cae29d385fec119ff698a60b2"
+        jobs = {"rlz-sync": BEELD_NIEUW, "jarvis-migratie": jarvis, "jarvis-signalen": jarvis, "rlz-bewaking": BEELD_NIEUW}
+        _stub_api(monkeypatch, _api(jobs))
+        stand = deploy_drift.lees_stand(service_resource=SERVICE, token="t")
+        assert stand.jobs == {"rlz-sync": BEELD_NIEUW, "rlz-bewaking": BEELD_NIEUW}
+        assert stand.andere_repo == {"jarvis-migratie": jarvis, "jarvis-signalen": jarvis}
+        oordeel = deploy_drift.beoordeel(stand, nu=REVISIE_OP + timedelta(hours=5))
+        assert not oordeel.is_drift and oordeel.achter == {}
+        assert deploy_drift.samenvatting(stand, oordeel) == (
+            "service en 2 job(s) op 58feacb (revisie rlz-backend-00505-hkk) "
+            "(buiten beschouwing: 2 job(s) uit een ander beeld-repo: jarvis-migratie, jarvis-signalen)"
+        )
+        # digest-vorm en tag-vorm van hetzelfde repo horen bij elkaar; een ander repo niet
+        assert deploy_drift.beeld_repo(BEELD_NIEUW) == "europe-west4-docker.pkg.dev/p/rlz/backend"
+        assert deploy_drift.beeld_repo("europe-west4-docker.pkg.dev/p/rlz/backend@sha256:abc") == "europe-west4-docker.pkg.dev/p/rlz/backend"
+        assert deploy_drift.beeld_repo(jarvis) != deploy_drift.beeld_repo(BEELD_NIEUW)
+
     def test_leesfout_wordt_leesfout_met_letterlijke_melding(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _stub_api(monkeypatch, {})
         with pytest.raises(deploy_drift.DeployDriftLeesfout, match="403"):
