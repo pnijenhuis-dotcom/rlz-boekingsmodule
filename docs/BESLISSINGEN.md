@@ -12275,7 +12275,7 @@ leesbaar", bevinding `activa_register_niet_leesbaar` in `meten`).
 
 ## WEBHOOK-HERZENDEN — 11 KOSTENEVENTS VASTLY (OPEN_ITEMS regel 13, 23-09) — herzend-actie + "200 genegeerd = zichtbaar mislukt"
 
-**Status: GEBOUWD 23-09 avond (geen migratie); UITGEVOERD 24-09 avond (poging 1 17:50 UTC door Peter via de job-route: 6 Rubicon herzonden → ontvanger antwoordde `200 genegeerd/onbekend_document` → rijen `mislukt`; oorzaak = ons lezen van Vastly's SAMENGESTELDE antwoord, fix + poging 2 in dezelfde avond — zie alinea 5 en rapport `docs/rapporten/2026-09-24-webhook-herzenden-uitgevoerd.md`); werkt in productie: zie alinea 5.** Canonieke vindplaats: `docs/regels/werkvoorraad-controlescherm.md` alinea "Webhook-herzenden", rapport
+**Status: GEBOUWD 23-09 avond (geen migratie); UITGEVOERD 24-09 avond (poging 1 17:50 UTC door Peter via de job-route: 6 Rubicon herzonden → ontvanger antwoordde `200 genegeerd/onbekend_document` → rijen `mislukt`; oorzaak = ons lezen van Vastly's SAMENGESTELDE antwoord, fix + poging 2 in dezelfde avond — zie alinea 5 en rapport `docs/rapporten/2026-09-24-webhook-herzenden-uitgevoerd.md`); werkt in productie: JA voor herzending + samengesteld antwoord (11/11 afgeleverd op `8fc1cd3`), NEE voor de kostenintake (Vastly-vlag uit, verwacht).** Canonieke vindplaats: `docs/regels/werkvoorraad-controlescherm.md` alinea "Webhook-herzenden", rapport
 `docs/rapporten/2026-09-23-webhook-herzenden-11-kostenevents-vastly.md`, Platform `OPEN_ITEMS.md` regel 12/13, koppelcontract §3.
 
 **Aanleiding (vastgoed 20/21-09, herstelrun 3/5 deel A):** Vastly's ontvanger matchte de administratie op `rlz_admin_id` tegen een kolom mét de
@@ -12341,10 +12341,17 @@ mislukte rij niet herzonden; CLI dry-run/uitvoeren/reden-verplicht/onbekende adm
    een meerduidige naam de enige vastgoed-administratie mét melding (anders kandidaten mét id/rlz_admin_id/vastgoed). Tests
    `tests/documenten/test_webhook_herzenden.py` (13: samengesteld antwoord voorstellen/kostenintake_uit/genest genegeerd, directe afleverronde per
    rij, mislukt herzonden + niet dubbel, CLI `--afleveren`, rlz_admin_id/meerduidige naam). (d) **Uitkomst poging 2 (na deploy, job-route) en
-   het Vastly-beslispunt:** rapport `docs/rapporten/2026-09-24-webhook-herzenden-uitgevoerd.md` + Platform `OPEN_ITEMS.md` regel 13. Zolang
+   het Vastly-beslispunt:** poging 2 (CC, 20:52–20:54 UTC, elf parallelle executies `--uitvoeren --afleveren` op job-image `8fc1cd3`; gcloud
+   weigert een herhaald `--referentie` in `--args` → één executie per referentie, parkeerpost P-26): **11/11 afgeleverd**, Vastly-respons letterlijk
+   `{"resultaat":"genegeerd","reden":"onbekend_document","kostenvoorstellen":{"resultaat":"kostenintake_uit"}}` (audit `ontvanger_antwoord`),
+   0 × 409, 0 × genegeerd, 0 × verwerkt — rapport `docs/rapporten/2026-09-24-webhook-herzenden-uitgevoerd.md` + Platform `OPEN_ITEMS.md` regel 13. Zolang
    `rlz_kostenintake` aan Vastly-kant uit staat komt er géén kostenvoorstel — dat is een klant-/tierinstelling van Vastly (niet iets dat RLZ
    omzet); ná het aanzetten is herzenden één commando (`webhook-herzenden … --uitvoeren --afleveren`). Vastly-kant voorstel (OPEN_ITEMS): het
    topniveau-`resultaat` voor een inkoop-event = de kostenuitkomst, zodat een afzender die alleen het topniveau leest niet misleid wordt.
+   **Parkeerpost P-26 (24-09, deze run):** `webhook-herzenden` neemt referenties alleen als herhaald `--referentie`; gcloud's `--args` weigert een
+   herhaalde waarde ("cannot be specified multiple times"), dus via de job-route is het één executie per referentie (11 executies voor 11 rijen).
+   Bewust niet in deze run gebouwd (extra deploy + volledige suite van 56 min voor een gemak). Trigger: de volgende herzending van > 5 rijen via de
+   job-route. Bouw: `--referentie` ook komma-gescheiden accepteren (split op ","), gecombineerd met gcloud's `^|^`-scheiding; zwaarte klein.
 
 ## UNIVERSAL — OVERHEAD VIA DE OMZETSLEUTEL, GEEN OVH-PROJECT (Peter 21-09) — capture; sluit beslispunt "OVH-project Universal" (rapporten 18-09/19-09); geen code, geen migratie
 

@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-24 avond (poging 1 Peter 17:41–17:52 UTC, poging 2 CC via de job-route ná deploy 8fc1cd3), rapport: docs/rapporten/2026-09-24-webhook-herzenden-uitgevoerd.md
+
 Domeinen: werkvoorraad-controlescherm, doorbelasting-intercompany, werkloop-productie
 
 niet vóór: 2026-09-24 00:30

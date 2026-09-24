@@ -1,3 +1,7 @@
+stand 2026-09-24 avond (CC): de HERZEND-helft is UITGEVOERD (11/11 afgeleverd op `8fc1cd3`, respons `kostenintake_uit` — rapport
+docs/rapporten/2026-09-24-webhook-herzenden-uitgevoerd.md); open blijft alleen de RETRY-CADANS op niet-2xx (409 `niet_koppelbaar`) + het
+§3-versiebumpvoorstel — aparte bouwronde.
+
 Domeinen: werkvoorraad-controlescherm, reconciliatie, werkloop-productie
 
 # OPDRACHT (RLZ-boekingsmodule, 24-09-2026): 11 factuur_geboekt-events opnieuw afleveren aan Vastly + retry op niet-2xx
