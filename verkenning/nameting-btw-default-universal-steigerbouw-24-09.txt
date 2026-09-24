@@ -1,0 +1,16 @@
+Btw-default per grootboekrekening — Universal Steigerbouw B.V. (3ee6edf0-5cb8-4f98-bba1-16fb97ae6873)
+boekingsgeheugen: 141 observaties totaal (laatste 2026-09-21), 141 boekingsregels (inkoop + bank) mét tarief in het venster van 744 dagen; regel: ≥ 5 regels én één tarief ≥ 90 %; laatste afleiding: 2026-09-22T05:38+00:00
+code    rekening                                RLZ-default                 historie-default                            verdeling
+4003    Management fee                          geen                        geen (1 regels, hoogste 100 %)              NL, Hoog Tarief 1×
+4229    Diverse kosten machines / werktuigen    geen                        geen (2 regels, hoogste 100 %)              NL, Hoog Tarief 2×
+4410    Contributies/abonnementen               geen                        geen (1 regels, hoogste 100 %)              NL, Hoog Tarief 1×
+4499    Diverse kantoorkosten                   geen                        geen (3 regels, hoogste 67 %)               NL, Hoog Tarief 2×, NL, BTW verlegd (hoog) 1×
+4602    Accountantskosten                       geen                        geen (1 regels, hoogste 100 %)              NL, Hoog Tarief 1×
+4606    Diverse advieskosten                    geen                        geen (1 regels, hoogste 100 %)              NL, Hoog Tarief 1×
+7005    Inhuur steiger                          geen                        NL, Hoog Tarief (54×, 100 %)                NL, Hoog Tarief 54×
+7006    Inhuur montage / demontage              geen                        geen (66 regels, hoogste 86 %)              NL, BTW verlegd (hoog) 57×, NL, Hoog Tarief 9×
+7008    Inhuur transport                        geen                        NL, Hoog Tarief (9×, 100 %)                 NL, Hoog Tarief 9×
+7049    Diverse inkopen                         geen                        geen (3 regels, hoogste 100 %)              NL, Hoog Tarief 3×
+298 rekeningen (10 getoond): 0 mét RLZ-default, 2 mét historie-default, 8 mét regels zonder default, 288 zonder regels.
+Container called exit(0).
+
