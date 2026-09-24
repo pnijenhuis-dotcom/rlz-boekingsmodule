@@ -5,6 +5,11 @@ Ontwerpregels:
 - COMPANY-POORT: de client is gebonden aan één `company_id`; élke call draagt `context.allowed_company_ids
   = [company_id]` (multi-company-db met tien bedrijven — STAP-0 §1.3). De adapter zet bovendien
   `company_id` in élke create-vals en leest 'm ná de write terug (post-write-verificatie).
+- TAAL-POORT (Peter 24-09, casus Bonte Hoeve "GB's allemaal in het Engels in de module, in Odoo zelf NL"): élke
+  lees- én schrijfcall draagt `context.lang = ODOO_TAAL` ("nl_NL"). Odoo levert vertaalbare velden (rekeningnaam,
+  dagboeknaam, productnaam, btw-naam) anders in de standaardtaal van de API-gebruiker (en_US) — de caches
+  (`grootboekrekening`, `taxrate_cache`, …) droegen daardoor Engelse namen. Een door de aanroeper meegegeven
+  `context.lang` wint (bewuste uitzondering); `versie()` is auth-loos zonder context en blijft zo.
 - `read_only=True` weigert élke schrijfmethode vóór de call (blok D: company 3 = uitsluitend lezen).
 - Retry/backoff op transportfouten, 429 en 5xx (tenacity, zelfde patroon als RlzClient); throttling
   via een minimale tussenpoos per call (Odoo Online publiceert geen limiet, wel worker-time-outs).
@@ -25,6 +30,10 @@ import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
+
+#: Taal van élke Odoo-call (TAAL-POORT, 24-09): vertaalbare velden komen in het Nederlands terug — dezelfde namen als
+#: de Odoo-UI van de klant toont. Nooit per aanroeper raden; alleen een expliciete `context.lang` wint.
+ODOO_TAAL = "nl_NL"
 
 SCHRIJFMETHODEN = frozenset(
     {
@@ -148,11 +157,12 @@ class OdooClient:
         raise OdooFout(response.status_code, naam, melding, model=model, methode=methode)
 
     def call(self, model: str, methode: str, **kwargs: Any) -> Any:
-        """Generieke aanroep mét de company-context. Schrijfmethoden op een read-only client = fout
-        vóór de call (nooit een halve write)."""
+        """Generieke aanroep mét de company-context én de taal-context (`lang` = ODOO_TAAL, tenzij de aanroeper
+        expliciet een andere taal meegeeft). Schrijfmethoden op een read-only client = fout vóór de call (nooit
+        een halve write)."""
         if methode in SCHRIJFMETHODEN and self.read_only:
             raise OdooAlleenLezen(f"{model}.{methode} geweigerd: deze Odoo-verbinding is alleen-lezen")
-        context = {"allowed_company_ids": [self.company_id], **(kwargs.pop("context", None) or {})}
+        context = {"allowed_company_ids": [self.company_id], "lang": ODOO_TAAL, **(kwargs.pop("context", None) or {})}
         return self._post(model, methode, {**kwargs, "context": context})
 
     # --- gemak ---------------------------------------------------------------------------

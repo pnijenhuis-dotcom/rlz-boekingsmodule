@@ -40,6 +40,64 @@ def test_call_draagt_company_context_en_benoemde_argumenten() -> None:
     assert gezien[1]["body"]["context"] == {"allowed_company_ids": [3], "lang": "nl_NL"}
 
 
+class TestTaalPoort:
+    """TAAL-POORT (Peter 24-09, Bonte Hoeve: Engelse grootboeknamen in de module terwijl Odoo zelf NL toont):
+    élke lees- én schrijfcall draagt `context.lang = nl_NL`; een expliciete andere taal wint; `versie()` is
+    auth-loos zonder context en blijft zonder."""
+
+    @staticmethod
+    def _vang() -> tuple[list[dict], object]:
+        gezien: list[dict] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content) if request.content else {}
+            gezien.append({"pad": request.url.path, "body": body})
+            if request.url.path.endswith("/version_info"):
+                return httpx.Response(200, json={"result": {"server_version": "19.0"}})
+            if request.url.path.endswith("/create"):
+                return httpx.Response(200, json=[7])
+            if request.url.path.endswith("/write"):
+                return httpx.Response(200, json=True)
+            if request.url.path.endswith("/search_count"):
+                return httpx.Response(200, json=1)
+            if request.url.path.endswith("/fields_get"):
+                return httpx.Response(200, json={"name": {"type": "char"}})
+            return httpx.Response(200, json=[{"id": 1, "name": "Debiteuren"}])
+
+        return gezien, handler
+
+    def test_elke_lees_en_schrijfcall_draagt_lang_nl_nl_en_company(self) -> None:
+        from app.odoo.client import ODOO_TAAL
+
+        assert ODOO_TAAL == "nl_NL"
+        gezien, handler = self._vang()
+        c = _client(handler)
+        c.search_read("account.account", [], ["name"])
+        c.read("account.account", [1], ["name"])
+        c.search_count("account.account", [])
+        c.create("res.partner", {"name": "x"})
+        c.write("res.partner", [7], {"name": "y"})
+        c.fields_get("account.account")
+        c.call("account.journal", "search_read", domain=[], fields=["name"])
+        assert len(gezien) == 7
+        for g in gezien:
+            assert g["body"]["context"]["lang"] == "nl_NL", g["pad"]
+            assert g["body"]["context"]["allowed_company_ids"] == [3], g["pad"]
+
+    def test_expliciete_andere_taal_wint_maar_company_poort_blijft(self) -> None:
+        gezien, handler = self._vang()
+        c = _client(handler)
+        c.call("account.account", "search_read", domain=[], fields=["name"], context={"lang": "en_US"})
+        assert gezien[0]["body"]["context"] == {"allowed_company_ids": [3], "lang": "en_US"}
+
+    def test_versie_is_auth_loos_zonder_context(self) -> None:
+        gezien, handler = self._vang()
+        c = _client(handler)
+        assert c.versie() == {"server_version": "19.0"}
+        assert gezien[0]["pad"] == "/web/webclient/version_info"
+        assert "context" not in gezien[0]["body"]
+
+
 def test_read_only_client_weigert_schrijfmethoden_voor_de_call() -> None:
     aangeroepen = []
 
