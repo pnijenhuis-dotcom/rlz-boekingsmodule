@@ -26,9 +26,20 @@ Failsafes ("niets verdwijnt stil", maar ook: nooit per ongeluk pushen):
   payload geeft hetzelfde antwoord; herzenden is een mens-besluit via `herzend_afgeleverd`/`herstel_dead_letters`).
   Aanleiding: 11 kostenevents Rubicon/ARVUM (24-08…18-09) stonden bij ons "afgeleverd" terwijl Vastly ze als
   `onbekende_administratie` negeerde — Platform OPEN_ITEMS regel 13.
-- `herzend_afgeleverd()` (CLI `webhook-herzenden`): zet AFGELEVERDE rijen op referentie(s) binnen één administratie
-  terug naar openstaand (zelfde payload, dus zelfde rlz_document_id/volgnummer; de afleveraar tekent opnieuw mét verse
-  timestamp + nonce), audit `webhook_herzonden` per rij mét reden; dry-run toont de rijen zonder te schrijven.
+- `herzend_afgeleverd()` (CLI `webhook-herzenden`): zet AFGELEVERDE of MISLUKTE rijen op referentie(s) binnen één
+  administratie terug naar openstaand (zelfde payload, dus zelfde rlz_document_id/volgnummer; de afleveraar tekent
+  opnieuw mét verse timestamp + nonce), audit `webhook_herzonden` per rij mét reden; dry-run toont de rijen zonder te
+  schrijven. `lever_rijen_direct_af()` (CLI `--afleveren`) geeft de teruggezette rijen direct één afleverronde en
+  meldt per rij het antwoord van de ontvanger — een herzending bewijst zichzelf pas met een afleverronde erna (24-09).
+- Samengesteld antwoord (24-09, herzending Rubicon): Vastly's ontvanger draait per `factuur_geboekt` twee
+  verwerkers — de verkoopfactuur-badge (topniveau `resultaat`) en de kostenregel-verwerker (genest onder
+  `kostenvoorstellen`). Voor een INKOOPfactuur zegt het topniveau per definitie `genegeerd`/`onbekend_document` (de
+  badge matcht nooit) terwijl de echte uitkomst genest staat (`voorstellen`, `al_verwerkt`, `kostenintake_uit`, …).
+  De afleveraar leest daarom het geneste resultaat als het topniveau `genegeerd` zegt; alleen als óók dat ontbreekt
+  of `genegeerd` is, is het event genegeerd.
+  `kostenintake_uit` (Vastly-tier-vlag `entiteit_config.rlz_kostenintake` staat uit) is een aflevering zónder
+  verwerking: rij `afgeleverd`, maar zichtbaar in het rapport (LET-OP) en het audit — de klant zet de kostenintake
+  aan Vastly-kant aan.
 
 Uitvoervormen (zelfde patroon als de extractie-worker/sync): in dev een in-process
 achtergrondlus (InProcessWebhookAfleveraar, gestart in de app-lifespan); productie draait
@@ -102,12 +113,21 @@ class AfleverRapport:
     geweigerd_geen_vastgoed: int = 0
     #: 200 mét resultaat "genegeerd" van de ontvanger — zichtbaar mislukt, niet herhaald (23-09).
     genegeerd: int = 0
+    #: Afgeleverd, maar de ontvanger heeft bewust niets verwerkt (bv. `kostenintake_uit`) — zichtbaar, geen fout.
+    zonder_verwerking: int = 0
     fouten: list[str] = field(default_factory=list)
+    let_op: list[str] = field(default_factory=list)
+    #: Uitkomst per rij (outbox_id → korte tekst) voor de directe afleverronde van `webhook-herzenden --afleveren`.
+    per_rij: dict[uuid.UUID, str] = field(default_factory=dict)
 
 
 #: Vastly's antwoordveld (rlz_webhook.py): "verwerkt" | "al_verwerkt" | "voorstellen" | "verouderde_stand" | … |
 #: "genegeerd" (+ "reden"). Alleen "genegeerd" is een fout; alles anders is een aflevering.
 RESULTAAT_GENEGEERD = "genegeerd"
+#: Aflevering zónder verwerking aan de ontvangerkant (Vastly `_verwerk_factuur_geboekt_kostenregels`: tier-vlag
+#: `entiteit_config.rlz_kostenintake` uit). Geen fout — wel zichtbaar (rapport LET-OP + audit), zodat "afgeleverd" nooit
+#: stil "verwerkt" suggereert. Herzenden ná het aanzetten van de vlag is één `webhook-herzenden`-commando.
+RESULTATEN_ZONDER_VERWERKING = frozenset({"kostenintake_uit"})
 
 
 @dataclass(frozen=True)
@@ -116,23 +136,40 @@ class OntvangerAntwoord:
     resultaat: str | None = None
     reden: str | None = None
     body: str | None = None
+    #: Topniveau-resultaat zoals de ontvanger het letterlijk gaf (diagnostiek; `resultaat` is de effectieve uitkomst).
+    topniveau_resultaat: str | None = None
 
 
-def _lees_antwoord(response: httpx.Response) -> tuple[str | None, str | None, str | None]:
-    """(resultaat, reden, body-tekst) uit een 2xx-antwoord; geen/ongeldige JSON = (None, None, tekst)."""
+def _lees_antwoord(response: httpx.Response) -> tuple[str | None, str | None, str | None, str | None]:
+    """(effectief resultaat, reden, body-tekst, topniveau-resultaat) uit een 2xx-antwoord; geen/ongeldige JSON =
+    (None, None, tekst, None).
+
+    Samengesteld antwoord (Vastly, 24-09): zegt het topniveau `genegeerd` maar draagt een geneste verwerker
+    (`{"kostenvoorstellen": {"resultaat": …}}`) een ander resultaat, dan is DAT de uitkomst van het event — de
+    verkoopfactuur-badge op het topniveau matcht bij een inkoopfactuur per definitie niet. Een genest `genegeerd`
+    blijft genegeerd (mét de geneste reden als die er is)."""
     tekst = response.text[:500] if response.text else None
     try:
         data = response.json()
     except ValueError:
-        return None, None, tekst
+        return None, None, tekst, None
     if not isinstance(data, dict):
-        return None, None, tekst
-    resultaat = data.get("resultaat")
+        return None, None, tekst, None
+    top = data.get("resultaat")
+    top_resultaat = str(top) if top is not None else None
     reden = data.get("reden")
+    resultaat = top_resultaat
+    if top_resultaat == RESULTAAT_GENEGEERD:
+        for waarde in data.values():
+            if isinstance(waarde, dict) and waarde.get("resultaat") is not None:
+                resultaat = str(waarde["resultaat"])
+                reden = waarde.get("reden") if resultaat == RESULTAAT_GENEGEERD else None
+                break
     return (
-        str(resultaat) if resultaat is not None else None,
+        resultaat,
         str(reden) if reden is not None else None,
         tekst,
+        top_resultaat,
     )
 
 
@@ -157,8 +194,8 @@ def _verstuur(*, client: httpx.Client, config: AfleverConfig, envelope: dict) ->
     except httpx.HTTPError as exc:
         return OntvangerAntwoord(fout=f"verbindingsfout: {exc}")
     if response.is_success:
-        resultaat, reden, body = _lees_antwoord(response)
-        return OntvangerAntwoord(fout=None, resultaat=resultaat, reden=reden, body=body)
+        resultaat, reden, body, topniveau = _lees_antwoord(response)
+        return OntvangerAntwoord(fout=None, resultaat=resultaat, reden=reden, body=body, topniveau_resultaat=topniveau)
     return OntvangerAntwoord(fout=f"HTTP {response.status_code}: {response.text[:200]}", body=response.text[:500])
 
 
@@ -207,6 +244,7 @@ def _lever_rij_af(
                 administratie_id=administratie_id,
             )
             rapport.geweigerd_geen_vastgoed += 1
+            rapport.per_rij[rij.id] = "geweigerd — administratie is geen vastgoed-administratie"
             logger.error(
                 "Webhook-rij %s geweigerd: administratie %s is geen vastgoed-administratie", rij.id, administratie_id
             )
@@ -225,7 +263,12 @@ def _lever_rij_af(
             "nonce": envelope["nonce"],
             "referentie": (rij.payload.get("data") or {}).get("referentie"),
             "resultaat": antwoord.resultaat,
+            # 24-09: het letterlijke antwoord (≤ 500 tekens) reist mee zodat een samengesteld antwoord (topniveau
+            # "genegeerd" + genest resultaat) achteraf te lezen is zonder de ontvanger te raadplegen.
+            "ontvanger_antwoord": antwoord.body,
+            "topniveau_resultaat": antwoord.topniveau_resultaat,
         }
+        referentie_tekst = poging_detail["referentie"] or str(rij.id)
 
         if fout is None and antwoord.resultaat == RESULTAAT_GENEGEERD:
             # 23-09 (OPEN_ITEMS regel 13): de ontvanger antwoordt 200 maar heeft het event bewust NIET verwerkt — dat
@@ -240,6 +283,7 @@ def _lever_rij_af(
             poging_detail["ontvanger_reden"] = antwoord.reden
             rapport.genegeerd += 1
             rapport.fouten.append(f"{rij.id}: genegeerd door de ontvanger — {antwoord.reden or '?'}")
+            rapport.per_rij[rij.id] = f"genegeerd door de ontvanger — {antwoord.reden or '?'}"
             logger.error("Webhook-rij %s door de ontvanger genegeerd: %s", rij.id, antwoord.reden)
         elif fout is None:
             rij.status = WebhookStatus.AFGELEVERD.value
@@ -248,6 +292,17 @@ def _lever_rij_af(
             rij.volgende_poging_op = None
             actie = "webhook_afgeleverd"
             rapport.afgeleverd += 1
+            rapport.per_rij[rij.id] = f"afgeleverd — resultaat {antwoord.resultaat or 'onbekend (geen JSON-body)'}"
+            if antwoord.resultaat in RESULTATEN_ZONDER_VERWERKING:
+                # Afgeleverd, maar de ontvanger heeft bewust niets verwerkt: zichtbaar, geen fout, niet herhalen
+                # (zelfde payload = zelfde antwoord tot de klant de vlag aan Vastly-kant omzet).
+                rapport.zonder_verwerking += 1
+                rapport.let_op.append(
+                    f"{referentie_tekst}: afgeleverd maar niet verwerkt — ontvanger antwoordt {antwoord.resultaat}"
+                )
+                logger.warning(
+                    "Webhook-rij %s afgeleverd zonder verwerking aan de ontvangerkant: %s", rij.id, antwoord.resultaat
+                )
         elif rij.pogingen >= settings.webhook_max_pogingen:
             rij.status = WebhookStatus.MISLUKT.value
             rij.laatste_fout = fout
@@ -256,6 +311,7 @@ def _lever_rij_af(
             poging_detail["fout"] = fout
             rapport.dead_letter += 1
             rapport.fouten.append(f"{rij.id}: dead-letter na {rij.pogingen} pogingen — {fout}")
+            rapport.per_rij[rij.id] = f"dead-letter na {rij.pogingen} pogingen — {fout}"
             logger.error("Webhook-rij %s definitief mislukt na %s pogingen: %s", rij.id, rij.pogingen, fout)
         else:
             rij.laatste_fout = fout
@@ -265,6 +321,7 @@ def _lever_rij_af(
             poging_detail["volgende_poging_op"] = rij.volgende_poging_op.isoformat()
             rapport.poging_mislukt += 1
             rapport.fouten.append(f"{rij.id}: poging {rij.pogingen} mislukt — {fout}")
+            rapport.per_rij[rij.id] = f"poging {rij.pogingen} mislukt — {fout}"
             logger.warning("Webhook-rij %s poging %s mislukt: %s", rij.id, rij.pogingen, fout)
 
         record_audit_event(
@@ -290,15 +347,8 @@ def verwerk_openstaande_webhooks(
     nu = nu or datetime.now(UTC)
     rapport = AfleverRapport()
 
-    if not _aflevering_ingeschakeld():
-        rapport.overgeslagen_reden = "aflevering staat uit (platform.webhook_instelling, default UIT)"
-        return rapport
-    config = haal_aflever_config_op()
+    config = _config_of_overgeslagen(rapport)
     if config is None:
-        rapport.overgeslagen_reden = (
-            "onvoldoende geconfigureerd (webhook_doel_url en/of WEBHOOK_HMAC_SECRET ontbreekt) — "
-            "rijen blijven openstaand"
-        )
         return rapport
 
     with scoped_session(None) as session:
@@ -336,6 +386,56 @@ def verwerk_openstaande_webhooks(
                     rapport=rapport,
                 )
 
+    return rapport
+
+
+def _config_of_overgeslagen(rapport: AfleverRapport) -> AfleverConfig | None:
+    """Beide failsafes in één plek (toggle + config); None = overgeslagen mét reden in het rapport."""
+    if not _aflevering_ingeschakeld():
+        rapport.overgeslagen_reden = "aflevering staat uit (platform.webhook_instelling, default UIT)"
+        return None
+    config = haal_aflever_config_op()
+    if config is None:
+        rapport.overgeslagen_reden = (
+            "onvoldoende geconfigureerd (webhook_doel_url en/of WEBHOOK_HMAC_SECRET ontbreekt) — "
+            "rijen blijven openstaand"
+        )
+    return config
+
+
+def lever_rijen_direct_af(
+    *,
+    rij_ids: list[uuid.UUID],
+    administratie_id: uuid.UUID,
+    nu: datetime | None = None,
+    transport: httpx.BaseTransport | None = None,
+) -> AfleverRapport:
+    """Eén afleverronde voor precies deze outbox-rijen van één administratie (CLI `webhook-herzenden --afleveren`,
+    24-09): dezelfde `_lever_rij_af` als de gewone run (claim FOR UPDATE SKIP LOCKED, zelfde failsafes, zelfde audit),
+    maar direct ná het terugzetten en mét de uitkomst per rij in `rapport.per_rij` — zodat de herzending zichzelf
+    bewijst in dezelfde job-executie in plaats van pas in een scheduler-log vijf minuten later. Alleen rijen die op dit
+    moment `openstaand` zijn worden geraakt (de claim controleert de status); een rij die de scheduler intussen al
+    pakte, blijft ongemoeid en krijgt "niet geraakt (al geclaimd of niet openstaand)"."""
+    nu = nu or datetime.now(UTC)
+    rapport = AfleverRapport()
+    config = _config_of_overgeslagen(rapport)
+    if config is None:
+        return rapport
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        is_vastgoed = bool(administratie is not None and administratie.is_vastgoed)
+    with httpx.Client(transport=transport, timeout=settings.webhook_timeout_seconds) as client:
+        for rij_id in rij_ids:
+            _lever_rij_af(
+                rij_id=rij_id,
+                administratie_id=administratie_id,
+                is_vastgoed=is_vastgoed,
+                config=config,
+                client=client,
+                nu=nu,
+                rapport=rapport,
+            )
+            rapport.per_rij.setdefault(rij_id, "niet geraakt (al geclaimd of niet openstaand)")
     return rapport
 
 
@@ -408,7 +508,7 @@ class HerzendRij:
     volgnummer: int | None
     afgeleverd_op: datetime | None
     pogingen: int | None
-    uitkomst: str  # "herzonden" | "zou herzenden (dry-run)" | "niet gevonden" | "niet afgeleverd (status …)"
+    uitkomst: str  # "herzonden" | "zou herzenden (dry-run)" | "niet gevonden" | "al openstaand — niet herzonden"
 
 
 def herzend_afgeleverd(
@@ -423,8 +523,10 @@ def herzend_afgeleverd(
     """Herzend-actie (Platform OPEN_ITEMS regel 13, vastgoed-verzoek 21-09): AFGELEVERDE outbox-rijen van één
     administratie, gekozen op `payload.data.referentie`, terug naar `openstaand` zodat de gewone afleveraar ze opnieuw
     verstuurt — zelfde payload (dus zelfde `rlz_document_id`/`volgnummer`), verse timestamp/nonce/HMAC per poging.
-    Nooit een payload wijzigen. Alleen rijen mét status `afgeleverd` (een `mislukt` herstel je via `webhook-redrive`);
-    een referentie zonder rij of zonder afgeleverde rij komt zichtbaar terug als "niet gevonden"/"niet afgeleverd".
+    Nooit een payload wijzigen. Rijen mét status `afgeleverd` én `mislukt` (24-09: een door de ontvanger genegeerde rij
+    staat `mislukt` — ná een fix aan de ontvangerkant is herzenden op referentie hét herstel, `webhook-redrive` blijft
+    voor de kale dead-letter zonder referentie); een rij die al `openstaand` is wordt niet dubbel teruggezet; een
+    referentie zonder rij komt zichtbaar terug als "niet gevonden".
     Audit `webhook_herzonden` per rij mét de aanroepende Beheerder als actor en de reden. `dry_run=True` schrijft niets.
     Herbruikbaar: geen eenmalige SQL — élke volgende herzending (nieuwe Vastly-fix, ander event) loopt hierlangs."""
     reden = (reden or "").strip()
@@ -472,8 +574,8 @@ def herzend_afgeleverd(
                     afgeleverd_op=rij.afgeleverd_op,
                     pogingen=rij.pogingen,
                 )
-                if rij.status != WebhookStatus.AFGELEVERD.value:
-                    uit.append(HerzendRij(**basis, uitkomst=f"niet afgeleverd (status {rij.status}) — niet herzonden"))
+                if rij.status == WebhookStatus.OPENSTAAND.value:
+                    uit.append(HerzendRij(**basis, uitkomst="al openstaand — niet herzonden"))
                     continue
                 if dry_run:
                     uit.append(HerzendRij(**basis, uitkomst="zou herzenden (dry-run)"))
@@ -483,6 +585,7 @@ def herzend_afgeleverd(
                     "pogingen": rij.pogingen,
                     "afgeleverd_op": rij.afgeleverd_op.isoformat() if rij.afgeleverd_op else None,
                     "laatste_poging_op": rij.laatste_poging_op.isoformat() if rij.laatste_poging_op else None,
+                    "laatste_fout": rij.laatste_fout,
                 }
                 rij.status = WebhookStatus.OPENSTAAND.value
                 rij.pogingen = 0

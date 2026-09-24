@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-24 — Koppeling met Vastly: opnieuw aanleveren toont direct het antwoord, en een tweeledig antwoord wordt goed gelezen
+
+<!-- webhook-herzenden-afleveren-24-09 -->
+
+- **Bij opnieuw aanleveren aan Vastly ziet de beheerder meteen per factuur wat Vastly antwoordde** (verwerkt, al bekend, kostenintake uit, of genegeerd met reden) — in dezelfde beheeractie, zonder te wachten op de volgende verzendronde.
+- **Een antwoord van Vastly dat uit twee delen bestaat wordt nu juist gelezen.** Vastly meldt bij een kostenfactuur op het hoogste niveau altijd "genegeerd" (dat deel gaat over verkoopfacturen) en zet de echte uitkomst eronder. De module keek alleen naar het hoogste niveau en zette zes facturen van Rubicon Investments ten onrechte op "mislukt"; dat is hersteld. Staat de kostenintake bij Vastly uit, dan telt de factuur als afgeleverd maar krijgt u een duidelijke melding dat er niets mee gedaan is.
+- **Een eerder genegeerde factuur kan nu ook opnieuw worden aangeleverd**, zonder omweg via het herstel van vastgelopen berichten.
+
 ## 2026-09-24 — Zeven verbeteringen in één ronde: Vastly-facturen weer één document, Odoo-namen in het Nederlands, Odoo-administratie terugzetten, doorbelasting-melding verklaard, BUA-jaarrapport, afschrijvingsrekening, vraag-link en samenvoegen-vinkje
 
 <!-- bundelrun-zeven-punten-24-09 -->

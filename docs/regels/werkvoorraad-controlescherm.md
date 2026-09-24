@@ -464,3 +464,17 @@
   537500100925) stonden "afgeleverd" terwijl Vastly ze als `onbekende_administratie` negeerde (fix Vastly 20-09). Uitvoering ná deploy via
   `gcloud run jobs execute rlz-webhook-afleveraar --args=… webhook-herzenden …` (vervolg-opdracht `2026-09-24-webhook-herzenden-11-events-
   uitvoeren-na-deploy.md`); rapport `docs/rapporten/2026-09-23-webhook-herzenden-11-kostenevents-vastly.md`. Werkt in productie: niet gemeten.
+<!-- toegevoegd 24-09-2026 avond, opdracht "herzending 11 events afmaken" (OPEN_ITEMS regel 13) -->
+- **Webhook-outbox: samengesteld antwoord lezen, herzenden mét bewijs, `mislukt` herzendbaar (24-09; geen migratie; BESLISSINGEN "WEBHOOK-HERZENDEN
+  — 11 KOSTENEVENTS VASTLY" alinea 5):** Vastly's `factuur_geboekt`-antwoord heeft twee lagen — topniveau = verkoopfactuur-badge (voor een
+  inkoopfactuur per definitie `genegeerd`/`onbekend_document`), genest `kostenvoorstellen.resultaat` = de kostenuitkomst. `_lees_antwoord` neemt bij
+  topniveau `genegeerd` het geneste resultaat (`voorstellen`/`al_verwerkt`/`kostenintake_uit`/…); alleen een (genest) `genegeerd` is genegeerd.
+  `kostenintake_uit` (Vastly-tier-vlag `entiteit_config.rlz_kostenintake` uit) = afgeleverd zónder verwerking: rij `afgeleverd`, LET-OP in het
+  rapport (`AfleverRapport.zonder_verwerking`/`let_op`), audit `webhook_afgeleverd` mét `resultaat`, `topniveau_resultaat` en `ontvanger_antwoord`
+  (letterlijke body ≤ 500 tekens, bij élke poging). `herzend_afgeleverd` neemt `afgeleverd` én `mislukt` mee (`openstaand` = "al openstaand — niet
+  herzonden"); `lever_rijen_direct_af` / CLI `webhook-herzenden --uitvoeren --afleveren` geeft de teruggezette rijen direct één afleverronde in
+  dezelfde executie en print per referentie de uitkomst (`per_rij`) — een herzendactie bewijst zichzelf pas met een afleverronde erna.
+  `_zoek_administratie_id`: UUID = platform-id óf `rlz_admin_id` (altijd platform-id terug, onbekend = fout); meerduidige naam → de enige
+  vastgoed-administratie mét melding, anders kandidaten mét id. Aanleiding: poging 1 (24-09 17:50 UTC) zette 6 Rubicon-rijen `mislukt` op een
+  topniveau-`genegeerd` terwijl de geneste uitkomst `kostenintake_uit` was; ARVUM "niet gevonden" op de rlz_admin_id én een tweede "ARVUM B.V."
+  (Odoo-parallel-modus, bewust). Rapport `docs/rapporten/2026-09-24-webhook-herzenden-uitgevoerd.md`.

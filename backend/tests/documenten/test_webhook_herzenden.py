@@ -17,9 +17,10 @@ import pytest
 from sqlalchemy import Engine, text
 
 from app import cli as app_cli
+from app.documenten import webhook_afleveraar
 from app.documenten.models import WebhookStatus
 from app.documenten.storage import LokaleBestandsopslag
-from app.documenten.webhook_afleveraar import herzend_afgeleverd, verwerk_openstaande_webhooks
+from app.documenten.webhook_afleveraar import herzend_afgeleverd, lever_rijen_direct_af, verwerk_openstaande_webhooks
 from tests.auth.conftest import actieve_gebruiker, administratie_id, beheerder_id  # noqa: F401
 from tests.documenten.conftest import _opslag_naar_tmp, gescoopte_gebruiker, opslag  # noqa: F401
 from tests.documenten.test_webhook_afleveraar import (  # noqa: F401
@@ -197,7 +198,7 @@ class TestHerzenden:
         # mislukte rij wordt bewust NIET meegenomen (dat is webhook-redrive).
         del eerste
 
-    def test_mislukte_rij_wordt_niet_herzonden_maar_zichtbaar_gemeld(
+    def test_genegeerde_mislukte_rij_wordt_herzonden_en_een_openstaande_niet_dubbel(
         self,
         vastgoed_administratie: uuid.UUID,
         gescoopte_gebruiker: uuid.UUID,
@@ -206,20 +207,161 @@ class TestHerzenden:
         aflevering_aan: None,
         admin_engine: Engine,
     ) -> None:
+        """24-09 (herzending Rubicon): de ontvanger negeerde de eerste herzending → rij `mislukt`. Ná een fix aan de
+        ontvangerkant is herzenden op referentie hét herstel — de rij mag niet alleen via webhook-redrive terug."""
         rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
         verwerk_openstaande_webhooks(
             transport=VastlyOntvanger([{"resultaat": "genegeerd", "reden": "onbekend_document"}]).transport
         )
+        assert _rij(admin_engine, rij_id)["status"] == WebhookStatus.MISLUKT.value
         ref = _referentie(admin_engine, rij_id)
         uit = herzend_afgeleverd(
             actor_id=beheerder_id,
             administratie_id=vastgoed_administratie,
             referenties=[ref],
-            reden="herzend-test",
+            reden="herzend-test ná fix ontvanger",
             dry_run=False,
         )
-        assert uit[0].uitkomst == "niet afgeleverd (status mislukt) — niet herzonden"
-        assert _rij(admin_engine, rij_id)["status"] == WebhookStatus.MISLUKT.value
+        assert [(r.status_voor, r.uitkomst) for r in uit] == [("mislukt", "herzonden")]
+        rij = _rij(admin_engine, rij_id)
+        assert rij["status"] == WebhookStatus.OPENSTAAND.value and rij["pogingen"] == 0 and rij["laatste_fout"] is None
+        detail = _audit_detail(admin_engine, rij_id, "webhook_herzonden")
+        assert detail["status"] == "openstaand"
+        # Al openstaand: niet dubbel terugzetten, wel zichtbaar.
+        uit = herzend_afgeleverd(
+            actor_id=beheerder_id,
+            administratie_id=vastgoed_administratie,
+            referenties=[ref],
+            reden="herzend-test tweede keer",
+            dry_run=False,
+        )
+        assert uit[0].uitkomst == "al openstaand — niet herzonden"
+        assert _audit_acties(admin_engine, rij_id) == ["webhook_genegeerd", "webhook_herzonden"]
+
+
+class TestSamengesteldAntwoord:
+    """Vastly's `factuur_geboekt`-antwoord bestaat uit twee verwerkers: de verkoopfactuur-badge op het topniveau en de
+    kostenregel-verwerker genest onder `kostenvoorstellen`. Voor een inkoopfactuur zegt het topniveau per definitie
+    `genegeerd`/`onbekend_document` (herzending Rubicon 24-09 17:55 UTC: zes rijen ten onrechte `mislukt`)."""
+
+    def test_topniveau_genegeerd_met_genest_voorstellen_is_een_aflevering(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = VastlyOntvanger(
+            [
+                {
+                    "resultaat": "genegeerd",
+                    "reden": "onbekend_document",
+                    "kostenvoorstellen": {"resultaat": "voorstellen", "aangemaakt": 2, "al_aanwezig": 0},
+                }
+            ]
+        )
+        rapport = verwerk_openstaande_webhooks(transport=ontvanger.transport)
+        assert rapport.afgeleverd == 1 and rapport.genegeerd == 0 and rapport.zonder_verwerking == 0
+        rij = _rij(admin_engine, rij_id)
+        assert rij["status"] == WebhookStatus.AFGELEVERD.value and rij["laatste_fout"] is None
+        detail = _audit_detail(admin_engine, rij_id, "webhook_afgeleverd")
+        assert detail["resultaat"] == "voorstellen" and detail["topniveau_resultaat"] == "genegeerd"
+        assert '"kostenvoorstellen"' in detail["ontvanger_antwoord"]
+
+    def test_kostenintake_uit_is_afgeleverd_zonder_verwerking_en_zichtbaar(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = VastlyOntvanger(
+            [
+                {
+                    "resultaat": "genegeerd",
+                    "reden": "onbekend_document",
+                    "kostenvoorstellen": {"resultaat": "kostenintake_uit"},
+                }
+            ]
+        )
+        rapport = verwerk_openstaande_webhooks(transport=ontvanger.transport)
+        assert rapport.afgeleverd == 1 and rapport.zonder_verwerking == 1 and rapport.genegeerd == 0
+        assert rapport.fouten == [] and len(rapport.let_op) == 1 and "kostenintake_uit" in rapport.let_op[0]
+        assert _rij(admin_engine, rij_id)["status"] == WebhookStatus.AFGELEVERD.value
+        assert _audit_detail(admin_engine, rij_id, "webhook_afgeleverd")["resultaat"] == "kostenintake_uit"
+        # Niet herhalen: zelfde payload = zelfde antwoord tot de klant de vlag aan Vastly-kant omzet.
+        verwerk_openstaande_webhooks(transport=ontvanger.transport)
+        assert ontvanger.aantal_requests == 1
+
+    def test_genest_genegeerd_blijft_genegeerd_met_de_geneste_reden(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = VastlyOntvanger(
+            [
+                {
+                    "resultaat": "genegeerd",
+                    "reden": "onbekend_document",
+                    "kostenvoorstellen": {"resultaat": "genegeerd", "reden": "onbekende_administratie"},
+                }
+            ]
+        )
+        rapport = verwerk_openstaande_webhooks(transport=ontvanger.transport)
+        assert rapport.genegeerd == 1 and rapport.afgeleverd == 0
+        rij = _rij(admin_engine, rij_id)
+        assert rij["status"] == WebhookStatus.MISLUKT.value
+        assert rij["laatste_fout"] == "ontvanger negeerde het event: onbekende_administratie"
+
+    def test_directe_afleverronde_geeft_uitkomst_per_rij(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+    ) -> None:
+        r1 = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        r2 = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        verwerk_openstaande_webhooks(transport=MockOntvanger().transport)
+        refs = [_referentie(admin_engine, r1), _referentie(admin_engine, r2)]
+        uit = herzend_afgeleverd(
+            actor_id=beheerder_id, administratie_id=vastgoed_administratie, referenties=refs,
+            reden="directe afleverronde test", dry_run=False,
+        )
+        assert [r.uitkomst for r in uit] == ["herzonden", "herzonden"]
+        ontvanger = VastlyOntvanger(
+            [
+                {
+                    "resultaat": "genegeerd",
+                    "reden": "onbekend_document",
+                    "kostenvoorstellen": {"resultaat": "al_verwerkt"},
+                },
+                {"resultaat": "genegeerd", "reden": "onbekend_document"},
+            ]
+        )
+        rapport = lever_rijen_direct_af(
+            rij_ids=[r1, r2], administratie_id=vastgoed_administratie, transport=ontvanger.transport
+        )
+        assert rapport.afgeleverd == 1 and rapport.genegeerd == 1 and ontvanger.aantal_requests == 2
+        assert rapport.per_rij[r1] == "afgeleverd — resultaat al_verwerkt"
+        assert rapport.per_rij[r2] == "genegeerd door de ontvanger — onbekend_document"
+        assert _rij(admin_engine, r1)["status"] == WebhookStatus.AFGELEVERD.value
+        assert _rij(admin_engine, r2)["status"] == WebhookStatus.MISLUKT.value
+        # Een rij die niet (meer) openstaand is, wordt niet geraakt — zichtbaar.
+        rapport = lever_rijen_direct_af(
+            rij_ids=[r1], administratie_id=vastgoed_administratie, transport=ontvanger.transport
+        )
+        assert rapport.per_rij[r1] == "niet geraakt (al geclaimd of niet openstaand)" and ontvanger.aantal_requests == 2
 
 
 class TestCli:
@@ -258,6 +400,45 @@ class TestCli:
         ) == 1
         assert "reden is verplicht" in capsys.readouterr().err
 
+    def test_cli_uitvoeren_met_afleveren_toont_de_uitkomst_per_referentie(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        verwerk_openstaande_webhooks(transport=MockOntvanger().transport)
+        ref = _referentie(admin_engine, rij_id)
+        ontvanger = VastlyOntvanger(
+            [
+                {
+                    "resultaat": "genegeerd",
+                    "reden": "onbekend_document",
+                    "kostenvoorstellen": {"resultaat": "kostenintake_uit"},
+                }
+            ]
+        )
+        echte = lever_rijen_direct_af
+        monkeypatch.setattr(
+            webhook_afleveraar, "lever_rijen_direct_af", lambda **kw: echte(transport=ontvanger.transport, **kw)
+        )
+        code = app_cli.main(
+            ["webhook-herzenden", "--administratie", str(vastgoed_administratie), "--referentie", ref,
+             "--beheerder-id", str(beheerder_id), "--uitvoeren", "--afleveren", "--reden", "herzending mét bewijs"]
+        )
+        uit = capsys.readouterr()
+        assert code == 0, uit.err
+        assert "TOTAAL: herzonden 1" in uit.out and "AFLEVERRONDE direct ná herzenden: 1 rij(en)" in uit.out
+        assert f"{ref} | {rij_id} | afgeleverd — resultaat kostenintake_uit" in uit.out
+        assert "TOTAAL afleverronde: afgeleverd 1 (waarvan zonder verwerking 1)" in uit.out
+        assert f"LET-OP  {ref}: afgeleverd maar niet verwerkt — ontvanger antwoordt kostenintake_uit" in uit.err
+        assert ontvanger.aantal_requests == 1 and _rij(admin_engine, rij_id)["status"] == WebhookStatus.AFGELEVERD.value
+
     def test_cli_onbekende_of_meerduidige_administratie_is_fout(
         self, administratie_id: uuid.UUID, beheerder_id: uuid.UUID, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -266,3 +447,47 @@ class TestCli:
              "--beheerder-id", str(beheerder_id)]
         ) == 1
         assert "niet eenduidig (0 treffer(s)" in capsys.readouterr().err
+        # Een onbekende UUID is óók een fout — geen stille "niet gevonden" per referentie (ARVUM 24-09).
+        assert app_cli.main(
+            ["webhook-herzenden", "--administratie", str(uuid.uuid4()), "--referentie", "1",
+             "--beheerder-id", str(beheerder_id)]
+        ) == 1
+        assert "niet eenduidig (0 treffer(s)" in capsys.readouterr().err
+
+    def test_administratie_via_rlz_admin_id_en_meerduidige_naam_kiest_de_vastgoed_administratie(
+        self, administratie_id: uuid.UUID, admin_engine: Engine, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ARVUM 24-09: Peter gaf de rlz_admin_id (die Vastly's signalen dragen) i.p.v. de platform-id → "niet
+        gevonden"; en de naam "ARVUM B.V." bestaat sinds de Odoo-parallel-modus twee keer (RLZ is_vastgoed + Odoo)."""
+        rlz_guid = str(uuid.uuid4())
+        odoo_id = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE platform.administratie SET naam = 'Dubbel Test B.V.', rlz_admin_id = :rlz, "
+                    "is_vastgoed = true WHERE id = :id"
+                ),
+                {"id": administratie_id, "rlz": rlz_guid},
+            )
+            conn.execute(
+                text("INSERT INTO platform.administratie (id, naam, rlz_admin_id, is_vastgoed) "
+                     "VALUES (:id, 'Dubbel Test B.V.', :rlz, false)"),
+                {"id": odoo_id, "rlz": f"odoo:test.odoo.com:{odoo_id.int % 1000}"},
+            )
+        try:
+            assert app_cli._zoek_administratie_id(rlz_guid) == administratie_id
+            assert "is de rlz_admin_id van 'Dubbel Test B.V.'" in capsys.readouterr().out
+            assert app_cli._zoek_administratie_id("Dubbel Test") == administratie_id
+            assert "de enige vastgoed-administratie gekozen" in capsys.readouterr().out
+            assert app_cli._zoek_administratie_id(str(odoo_id)) == odoo_id
+            # Twee vastgoed-administraties met dezelfde naam: geen keuze, kandidaten mét id tonen.
+            with admin_engine.begin() as conn:
+                conn.execute(
+                    text("UPDATE platform.administratie SET is_vastgoed = true WHERE id = :id"), {"id": odoo_id}
+                )
+            assert app_cli._zoek_administratie_id("Dubbel Test") is None
+            err = capsys.readouterr().err
+            assert "2 treffer(s)" in err and str(odoo_id) in err and rlz_guid in err
+        finally:
+            with admin_engine.begin() as conn:
+                conn.execute(text("DELETE FROM platform.administratie WHERE id = :id"), {"id": odoo_id})

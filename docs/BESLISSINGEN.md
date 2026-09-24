@@ -12275,8 +12275,7 @@ leesbaar", bevinding `activa_register_niet_leesbaar` in `meten`).
 
 ## WEBHOOK-HERZENDEN — 11 KOSTENEVENTS VASTLY (OPEN_ITEMS regel 13, 23-09) — herzend-actie + "200 genegeerd = zichtbaar mislukt"
 
-**Status: GEBOUWD 23-09 avond (geen migratie), UITVOERING ná deploy = vervolg-opdracht `opdrachten/inbox/2026-09-24-webhook-herzenden-11-events-uitvoeren-na-deploy.md`;
-werkt in productie: niet gemeten.** Canonieke vindplaats: `docs/regels/werkvoorraad-controlescherm.md` alinea "Webhook-herzenden", rapport
+**Status: GEBOUWD 23-09 avond (geen migratie); UITGEVOERD 24-09 avond (poging 1 17:50 UTC door Peter via de job-route: 6 Rubicon herzonden → ontvanger antwoordde `200 genegeerd/onbekend_document` → rijen `mislukt`; oorzaak = ons lezen van Vastly's SAMENGESTELDE antwoord, fix + poging 2 in dezelfde avond — zie alinea 5 en rapport `docs/rapporten/2026-09-24-webhook-herzenden-uitgevoerd.md`); werkt in productie: zie alinea 5.** Canonieke vindplaats: `docs/regels/werkvoorraad-controlescherm.md` alinea "Webhook-herzenden", rapport
 `docs/rapporten/2026-09-23-webhook-herzenden-11-kostenevents-vastly.md`, Platform `OPEN_ITEMS.md` regel 12/13, koppelcontract §3.
 
 **Aanleiding (vastgoed 20/21-09, herstelrun 3/5 deel A):** Vastly's ontvanger matchte de administratie op `rlz_admin_id` tegen een kolom mét de
@@ -12315,6 +12314,37 @@ Vastly fixte de matchsleutel op 20-09 (primair `administratie_id`) en kan de eve
 **Guards:** `tests/documenten/test_webhook_herzenden.py` (genegeerd → mislukt + audit + niet herhaald; verwerkt/al_verwerkt/zonder body =
 aflevering mét resultaat; dry-run schrijft niets; uitvoeren → openstaand + audit → dezelfde payload opnieuw verstuurd mét verse nonce;
 mislukte rij niet herzonden; CLI dry-run/uitvoeren/reden-verplicht/onbekende administratie), `tests/lezen/test_lezen.py` (query laadt).
+
+5. **Uitgevoerd 24-09 avond (CC-sessie, opdracht Peter 24-09 "herzending 11 events afmaken, geen terminalwerk meer voor Peter") — wat er
+   misging en wat er nu staat.** (a) **Feiten:** Peter draaide om 17:41–17:52 UTC per referentie de job (`gcloud run jobs execute rlz-webhook-afleveraar
+   … webhook-herzenden`): Rubicon dry-run 6/6 "zou herzenden", `--uitvoeren` 6 × "herzonden 1" (audit `webhook_herzonden` 17:50:33–17:52:41). De
+   scheduler-run van 17:55:25 UTC (`wv7h5`) leverde alle zes af en kreeg van Vastly `200 {"resultaat": "genegeerd", "reden": "onbekend_document", …}`
+   → onze afleveraar zette ze `mislukt` mét audit `webhook_genegeerd` (exit 1 in dát log; de runs erna melden terecht "Afgeleverd: 0" — er stond
+   niets meer open). ARVUM: `--administratie "ARVUM B.V."` was niet eenduidig (sinds 24-09 06:20 UTC bestaat naast de RLZ-administratie
+   `4e7732c5` (is_vastgoed, rlz_admin_id `9da1f3ab`) de Odoo-administratie `76929c4e` (`odoo:universal-steigers.odoo.com:12`, parallel-modus-pilot —
+   géén dubbel om samen te voegen, een bewuste tweede backend); Peter gaf daarna `9da1f3ab` (= de RLZ-GUID die Vastly's signalen als `rlz_admin_id`
+   dragen, niet onze platform-id) → `_zoek_administratie_id` nam élke UUID letterlijk → 5 × "niet gevonden". De vijf ARVUM-rijen staan onaangeroerd
+   `afgeleverd` (18-09 11:20). (b) **Oorzaak Rubicon (Vastly `rlz_webhook.py`, lees-only gelezen):** Vastly draait per `factuur_geboekt` twee
+   verwerkers — de verkoopfactuur-badge bepaalt het TOPNIVEAU-`resultaat`, de kostenregel-verwerker nest zijn uitkomst onder `kostenvoorstellen`.
+   Voor een inkoopfactuur mét `regels[]` zegt het topniveau per definitie `genegeerd`/`onbekend_document` (regel 381-384: "de kostenregel-verwerker
+   bepaalt de uitkomst"), en die geneste uitkomst was hier `{"resultaat": "kostenintake_uit"}`: Vastly's tier-vlag `entiteit_config.rlz_kostenintake`
+   staat voor Rubicon Investments B.V. én ARVUM B.V. op **false** (Vastly-prod lees-only 24-09 ~21:40 NL: 0 kostenvoorstellen, 0 signalen, 0 audit
+   — consistent met Peters controle 21:25). Onze lezer van 23-09 keek alleen naar het topniveau → "genegeerd". (c) **Gebouwd (geen migratie):**
+   `_lees_antwoord` leest bij topniveau `genegeerd` het geneste verwerker-resultaat als de uitkomst (genest `genegeerd` blijft genegeerd mét de
+   geneste reden); `RESULTATEN_ZONDER_VERWERKING = {kostenintake_uit}` = aflevering zónder verwerking → rij `afgeleverd`, `AfleverRapport.
+   zonder_verwerking` + LET-OP-regel, audit `webhook_afgeleverd` mét `resultaat`, `topniveau_resultaat` én `ontvanger_antwoord` (≤ 500 tekens,
+   voortaan bij élke poging); `herzend_afgeleverd` neemt óók `mislukt`-rijen mee (een genegeerde rij herstel je op referentie, `webhook-redrive`
+   blijft voor de kale dead-letter), `openstaand` = "al openstaand — niet herzonden"; nieuw `lever_rijen_direct_af` + CLI `webhook-herzenden
+   --uitvoeren --afleveren`: precies de teruggezette rijen krijgen in dezelfde executie één afleverronde mét de uitkomst per referentie
+   (`AfleverRapport.per_rij`) — **een herzendactie bewijst zichzelf pas met een afleverronde erna** (les Platform `verbeteringen.md` 24-09);
+   `_zoek_administratie_id` toetst een UUID tegen `id` ÉN `rlz_admin_id` (geeft altijd de platform-id terug, onbekende UUID = fout), en kiest bij
+   een meerduidige naam de enige vastgoed-administratie mét melding (anders kandidaten mét id/rlz_admin_id/vastgoed). Tests
+   `tests/documenten/test_webhook_herzenden.py` (13: samengesteld antwoord voorstellen/kostenintake_uit/genest genegeerd, directe afleverronde per
+   rij, mislukt herzonden + niet dubbel, CLI `--afleveren`, rlz_admin_id/meerduidige naam). (d) **Uitkomst poging 2 (na deploy, job-route) en
+   het Vastly-beslispunt:** rapport `docs/rapporten/2026-09-24-webhook-herzenden-uitgevoerd.md` + Platform `OPEN_ITEMS.md` regel 13. Zolang
+   `rlz_kostenintake` aan Vastly-kant uit staat komt er géén kostenvoorstel — dat is een klant-/tierinstelling van Vastly (niet iets dat RLZ
+   omzet); ná het aanzetten is herzenden één commando (`webhook-herzenden … --uitvoeren --afleveren`). Vastly-kant voorstel (OPEN_ITEMS): het
+   topniveau-`resultaat` voor een inkoop-event = de kostenuitkomst, zodat een afzender die alleen het topniveau leest niet misleid wordt.
 
 ## UNIVERSAL — OVERHEAD VIA DE OMZETSLEUTEL, GEEN OVH-PROJECT (Peter 21-09) — capture; sluit beslispunt "OVH-project Universal" (rapporten 18-09/19-09); geen code, geen migratie
 

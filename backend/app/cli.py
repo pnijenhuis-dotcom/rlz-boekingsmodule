@@ -3187,19 +3187,23 @@ def _webhook_afleveren(args: argparse.Namespace) -> int:
     print(
         f"Afgeleverd: {rapport.afgeleverd}, poging(en) mislukt: {rapport.poging_mislukt}, "
         f"dead-letter: {rapport.dead_letter}, geweigerd (geen vastgoed): {rapport.geweigerd_geen_vastgoed}, "
-        f"genegeerd door de ontvanger: {rapport.genegeerd}"
+        f"genegeerd door de ontvanger: {rapport.genegeerd}, afgeleverd zonder verwerking: {rapport.zonder_verwerking}"
     )
     for fout in rapport.fouten:
         print(f"FOUT  {fout}", file=sys.stderr)
+    for melding in rapport.let_op:
+        print(f"LET-OP  {melding}", file=sys.stderr)
     return 1 if (rapport.dead_letter or rapport.geweigerd_geen_vastgoed or rapport.genegeerd) else 0
 
 
 def _webhook_herzenden(args: argparse.Namespace) -> int:
-    """Herzend-actie (OPEN_ITEMS regel 13, vastgoed 21-09): afgeleverde outbox-rijen op referentie terug naar
-    openstaand mét audit; dry-run (default) toont alleen de rijen. De gewone afleveraar (job rlz-webhook-afleveraar,
-    elke 5 min) verstuurt daarna mét verse timestamp/nonce; uitkomst per rij = audit webhook_afgeleverd(.resultaat) of
-    webhook_genegeerd — lees-only na te lezen mét `db-lezen webhook-outbox --administratie … --param referentie=…`."""
-    from app.documenten.webhook_afleveraar import herzend_afgeleverd
+    """Herzend-actie (OPEN_ITEMS regel 13, vastgoed 21-09): afgeleverde of mislukte outbox-rijen op referentie terug
+    naar openstaand mét audit; dry-run (default) toont alleen de rijen. Zonder `--afleveren` verstuurt de gewone
+    afleveraar (job rlz-webhook-afleveraar, elke 5 min) daarna mét verse timestamp/nonce; mét `--afleveren` (24-09)
+    krijgen precies de teruggezette rijen direct één afleverronde in dezelfde executie en staat de uitkomst per
+    referentie in de uitvoer — een herzending bewijst zichzelf pas met een afleverronde erna. Uitkomst per rij is ook
+    lees-only na te lezen mét `db-lezen webhook-outbox --administratie … --param referentie=…`."""
+    from app.documenten.webhook_afleveraar import herzend_afgeleverd, lever_rijen_direct_af
 
     try:
         beheerder_id = uuid.UUID(args.beheerder_id)
@@ -3234,34 +3238,92 @@ def _webhook_herzenden(args: argparse.Namespace) -> int:
         )
     herzonden = sum(1 for r in rijen if r.uitkomst == "herzonden")
     zou = sum(1 for r in rijen if r.uitkomst.startswith("zou herzenden"))
-    niet = [r for r in rijen if r.uitkomst.startswith("niet")]
-    print(f"TOTAAL: herzonden {herzonden}, zou herzenden {zou}, niet gevonden/niet afgeleverd {len(niet)}")
+    niet = [r for r in rijen if r.uitkomst.startswith("niet") or r.uitkomst.startswith("al openstaand")]
+    print(f"TOTAAL: herzonden {herzonden}, zou herzenden {zou}, niet gevonden/niet herzonden {len(niet)}")
     for r in niet:
         print(f"LET-OP  {r.referentie}: {r.uitkomst}", file=sys.stderr)
-    return 1 if niet else 0
+    code = 1 if niet else 0
+    if dry_run or not args.afleveren:
+        if not dry_run and herzonden:
+            print("De afleveraar (job rlz-webhook-afleveraar, elke 5 min) verstuurt nu; of draai mét --afleveren.")
+        return code
+    # --afleveren: precies de teruggezette rijen direct één afleverronde geven en per referentie het antwoord tonen.
+    herzonden_rijen = [r for r in rijen if r.uitkomst == "herzonden" and r.outbox_id is not None]
+    if not herzonden_rijen:
+        return code
+    rapport = lever_rijen_direct_af(
+        rij_ids=[r.outbox_id for r in herzonden_rijen], administratie_id=administratie_id  # type: ignore[misc]
+    )
+    print(f"AFLEVERRONDE direct ná herzenden: {len(herzonden_rijen)} rij(en)")
+    if rapport.overgeslagen_reden:
+        print(f"OVERGESLAGEN: {rapport.overgeslagen_reden} — de rijen blijven openstaand voor de scheduler")
+        return 1
+    print("referentie | outbox_id | uitkomst afleverronde")
+    for r in herzonden_rijen:
+        print(f"{r.referentie} | {r.outbox_id} | {rapport.per_rij.get(r.outbox_id, '?')}")  # type: ignore[arg-type]
+    print(
+        f"TOTAAL afleverronde: afgeleverd {rapport.afgeleverd} "
+        f"(waarvan zonder verwerking {rapport.zonder_verwerking}), "
+        f"genegeerd {rapport.genegeerd}, poging mislukt {rapport.poging_mislukt}, dead-letter {rapport.dead_letter}, "
+        f"geweigerd {rapport.geweigerd_geen_vastgoed}"
+    )
+    for fout in rapport.fouten:
+        print(f"FOUT  {fout}", file=sys.stderr)
+    for melding in rapport.let_op:
+        print(f"LET-OP  {melding}", file=sys.stderr)
+    if rapport.genegeerd or rapport.dead_letter or rapport.geweigerd_geen_vastgoed or rapport.poging_mislukt:
+        return 1
+    return code
 
 
 def _zoek_administratie_id(naam_of_id: str) -> uuid.UUID | None:
-    """UUID of (deel van de) naam — precies één treffer vereist (zelfde contract als rlz-lezen)."""
-    from sqlalchemy import select
+    """UUID of (deel van de) naam — precies één treffer vereist (zelfde contract als rlz-lezen).
+
+    24-09 (herzending ARVUM): een UUID wordt getoetst tegen `platform.administratie.id` ÉN `rlz_admin_id` (de
+    RLZ-GUID die Vastly's signalen als `rlz_admin_id` dragen) en altijd als PLATFORM-id teruggegeven — een onbekende
+    UUID is een fout, geen stille "niet gevonden" per referentie. Bij een meerduidige naam (ARVUM B.V. bestaat als
+    RLZ- én als Odoo-administratie, parallel-modus 24-09) wint de enige vastgoed-administratie mét melding; anders
+    worden de kandidaten mét id/rlz_admin_id/is_vastgoed getoond zodat de aanroeper het id kiest."""
+    from sqlalchemy import or_, select
 
     from app.db.models import Administratie
     from app.db.session import scoped_session
 
     try:
-        return uuid.UUID(naam_of_id)
+        gezocht_uuid: uuid.UUID | None = uuid.UUID(naam_of_id)
     except ValueError:
-        pass
+        gezocht_uuid = None
     with scoped_session(None) as session:
+        if gezocht_uuid is not None:
+            filter_ = or_(Administratie.id == gezocht_uuid, Administratie.rlz_admin_id == str(gezocht_uuid))
+        else:
+            filter_ = Administratie.naam.ilike(f"%{naam_of_id}%")
         treffers = list(
             session.execute(
-                select(Administratie.id, Administratie.naam).where(Administratie.naam.ilike(f"%{naam_of_id}%"))
+                select(Administratie.id, Administratie.naam, Administratie.rlz_admin_id, Administratie.is_vastgoed)
+                .where(filter_)
+                .order_by(Administratie.naam, Administratie.id)
             )
         )
-    if len(treffers) != 1:
-        namen = ", ".join(n for _, n in treffers) or "geen"
+    if gezocht_uuid is not None and len(treffers) == 1 and treffers[0][0] != gezocht_uuid:
         print(
-            f"FOUT: administratie '{naam_of_id}' niet eenduidig ({len(treffers)} treffer(s): {namen})", file=sys.stderr
+            f"NB: {gezocht_uuid} is de rlz_admin_id van '{treffers[0][1]}' — platform-id {treffers[0][0]} gebruikt."
+        )
+    if len(treffers) > 1:
+        vastgoed = [t for t in treffers if t[3]]
+        if len(vastgoed) == 1:
+            print(
+                f"NB: '{naam_of_id}' heeft {len(treffers)} treffers; de enige vastgoed-administratie gekozen: "
+                f"{vastgoed[0][1]} ({vastgoed[0][0]}, rlz_admin_id {vastgoed[0][2]})."
+            )
+            return vastgoed[0][0]
+    if len(treffers) != 1:
+        kandidaten = "; ".join(
+            f"{n} (id {i}, rlz_admin_id {r}, vastgoed {'ja' if v else 'nee'})" for i, n, r, v in treffers
+        )
+        print(
+            f"FOUT: administratie '{naam_of_id}' niet eenduidig ({len(treffers)} treffer(s): {kandidaten or 'geen'})",
+            file=sys.stderr,
         )
         return None
     return treffers[0][0]
@@ -4196,10 +4258,13 @@ def main(argv: list[str] | None = None) -> int:
 
     herzend_parser = subparsers.add_parser(
         "webhook-herzenden",
-        help="Zet AFGELEVERDE webhook-outbox-rijen op referentie terug naar openstaand (herzenden mét verse "
-        "timestamp/nonce, zelfde payload; audit per rij) — default dry-run, --uitvoeren schrijft. OPEN_ITEMS regel 13.",
+        help="Zet AFGELEVERDE of MISLUKTE webhook-outbox-rijen op referentie terug naar openstaand (herzenden mét "
+        "verse timestamp/nonce, zelfde payload; audit per rij) — default dry-run, --uitvoeren schrijft, --afleveren "
+        "geeft de teruggezette rijen direct één afleverronde mét uitkomst per referentie. OPEN_ITEMS regel 13.",
     )
-    herzend_parser.add_argument("--administratie", required=True, help="UUID of (deel van de) naam — één treffer.")
+    herzend_parser.add_argument(
+        "--administratie", required=True, help="Platform-UUID, rlz_admin_id of (deel van de) naam — één treffer."
+    )
     herzend_parser.add_argument(
         "--referentie", action="append", required=True, help="Referentie (payload.data.referentie); herhaalbaar."
     )
@@ -4210,6 +4275,12 @@ def main(argv: list[str] | None = None) -> int:
     herzend_parser.add_argument("--reden", default=None, help="Reden (verplicht bij --uitvoeren, ≥ 5 tekens).")
     herzend_parser.add_argument(
         "--uitvoeren", action="store_true", help="Schrijf (default = dry-run: alleen de rijen tonen)."
+    )
+    herzend_parser.add_argument(
+        "--afleveren",
+        action="store_true",
+        help="Mét --uitvoeren: geef de teruggezette rijen direct één afleverronde en toon per referentie het antwoord "
+        "van de ontvanger (anders wacht je op de scheduler, elke 5 min).",
     )
 
     import_parser = subparsers.add_parser(
