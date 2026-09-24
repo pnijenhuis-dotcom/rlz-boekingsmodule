@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -557,3 +557,56 @@ def test_onderdeel_ai_heraanbieden_alleen_op_verzoek_en_lees_only(tmp_path: Path
         },
     )
     assert oordeel.startswith("Oordeel: kandidaten 202"), oordeel
+
+
+# --- bundelrun 24-09: zes dispatch-onderdelen (vier plekken per onderdeel: if-tak + options + via_gh_onderdeel + OORDEEL_BRON) ------
+BUNDEL_ONDERDELEN_24_09 = {
+    "vastly-tweelingen": "scripts/gcp/nameting.sh vastly-pdf-tweelingen-herstel --dry-run",
+    "odoo-taal": 'scripts/gcp/nameting.sh db-lezen grootboek-taal --administratie "$ADM"',
+    "dearchiveren-odoo": "scripts/gcp/nameting.sh db-lezen administratie-stand --param naam=Recreatief",
+    "doorbelasting-pdf": 'scripts/gcp/nameting.sh doorbelasting-factuur-pdf-toets --administratie "Kempen Facilities" --referentie 261004 --pdf --max 1',
+    "bua-jaarrapport": "scripts/gcp/nameting.sh bua-jaarrapport --jaar 2026 --rlz",
+    "activa-conventie": 'scripts/gcp/nameting.sh db-lezen activa-stand --administratie "$ADM"',
+}
+
+
+@pytest.mark.parametrize("onderdeel", sorted(BUNDEL_ONDERDELEN_24_09))
+def test_bundelrun_24_09_onderdeel_alleen_op_verzoek_lees_only_met_eigen_oordeel(tmp_path: Path, onderdeel: str) -> None:
+    """Bundelrun 24-09 (zeven punten): élk nieuw meetrecept is een dispatch-onderdeel mét de vier plekken (regel 19-09 + 22-09),
+    niet in 'alles', uitkomst in verkenning/nameting-<onderdeel>-<dd-mm>.txt mét eigen oordeelregel."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert f'if [[ "$ONDERDEEL" == "{onderdeel}" ]]; then' in meet
+    assert BUNDEL_ONDERDELEN_24_09[onderdeel] in meet
+    assert f'UIT="verkenning/nameting-{onderdeel}-$DATUM.txt"' in meet
+    assert f'"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "{onderdeel}"' not in meet, "niet in 'alles'"
+    assert f'OORDEEL_BRON="verkenning/nameting-{onderdeel}-$DATUM.txt"' in meet
+    oordeel = _draai_oordeel(
+        tmp_path,
+        onderdeel,
+        {f"nameting-{onderdeel}-14-09.txt": "kop\nOordeel: TOTAAL 2 — testuitkomst — exit 0\n", "nameting-vgg-replay-14-09.txt": REPLAY},
+    )
+    assert oordeel.startswith("Oordeel: TOTAAL 2 — testuitkomst"), oordeel
+
+
+def test_nameting_sh_bundelrun_24_09_allowlist_en_weigerlijst() -> None:
+    """nameting.sh: de drie lees-only CLI's in de ALLOWLIST (herstel alleen mét --dry-run), de schrijvende hersync in de weigerlijst,
+    élk onderdeel in via_gh_onderdeel."""
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    allow = re.search(r'^ALLOWLIST="([^"]+)"', sh, flags=re.M)
+    assert allow
+    woorden = allow.group(1).split()
+    for cmd in ("vastly-pdf-tweelingen-herstel", "doorbelasting-factuur-pdf-toets", "bua-jaarrapport"):
+        assert cmd in woorden, cmd
+    assert "odoo-stamgegevens-sync" not in woorden
+    weiger = re.search(r"^for schrijvend in ([^;]+); do", sh, flags=re.M)
+    assert weiger and "odoo-stamgegevens-sync" in weiger.group(1).split()
+    assert 'if [[ "$CMD" == "vastly-pdf-tweelingen-herstel" ]]; then' in sh and "--dry-run" in sh
+    for regel in (
+        "vastly-pdf-tweelingen-herstel) echo vastly-tweelingen ;;",
+        "odoo-taal) echo odoo-taal ;;",
+        "dearchiveren-odoo) echo dearchiveren-odoo ;;",
+        "doorbelasting-factuur-pdf-toets) echo doorbelasting-pdf ;;",
+        "bua-jaarrapport) echo bua-jaarrapport ;;",
+        "activa-conventie) echo activa-conventie ;;",
+    ):
+        assert re.search(r"^\s*" + re.escape(regel), sh, flags=re.M), f"via_gh_onderdeel mist: {regel}"

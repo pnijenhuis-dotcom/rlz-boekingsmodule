@@ -107,3 +107,22 @@
   "Opnieuw aanmaken" opnieuw de nette 404-reden. Meetlat: dispatch-onderdeel `activa-kaart` (request-log POST aanmaken 200/422/5xx,
   job-log mislukt-regels, `db-lezen activa-stand`/`reconciliatie-bevindingen` BLOw + Pilates, `rlz-lezen FixedAssets` BLOw); vervolg-opdracht
   `opdrachten/inbox/2026-09-24-nameting-activa-kaart-na-deploy.md` (`niet vóór: 2026-09-24 07:15`). Werkt in productie: niet gemeten.
+
+<!-- toegevoegd 24-09-2026, opdracht "bundelrun-zeven-punten" blok 6 -->
+- **Afschrijvingsrekening = KOSTENrekening mét dezelfde omschrijving (besluit Peter 24-09 07:5x "eens moet kostenrekening van zelfde
+  omschrijving zijn (kantoorinventaris, ICT etc)"; geen migratie; HERZIET BUG 24-09 regel (1) "conventie code + 1 op 0xxx"; BESLISSINGEN
+  "ACTIVA — AFSCHRIJVINGSREKENING = KOSTENREKENING MÉT DEZELFDE OMSCHRIJVING (Peter 24-09)"):** `DepreciationAccount` is een 4xxx-KOSTENrekening
+  (STAP-0 deel 1 23-09: Pilates Bloom 4706 Afschrijvingskosten, AccountType 2) — nooit een 0xxx-balansrekening; de balanskant blijft
+  `BalanceAccount` (de activarekening zelf). Conventie (`app/activa/afschrijving.py::conventie_rekening`): de niet-verdwenen, niet-totaal
+  4xxx-rekening soort 2 van dezelfde administratie waarvan de genormaliseerde omschrijving (lowercase, diakrieten weg, niet-alfanumeriek →
+  spatie) ná het voorvoegsel "Afschrijving"/"Afschrijvingen"/"Afschrijvingskosten" (+ optioneel "op"/"van"; ook de omgekeerde vorm "‹naam›
+  afschrijving") gelijk is aan de genormaliseerde omschrijving van de activarekening — 0107 Kantoorinventaris → "Afschrijving
+  kantoorinventaris", 0110 ICT → "Afschrijvingskosten ICT". Precies één treffer = voorgevuld mét herkomst `conventie` (chip "voorgevuld:
+  conventie (kostenrekening zelfde omschrijving)"); nul of meerdere treffers, of een kale naam zonder kern ("Afschrijvingskosten") = leeg →
+  combobox verplicht + 422 (regel (2) van BUG 24-09 ongewijzigd). Winnaarsvolgorde koppeling > instelling per categorie > conventie
+  ongewijzigd; de combobox (`instelling.afschrijving_ledger_opties`) biedt nu de 4xxx-kostenrekeningen aan ("afschrijving" in de naam
+  eerst, dan op code); het vangnet in `maak_aan_in_rlz` volgt dezelfde conventie. Nooit AI, nooit fuzzy. Guards `tests/activa/
+  test_afschrijving.py` (RGS-schema 0xxx + 4700-reeks, naamvarianten, oude code + 1-conventie = None), conftest 4708 soort 2,
+  gouden-set-casus ag (`DepreciationAccount` = 4708). STAP-0 deel 2 (schrijvend, testadministratie `faae29c5` ná dearchiveren) en herstel
+  BLOw 23619 € 935,00 / 06052 € 680,00 / MK22507863 € 1.078,10 (23-09) blijven klikpunten Peter (recept in het rapport); meetlat
+  dispatch-onderdeel `activa-conventie`. Werkt in productie: niet gemeten.

@@ -6,6 +6,41 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-24 — Zeven verbeteringen in één ronde: Vastly-facturen weer één document, Odoo-namen in het Nederlands, Odoo-administratie terugzetten, doorbelasting-melding verklaard, BUA-jaarrapport, afschrijvingsrekening, vraag-link en samenvoegen-vinkje
+
+<!-- bundelrun-zeven-punten-24-09 -->
+
+### Blok 1 — Vastly-facturen: PDF en UBL uit dezelfde mail zijn weer één document
+
+- **Een verkoopfactuur van Vastly komt nu weer als één document binnen.** Sinds 23 september leverde Vastly per factuur een UBL-bestand met "-ubl" achter de naam én een losse PDF; de module herkende dat niet meer als hetzelfde stuk en zette 23 PDF's als losse inkoopfactuur in de werkvoorraad (Rubicon, Elissen, ARVUM, Meyer, Shuto). De koppeling kijkt nu door zo'n naamtoevoeging heen en herkent daarnaast het factuurnummer in de PDF — alleen als het ondubbelzinnig is.
+- **De 23 losse PDF's worden opgeruimd zonder iets te verwijderen.** Een beheeractie koppelt elke PDF als afbeelding aan zijn verkoopfactuur en zet het losse PDF-document op "samengevoegd", met een regel op de tijdlijn van beide kanten. Is de verkoopfactuur al geboekt, dan gaat de PDF ook als bijlage naar Reeleezee.
+- **Gebeurt het nog eens, dan ziet u het in Inzicht › Reconciliatie.** Een losse PDF die bij een verkoopfactuur uit dezelfde mail hoort krijgt daar een regel (eerst in meting) met de knop "Bundelen".
+### Blok 2 — Odoo-administraties: rekeningnamen in het Nederlands
+
+- **Grootboek-, dagboek- en btw-namen van Odoo-administraties staan voortaan in het Nederlands in de module**, precies zoals in Odoo zelf. Tot nu toe vroeg de module ze zonder taal op en kreeg Engelse namen terug (bijvoorbeeld "Account Receivable" in plaats van "Debiteuren" bij Bonte Hoeve). Bij de eerstvolgende nachtelijke synchronisatie worden de namen bijgewerkt; het kantoor kan dat per administratie ook direct laten doen.
+### Blok 3 — Gearchiveerde Odoo-administratie terugzetten zonder Reeleezee-login
+
+- **Een gearchiveerde Odoo-administratie kunt u nu gewoon terugzetten.** Tot vandaag vroeg het scherm "Dearchiveren…" ook voor een Odoo-administratie om een Reeleezee-webservice-login — die bestaat daar niet, dus terugzetten kon niet en opnieuw koppelen werd (terecht) geweigerd omdat de gearchiveerde administratie de Odoo-company al bezet. De dialoog toont voor Odoo geen loginvelden meer: de bewaarde Odoo-sleutel wordt opnieuw getest, de company moet dezelfde zijn, en de administratie staat weer actief. Voor Reeleezee-administraties verandert er niets.
+- **Bij archiveren van een Odoo-administratie blijft de Odoo-sleutel versleuteld bewaard** — de melding zegt dat nu ook; hij is nooit uitleesbaar en alleen nodig om later terug te zetten.
+- **In de Odoo-koppelwizard ziet u bij zo'n company "gearchiveerd — dearchiveer ‹naam›"** in plaats van een rij die pas bij opslaan wordt geweigerd.
+### Blok 4 — Doorbelasting: waarom de factuur-PDF soms "ontbreekt"
+
+- **De melding "factuur ontbreekt — factuur-PDF onvolledig" bij een doorbelasting is meestal een verschil van één cent, geen fout in de boeking.** Reeleezee rekent de btw op de factuur per tarief over het totaal; de module rekende per regel, waardoor de som soms één cent hoger uitkomt (Lusso 261004: € 1.045,52 tegenover € 1.045,51). De boeking in Reeleezee staat goed. Een lees-only controle telt nu kantoorbreed om welke gevallen het gaat; het aanpassen van de afronding volgt pas ná akkoord.
+### Blok 5 — BUA: btw blijft aftrekbaar, jaareinde-rapport in plaats van een kenmerk per rekening
+
+- **Btw op representatie, relatiegeschenken en personeelskosten blijft gewoon aftrekbaar.** Er wordt geen "btw niet aftrekbaar"-kenmerk meer in bulk gezet (besluit 24 september): de correctie hoort in de laatste btw-aangifte van het jaar. Wilt u het kenmerk voor een enkele rekening tóch, dan blijft dat per administratie instelbaar.
+- **Nieuw blok "BUA-jaarrapport" op de administratiepagina (Boeken & AI).** Per rekening ziet u hoeveel btw er dit jaar is afgetrokken (geboekte inkoopfacturen en bankboekingen) en het voorstel voor de correctie in de laatste aangifte. Kantine en sponsoring staan apart en tellen niet mee. De € 227-drempel per begunstigde kan de module niet uit de boekhouding halen: de accountant toetst die, de module past niets toe.
+- **Vanaf 1 december een herinnering per administratie.** Elke administratie waar dit jaar btw op zulke rekeningen is afgetrokken krijgt in Inzicht › Reconciliatie de rij "BUA-correctie nog te beoordelen" met de knop "Rapport openen" (eerst als meting, nog niet in de actiemail).
+### Activa
+- **De afschrijvingsrekening op de kaart "Activum aanmaken?" is nu de kóstenrekening met dezelfde omschrijving** als de gekozen activarekening (bijvoorbeeld 0107 Kantoorinventaris → "Afschrijving kantoorinventaris" in de 47xx-reeks; ICT → "Afschrijvingskosten ICT"). Reeleezee boekt de afschrijving namelijk op een kostenrekening; de balansrekening voor de cumulatieve afschrijving regelt Reeleezee zelf. De keuzelijst toont daarom nu kostenrekeningen; een instelling per categorie of uw eigen keuze wint altijd, en zonder eenduidige rekening blijft het veld verplicht.
+### Blok 7a — vraag-link opent het juiste scherm
+
+- **"Document bekijken" in een vraag opent nu altijd het juiste scherm.** Een vraag over een kassarapport (omzetrapport) opende tot nu toe het inkoop-controlescherm met een leeg leveranciersformulier; nu landt u op het omzetreview-scherm, een verkoopfactuur op het verkoopscherm, een offerte op het offertescherm. Verwijst de vraag naar het omzetreview-scherm, dan staat de knop "Naar omzetreview →" er direct bij.
+- **Ook oude links en handmatig getypte adressen komen goed uit.** Opent u een omzetrapport, verkoopfactuur, waarborgbericht of offerte via het adres van het inkoop-controlescherm, dan stuurt de module u door naar het scherm dat bij dat documenttype hoort.
+### Samenvoegen van boekingsregels
+- **Het vinkje "Splitsen per regel" is terug op facturen waarvan de scan geen regelbedragen kon lezen.** Staan er al twee of meer regels met bedragen opgeslagen, dan rekent de module de samengevoegde regel nu uit díe regels (som van netto en btw, één btw-code) — u hoeft geen regels meer weg te kruisen.
+- **Kan samenvoegen niet, dan ziet u waarom.** Bij regels met verschillende btw-codes of een onbekend btw-bedrag verschijnt de chip "samenvoegen niet mogelijk: …" in plaats van een stil verdwenen vinkje.
+
 ## 2026-09-24 — AI-limiet: melding klopt weer, wachtende facturen worden vanzelf opnieuw verwerkt, dubbele bestanden kosten geen AI meer
 
 <!-- ai-limiet-heraanbieden-24-09 -->

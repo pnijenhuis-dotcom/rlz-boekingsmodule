@@ -191,6 +191,31 @@
   `AiKostenBanner.test.tsx`, `AiHeraanbiedenKnop.test.tsx`, `test_nameting_workflow.py` (onderdeel `ai-heraanbieden`). Geen limiet in
   code (Peter zet zelf tijdelijk € 250 voor september — advies Cowork), geen tweede extractiepad.
 
+<!-- toegevoegd 24-09-2026, opdracht "bundelrun-zeven-punten" blok 1 -->
+- **Vastly-PDF-tweelingen — stam-normalisatie, factuurnummer-regel, herstel-CLI en bevinding (Peter 24-09, casus Vastly-batch
+  23-09: 23 losse PDF's als inkoopfactuur naast hun UBL-verkoopfactuur; geen migratie; BESLISSINGEN "VASTLY-PDF-TWEELINGEN —
+  STAM-NORMALISATIE, FACTUURNUMMER-REGEL, HERSTEL-CLI EN BEVINDING (Peter 24-09)"):** (1) de bundeling vóór de routing
+  (`app/intake/bundeling.py`) vergelijkt de naamstam GENORMALISEERD — een exporteur-suffix `-ubl`/`_ubl`/`-xml`/`_xml`
+  (hoofdletterongevoelig, alleen als staart) wordt aan beide kanten gestript (`factuur-RUB-2026-0031-ubl.xml` ≡
+  `factuur-RUB-2026-0031.pdf`); ondubbelzinnigheid blijft de eis. Derde regel: het UBL-factuurnummer (`cbc:ID`, ≥ 4 tekens) komt
+  tekstueel voor in de PDF-bestandsnaam óf in de PDF-tekstlaag (pypdf, witruimte weg + casefold) én er is precies één zo'n PDF.
+  Volgorde: ingesloten-PDF-hash → genormaliseerde stam → factuurnummer → ingesloten PDF als beeld; twijfel (meerdere kandidaten)
+  = nooit bundelen. (2) Nazorg `vastly-pdf-tweelingen-herstel [--dry-run] [--uitvoeren] [--administratie <uuid|naamdeel>]`
+  (`app/intake/tweelingen_herstel.py`, dry-run is de default; échte run = `gcloud run jobs execute rlz-reconciliatie --args=… --uitvoeren`
+  ná Peters "ja"): per administratie in eigen RLS-scope een losse open inkoopfactuur-PDF (te_controleren/handmatig_afmaken/
+  klaar_om_te_boeken, bron e-mail) × verkoopfactuur-UBL uit hetzelfde intake-bericht (zonder bericht: zelfde kalenderdag) op
+  genormaliseerde stam of factuurnummer, precies één aan beide kanten; herstel = het UBL-document blijft HET document, de PDF wordt zijn
+  beeld (`bron_*`), het PDF-document gaat terminaal naar `samengevoegd` mét `samengevoegd_in_id` (nooit verwijderd), tijdlijnregel op
+  beide kanten, audit `gebundeld_achteraf` op beide rijen; is het UBL-document al geboekt (`verkoop_boeking`), dan gaat de PDF óók als
+  RLZ-bijlage mee via `zorg_voor_bijlage` op `SalesInvoices/{verkoop_rlz_id}` (idempotent op bestandsnaam; een bijlage-fout is een
+  zichtbare regel, de lokale bundeling staat); Odoo-administratie = bijlage overgeslagen mét reden; tweede run = 0 kandidaten.
+  (3) Reconciliatieblok `documenten` toetst dezelfde kandidaten-motor lees-only en meldt per eenduidig paar `ubl_pdf_ongebundeld`
+  (start in `meten`, `sinds` 24-09) mét actie "Bundelen" op de rij (`POST /reconciliatie/documenten/{document_id}/bundelen`,
+  kantoorrol, mens-actor = exact het herstel; 404 geen paar, 409 twijfel/intussen verwerkt, 403 buiten scope;
+  `frontend/src/reconciliatie/BundelenActie.tsx`). Guards: `tests/intake/test_bundeling_stam_factuurnummer.py`,
+  `tests/intake/test_tweelingen_herstel.py`, gouden-set-casus b `TestVastlySuffixStam`, vitest `BundelenActie.test.tsx`.
+  Werkt in productie: niet gemeten (dispatch-onderdeel `vastly-tweelingen`).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verzamelbak "Niet toegewezen" (preview, optimistisch toewijzen, verplaatsen, documentenlijst) (CLAUDE.md `ed6d176` r. 494–528)

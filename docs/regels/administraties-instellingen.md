@@ -103,6 +103,47 @@
   ná de stap: 0 → geen tweede kandidaat, het aanwezig-pad is niet gemeten. De rij op Instellingen › Administraties › VGG › Boeken & AI toont nu
   "niet btw-plichtig · mens · Reeleezee: btw-aangifte uit" (niet geklikt: 0 × `PUT …/btw-plichtig` sinds de deploy).
 
+<!-- toegevoegd 24-09-2026, opdracht "bundelrun-zeven-punten" blok 2 -->
+- **Odoo — taal nl_NL in élke call (Peter 24-09, casus Bonte Hoeve "GB's allemaal in het Engels in de module, in Odoo zelf NLD";
+  geen migratie; BESLISSINGEN "ODOO — TAAL NL_NL IN ÉLKE CALL (Peter 24-09)"):** `app/odoo/client.py::OdooClient.call` draagt sinds
+  24-09 náást `context.allowed_company_ids` óók `context.lang = ODOO_TAAL` ("nl_NL") op ÉLKE lees- én schrijfcall — Odoo levert
+  vertaalbare velden (rekeningnaam, dagboeknaam, productnaam, btw-naam) anders in de standaardtaal van de API-gebruiker (en_US),
+  waardoor `platform.grootboekrekening`/`taxrate_cache` Engelse namen droegen terwijl de Odoo-UI van de klant NL toont. Een door de
+  aanroeper expliciet meegegeven `context.lang` wint (bewuste uitzondering, nooit raden); `versie()` is auth-loos zonder context en
+  blijft zo. Hersync = GEEN nieuwe motor: de nachtelijke `sync-alles` (job `rlz-sync` → `sync_alles_voor_odoo_administratie`)
+  overschrijft de namen bij de eerstvolgende run; op verzoek `odoo-stamgegevens-sync (--administratie <uuid|naamdeel> | --alles)
+  [--dry-run]` (`app/odoo/sync_cli.py`) roept uitsluitend de bestaande eerste-sync-route `odoo/service.eerste_sync` aan (sync-run-rij
+  zichtbaar op de detailpagina) — schrijvend, dus niet in de nameting-allowlist, productie via `gcloud run jobs execute rlz-sync
+  --args=…` ná deploy en Peters "ja"; `--dry-run` = alleen de kandidaten, geen Odoo-call. Niet geraakt: archiveren van een
+  Odoo-administratie (geen credential-intrek, caches blijven staan), administratienaam-volgen (0144), `odoo_rekening_mapping`
+  (code/id) en het boekingsgeheugen (id's). Guards `tests/odoo/test_client.py::TestTaalPoort`, `tests/odoo/test_taal_hersync.py`.
+  Werkt in productie: niet gemeten (dispatch-onderdeel `odoo-taal`: telling Engelse sleutelwoorden in de rekeningnamen van Bonte Hoeve
+  vóór/ná → 0).
+
+<!-- toegevoegd 24-09-2026, opdracht "bundelrun-zeven-punten" blok 3 -->
+- **Dearchiveren is backend-bewust via de 0016-registry; een Odoo-administratie dearchiveert zónder Reeleezee-login (BUG Peter 24-09, casus
+  Recreatief Vastgoed Nederland B.V. — company 13 `8ea9d28b…` actief / company 11 `59bf1f7f…` gearchiveerd, beide 24-09 door Peter gearchiveerd,
+  herkoppelen op 13 terecht 409 maar de enige weg "dearchiveer die administratie" was dood; geen migratie; BESLISSINGEN "DEARCHIVEREN
+  ODOO-ADMINISTRATIE — BACKEND-BEWUST VIA DE PORT, GEEN REELEEZEE-LOGIN (Peter 24-09)"):** `dearchiveer_administratie` kiest via
+  `app/backends/registry.heractiveer_port_voor` de adapter op `boekhoud_backend` (archiveren wijzigt die sleutel niet); het domein vertakt
+  nooit op "odoo". **Reeleezee** (`app/backends/rlz_heractiveer.py`) = het gedrag van v2 30-08 onverkort: nieuwe webservice-login verplicht
+  (zonder = 422 "vereist een nieuwe webservice-login"), admin-pin + rechten-probe + herprobe in de opgeslagen vorm, credential in de store.
+  **Odoo** (`app/odoo/heractiveer.py`) = géén loginvelden (een meegegeven login = 422 "niet van toepassing voor een Odoo-administratie",
+  nooit stil genegeerd): de bestaande `OdooKoppeling` mét versleutelde API-sleutel wordt opnieuw geprobed via `odoo_client_voor`
+  (company-poort), de terug-gelezen `res.company` moet gelijk zijn aan `koppeling.company_id`; groen → `probe_rapport`/`probe_op` bijgewerkt,
+  `actief=True`, archiefspoor weg, audit `administratie_gedearchiveerd` mét `backend` + probe-rapport; rood of andere company = 422 mét rapport,
+  niets gewijzigd. De route `POST /instellingen/administraties/{id}/dearchiveren` heeft een OPTIONELE body (`DearchiverenDto`). **Archiveren
+  van een Odoo-administratie laat de Odoo-API-sleutel bewust versleuteld staan** — `trek_credential_in` raakt alleen de RLZ-credential;
+  gearchiveerd is niet verwijderd, de sleutel is nooit uitleesbaar en is nodig om zonder invulwerk te dearchiveren; zichtbaar als
+  `ArchiveringResultaat(Dto).odoo_sleutel_behouden` + melding "Odoo-API-sleutel blijft versleuteld bewaard voor dearchiveren" (RLZ-administraties
+  ongewijzigd: login wordt ingetrokken). Dialoog (`AdministratiesV2.tsx`): Odoo = geen loginvelden, "De Odoo-koppeling wordt opnieuw geprobed;
+  company ‹id› moet ongewijzigd terugkomen. De opgeslagen API-sleutel wordt hergebruikt", knop "Dearchiveren"; Reeleezee = ongewijzigd. De
+  Odoo-wizard toont een company van een GEARCHIVEERDE administratie grijs mét "gearchiveerd — dearchiveer ‹naam›" (`CompanyClaim.wizard_label`,
+  `GevondenCompany.gearchiveerd`) — nooit een tweede koppeling-rij (uq_odoo_koppeling_host_company). Guards `tests/beheer/test_dearchiveren_odoo.py`
+  (Odoo groen/mismatch/rood/login-niet-van-toepassing, Reeleezee onveranderd, route 200/422/409/403, wizard-label), vitest `InstellingenScreen.test.tsx`,
+  `OdooKoppelWizard.test.tsx`. Werkt in productie: niet gemeten — Peter dearchiveert `8ea9d28b…` ná deploy (`59bf1f7f…` blijft gearchiveerd),
+  dispatch-onderdeel `dearchiveren-odoo`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Stack & platform — Instellingen › Administraties v2 (CLAUDE.md `ed6d176` r. 52–62)

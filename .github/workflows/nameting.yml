@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -572,6 +572,156 @@ jobs:
             echo "Oordeel: POST aanmaken 200 = $AK_200, 422 = $AK_422, 5xx = $AK_5XX, mislukt_mens-regels job-log = $AK_MENS, FixedAssets-records BLOw = $AK_FA — $AK_STAND — exit $rc_ak" >> "$UIT"
             echo "STATUS activa-kaart: rapport in $UIT (exit $rc_ak = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "vastly-tweelingen" ]]; then
+            # 24-09 blok 1 bundelrun (BESLISSINGEN "VASTLY-PDF-TWEELINGEN — STAM-NORMALISATIE, FACTUURNUMMER-REGEL, HERSTEL-CLI EN BEVINDING (Peter 24-09)"):
+            # lees-only meetlat — (1) `vastly-pdf-tweelingen-herstel --dry-run` (kandidaten kantoorbreed: verwacht 23 vóór de herstelrun, 0 erná);
+            # (2) db-lezen documenten-open --param bestandsnaam=factuur- voor de vijf Vastly-administraties (PDF-rijen inkoopfactuur ↔
+            # samengevoegd); (3) db-lezen reconciliatie-bevindingen soort ubl_pdf_ongebundeld (meten). Oordeel uit de TOTAAL-regel van (1).
+            UIT="verkenning/nameting-vastly-tweelingen-$DATUM.txt"
+            rc_vt=0
+            {
+              echo "== vastly-pdf-tweelingen-herstel --dry-run (lees-only, kantoorbreed) =="
+              scripts/gcp/nameting.sh vastly-pdf-tweelingen-herstel --dry-run 2> nameting-vt.stderr || rc_vt=$?
+              echo
+              for ADM in "Rubicon" "Elissen" "ARVUM" "Meyer" "Shuto"; do
+                echo "== db-lezen documenten-open --administratie $ADM --param bestandsnaam=factuur- =="
+                scripts/gcp/nameting.sh db-lezen documenten-open --administratie "$ADM" --param bestandsnaam=factuur- 2> nameting-vt-db.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-vt-db.stderr; }
+                echo
+              done
+              echo "== db-lezen reconciliatie-bevindingen --param afwijking_soort=ubl_pdf_ongebundeld (laatste afgeronde run) =="
+              scripts/gcp/nameting.sh db-lezen reconciliatie-bevindingen --param afwijking_soort=ubl_pdf_ongebundeld 2> nameting-vt-db2.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-vt-db2.stderr; }
+            } > "$UIT"
+            cat nameting-vt.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-vt.stderr; then
+              echo "::error::vastly-tweelingen kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_vt)" >> "$UIT"
+            TOTAAL="$(grep -m1 -o 'vastly-pdf-tweelingen-herstel — [^:]*: [0-9]* kandidaat/kandidaten' "$UIT" || true)"
+            echo "Oordeel: ${TOTAAL:-geen totaalregel} — job-exit $rc_vt" >> "$UIT"
+            echo "STATUS vastly-tweelingen: rapport in $UIT (job-exit $rc_vt = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "odoo-taal" ]]; then
+            # 24-09 blok 2 bundelrun (BESLISSINGEN "ODOO — TAAL NL_NL IN ÉLKE CALL (Peter 24-09)"): lees-only meetlat — per Odoo-administratie
+            # de bibliotheek-query grootboek-taal (aantal actuele rekeningen mét een Engels sleutelwoord + voorbeelden + jongste sync).
+            # Verwacht ná de eerste sync op de nieuwe image: engels = 0 bij gelijk totaal. Oordeel = som van `engels` over de drie.
+            UIT="verkenning/nameting-odoo-taal-$DATUM.txt"
+            rc_ot=0
+            {
+              for ADM in "Bonte Hoeve" "Nieuwenhoven" "Universal Verkoop"; do
+                echo "== db-lezen grootboek-taal --administratie \"$ADM\" =="
+                scripts/gcp/nameting.sh db-lezen grootboek-taal --administratie "$ADM" 2> nameting-ot-db.stderr || { rc_ot=$?; echo "(db-lezen exit $rc_ot — stderr:)"; cat nameting-ot-db.stderr; }
+                echo
+              done
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_ot)" >> "$UIT"
+            OT_ENGELS="$(grep -oE '^\| [0-9]+ \| [0-9]+ \|' "$UIT" | awk -F'|' '{s+=$3} END {print s+0}')"
+            if [[ "$OT_ENGELS" == "0" && "$rc_ot" -eq 0 ]]; then OT_STAND="werkt in productie: ja (0 Engelse rekeningnamen ná de sync)"; else OT_STAND="niet gemeten of nog Engelse namen ($OT_ENGELS) — sync ná deploy afwachten / odoo-stamgegevens-sync op de job-image"; fi
+            echo "Oordeel: Engelse rekeningnamen over de Odoo-administraties = $OT_ENGELS — $OT_STAND — exit $rc_ot" >> "$UIT"
+            echo "STATUS odoo-taal: rapport in $UIT (exit $rc_ot = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "dearchiveren-odoo" ]]; then
+            # 24-09 blok 3 bundelrun (BESLISSINGEN "DEARCHIVEREN ODOO-ADMINISTRATIE — BACKEND-BEWUST VIA DE PORT, GEEN REELEEZEE-LOGIN (Peter 24-09)"):
+            # lees-only meetlat — (1) request-log POST …/instellingen/administraties/*/dearchiveren sinds de deploy (200 = teruggezet, 422 =
+            # geweigerd mét reden, 5xx = rood); (2) db-lezen administratie-stand --param naam=Recreatief (actief/gearchiveerd_op/backend/
+            # company/probe_op; company 13 verwacht actief, 11 gearchiveerd).
+            UIT="verkenning/nameting-dearchiveren-odoo-$DATUM.txt"
+            rc_do=0
+            SINDS_DO="2026-09-24T12:00:00Z"
+            {
+              echo "== request-log POST …/instellingen/administraties/*/dearchiveren sinds $SINDS_DO =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="POST" httpRequest.requestUrl:"/dearchiveren" timestamp>="'"$SINDS_DO"'"' \
+                --project "$PROJECT_ID" --limit 200 --order asc \
+                --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-do-log.txt || rc_do=$?
+              cat nameting-do-log.txt
+              [[ -s nameting-do-log.txt ]] || echo "(geen POST dearchiveren sinds de deploy — klikpunt Peter nog open)"
+              echo
+              echo "== db-lezen administratie-stand --param naam=Recreatief =="
+              scripts/gcp/nameting.sh db-lezen administratie-stand --param naam=Recreatief 2> nameting-do-db.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-do-db.stderr; }
+            } > "$UIT"
+            DO_200="$(awk -F'\t' '$2=="POST" && $3=="200"' nameting-do-log.txt | wc -l | tr -d ' ')"
+            DO_422="$(awk -F'\t' '$2=="POST" && $3=="422"' nameting-do-log.txt | wc -l | tr -d ' ')"
+            DO_5XX="$(awk -F'\t' '$3 ~ /^5/' nameting-do-log.txt | wc -l | tr -d ' ')"
+            if [[ "$DO_5XX" -ge 1 ]]; then DO_STAND="ROOD — 5xx op de dearchiveer-route"; elif [[ "$DO_200" -ge 1 ]]; then DO_STAND="werkt in productie: ja (≥ 1 dearchivering mét 200, 0 × 5xx)"; elif [[ "$DO_422" -ge 1 ]]; then DO_STAND="geweigerd (422) — reden in het request-detail/klikpunt"; else DO_STAND="niet gemeten (route ongebruikt — klikpunt Peter: dearchiveer 8ea9d28b… company 13)"; fi
+            echo "Oordeel: POST dearchiveren 200 = $DO_200, 422 = $DO_422, 5xx = $DO_5XX — $DO_STAND — exit $rc_do" >> "$UIT"
+            echo "STATUS dearchiveren-odoo: rapport in $UIT (exit $rc_do = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "doorbelasting-pdf" ]]; then
+            # 24-09 blok 4 bundelrun (BESLISSINGEN "DOORBELASTING — FACTUUR-PDF 'ONVOLLEDIG' = CENT-VERSCHIL PER-REGEL-AFRONDING (lees-only, Peter 24-09)"):
+            # lees-only — (1) kantoorbrede telling per klasse (onvolledig_cent / anders / render / …); (2) de Lusso-casus (KF, 261004) mét
+            # `--pdf`: RLZ-record-regelsom + render náást de geboekte bedragen → uitkomst A/B. Alleen GET, niets geschreven.
+            UIT="verkenning/nameting-doorbelasting-pdf-$DATUM.txt"
+            rc_dp=0
+            {
+              echo "== doorbelasting-factuur-pdf-toets (kantoorbreed, zonder --pdf) =="
+              scripts/gcp/nameting.sh doorbelasting-factuur-pdf-toets 2> nameting-dp.stderr || rc_dp=$?
+              echo
+              echo "== doorbelasting-factuur-pdf-toets --administratie \"Kempen Facilities\" --referentie 261004 --pdf --max 1 =="
+              scripts/gcp/nameting.sh doorbelasting-factuur-pdf-toets --administratie "Kempen Facilities" --referentie 261004 --pdf --max 1 2> nameting-dp2.stderr || rc_dp=$?
+            } > "$UIT"
+            cat nameting-dp.stderr nameting-dp2.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-dp.stderr nameting-dp2.stderr; then
+              echo "::error::doorbelasting-pdf kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_dp)" >> "$UIT"
+            TOTAAL="$(grep -m1 -o 'TOTAAL: [0-9]* boeking(en) zonder factuur-PDF in [0-9]* administratie(s) · [^·]*' "$UIT" || true)"
+            UITK="$(grep -m1 -oE '→ (A|B|compleet|onbekend)[^·]*' "$UIT" || true)"
+            echo "Oordeel: ${TOTAAL:-geen totaalregel} · Lusso: ${UITK:-geen PDF-toets} — job-exit $rc_dp" >> "$UIT"
+            echo "STATUS doorbelasting-pdf: rapport in $UIT (job-exit $rc_dp = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "bua-jaarrapport" ]]; then
+            # BUA 24-09 (besluit Peter "nee standaard 21 % btw aanhouden … liever een correctie indienen"): géén bulk-zetting van het
+            # kenmerk; lees-only jaareinde-rapport per administratie × BUA-rekening (module + bank) mét het voorstel voor de correctie
+            # in de laatste aangifte. Meetrecept "werkt in productie": TOTAAL-regel mét `fouten 0`; de RLZ-kant (`--rlz`, uitsluitend
+            # GET op JournalEntryLines) staat er náást als tweede bron. Vanaf 1 december komt dezelfde som als bevinding
+            # `bua_correctie_open` (meten) in blok documenten — meetbaar via db-lezen reconciliatie-bevindingen.
+            UIT="verkenning/nameting-bua-jaarrapport-$DATUM.txt"
+            rc_bj=0
+            {
+              echo "== bua-jaarrapport --jaar 2026 --rlz (lees-only, kantoorbreed; RLZ-kant alleen GET) =="
+              scripts/gcp/nameting.sh bua-jaarrapport --jaar 2026 --rlz 2> nameting-bj.stderr || rc_bj=$?
+            } > "$UIT"
+            cat nameting-bj.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-bj.stderr; then
+              echo "::error::bua-jaarrapport kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_bj)" >> "$UIT"
+            TOTAAL="$(grep -m1 -o 'TOTAAL [0-9]* administratie(s) mét BUA-btw van [0-9]* · BUA-btw € [0-9.,]* · voorstel correctie € [0-9.,]* · kantine € [0-9.,]* · sponsoring € [0-9.,]* · fouten [0-9]*' "$UIT" || true)"
+            echo "Oordeel: ${TOTAAL:-geen totaalregel} — job-exit $rc_bj" >> "$UIT"
+            echo "STATUS bua-jaarrapport: rapport in $UIT (job-exit $rc_bj = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "activa-conventie" ]]; then
+            # 24-09 blok 6 (BESLISSINGEN "ACTIVA — AFSCHRIJVINGSREKENING = KOSTENREKENING MÉT DEZELFDE OMSCHRIJVING (Peter 24-09)"): lees-only
+            # meetlat — (1) request-log POST …/activa-voorstel/*/aanmaken sinds de deploy; (2) db-lezen activa-stand rij `koppeling`:
+            # afschrijving_ledger_code moet met 4 beginnen (kostenrekening); (3) rlz-lezen FixedAssets mét DepreciationAccount = 4xxx.
+            UIT="verkenning/nameting-activa-conventie-$DATUM.txt"
+            rc_ac=0
+            SINDS_AC="2026-09-24T12:00:00Z"
+            {
+              echo "== request-log POST …/activa-voorstel/*/aanmaken sinds $SINDS_AC (deploy blok 6 24-09) =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="POST" httpRequest.requestUrl:"/activa-voorstel/" timestamp>="'"$SINDS_AC"'"' \
+                --project "$PROJECT_ID" --limit 500 --order asc \
+                --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-ac-log.txt || rc_ac=$?
+              cat nameting-ac-log.txt
+              [[ -s nameting-ac-log.txt ]] || echo "(geen POST aanmaken sinds de deploy — kaart ongebruikt)"
+              echo
+              for ADM in "BLOw" "Pilates"; do
+                echo "== db-lezen activa-stand --administratie $ADM (rij koppeling: afschrijving_ledger_code hoort 4xxx te zijn) =="
+                scripts/gcp/nameting.sh db-lezen activa-stand --administratie "$ADM" 2> nameting-ac-db.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-ac-db.stderr; }
+                echo
+              done
+              echo "== rlz-lezen FixedAssets BLOw mét DepreciationAccount (verwacht Code 4xxx) =="
+              scripts/gcp/nameting.sh rlz-lezen --administratie "BLOw" --pad FixedAssets --expand "DepreciationAccount,BalanceAccount" --top 10 2> nameting-ac-rlz.stderr || { echo "(rlz-lezen exit $? — stderr:)"; cat nameting-ac-rlz.stderr; }
+            } > "$UIT"
+            AC_200="$(awk -F'\t' '$2=="POST" && $3=="200" && $5 ~ /\/aanmaken$/' nameting-ac-log.txt | wc -l | tr -d ' ')"
+            AC_5XX="$(awk -F'\t' '$3 ~ /^5/' nameting-ac-log.txt | wc -l | tr -d ' ')"
+            AC_0XXX="$(grep -cE 'koppeling.*\| 0[0-9]{3}' "$UIT" || true)"
+            if [[ "$AC_5XX" -ge 1 ]]; then AC_STAND="ROOD — 5xx op de kaart-route"; elif [[ "$AC_0XXX" -ge 1 ]]; then AC_STAND="ROOD — koppeling mét 0xxx-afschrijvingsrekening ná de deploy"; elif [[ "$AC_200" -ge 1 ]]; then AC_STAND="werkt in productie: ja (kaart gebruikt, afschrijvingsrekening 4xxx, 0 × 5xx)"; else AC_STAND="niet gemeten (kaart ongebruikt sinds de deploy — herstel BLOw = klikpunt Peter)"; fi
+            echo "Oordeel: POST aanmaken 200 = $AC_200, 5xx = $AC_5XX, koppelingen mét 0xxx = $AC_0XXX — $AC_STAND — exit $rc_ac" >> "$UIT"
+            echo "STATUS activa-conventie: rapport in $UIT (exit $rc_ac = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
             # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
@@ -626,6 +776,18 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-activa-kaart-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "ai-heraanbieden" ]]; then
             OORDEEL_BRON="verkenning/nameting-ai-heraanbieden-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "vastly-tweelingen" ]]; then
+            OORDEEL_BRON="verkenning/nameting-vastly-tweelingen-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "odoo-taal" ]]; then
+            OORDEEL_BRON="verkenning/nameting-odoo-taal-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "dearchiveren-odoo" ]]; then
+            OORDEEL_BRON="verkenning/nameting-dearchiveren-odoo-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "doorbelasting-pdf" ]]; then
+            OORDEEL_BRON="verkenning/nameting-doorbelasting-pdf-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "bua-jaarrapport" ]]; then
+            OORDEEL_BRON="verkenning/nameting-bua-jaarrapport-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "activa-conventie" ]]; then
+            OORDEEL_BRON="verkenning/nameting-activa-conventie-$DATUM.txt"
           elif [[ "$ONDERDEEL" =~ ^(alles|a|b|c|d|e)$ ]]; then
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           else

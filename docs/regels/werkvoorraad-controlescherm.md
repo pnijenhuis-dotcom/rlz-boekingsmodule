@@ -153,6 +153,23 @@
   "Nieuwenhoven" 3 (geen voorkeur, RLZ-default aan) — de leesroute herstelt ze bij het openen; Universal Steigerbouw 7 zijn Odoo
   (default gesplitst) en dus consistent.
 
+<!-- toegevoegd 24-09-2026, opdracht "bundelrun-zeven-punten" blok 7b (BUG 23-09 samenvoegen-vinkje) -->
+- **Samenvoegen — bron = opgeslagen regels, nooit stil weg (BUG Peter 23-09 "bij boeking van inkoop is vinkje samenvoegen ineens
+  weg?", casus BLOW Van Rumpt 2025135 € 1.277,50, document 3405157f…: 7 opgeslagen regels mét netto/bruto, scan zonder
+  regelbedragen → `samengevoegde_regel` null → geen vinkje; geen migratie; BESLISSINGEN "SAMENVOEGEN — BRON = OPGESLAGEN REGELS,
+  NOOIT STIL WEG (23-09)"):** `_samengevoegde_regel` heeft sinds 24-09 een tweede bron: staan er ≥ 2 OPGESLAGEN regels
+  (`boekvoorstel_regel`), dan berekent `boekvoorstel._samengevoegde_regel_uit_opgeslagen` de één-regel-variant uit díe regels —
+  Σ netto, Σ btw-bedrag (een lege regel-btw wordt cent-exact uit het tarief van die regel afgeleid via `regelsom.btw_uit_tarief`;
+  geen percentage in de `taxrate_cache` = niet berekenbaar), één btw-code als alle regels dezelfde dragen (anders géén samenvoegen
+  mét reden "verschillende btw-codes"), grootboek alleen als alle regels hetzelfde dragen, omschrijving "Factuur ‹nr› — samengevoegd
+  (N regels)". De scan-uitkomst (`veldvoorstel`) blijft de bron zonder of bij één opgeslagen regel. **Niets verdwijnt stil:** kan er
+  bij > 1 regel niet worden samengevoegd, dan draagt de boekvoorstel-response `samenvoegen_niet_mogelijk_reden` (ook "regelbedragen uit
+  de scan onvolledig" op het prefill-pad) en toont het controlescherm de chip "samenvoegen niet mogelijk: ‹reden›" i.p.v. het vinkje
+  weg te laten; zodra de server een variant meegeeft staat het vinkje er weer. De regelsom-check (Σ = factuurtotaal) blijft de poort;
+  dit raakt uitsluitend de weergave-/boekvorm. Guards `tests/documenten/test_boekvoorstel_samenvoegen_23_09.py`, vitest
+  `BoekvoorstelPanel.samenvoegen23.test.tsx`, keten-casus ae (projectplicht → veld None, geen chip). Werkt in productie: niet gemeten
+  (klikpunt Peter: document 3405157f… openen ná deploy → vinkje terug).
+
 <!-- toegevoegd 18-09-2026, opdracht "boeken-sneller-checks-en-doorloop" -->
 - **Boeken sneller — checks lokaal/extern, `wordt_geboekt` + achtergrond-schrijver, doorloop zonder omweg (Peter 18-09
   letterlijk: "als ik nu een factuur boek duurt het lang voordat alle controles groen worden (4 à 5 seconden). Als ik daarna
@@ -207,6 +224,27 @@
   voor de nameting. Nulmeting productie 18-09 (request-log vóór de fix): checks p50 0,79 s / p95 2,14 s (n=51); boeken p50 2,65 s /
   p95 3,42 s (n=24, waarvan 4× 429 volumerem). Doelmeting: klik → volgende document ≤ 1 s (p95), externe rijen ≤ 1,5 s bij
   voorverwarmd, RLZ-boeking gereed in de lijst ≤ 15 s (p95).
+
+<!-- toegevoegd 24-09-2026, opdracht "bundelrun-zeven-punten" blok 7a (BUG 23-09 vraag-thread → kassarapport in inkoopscherm) -->
+- **Documentlink volgt de soort — één routefunctie, redirect op het inkoop-controlescherm (BUG Peter 23-09, casus Van Boxtel Horeca
+  Exploitatie `Journaal 19-9.pdf` e7d89765-c4f5-42f3-82d9-71f8a11f5f7f, kassarapport mét open vraag "stel op het omzetreview-scherm …":
+  de knop in de vraag-thread opende het INKOOP-controlescherm met een leeg crediteurformulier; geen migratie; BESLISSINGEN "DOCUMENTLINK
+  VOLGT DE SOORT — VRAAG-THREAD OPENDE KASSARAPPORT IN INKOOPSCHERM (23-09)"):** (1) **Eén bron voor "open dit document"** =
+  `frontend/src/werkvoorraad/format.ts::documentPad(administratieId, {id, soort?, status?}, context?)`: kassarapport → `/omzet/…`,
+  verkoopfactuur → `/verkoop/…`, waarborg → `/waarborg/…`, verplichting → `/verplichting/…`, een open vraag (`vraag_open`, niet
+  verwijderd) → de vráág op de klantpagina, al het andere én een onbekende soort → het inkoop-controlescherm (alleen dáár reist de
+  lijstcontext mee). `documentRoute`, `zoeken/reviewPad` en `materiaal/miniVoorraadApi.documentPad` zijn dunne lagen erop; nergens
+  anders in `frontend/src` staat nog een letterlijke `` `/documenten/${…}` ``-link (guard `werkvoorraad/documentPad.guard.test.ts`;
+  API-paden `/administraties/…/documenten/…` zijn geen links). Server-spiegel `app/documenten/deeplink.py::document_pad(administratie_id,
+  document_id, soort, status)` — `corrigeren.review_pad` en `rls_weigering.doel_pad_voor_route` lopen erlangs; guard
+  `tests/unit/test_documentlink_deeplink_guard.py`. (2) **De DTO's dragen de soort:** `VraagResponse.document_soort`,
+  `OpenVraagRijDto.document_soort` (default `inkoopfactuur`; frontend optioneel → oud antwoord = inkoop). (3) **Redirect-grendel:** opent
+  iemand `/documenten/<adm>/<id>` van een document mét een eigen reviewscherm (oude link, mail, getypte URL, duplicaat-/tegenboek-
+  verwijzing zonder soort), dan stuurt `DocumentDetailScreen` ná het laden door naar het juiste scherm — nooit een leeg inkoopformulier
+  voor een niet-inkoopdocument. (4) **Copy:** de thread-knop heet "Document bekijken" en volgt de soort; bij soort kassarapport óf een
+  vraag-tekst die naar het omzetreview-scherm verwijst staat er "Naar omzetreview →" (`btn secondary`) naast. Gouden set:
+  `tests/keten/test_lijst_standaard_en_wachten.py::TestDocumentlinkVolgtDeSoort` (de Floor-vraag draagt `document_soort`, de spiegel
+  kiest het pad). Werkt in productie: niet gemeten (meetrecept in het rapport `2026-09-24-bundelrun-zeven-punten.md`).
 
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 

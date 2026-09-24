@@ -71,6 +71,26 @@
   naar `gestorneerd`; de mens zet de doorbelasting ná de herboeking opnieuw klaar ("Boeken + doorbelasten"). De gele balk en de
   tijdlijnregel `gecorrigeerd` noemen de teruggedraaide doelentiteiten.
 
+<!-- toegevoegd 24-09-2026, opdracht "bundelrun-zeven-punten" blok 4 (lees-only) -->
+- **Factuur-PDF "onvolledig" door een cent-verschil = RLZ legt de btw per tarief over het subtotaal vast, de motor boekt de regelsom
+  (Peter 24-09, casus KF → Molenhof Verhuur B.V., Lusso-Design 261004, € 4.741,55 + provisie € 237,08; LEES-ONLY, geen wijziging in
+  geldlogica; BESLISSINGEN "DOORBELASTING — FACTUUR-PDF 'ONVOLLEDIG' = CENT-VERSCHIL PER-REGEL-AFRONDING (lees-only, Peter 24-09)"):**
+  productie-RLZ (24-09, `rlz-lezen` Receipts, alleen GET) toont op de doorbelasting-verkoop `RLZ-01-00002726` (KF, Ref 24713312, 21-08)
+  én op de spiegel-inkoop `RLZ-04-00000614` (Molenhof Verhuur, open) een `TotalPayableAmount` van **6.024,14** = btw 1.045,51 (21 % ×
+  4.978,63, één afronding), terwijl `doorbelasting_boeking.btw_bedrag` 1.045,52 draagt (`geld.btw_over` per regel: 995,73 + 49,79) →
+  **uitkomst B** van de opdracht: RLZ = de boekhoudkundige waarheid, onze regelsom wijkt één cent af, en de cent-exacte toets
+  `factuur.controleer_factuur_tekst` faalt daardoor structureel op élke doorbelasting mét ≥ 2 regels waarvan de per-regel-afronding
+  afwijkt (chip "factuur ontbreekt" terwijl de boeking goed staat; de webhook-payload aan Vastly draagt 1 cent te veel). **Nog niet
+  gefixt** (opdracht: (b)-B pas ná Peters akkoord): voorstel = de doorbelastingsmotor boekt per tarief over het subtotaal en verdeelt
+  de btw over de regels via grootste-rest-centen, uitsluitend in `app/doorbelasting/boeken.py`/`geld.py` (de inkoop-`regelsom.py`
+  blijft per regel, factuur leidend); bestaande boekingen = data-stap mét dry-run. Lees-only instrument
+  `doorbelasting-factuur-pdf-toets [--administratie] [--referentie] [--pdf] [--max N] [--json-uit]` (`app/doorbelasting/
+  factuur_pdf_toets.py`, nameting-allowlist, dispatch-onderdeel `doorbelasting-pdf`): kantoorbrede telling per klasse
+  (`onvolledig_cent` = alleen btw-som/totaal ontbreken én verschil ± 1 ct; `onvolledig_anders`; `render_mislukt`; `geen_pdf`;
+  `onleesbaar`; `overig`) en mét `--pdf` het RLZ-record (regelsom `TaxAmount`) + de render náást de geboekte bedragen → A/B/compleet/
+  onbekend; alleen GET, niets geschreven. `make doorbelasting-facturen-herstel` NIET gedraaid (zou op dezelfde toets falen). Werkt in
+  productie: niet gemeten (instrument pas ná deploy).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kempen-doorbelasting (motor, spiegel, storno-blokkade, tegenboek-pad, factuur-PDF, projecten) (CLAUDE.md `ed6d176` r. 829–936)

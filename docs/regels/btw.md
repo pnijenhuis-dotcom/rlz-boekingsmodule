@@ -184,6 +184,37 @@
   C.V. (netto −260,00, btw 0,00) — advies ongewijzigd. `bua-kenmerk-zetten` is niet gedraaid (ook niet `--dry-run`): eerst Peters "ja", dan de dry-run
   op de job-image (verwacht 149 in 75), dan echt, dan de nameting `bua-kandidaten` → "149 mét kenmerk aan".
 
+<!-- toegevoegd 24-09-2026, opdracht "bundelrun-zeven-punten" blok 5 -->
+- **BUA — jaareinde-rapport i.p.v. kenmerk (besluit Peter 24-09 letterlijk: "nee standaard 21% btw aanhouden. Ik heb liever dat we er
+  achter komen iets fout te hebben gedaan en een correctie indienen dan onjuist te veel geld betalen"; geen migratie; HERZIET punt (4)
+  van 21-09 (bulk-voorstel 4508 + 4510); BESLISSINGEN "BUA — JAAREINDE-RAPPORT I.P.V. KENMERK (Peter 24-09)"):** géén bulk-zetting van
+  `btw_aftrek_uitgesloten`; `bua-kenmerk-zetten` blijft bestaan maar wordt niet gedraaid, het kenmerk 0163 blijft per rekening
+  beschikbaar voor administraties die het wél willen. De btw op representatie-/relatiegeschenk-/personeelsrekeningen wordt gedurende het
+  jaar gewoon afgetrokken (standaard 21 %); de BUA-correctie hoort in de LAATSTE btw-aangifte van het jaar. Daarvoor: (1) **lees-only CLI
+  `bua-jaarrapport --jaar 2026 [--administratie <uuid|naamdeel>] [--rlz] [--json-uit]`** (`app/beheer/bua_cli.py`, nameting-allowlist,
+  dispatch-onderdeel `bua-jaarrapport`): per administratie in haar eigen RLS-scope de `bua-kandidaten`-set (`is_kandidaat`) mét per
+  rekening categorie (`categorie_voor`: BUA = representatie/relatiegeschenken/personeel/horeca; kantine en "sponsoring — reclame" apart),
+  kenmerk-stand, aantal documenten, netto en afgetrokken btw — bronnen: module (boekvoorstel-regels van GEBOEKTE inkoopfacturen op
+  factuurdatum) + bank-direct-geboekt (exact de tel-logica van `kandidaten_voor`), en mét `--rlz` de RLZ-kant náást de module: per rekening
+  `JournalEntryLines` uitsluitend GET (`$filter` alleen `Account/id eq …` — nooit een int op een enum-veld; `$expand=JournalEntry`;
+  boekjaar client-side op `BookDate`; Σ Debit−Credit + Σ `VatAmount`; gepagineerd ≤ 10 × 200); geen credential, Odoo-administratie of een
+  RLZ-fout = zichtbare regel "RLZ-kant: niet gemeten (…)", nooit een fout. **Kolom "correctie laatste aangifte (voorstel)" = de btw-som
+  van de BUA-rekeningen; kantine (kantineregeling: aftrek is het uitgangspunt) en sponsoring (reclame, aftrekbaar) worden getoond maar
+  tellen niet mee.** LET-OP-tekst letterlijk in élke uitvoer: "de € 227-drempel per begunstigde per jaar is niet uit de boekhouding te
+  halen — voorstel = volledige btw-som; de accountant toetst de drempel, de module past niets toe". TOTAAL-regel (= oordeelregel):
+  "TOTAAL N administratie(s) mét BUA-btw van M · BUA-btw € x · voorstel correctie € y · kantine € k · sponsoring € s · fouten 0". (2)
+  **Dagelijkse bevinding vanaf 1 december:** soort `bua_correctie_open` (blok `documenten`, `sinds` 24-09, code-default `meten`) uit
+  `bua_cli.reconciliatie_stap` aan het einde van het documenten-blok — vóór 1 december niets ("nog niet aan de orde"), daarna per
+  administratie mét BUA-btw > 0 in het boekjaar één afwijking (vingerafdruk `documenten:<aid>:bua_correctie_open:<jaar>`; detail jaar,
+  btw_som, kantine_btw, sponsoring_btw, rekeningen mét btw ≠ 0), lees-only in beide modi; handeling "Rapport openen" = deeplink
+  `/instellingen/administraties/{aid}?tab=boeken-ai#bua-jaarrapport`; een fout in de stap is een zichtbare FOUT-regel, nooit een rode
+  documenten-toets. (3) **Scherm + route:** `GET /administraties/{id}/bua-jaarrapport?jaar=` (kantoorrol + administratie-scope, lees-only,
+  nooit een RLZ-call vanuit een request) en het lees-only blok "BUA-jaarrapport" op Instellingen › ‹administratie› › Boeken & AI onder
+  "Btw niet aftrekbaar" (anker `bua-jaarrapport`, registry-entry, jaar-keuze, alleen rekeningen mét btw ≠ 0, chip "correctie laatste
+  aangifte (voorstel)", sommen, LET-OP). Guards `tests/beheer/test_bua_jaarrapport.py` (18), `test_rol_endpoint_gates.py`, vitest
+  `BuaJaarrapportBlok.test.tsx`. Werkt in productie: niet gemeten (dispatch-onderdeel `bua-jaarrapport` ná deploy; de bevinding pas ná
+  1-12-2026).
+
 <!-- toegevoegd 22-09-2026, opdracht "BUG-niet-btw-plichtige-administratie-btw-gesplitst-vgg-lacy-lion-te-weinig-betaald" -->
 - **Btw-plichtig per administratie — niet-plichtig = btw in de kosten, harde check (BUG Peter 22-09, casus Vastgoedgroep Nederland /
   Studio Lacy Lion 2026-042 d.d. 11-09, € 1.857,51 = 1.535,13 + 21 % 322,38, akkoord Sophia Gerritsen 16-09 + Kempen 18-09, geboekt
