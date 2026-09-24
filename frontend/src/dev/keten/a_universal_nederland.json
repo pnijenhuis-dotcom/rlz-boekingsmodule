@@ -281,6 +281,7 @@
   "samenvoegen_toegestaan": false,
   "samengevoegde_regel": null,
   "regels_modus_hersteld": false,
+  "samenvoegen_niet_mogelijk_reden": null,
   "totaal_bron": null,
   "totaal_pinbon": null,
   "totaal_pinbon_status": null,
