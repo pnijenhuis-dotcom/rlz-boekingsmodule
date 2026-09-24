@@ -46,7 +46,7 @@ class Kandidaat:
     afschrijving_ledger_id: uuid.UUID | None
     afschrijving_ledger_code: str | None
     #: Herkomst van de voorgevulde afschrijvingsrekening: `koppeling` (vastgelegd bij plannen), `instelling` (per
-    #: categorie), `conventie` (code + 1 mét naam "Afschrijving…", BUG 24-09) of None (leeg → verplicht op de kaart).
+    #: categorie), `conventie` (kostenrekening 4xxx mét dezelfde omschrijving ná "Afschrijving…", Peter 24-09 blok 6) of None (leeg → verplicht op de kaart).
     afschrijving_bron: str | None
     signalen: list[cat.Signaal]
     koppeling: ActivumKoppeling | None
@@ -117,7 +117,7 @@ def bepaal_afschrijving(
     rekeningen: dict[uuid.UUID, Grootboekrekening],
 ) -> tuple[uuid.UUID | None, str | None]:
     """Winnaarsvolgorde afschrijvingsrekening: vastgelegd op de koppeling > instelling per categorie > conventie
-    code + 1 mét naam "Afschrijving…" (BUG 24-09) > leeg. Geeft (ledger_id, bron)."""
+    kostenrekening 4xxx "Afschrijving(skosten) ‹omschrijving activarekening›" (Peter 24-09 blok 6) > leeg. Geeft (ledger_id, bron)."""
     if koppeling is not None and koppeling.afschrijving_ledger_id:
         return koppeling.afschrijving_ledger_id, afschrijving_service.BRON_KOPPELING
     uit_instelling = stand.afschrijving_ledger_voor(categorie)

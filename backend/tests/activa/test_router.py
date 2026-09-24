@@ -69,14 +69,14 @@ class TestVoorstelRoutes:
             "methode_naam": "Lineair 5 jaar",
             "restwaarde": "0.00",
             "afschrijving_ledger_id": str(GB_0108),
-            "afschrijving_ledger_code": "0108",
+            "afschrijving_ledger_code": "4708",
             "afschrijving_bron": "conventie",
             "signalen": [
                 {"code": "kia_mia_mogelijk", "tekst": "KIA/MIA/Vamil mogelijk van toepassing — adviseur beslist"}
             ],
             "koppeling": None,
         }
-        assert [o["code"] for o in dto["afschrijving_ledger_opties"]] == ["0108", "0107", "0170"]
+        assert [o["code"] for o in dto["afschrijving_ledger_opties"]] == ["4708", "4400"]
 
     def test_aanmaken_plant_en_overslaan_vereist_reden(
         self, factuur: uuid.UUID, administratie_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
@@ -88,7 +88,7 @@ class TestVoorstelRoutes:
         assert resp.status_code == 200, resp.text
         k = resp.json()["kandidaten"][0]
         assert k["koppeling"]["status"] == "gepland" and k["koppeling"]["herkomst"] == "mens"
-        assert k["afschrijving_ledger_id"] == str(GB_0108) and k["afschrijving_ledger_code"] == "0108"
+        assert k["afschrijving_ledger_id"] == str(GB_0108) and k["afschrijving_ledger_code"] == "4708"
         assert k["koppeling"]["gewijzigd_op"]
         # Zonder body mag ook.
         assert client.post(f"{_pad(administratie_id, factuur)}/1/aanmaken", headers=h).status_code == 200

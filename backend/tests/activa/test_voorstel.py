@@ -34,13 +34,14 @@ class TestKandidaten:
         assert k.aanschafwaarde == Decimal("1250.00") and k.aanschafdatum == date(2026, 9, 1)
         assert k.categorie == "inventaris" and k.categorie_label == "Inventaris"
         assert k.termijn_maanden == 60 and k.methode_naam == "Lineair 5 jaar" and k.restwaarde == Decimal("0.00")
-        # BUG 24-09 punt 1: geen instelling → conventie code + 1 mét naam "Afschrijving…" (0107 → 0108), herkomst-chip.
-        assert k.afschrijving_ledger_id == GB_0108 and k.afschrijving_ledger_code == "0108"
+        # Peter 24-09 blok 6: geen instelling → conventie kostenrekening mét dezelfde omschrijving (0107 Inventaris → 4708
+        # "Afschrijving inventaris"), herkomst-chip.
+        assert k.afschrijving_ledger_id == GB_0108 and k.afschrijving_ledger_code == "4708"
         assert k.afschrijving_bron == "conventie"
         assert [s.code for s in k.signalen] == ["kia_mia_mogelijk"]
         assert k.koppeling is None
-        # Opties: alle 0xxx-rekeningen soort 3, 'afschrijving' eerst, dan op code.
-        assert [r.code for r in data.afschrijving_ledger_opties] == ["0108", "0107", "0170"]
+        # Opties: alle 4xxx-kostenrekeningen soort 2, 'afschrijving' eerst, dan op code.
+        assert [r.code for r in data.afschrijving_ledger_opties] == ["4708", "4400"]
 
     def test_onder_de_grens_is_oranje_signaal_geen_kandidaat(
         self,
@@ -98,7 +99,7 @@ class TestKandidaten:
         k = data.kandidaten[0]
         assert data.stand.effectieve_grens == Decimal("1000.00") and data.stand.grens_bron == "instelling"
         assert k.termijn_maanden == 120 and k.methode_naam == "Lineair 10 jaar"
-        assert k.afschrijving_ledger_id == GB_0108 and k.afschrijving_ledger_code == "0108"
+        assert k.afschrijving_ledger_id == GB_0108 and k.afschrijving_ledger_code == "4708"
         assert k.afschrijving_bron == "instelling"  # instelling wint van de conventie
 
     def test_rlz_grens_wint_van_de_instelling(self, factuur: uuid.UUID, administratie_id: uuid.UUID) -> None:

@@ -1,5 +1,5 @@
 # ruff: noqa: F811 — pytest-fixtures als parameters
-"""Fixtures activa fase 1: een administratie mét MVA-rekening 0107 (is_activa) + afschrijvingsrekening 0108, boeken aan,
+"""Fixtures activa fase 1: een administratie mét MVA-rekening 0107 (is_activa) + afschrijvingskostenrekening 4708, boeken aan,
 een inkoopfactuur mét boekvoorstel (regel 1 op 0107 ≥ grens, regel 2 kosten) en de FakeBoekClient als RLZ-kant."""
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from tests.documenten.conftest import _opslag_naar_tmp, gescoopte_gebruiker, ops
 from tests.documenten.fake_rlz_client import FakeBoekClient
 
 GB_0107 = uuid.UUID("44444444-0000-0000-0000-000000000107")  # Inventaris (MVA)
-GB_0108 = uuid.UUID("44444444-0000-0000-0000-000000000108")  # Afschrijving inventaris
+GB_0108 = uuid.UUID("44444444-0000-0000-0000-000000000108")  # 4708 Afschrijving inventaris (KOSTEN, blok 6 24-09)
 GB_0170 = uuid.UUID("44444444-0000-0000-0000-000000000170")  # Computers (MVA)
 GB_4400 = uuid.UUID("44444444-0000-0000-0000-000000004400")  # kosten
 VENDOR = uuid.UUID("33333333-0000-0000-0000-000000000901")
@@ -36,7 +36,7 @@ def stamgegevens(administratie_id: uuid.UUID) -> None:
     with scoped_session(administratie_id) as session:
         for ledger_id, code, naam, soort, is_activa in (
             (GB_0107, "0107", "Inventaris", 3, True),
-            (GB_0108, "0108", "Afschrijving inventaris", 3, False),
+            (GB_0108, "4708", "Afschrijving inventaris", 2, False),
             (GB_0170, "0170", "Computers en software", 3, True),
             (GB_4400, "4400", "Inhuur onderaannemers", 2, False),
         ):

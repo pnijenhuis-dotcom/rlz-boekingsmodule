@@ -55,7 +55,7 @@ export interface ActivaKandidaatDto {
   afschrijving_ledger_id: string | null
   afschrijving_ledger_code: string | null
   /** Herkomst van de voorvulling (BUG 24-09): `koppeling` (vastgelegd), `instelling` (per categorie), `conventie`
-   * (balansrekening-code + 1 mét naam "Afschrijving…"), of null = leeg → de combobox is verplicht, de knop staat uit. */
+   * (kostenrekening 4xxx mét dezelfde omschrijving ná "Afschrijving…", Peter 24-09), of null = leeg → de combobox is verplicht, de knop staat uit. */
   afschrijving_bron?: 'koppeling' | 'instelling' | 'conventie' | string | null
   signalen: ActivaSignaalDto[]
   koppeling: ActivumKoppelingDto | null
@@ -199,7 +199,7 @@ export const AFSCHRIJVING_VEREIST_TEKST = 'Kies een afschrijvingsrekening — Re
 
 /** Klantleesbaar label van de voorvulling-herkomst (chip op de kaart). */
 export const AFSCHRIJVING_BRON_LABEL: Record<string, string> = {
-  conventie: 'voorgevuld: conventie (code + 1)',
+  conventie: 'voorgevuld: conventie (kostenrekening zelfde omschrijving)',
   instelling: 'voorgevuld: uit de instelling',
 }
 

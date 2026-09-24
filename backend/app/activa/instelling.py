@@ -30,6 +30,7 @@ from app.rlz.client import RlzApiError
 logger = logging.getLogger(__name__)
 
 SOORT_ACTIVA = 3
+SOORT_KOSTEN = 2  # afschrijvingskostenrekeningen (blok 6 24-09)
 
 
 class OngeldigeInstelling(Exception):
@@ -139,14 +140,15 @@ def mva_rekeningen(session: Session, administratie_id: uuid.UUID) -> list[Grootb
 
 
 def afschrijving_ledger_opties(session: Session, administratie_id: uuid.UUID) -> list[Grootboekrekening]:
-    """Alle niet-verdwenen rekeningen soort 3 (activa) mét code 0xxx — "afschrijving" in de naam eerst, dan op code."""
+    """Alle niet-verdwenen KOSTENrekeningen soort 2 mét code 4xxx — "afschrijving" in de naam eerst, dan op code
+    (besluit Peter 24-09 blok 6: `DepreciationAccount` is een kostenrekening, STAP-0 Pilates Bloom 4706)."""
     rijen = session.scalars(
         select(Grootboekrekening).where(
             Grootboekrekening.administratie_id == administratie_id,
             Grootboekrekening.verdwenen_uit_bron_op.is_(None),
             Grootboekrekening.is_totaalrekening.is_(False),
-            Grootboekrekening.soort == SOORT_ACTIVA,
-            Grootboekrekening.code.startswith("0"),
+            Grootboekrekening.soort == SOORT_KOSTEN,
+            Grootboekrekening.code.startswith("4"),
         )
     ).all()
     return sorted(rijen, key=lambda r: (0 if "afschrijving" in (r.naam or "").lower() else 1, r.code))

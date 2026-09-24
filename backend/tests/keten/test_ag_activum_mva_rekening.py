@@ -24,14 +24,14 @@ from tests.keten.conftest import GB_ADVIES, PROJECT_26084, TAXRATE_HOOG, Keten
 
 CASUS = Casus(casussen.H_BDO)
 GB_0107 = uuid.UUID("44444444-0000-0000-0000-000000000107")
-GB_0108 = uuid.UUID("44444444-0000-0000-0000-000000000108")
+GB_4708 = uuid.UUID("44444444-0000-0000-0000-000000004708")  # KOSTENrekening (blok 6 24-09)
 
 
 def _mva_rekeningen(keten: Keten) -> None:
     with scoped_session(keten.administratie_id) as session:
-        for ledger_id, code, naam, is_activa in (
-            (GB_0107, "0107", "Inventaris", True),
-            (GB_0108, "0108", "Afschrijving inventaris", False),
+        for ledger_id, code, naam, soort, is_activa in (
+            (GB_0107, "0107", "Inventaris", 3, True),
+            (GB_4708, "4708", "Afschrijving inventaris", 2, False),
         ):
             session.add(
                 Grootboekrekening(
@@ -39,7 +39,7 @@ def _mva_rekeningen(keten: Keten) -> None:
                     administratie_id=keten.administratie_id,
                     code=code,
                     naam=naam,
-                    soort=3,
+                    soort=soort,
                     is_totaalrekening=False,
                     is_activa=is_activa,
                 )
@@ -89,10 +89,11 @@ def test_ag_regel_op_mva_rekening_wordt_activum_in_rlz_na_boeken(keten: Keten) -
     assert k["aanschafdatum"] == (voorstel.factuurdatum or date.today()).isoformat()
     assert k["categorie"] == "inventaris" and k["methode_naam"] == "Lineair 5 jaar" and k["restwaarde"] == "0.00"
     assert [s["code"] for s in k["signalen"]] == ["kia_mia_mogelijk"] and k["koppeling"] is None
-    assert any(o["code"] == "0108" for o in dto["afschrijving_ledger_opties"])
-    # BUG 24-09 punt 1 (BLOw 23-09): zonder instelling is de afschrijvingsrekening deterministisch voorgevuld uit de
-    # conventie code + 1 mét naam "Afschrijving…" (0107 → 0108), mét herkomst — de mens hoeft niets meer te kiezen.
-    assert k["afschrijving_ledger_id"] == str(GB_0108) and k["afschrijving_ledger_code"] == "0108"
+    assert any(o["code"] == "4708" for o in dto["afschrijving_ledger_opties"])
+    # Peter 24-09 blok 6 (herziet BUG 24-09 punt 1): zonder instelling is de afschrijvingsrekening deterministisch
+    # voorgevuld uit de conventie "kostenrekening 4xxx mét dezelfde omschrijving" (0107 Inventaris → 4708 Afschrijving
+    # inventaris — STAP-0 Pilates Bloom: DepreciationAccount = 4706 kosten), mét herkomst — de mens kiest niets meer.
+    assert k["afschrijving_ledger_id"] == str(GB_4708) and k["afschrijving_ledger_code"] == "4708"
     assert k["afschrijving_bron"] == "conventie"
 
     # 2. "Aanmaken ná boeken" ZONDER body → de voorvulling wordt vastgelegd → gepland; nog niets in RLZ.
@@ -111,7 +112,7 @@ def test_ag_regel_op_mva_rekening_wordt_activum_in_rlz_na_boeken(keten: Keten) -
     assert len(keten.rlz.puts) == 1 and keten.rlz.puts[0]["reference"] == "6088744"
     assert len(keten.rlz.fixed_asset_puts) == 1
     put = keten.rlz.fixed_asset_puts[0]
-    assert put["BalanceAccount"] == {"id": str(GB_0107)} and put["DepreciationAccount"] == {"id": str(GB_0108)}
+    assert put["BalanceAccount"] == {"id": str(GB_0107)} and put["DepreciationAccount"] == {"id": str(GB_4708)}
     assert put["DepreciationMethod"] == {"id": "aaaaaaaa-1111-4111-8111-000000000060"} and put["NumberOfMonths"] == 60
     assert put["TotalAmountPurchase"] == 5000.0 and put["LiquidationValue"] == 0.0 and put["Type"] == 1
     assert put["InvoiceReference"] == "6088744"

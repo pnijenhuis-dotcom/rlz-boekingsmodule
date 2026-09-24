@@ -255,8 +255,8 @@ class TestNaBoeken:
         admin_engine: Engine,
         opslag: LokaleBestandsopslag,
     ) -> None:
-        # BUG 24-09: 0107 krijgt via de conventie 0108 voorgevuld; het afwezig-pad "geen rekening" bestaat alleen nog
-        # voor een rekening zonder conventie-opvolger (0170 Computers — geen 0171 "Afschrijving…").
+        # Blok 6 24-09: 0107 Inventaris krijgt via de conventie 4708 "Afschrijving inventaris" voorgevuld; het afwezig-pad
+        # "geen rekening" bestaat alleen nog voor een rekening zonder kostenrekening mét dezelfde omschrijving (0170).
         _zet_instelling(administratie_id, automatisch_aanmaken_ingeschakeld=True)
         laptop = maak_factuur(
             administratie_id=administratie_id,
@@ -425,7 +425,7 @@ class TestNaBoeken:
 
 
 class TestBug24_09:
-    """BUG-opdracht 24-09 (BLOw 23-09): afschrijvingsrekening deterministisch voorgevuld (conventie code + 1), nooit
+    """BUG-opdracht 24-09 (BLOw 23-09): afschrijvingsrekening deterministisch voorgevuld (conventie kostenrekening zelfde omschrijving), nooit
     meer `gepland` zonder rekening, vangnet in de RLZ-write, en de 404-aanmaakroute als nette reden."""
 
     def test_plannen_zonder_keuze_neemt_de_conventie_rekening_over(

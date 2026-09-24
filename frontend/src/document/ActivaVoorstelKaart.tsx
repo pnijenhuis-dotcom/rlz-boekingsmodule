@@ -10,8 +10,8 @@
 // status) / niet geactiveerd mét reden / mislukt mét reden + "Opnieuw aanmaken" / beoordelen ná storno. Onder de grens =
 // oranje regel (kleine aanschaf direct ten laste van het resultaat?). Register niet leesbaar (403 op FixedAssets) =
 // oranje regel + knop uitgeschakeld mét die tekst. Een fout bij het laden blokkeert het scherm nooit (verrijking).
-// BUG 24-09 (BLOw 23-09): de afschrijvingsrekening is voorgevuld uit de koppeling > instelling > CONVENTIE (code + 1 mét
-// naam "Afschrijving…", herkomst-chip); zonder rekening is de combobox verplicht en staat de knop uit (server: 422).
+// BUG 24-09 (BLOw 23-09): de afschrijvingsrekening is voorgevuld uit de koppeling > instelling > CONVENTIE (kostenrekening 4xxx
+// mét dezelfde omschrijving ná "Afschrijving…" — Peter 24-09 blok 6, herkomst-chip); zonder rekening is de combobox verplicht en staat de knop uit (server: 422).
 // Teal = actie, groen = status (designpass v2). Gate: alleen soort `inkoopfactuur`; leeg antwoord = niets tonen.
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client'

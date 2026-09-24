@@ -285,7 +285,7 @@ def plan_of_maak_aan(
                 "wijzigen of verwijderen doet een mens in RLZ"
             )
         # BUG 24-09 punt 2: nooit meer "gepland zonder afschrijvingsrekening" — mens-keuze > voorvulling (koppeling /
-        # instelling / conventie code + 1), anders 422. Het vangnet in `maak_aan_in_rlz` blijft (instelling kan intussen
+        # instelling / conventie kostenrekening zelfde omschrijving), anders 422. Het vangnet in `maak_aan_in_rlz` blijft (instelling kan intussen
         # gewist zijn), maar is in de praktijk onbereikbaar.
         if (afschrijving_ledger_id or kandidaat.afschrijving_ledger_id) is None:
             raise AfschrijvingsrekeningVereist()
@@ -493,7 +493,7 @@ def maak_aan_in_rlz(
             stand = instelling_service.lees_stand(session, administratie_id)
             afschrijving_id = koppeling.afschrijving_ledger_id or stand.afschrijving_ledger_voor(koppeling.categorie)
             if afschrijving_id is None:
-                # vangnet (BUG 24-09 punt 1): dezelfde conventie code + 1 "Afschrijving…" als op de kaart
+                # vangnet (BUG 24-09 punt 1, herzien blok 6 24-09): dezelfde conventie "kostenrekening zelfde omschrijving" als op de kaart
                 afschrijving_id = _conventie_afschrijving(session, administratie_id, koppeling.balans_ledger_id)
             termijn = koppeling.termijn_maanden
             regel = koppeling.regel_volgnummer

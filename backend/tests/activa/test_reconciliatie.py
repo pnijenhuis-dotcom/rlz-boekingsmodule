@@ -344,7 +344,7 @@ class TestCliBlok:
         boeken_aan: None,
         rlz: FakeBoekClient,
     ) -> None:
-        # BUG 24-09: zonder afschrijvingsrekening kan er niet meer gepland worden (0107 → conventie 0108 vult wél voor);
+        # BUG 24-09: zonder afschrijvingsrekening kan er niet meer gepland worden (0107 → conventie 4708 vult wél voor);
         # de mislukking komt hier van RLZ zelf (PUT weigert) — een mens-klik → soort `_mens`, direct actie.
         service.plan_of_maak_aan(
             administratie_id=administratie_id, document_id=factuur, regel_volgnummer=1, actor_id=gescoopte_gebruiker

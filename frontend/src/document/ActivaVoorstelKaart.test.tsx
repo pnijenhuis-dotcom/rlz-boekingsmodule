@@ -111,8 +111,8 @@ describe('ActivaVoorstelKaart', () => {
     expect(kaart).toHaveTextContent(/Lineair 5 jaar \(60 mnd\)/)
     expect(within(kaart).getByTestId('activa-signalen')).toHaveTextContent('KIA/MIA/Vamil mogelijk van toepassing')
     expect(within(kaart).getByRole('combobox', { name: /Afschrijvingsrekening/ })).toHaveValue('0108 · Afschrijving inventaris')
-    // BUG 24-09 punt 1: herkomst-chip van de deterministische voorvulling (code + 1, naam "Afschrijving…").
-    expect(within(kaart).getByTestId('activa-chip-afschrijving-bron')).toHaveTextContent('voorgevuld: conventie (code + 1)')
+    // Peter 24-09 blok 6: herkomst-chip van de deterministische voorvulling (kostenrekening mét dezelfde omschrijving).
+    expect(within(kaart).getByTestId('activa-chip-afschrijving-bron')).toHaveTextContent('voorgevuld: conventie (kostenrekening zelfde omschrijving)')
     expect(within(kaart).queryByTestId('activa-rekening-vereist')).toBeNull()
     // Document nog niet geboekt → de primaire knop zegt dat het activum ná boeken komt.
     expect(within(kaart).getByRole('button', { name: 'Aanmaken ná boeken' })).toBeEnabled()
