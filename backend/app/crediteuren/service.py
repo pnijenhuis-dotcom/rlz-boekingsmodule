@@ -49,6 +49,9 @@ SOORT_CHIP = {
     "naam": "naam ≈",
 }
 CHIP_KVK_VERSCHILT = "verschillend KvK — géén dubbel"
+#: Blok 2 feedbackrun A 25-09 (FV-21): een cluster dat UITSLUITEND op de genormaliseerde naam matcht is oranje — de
+#: mens bevestigt (Voorkeur kiezen…) of meldt af; het systeem voegt nooit automatisch samen op naam.
+CHIP_NAAM_BEVESTIG = "gelijkende naam — bevestig"
 
 # Vast, NOOIT wijzigen: deterministische id's voor verhuisde geheugen-observaties (idempotente her-run).
 _VERHUIS_NAMESPACE = uuid.UUID("3f0d6a52-8b1e-4c1c-9a6f-2d7e5b1c0a44")
@@ -288,6 +291,8 @@ def _clusters_voor_administratie(actor: Actor, administratie_id: uuid.UUID, admi
         chips = [SOORT_CHIP[s] for s, _ in sleutels]
         if kvk_verschilt:
             chips.append(CHIP_KVK_VERSCHILT)
+        elif {s for s, _ in sleutels} == {"naam"}:
+            chips.append(CHIP_NAAM_BEVESTIG)  # FV-21: alleen-naam = oranje, mens bevestigt
         data = [k.laatst_geboekt for k in kaartlijst if k.laatst_geboekt]
         basis = Cluster(
             cluster_id=f"{administratie_id}:{soort}:{sleutel}",

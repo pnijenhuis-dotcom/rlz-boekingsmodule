@@ -135,6 +135,19 @@ def dubbelen(
             )
         )
 
+    # FV-21 (25-09): een cluster dat UITSLUITEND op de naam matcht is sinds 25-09 twijfel (mens bevestigt) — Coolblue
+    # draagt daarom in de fixture op beide kaarten hetzelfde KvK-nummer (één rechtspersoon), zodat het eenduidig blijft.
+    with scoped_session(andere_administratie, actor_id=beheerder_id) as session:
+        for vendor_id in (COOL, COOL_BV):
+            session.add(
+                CrediteurKenmerk(
+                    administratie_id=andere_administratie,
+                    vendor_id=vendor_id,
+                    kvk_nummer="33333333",
+                    kvk_nummer_bron="rlz",
+                )
+            )
+
 
 def _audit_acties(admin_engine: Engine, actie: str) -> int:
     with admin_engine.connect() as conn:
@@ -179,9 +192,10 @@ class TestLijst:
         assert client.get("/crediteuren/dubbelen?classificatie=eenduidig", headers=headers).json()["totaal"] == 2
         assert client.get("/crediteuren/dubbelen?classificatie=onzin", headers=headers).status_code == 422
         # Facetten + filters.
-        assert body["facetten"]["sleutels"] == {"btw_nummer": 1, "naam": 2}
+        # FV-21 (25-09): Coolblue draagt in de fixture een gedeeld KvK-nummer (zie `dubbelen`) → sleutel kvk_nummer.
+        assert body["facetten"]["sleutels"] == {"btw_nummer": 1, "kvk_nummer": 1, "naam": 1}
         assert {f["naam"]: f["aantal"] for f in body["facetten"]["administraties"]} == {"Scope-test": 2, "Andere BV": 1}
-        assert client.get("/crediteuren/dubbelen?sleutel=naam", headers=headers).json()["totaal"] == 2
+        assert client.get("/crediteuren/dubbelen?sleutel=naam", headers=headers).json()["totaal"] == 1
         assert (
             client.get(f"/crediteuren/dubbelen?administratie_id={andere_administratie}", headers=headers).json()[
                 "totaal"

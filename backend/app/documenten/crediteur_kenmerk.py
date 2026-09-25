@@ -19,11 +19,12 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.crediteuren.naam import normaliseer_crediteurnaam
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.documenten.models import CrediteurKenmerk, LeverancierIban
 from app.extractie.btw_nummer import normaliseer_kvk_nummer
-from app.extractie.controle import VendorKandidaat, _genormaliseerd
+from app.extractie.controle import VendorKandidaat
 from app.sync.models import VendorCache
 
 
@@ -217,7 +218,10 @@ def dubbele_crediteuren(*, administratie_id: uuid.UUID) -> list[DubbelGroep]:
         ("btw_nummer", lambda c: [c.btw_nummer] if c.btw_nummer else []),
         ("kvk_nummer", lambda c: [c.kvk_nummer] if c.kvk_nummer else []),
         ("iban", lambda c: c.ibans),
-        ("naam", lambda c: [_genormaliseerd(c.naam)] if c.naam and _genormaliseerd(c.naam) else []),
+        # Blok 2 feedbackrun A 25-09 (FV-21): één normalisatie (casefold, diakrieten/rechtsvorm/leestekens/spaties weg,
+        # "holding" blijft onderscheidend) — `app/crediteuren/naam.py`. Een naam-cluster is ALTIJD een oranje cluster
+        # (mens bevestigt, `afhandeling.classificeer`), nooit een automatische samenvoeging.
+        ("naam", lambda c: [normaliseer_crediteurnaam(c.naam)] if normaliseer_crediteurnaam(c.naam) else []),
     ):
         per_sleutel: dict[str, list[DubbeleCrediteur]] = defaultdict(list)
         for c in per_vendor.values():

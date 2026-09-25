@@ -67,6 +67,9 @@ function kaartRegel(k: KaartDto): string {
 }
 
 function chipVariant(chip: string): 'warn' | 'stil' | 'ok' {
+  // FV-21 (25-09): een cluster dat uitsluitend op de genormaliseerde naam matcht draagt de chip "gelijkende naam —
+  // bevestig" en is ORANJE — de mens bevestigt (Voorkeur kiezen…) of meldt af; nooit automatisch samengevoegd op naam.
+  if (chip.startsWith('gelijkende naam')) return 'warn'
   if (chip === 'naam ≈') return 'stil'
   if (chip.startsWith('verschillend KvK')) return 'ok'
   return 'warn'

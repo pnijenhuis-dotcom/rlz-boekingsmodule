@@ -68,6 +68,8 @@ TERMINALE_STATUSSEN: tuple[DocumentStatus, ...] = (
 )
 
 MAX_VOORBEELDEN = 200
+#: FV-21 (25-09): reden waarmee een alleen-naam-cluster als twijfel in de lijst blijft staan.
+REDEN_ALLEEN_NAAM = "alleen gelijkende naam — bevestig zelf (nooit automatisch samengevoegd op naam)"
 
 
 class AfhandelingFout(service.CrediteurenFout):
@@ -111,6 +113,12 @@ def classificeer(
         twijfel.append(
             "alleen zelfde btw-nummer — naam, IBAN en KvK-nummer verschillen of ontbreken (fiscale eenheid mogelijk)"
         )
+    if soorten == {"naam"} and not zelfde_kvk:
+        # Blok 2 feedbackrun A 25-09 (FV-21, casus Floor Bouwliftenservice / Universal Nederland): een cluster dat
+        # uitsluitend op de genormaliseerde naam matcht is NOOIT eenduidig — verschillende entiteiten met een
+        # gelijkende naam bestaan. Oranje: de mens bevestigt (Voorkeur kiezen…) of meldt af; `auto_afhandelen` slaat
+        # 'm over. Zelfde KvK op álle kaarten blijft wél eenduidig (één rechtspersoon).
+        twijfel.append(REDEN_ALLEEN_NAAM)
     if service._kvk_verschilt(kaarten):
         twijfel.append("verschillend KvK-nummer")
     if _btw_verschilt(kaarten):

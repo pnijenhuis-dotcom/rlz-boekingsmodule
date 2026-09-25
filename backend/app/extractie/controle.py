@@ -20,9 +20,8 @@ from app.extractie.service import AiFactuurExtractie, AiVeld
 
 _ROND_TOLERANTIE = Decimal("0.01")
 _FUZZY_DREMPEL = 0.85
-# Rechtsvorm-ruis die een exacte naammatch onnodig laat mislukken ("Jansen Bouw B.V." vs
-# "Jansen Bouw BV") — alleen voor het matchen genormaliseerd, nooit in de getoonde waarde.
-_RECHTSVORM = re.compile(r"\b(b\.?v\.?|n\.?v\.?|v\.?o\.?f\.?|c\.?v\.?|holding)\b", re.IGNORECASE)
+# Rechtsvorm-ruis die een exacte naammatch onnodig laat mislukken ("Jansen Bouw B.V." vs "Jansen Bouw BV") — sinds
+# 25-09 (blok 2 feedbackrun A) leeft de normalisatie in `app/crediteuren/naam.py` (zie `_genormaliseerd`).
 
 
 @dataclass(frozen=True)
@@ -105,8 +104,13 @@ def parse_datum(waarde: str | None) -> date | None:
 
 
 def _genormaliseerd(naam: str) -> str:
-    zonder_rechtsvorm = _RECHTSVORM.sub(" ", naam.lower())
-    return re.sub(r"[^a-z0-9]+", " ", zonder_rechtsvorm).strip()
+    """Blok 2 feedbackrun A 25-09 (FV-21): dezelfde sleutel als de dubbelen-motor (`app/crediteuren/naam.py`) —
+    casefold, diakrieten/rechtsvorm/leestekens/spaties weg; "holding" blijft sinds 25-09 óók hier onderscheidend
+    (regel intake 27/28-08), zodat "Floor bouwliftenservice B.V." op de factuur EXACT (score 1.0) op de crediteur
+    "Floor Bouwliftenservice" landt en "Jansen Holding" niet stil op "Jansen B.V."."""
+    from app.crediteuren.naam import normaliseer_crediteurnaam  # lokaal: puur, geen kring
+
+    return normaliseer_crediteurnaam(naam)
 
 
 @dataclass(frozen=True)

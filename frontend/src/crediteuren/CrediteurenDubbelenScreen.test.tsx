@@ -62,8 +62,29 @@ const HK_CLUSTER: ClusterDto = {
   classificatie_reden: 'twijfel: verschillend KvK-nummer',
 }
 
+const FLOOR_CLUSTER: ClusterDto = {
+  cluster_id: `${ADM2}:naam:floorbouwliftenservice`,
+  administratie_id: ADM2,
+  administratie_naam: 'Universal Steigerbouw B.V.',
+  soort: 'naam',
+  sleutel: 'floorbouwliftenservice',
+  sleutels: [{ soort: 'naam', sleutel: 'floorbouwliftenservice' }],
+  chips: ['naam ≈', 'gelijkende naam — bevestig'],
+  crediteuren: [
+    { vendor_id: 'f1000000-0000-0000-0000-000000000001', naam: 'Floor Bouwliftenservice', btw_nummer: null, kvk_nummer: null, ibans: [], aantal_boekingen: 9, laatst_geboekt: '2026-09-10' },
+    { vendor_id: 'f1000000-0000-0000-0000-000000000002', naam: 'Floor bouwliftenservice', btw_nummer: null, kvk_nummer: null, ibans: [], aantal_boekingen: 4, laatst_geboekt: '2026-08-30' },
+  ],
+  aantal_boekingen: 13,
+  laatst_geboekt: '2026-09-10',
+  kvk_verschilt: false,
+  afmelden_primair: false,
+  voorkeur_suggestie: 'f1000000-0000-0000-0000-000000000001',
+  eenduidig: false,
+  classificatie_reden: 'twijfel: alleen gelijkende naam — bevestig zelf (nooit automatisch samengevoegd op naam)',
+}
+
 const LIJST: LijstDto = {
-  rijen: [LABO_CLUSTER, HK_CLUSTER],
+  rijen: [LABO_CLUSTER, HK_CLUSTER, FLOOR_CLUSTER],
   totaal: 2,
   pagina: 1,
   per_pagina: 25,
@@ -206,6 +227,8 @@ describe('CrediteurenDubbelenScreen (crediteuren-dubbelen schaalbaar, B13 07-09)
     expect(chips[0]).toHaveTextContent('eenduidig — systeem')
     expect(chips[1]).toHaveTextContent('twijfel — mens')
     expect(within(tabel).getByText(/verschillend KvK-nummer/)).toBeInTheDocument()
+    // FV-21 (25-09): een alleen-naam-cluster draagt de oranje chip "gelijkende naam — bevestig" (Badge variant warn).
+    expect(within(tabel).getByText('gelijkende naam — bevestig').className).toContain('warn')
     // Primaire actie: "Voorkeur kiezen…" bij het eenduidige cluster; afmelden bij verschillend KvK.
     expect(within(tabel).getByRole('button', { name: /Voorkeur kiezen: Labo Derva/ })).toBeInTheDocument()
     expect(within(tabel).getByRole('button', { name: /Geen dubbel — afmelden: Hello Kitchen/ })).toBeInTheDocument()

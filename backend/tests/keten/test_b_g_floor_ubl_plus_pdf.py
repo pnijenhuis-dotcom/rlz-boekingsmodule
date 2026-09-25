@@ -149,3 +149,20 @@ class TestVastlySuffixStam:
         assert str(document_id) in ids
         rij = keten.lijst_rij(document_id)
         assert rij is not None and rij["leverancier"] == "Floor Bouwliftenservice"
+
+
+class TestSchrijfwijzeFloor:
+    """Blok 2 feedbackrun A 25-09 (FV-21): een factuur mét een afwijkende schrijfwijze van de leveranciersnaam landt op
+    dezelfde crediteur (één normalisatie `app/crediteuren/naam.py`, óók in de extractie-match) — geen nieuwe
+    crediteur."""
+
+    def test_afwijkende_schrijfwijze_matcht_dezelfde_crediteur(self, keten: Keten, deel_5) -> None:
+        from app.db.session import scoped_session
+        from app.documenten.crediteur_kenmerk import kandidaten_met_kenmerken
+        from app.extractie.controle import match_vendor_met_waarschuwing
+
+        with scoped_session(keten.administratie_id) as session:
+            kandidaten = kandidaten_met_kenmerken(session, administratie_id=keten.administratie_id)
+        for schrijfwijze in ("Floor bouwliftenservice", "FLOOR BOUWLIFTENSERVICE B.V.", "Floor Bouwliftenservice"):
+            vendor_id, _, waarschuwing = match_vendor_met_waarschuwing(schrijfwijze, kandidaten)
+            assert vendor_id == keten.vendors["floor"] and waarschuwing is None, schrijfwijze

@@ -208,7 +208,7 @@ class TestAutoRun:
             log = session.scalars(select(CrediteurDubbelAfhandeling)).one()
             assert log.bron == "auto" and log.run_id == uuid.UUID(uit["run_id"])
             assert log.verhuisd["boekvoorstellen"] == [{"document_id": str(open_doc), "van_vendor_id": str(LABO)}]
-            assert log.sleutels == [{"soort": "btw_nummer", "sleutel": BTW}, {"soort": "naam", "sleutel": "labo derva"}]
+            assert log.sleutels == [{"soort": "btw_nummer", "sleutel": BTW}, {"soort": "naam", "sleutel": "laboderva"}]
         with scoped_session(andere_administratie, actor_id=beheerder_id) as session:
             kaart = verliezers(session, administratie_id=andere_administratie)
             assert len(kaart) == 1 and set(kaart) <= {COOL, COOL_BV}
@@ -347,7 +347,7 @@ class TestKaartTelling:
         with scoped_session(administratie_id, actor_id=beheerder_id) as session:
             session.add(VendorCache(id=uuid.uuid4(), administratie_id=administratie_id, naam="LABO DERVA bv", brondata={}))
         clusters = service._clusters_voor_administratie(_actor(beheerder_id), administratie_id, "S")
-        labo = next(c for c in clusters if c.soort == "naam" and c.sleutel == "labo derva")
+        labo = next(c for c in clusters if c.soort == "naam" and c.sleutel == "laboderva")
         assert {k.naam for k in labo.crediteuren} == {"Labo Derva B.V.", "LABO DERVA bv"}
         assert next(k for k in labo.crediteuren if k.naam == "Labo Derva B.V.").aantal_boekingen == 3
         assert Decimal(labo.aantal_boekingen) == 3
@@ -419,7 +419,7 @@ class TestNazorgWerklijst:
             assert log.bron == "mens" and log.run_id == echt.run_id and log.afgehandeld_door == beheerder_id
             assert log.classificatie_reden.startswith(afhandeling.NAZORG_PREFIX + "mens koos voorkeur 'Labo Derva B.V.' op ")
             assert "huidige classificatie: eenduidig: identieke naam" in log.classificatie_reden
-            assert log.sleutels == [{"soort": "btw_nummer", "sleutel": BTW}, {"soort": "naam", "sleutel": "labo derva"}]
+            assert log.sleutels == [{"soort": "btw_nummer", "sleutel": BTW}, {"soort": "naam", "sleutel": "laboderva"}]
             regel = session.get(CrediteurArchiveerWerklijst, regel_labo)
             assert regel.status == "gedaan" and regel.gedaan_bron == "nazorg" and regel.gedaan_door == beheerder_id
             assert regel.gedaan_op is not None
