@@ -415,7 +415,14 @@ def _ubl_project_tekst(veldvoorstel: dict) -> str | None:
         m = _UBL_PROJECT_PATROON.match(str(regel.get("omschrijving") or ""))
         if m:
             gevonden.setdefault(m.group(1).lower(), m.group(1))
-    return next(iter(gevonden.values())) if len(gevonden) == 1 else None
+    if len(gevonden) == 1:
+        return next(iter(gevonden.values()))
+    # Blok 3 feedbackrun A 25-09 (FV-02): de document-notitie `cbc:Note` als deterministische bron van de projecttekst
+    # (RLZ-export "Werk: 26084 - Opdrachtgever A (W03611)") — de match-motor leest er de code/het werknummer uit.
+    note = veldvoorstel.get("note")
+    if isinstance(note, str) and note.strip():
+        return note.strip()
+    return None
 
 
 def _regel_prefill_uit_ubl(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:

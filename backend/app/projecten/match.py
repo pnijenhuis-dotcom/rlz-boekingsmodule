@@ -256,20 +256,122 @@ def match_project(
     return _match_op_naam(normaliseer_projectcode(project_tekst), kandidaten)
 
 
+# --- blok 3 feedbackrun A 25-09 (FV-02): klant-loze projectcode-herkenning op het formaat van de administratie ----
+
+#: `project_bron`-waarden van de bronvolgorde 25-09 (naast HERKOMST_FACTUUR/_ONBEVESTIGD/_MEERDUIDIG hierboven).
+HERKOMST_GEHEUGEN = "geheugen"  # gevuld uit het leverancier-geheugen — ZICHTBAAR ("voorstel uit historie"), nooit stil
+HERKOMST_FACTUUR_CONFLICT = "factuur_conflict"  # niets ingevuld: de factuur noemt een ánder nummer dan het geheugen
+HERKOMST_GEHEUGEN_AFGESLOTEN = "geheugen_afgesloten"  # niets ingevuld: de historie wijst naar een afgesloten project
+
+# Losse cijfer-tokens in factuurtekst ("Werk 26140", "proj. 105 / Koningstraat"); een token mét letters is geen code.
+_CIJFER_TOKEN = re.compile(r"(?<![0-9A-Za-z])(?<![0-9][.,\-/])([0-9]{3,6})(?![.,\-/][0-9])(?![0-9A-Za-z])")
+
+
+@dataclass(frozen=True)
+class ProjectcodeFormaat:
+    """Het projectnummer-formaat van één administratie, DETERMINISTISCH afgeleid uit de projectcache (nooit
+    hardcoded per klant, nooit vrije tekst): per nummerlengte de set voorvoegsels van twee cijfers die voorkomen
+    (jaargebonden "JJnnn": 25xxx/26xxx) — een 3-cijferig nummer (legacy 100–189) kent alleen zijn lengte. Een
+    token past als de lengte voorkomt én (bij ≥ 5 cijfers) het voorvoegsel in de cache bestaat; zo is "2026" of
+    een bedrag "1.150" nooit een projectnummer. `codes` = álle cijfer-prefixen (actief én afgesloten) → id."""
+
+    lengtes: frozenset[int]
+    jaar_prefixen: frozenset[str]
+    codes: dict[str, tuple[uuid.UUID, ...]]
+
+    @classmethod
+    def uit_kandidaten(cls, kandidaten: list[ProjectKandidaat]) -> ProjectcodeFormaat:
+        from app.projecten.nummer import cijfer_prefix
+
+        lengtes: set[int] = set()
+        prefixen: set[str] = set()
+        codes: dict[str, list[uuid.UUID]] = {}
+        for k in kandidaten:
+            code = cijfer_prefix(k.naam)
+            if not code or not code.isdigit():
+                continue
+            lengtes.add(len(code))
+            if len(code) >= 5:
+                prefixen.add(code[:2])
+            codes.setdefault(code, []).append(k.id)
+        return cls(
+            lengtes=frozenset(lengtes),
+            jaar_prefixen=frozenset(prefixen),
+            codes={c: tuple(ids) for c, ids in codes.items()},
+        )
+
+    @property
+    def leeg(self) -> bool:
+        return not self.lengtes
+
+    def past(self, token: str) -> bool:
+        if not token.isdigit() or len(token) not in self.lengtes:
+            return False
+        return len(token) < 5 or token[:2] in self.jaar_prefixen
+
+    def nummers_in(self, *teksten: str | None) -> tuple[str, ...]:
+        """Alle cijfer-tokens in de teksten die het formaat van de administratie hebben — in leesvolgorde, uniek."""
+        uit: list[str] = []
+        for tekst in teksten:
+            for m in _CIJFER_TOKEN.finditer(tekst or ""):
+                token = m.group(1)
+                if self.past(token) and token not in uit:
+                    uit.append(token)
+        return tuple(uit)
+
+
+def bepaal_project_uit_tekst(
+    formaat: ProjectcodeFormaat, kandidaten: list[ProjectKandidaat], *teksten: str | None
+) -> ProjectMatch:
+    """Bronvolgorde-stap (2) 25-09: een nummer in de gelezen factuurtekst (regeltekst, kop, cbc:Note) dat exact de
+    cijfer-prefix van een project is. Alleen tokens in het administratie-formaat tellen; precies één project =
+    groen niveau `code` (ook een AFGESLOTEN project — de factuur verwijst er dan expliciet naar, het oranje signaal
+    `check_project_afgesloten` blijft); meerdere nummers/projecten = meerduidig (niets invullen, chip + keuze);
+    niets = leeg voorstel (volgende stap: geheugen)."""
+    nummers = formaat.nummers_in(*teksten)
+    if not nummers:
+        return ProjectMatch(gelezen=None)
+    gelezen = ", ".join(nummers)
+    per_id = {k.id: k for k in kandidaten}
+    treffers: list[ProjectKandidaat] = []
+    for nummer in nummers:
+        for pid in formaat.codes.get(nummer, ()):
+            if pid in per_id:
+                treffers.append(per_id[pid])
+    uitkomst = _uniek_of_meerduidig(gelezen, treffers, niveau=NIVEAU_CODE, bevestigd=True)
+    return uitkomst if uitkomst is not None else ProjectMatch(gelezen=gelezen)
+
+
+def factuur_noemt_ander_project(
+    formaat: ProjectcodeFormaat, geheugen_project_id: uuid.UUID | None, *teksten: str | None
+) -> str | None:
+    """Conflict-toets (25-09): noemt de factuur een nummer in het administratie-formaat dat NIET de code van het
+    geheugen-project is, dan mag het geheugen niet stil invullen. Geeft het/de genoemde nummer(s) terug, anders None."""
+    if geheugen_project_id is None or formaat.leeg:
+        return None
+    nummers = formaat.nummers_in(*teksten)
+    if not nummers:
+        return None
+    eigen = {code for code, ids in formaat.codes.items() if geheugen_project_id in ids}
+    anders = [n for n in nummers if n not in eigen]
+    return ", ".join(anders) if anders else None
+
+
 # --- laders + leerlus (DB) -------------------------------------------------------------------------------
 
 
-def laad_projectkandidaten(session: Session, *, administratie_id: uuid.UUID) -> list[ProjectKandidaat]:
-    """Alle ACTIEVE, niet-verdwenen projecten van de administratie (zelfde filter als de offerte-route)."""
+def laad_projectkandidaten(
+    session: Session, *, administratie_id: uuid.UUID, inclusief_inactief: bool = False
+) -> list[ProjectKandidaat]:
+    """Alle ACTIEVE, niet-verdwenen projecten van de administratie (zelfde filter als de offerte-route).
+    `inclusief_inactief=True` (blok 3 25-09) geeft óók inactieve/afgesloten projecten — uitsluitend voor de exacte-code-
+    stap ("afgesloten projecten nooit voorstellen tenzij de factuur ernaar verwijst") en het formaat van de cache."""
+    voorwaarden = [ProjectCache.administratie_id == administratie_id, ProjectCache.verdwenen_uit_bron_op.is_(None)]
+    if not inclusief_inactief:
+        voorwaarden.append(ProjectCache.is_actief.isnot(False))
     return [
         ProjectKandidaat(id=rij.id, naam=rij.naam or "")
-        for rij in session.scalars(
-            select(ProjectCache).where(
-                ProjectCache.administratie_id == administratie_id,
-                ProjectCache.verdwenen_uit_bron_op.is_(None),
-                ProjectCache.is_actief.isnot(False),
-            )
-        )
+        for rij in session.scalars(select(ProjectCache).where(*voorwaarden))
         if rij.naam
     ]
 

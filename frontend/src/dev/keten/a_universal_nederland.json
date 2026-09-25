@@ -16,6 +16,7 @@
   "veldvoorstel": {
    "bron": "ubl",
    "iban": "NL20KETN1000000002",
+   "note": "Werk: 26084 - Opdrachtgever A (W03611)",
    "valuta": "EUR",
    "btw_nummer": "NL100007922B01",
    "klant_naam": "Universal Steigerbouw B.V.",
@@ -103,6 +104,7 @@
      "veldvoorstel": {
       "bron": "ubl",
       "iban": "NL20KETN1000000002",
+      "note": "Werk: 26084 - Opdrachtgever A (W03611)",
       "valuta": "EUR",
       "btw_nummer": "NL100007922B01",
       "klant_naam": "Universal Steigerbouw B.V.",
@@ -184,25 +186,27 @@
         "gb_bron": null,
         "btw_bron": "factuur",
         "herkomst": {
-         "btw": "factuur"
+         "btw": "factuur",
+         "project": "factuur"
         },
         "ledger_id": null,
         "btw_bedrag": "36.83",
-        "project_id": null,
+        "project_id": "aaaaaaaa-0000-0000-0000-000000026084",
         "taxrate_id": "55555555-0000-0000-0000-000000000021",
         "volgnummer": 1,
         "netto_bedrag": "175.38",
         "omschrijving": "Huurperiode juli 2026, conform huuroverzicht",
-        "project_bron": null,
+        "project_bron": "factuur",
         "btw_in_kosten": false,
         "btw_bron_detail": null,
         "gb_voorstel_detail": null,
-        "project_bron_detail": null,
+        "project_bron_detail": "Factuur vermeldt \"Werk: 26084 - Opdrachtgever A (W03611)\" = projectcode van 26084 Opdrachtgever A (Universal Nederland)",
         "factuur_btw_percentage": null
        }
       ],
       "triggers": [
-       "kop: ubl"
+       "kop: ubl",
+       "project regel 1: factuur"
       ],
       "geopend_door": "00000000-0000-4000-8000-000000000021",
       "veldvoorstel_bron": "ubl",
@@ -261,7 +265,7 @@
     "id": "00000000-0000-4000-8000-000000000022",
     "ledger_id": null,
     "taxrate_id": "55555555-0000-0000-0000-000000000021",
-    "project_id": null,
+    "project_id": "aaaaaaaa-0000-0000-0000-000000026084",
     "netto_bedrag": "175.38",
     "btw_bedrag": "36.83",
     "omschrijving": "Huurperiode juli 2026, conform huuroverzicht",
@@ -271,8 +275,8 @@
     "gb_bron": null,
     "gb_voorstel_detail": null,
     "overstap_vertaling": null,
-    "project_bron": null,
-    "project_bron_detail": null,
+    "project_bron": "factuur",
+    "project_bron_detail": "Factuur vermeldt \"Werk: 26084 - Opdrachtgever A (W03611)\" = projectcode van 26084 Opdrachtgever A (Universal Nederland)",
     "factuur_btw_percentage": null,
     "bedrag_niet_gelezen": false
    }
@@ -301,7 +305,7 @@
    {
     "naam": "Verplichte velden",
     "ok": false,
-    "melding": "Ontbrekend: grootboekrekening (regel 1), project (regel 1) — kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
+    "melding": "Ontbrekend: grootboekrekening (regel 1)",
     "signaal": false,
     "acties": []
    },
@@ -322,8 +326,8 @@
    {
     "naam": "Projectverdeling",
     "ok": true,
-    "melding": "Geen projectverdeling — 1 regel zonder project: kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
-    "signaal": true,
+    "melding": "Geen projectverdeling van toepassing",
+    "signaal": false,
     "acties": []
    },
    {

@@ -338,26 +338,73 @@ def _met_leverancier_geheugen(
     regel_sleutel: str | None,
     project_verplicht: bool,
     vandaag: date,
+    projectformaat: project_match.ProjectcodeFormaat | None = None,
+    actieve_project_ids: frozenset[uuid.UUID] | None = None,
 ) -> BoekvoorstelRegelData:
     """Server-side spiegel van `frontend/src/document/geheugenVoorstel.ts::bepaalPrefill`: uitsluitend lege
-    velden, project alleen bij projectplicht, élke engine-waarde (ook oranje — de chip blijft oranje)."""
+    velden, project alleen bij projectplicht, élke engine-waarde (ook oranje — de chip blijft oranje).
+
+    Blok 3 feedbackrun A 25-09 (FV-02, bronvolgorde project): het geheugen is voor het PROJECT de LAATSTE bron en
+    nooit stil — (a) noemt de factuur (regeltekst/kop) een nummer in het administratie-formaat dat niet de code van
+    het geheugen-project is, dan wordt er NIETS ingevuld (`project_bron` = "factuur_conflict", chip "factuur noemt
+    ‹nr› — kies zelf"; bij projectplicht blijft de harde check de poort); (b) anders krijgt het gevulde project
+    `project_bron` = "geheugen" (chip "voorstel uit historie"). Grootboek/btw ongewijzigd."""
     if not engine_observaties:
         return regel
     voorstel = bepaal_voorstel(engine_observaties, regel_sleutel=regel_sleutel, vandaag=vandaag)
     wijzigingen: dict[str, uuid.UUID] = {}
     herkomst: dict[str, str] = {}
+    extra: dict[str, str | None] = {}
     if regel.ledger_id is None and voorstel.gb.waarde is not None:
         wijzigingen["ledger_id"] = voorstel.gb.waarde
         herkomst[VELD_GROOTBOEK] = HERKOMST_LEVERANCIER_GEHEUGEN
     if regel.taxrate_id is None and voorstel.btw.waarde is not None:
         wijzigingen["taxrate_id"] = voorstel.btw.waarde
         herkomst[VELD_BTW] = HERKOMST_LEVERANCIER_GEHEUGEN
-    if project_verplicht and regel.project_id is None and voorstel.project.waarde is not None:
-        wijzigingen["project_id"] = voorstel.project.waarde
-        herkomst[VELD_PROJECT] = HERKOMST_LEVERANCIER_GEHEUGEN
-    if not wijzigingen:
+    if (
+        project_verplicht
+        and regel.project_id is None
+        and voorstel.project.waarde is not None
+        and regel.project_bron is None  # meerduidig uit de factuur: die chip blijft, het geheugen vult niet
+    ):
+        conflict = (
+            project_match.factuur_noemt_ander_project(
+                projectformaat, voorstel.project.waarde, regel.project_tekst, regel.omschrijving
+            )
+            if projectformaat is not None
+            else None
+        )
+        if actieve_project_ids is not None and voorstel.project.waarde not in actieve_project_ids:
+            # Afgesloten/inactief project uit de historie: nooit voorstellen tenzij de factuur er zelf naar verwijst
+            # (dat regelt stap 2 hierboven); zichtbaar leeg, nooit stil.
+            extra = {
+                "project_bron": project_match.HERKOMST_GEHEUGEN_AFGESLOTEN,
+                "project_bron_detail": (
+                    "De historie van deze leverancier wijst naar een afgesloten/inactief project — niet voorgesteld. "
+                    "Kies zelf een lopend project."
+                ),
+            }
+        elif conflict is not None:
+            extra = {
+                "project_bron": project_match.HERKOMST_FACTUUR_CONFLICT,
+                "project_bron_detail": (
+                    f'Factuur noemt "{conflict}" — niet het project uit de historie van deze leverancier. '
+                    "Er is bewust niets ingevuld: kies zelf."
+                ),
+            }
+        else:
+            wijzigingen["project_id"] = voorstel.project.waarde
+            herkomst[VELD_PROJECT] = HERKOMST_LEVERANCIER_GEHEUGEN
+            extra = {
+                "project_bron": project_match.HERKOMST_GEHEUGEN,
+                "project_bron_detail": (
+                    "Voorstel uit de historie van deze leverancier — de factuur zelf noemt geen projectnummer. "
+                    "Controleer; de harde check op het project blijft de poort."
+                ),
+            }
+    if not wijzigingen and not extra:
         return regel
-    return _met_herkomst(replace(regel, **wijzigingen), **herkomst)
+    return _met_herkomst(replace(regel, **wijzigingen, **extra), **herkomst)
 
 
 def _met_factuur_project(
@@ -366,12 +413,24 @@ def _met_factuur_project(
     kandidaten: list[project_match.ProjectKandidaat],
     werknummers: list[project_match.WerknummerKoppeling],
     project_verplicht: bool,
+    projectformaat: project_match.ProjectcodeFormaat | None = None,
+    alle_kandidaten: list[project_match.ProjectKandidaat] | None = None,
 ) -> BoekvoorstelRegelData:
     """Blok 10: project uit de op de factuur gelezen tekst — alleen een leeg projectveld bij projectplicht.
     Meerduidig vult niets maar draagt de kandidaten als chip-detail; geen tekst = ongemoeid."""
-    if not project_verplicht or regel.project_id is not None or not regel.project_tekst or not kandidaten:
+    if not project_verplicht or regel.project_id is not None or not kandidaten:
         return regel
-    uitkomst = project_match.bepaal_project_uit_factuur(regel.project_tekst, kandidaten, werknummers)
+    uitkomst = (
+        project_match.bepaal_project_uit_factuur(regel.project_tekst, kandidaten, werknummers)
+        if regel.project_tekst
+        else project_match.ProjectMatch(gelezen=None)
+    )
+    if uitkomst.herkomst is None and projectformaat is not None and not projectformaat.leeg:
+        # Blok 3 25-09 (FV-02, stap 2): klant-loze code in de regeltekst/kop — exact een cijfer-prefix uit de cache in
+        # het formaat van de administratie (ook een afgesloten project als de factuur er expliciet naar verwijst).
+        uitkomst = project_match.bepaal_project_uit_tekst(
+            projectformaat, alle_kandidaten or kandidaten, regel.project_tekst, regel.omschrijving
+        )
     herkomst = uitkomst.herkomst
     if herkomst is None:
         return regel
@@ -664,11 +723,18 @@ def verrijk_prefill(
 
     # Blok 10: kandidaten + werknummer-geheugen één keer per document laden, alleen als er iets te matchen is.
     projectkandidaten: list[project_match.ProjectKandidaat] = []
+    alle_projecten: list[project_match.ProjectKandidaat] = []
     werknummers: list[project_match.WerknummerKoppeling] = []
-    if project_verplicht and (
-        any(r.project_tekst for r in regels) or (samengevoegde_regel is not None and samengevoegde_regel.project_tekst)
-    ):
-        projectkandidaten = project_match.laad_projectkandidaten(session, administratie_id=administratie_id)
+    projectformaat: project_match.ProjectcodeFormaat | None = None
+    if project_verplicht:
+        # Blok 3 25-09 (FV-02): de cache is óók nodig zónder `proj`-tekst — het formaat van de administratie (voor
+        # de klant-loze code-herkenning in regelteksten én de conflict-toets vóór het geheugen) komt eruit.
+        alle_projecten = project_match.laad_projectkandidaten(
+            session, administratie_id=administratie_id, inclusief_inactief=True
+        )
+        actieve_ids = {k.id for k in project_match.laad_projectkandidaten(session, administratie_id=administratie_id)}
+        projectkandidaten = [k for k in alle_projecten if k.id in actieve_ids]
+        projectformaat = project_match.ProjectcodeFormaat.uit_kandidaten(alle_projecten)
         if vendor_id is not None and projectkandidaten:
             werknummers = project_match.laad_werknummers(
                 session, administratie_id=administratie_id, vendor_id=vendor_id
@@ -714,7 +780,12 @@ def verrijk_prefill(
         if uitgesloten and regel.ledger_id in uitgesloten:
             regel = _met_aftrek_uitgesloten(regel, uitgesloten=uitgesloten, nul_taxrate_id=nul_voor(regel.ledger_id))
         regel = _met_factuur_project(
-            regel, kandidaten=projectkandidaten, werknummers=werknummers, project_verplicht=project_verplicht
+            regel,
+            kandidaten=projectkandidaten,
+            werknummers=werknummers,
+            project_verplicht=project_verplicht,
+            projectformaat=projectformaat,
+            alle_kandidaten=alle_projecten,
         )
         regel = _met_leverancier_geheugen(
             regel,
@@ -722,6 +793,8 @@ def verrijk_prefill(
             regel_sleutel=sleutel,
             project_verplicht=project_verplicht,
             vandaag=vandaag,
+            projectformaat=projectformaat,
+            actieve_project_ids=frozenset(k.id for k in projectkandidaten) if project_verplicht else None,
         )
         regel = _met_factuur_verlegd(regel, verlegd=verlegd, basis_detail=verlegd_basis_detail)
         regel = _met_grootboek_default(
@@ -754,6 +827,8 @@ def verrijk_prefill(
             kandidaten=projectkandidaten,
             werknummers=werknummers,
             project_verplicht=project_verplicht,
+            projectformaat=projectformaat,
+            alle_kandidaten=alle_projecten,
         )
         samengevoegde_regel = _met_leverancier_geheugen(
             samengevoegde_regel,
@@ -761,6 +836,8 @@ def verrijk_prefill(
             regel_sleutel=None,
             project_verplicht=project_verplicht,
             vandaag=vandaag,
+            projectformaat=projectformaat,
+            actieve_project_ids=frozenset(k.id for k in projectkandidaten) if project_verplicht else None,
         )
         samengevoegde_regel = _met_factuur_verlegd(
             samengevoegde_regel, verlegd=verlegd, basis_detail=verlegd_basis_detail

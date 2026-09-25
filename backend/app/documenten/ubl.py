@@ -103,6 +103,9 @@ class UblVeldvoorstel:
     # 49 = direct debit → betaalstatus "Wordt automatisch geïncasseerd" (app/documenten/betaalstatus.py,
     # deterministisch).
     payment_means_code: str | None = None
+    # Blok 3 feedbackrun A 25-09 (FV-02): de document-notitie `cbc:Note` — RLZ's eigen export zet daar het werk in
+    # ("Werk: 26084 - Opdrachtgever A (W03611)"); deterministische bron voor de projectcode-herkenning (nooit AI).
+    note: str | None = None
 
     def als_dict(self) -> dict:
         d = asdict(self)
@@ -386,6 +389,7 @@ def parseer_ubl_factuur(inhoud: bytes) -> UblVeldvoorstel:
         leverancier_adres=_leverancier_adres(partij),
         betalingskenmerk=betalingskenmerk.text.strip() if betalingskenmerk is not None else None,
         payment_means_code=payment_means_code,
+        note=" ".join(" ".join(t for t in (_tekst("cbc:Note"),) if t).split()) or None,
     )
 
 

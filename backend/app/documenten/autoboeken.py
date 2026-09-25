@@ -52,6 +52,7 @@ from app.documenten.models import (
 )
 from app.geheugen.engine import GeheugenVoorstel
 from app.geheugen.service import voorstel_voor
+from app.projecten import match as project_match
 from app.sync.models import VendorCache
 
 logger = logging.getLogger(__name__)
@@ -607,6 +608,16 @@ def probeer_autoboeken_na_extractie(
             reden="niet elke regel heeft een geëxtraheerd nettobedrag",
         )
 
+    # Blok 3 feedbackrun A 25-09 (FV-02): het projectnummer-formaat van de administratie uit de projectcache — een
+    # factuur die een ÁNDER nummer noemt dan het geheugen-project mag nooit automatisch boeken (mens kiest).
+    projectformaat: project_match.ProjectcodeFormaat | None = None
+    if project_vereist:
+        with scoped_session(administratie_id) as session:
+            alle_projecten = project_match.laad_projectkandidaten(
+                session, administratie_id=administratie_id, inclusief_inactief=True
+            )
+            projectformaat = project_match.ProjectcodeFormaat.uit_kandidaten(alle_projecten)
+
     # Boekingsgeheugen: per regel (regelomschrijving verfijnt) — élk veld app-bevestigd + groen.
     gevulde_regels: list[BoekvoorstelRegelData] = []
     for regel in basis_regels:
@@ -615,6 +626,18 @@ def probeer_autoboeken_na_extractie(
             vendor_id=voorstel.vendor_id,
             regel_omschrijving=None if samengevoegd else regel.omschrijving,
         )
+        if project_vereist and projectformaat is not None:
+            # Conflict-toets vóór de geheugen-poort: een factuur die een ánder projectnummer noemt is de specifiekere
+            # weiger-reden (de mens kiest het project — nooit automatisch boeken op het geheugen).
+            conflict = project_match.factuur_noemt_ander_project(
+                projectformaat, geheugen.project.waarde, regel.project_tekst, regel.omschrijving
+            )
+            if conflict is not None:
+                return _weiger(
+                    administratie_id=administratie_id,
+                    document_id=document_id,
+                    reden=f"factuur noemt projectnummer {conflict} — niet het geheugen-project; mens kiest het project",
+                )
         blokkade = _geheugen_veld_geblokkeerd(geheugen, project_vereist=project_vereist)
         if blokkade is not None:
             return _weiger(administratie_id=administratie_id, document_id=document_id, reden=blokkade)

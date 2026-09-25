@@ -30,7 +30,10 @@ export type BtwBron =
  * projectcode op de factuur, of een bevestigd werknummer van deze leverancier), 'factuur_onbevestigd' = oranje
  * (werknummer nog niet bevestigd — boeken bevestigt 'm — of fuzzy op plaats/opdrachtgever), 'factuur_meerduidig' =
  * niets ingevuld, meerdere projecten passen (de detailtekst noemt ze; de mens kiest). */
-export type ProjectBron = 'factuur' | 'factuur_onbevestigd' | 'factuur_meerduidig'
+/** Blok 3 feedbackrun A 25-09 (FV-02, bronvolgorde project): 'geheugen' = gevuld uit de historie van de leverancier
+ * (chip "voorstel uit historie" — nooit stil; alleen als factuur/werknummer/klant-loze code niets gaven),
+ * 'factuur_conflict' = niets ingevuld omdat de factuur een ánder projectnummer noemt dan het geheugen (chip + keuze). */
+export type ProjectBron = 'factuur' | 'factuur_onbevestigd' | 'factuur_meerduidig' | 'geheugen' | 'factuur_conflict'
 
 export interface RegelChip {
   /** CSS-klassen naast `chip` — `ok` (groen), `afwijking` (oranje), `handmatig` (neutraal grijs), `blokkerend` (rood). */
@@ -46,7 +49,13 @@ export function gbBronUitDto(waarde: string | null | undefined): GbBron | null {
   return waarde && GB_BRONNEN.has(waarde) ? (waarde as GbBron) : null
 }
 
-const PROJECT_BRONNEN: ReadonlySet<string> = new Set<ProjectBron>(['factuur', 'factuur_onbevestigd', 'factuur_meerduidig'])
+const PROJECT_BRONNEN: ReadonlySet<string> = new Set<ProjectBron>([
+  'factuur',
+  'factuur_onbevestigd',
+  'factuur_meerduidig',
+  'geheugen',
+  'factuur_conflict',
+])
 
 export function projectBronUitDto(waarde: string | null | undefined): ProjectBron | null {
   return waarde && PROJECT_BRONNEN.has(waarde) ? (waarde as ProjectBron) : null
@@ -71,7 +80,22 @@ export function bepaalProjectFactuurChip(
       titel: `${detail ?? 'De factuur noemt een projectnummer dat op meerdere projecten past'} Er is bewust niets ingevuld (nooit auto-toewijzen bij twijfel).`,
     }
   }
+  if (bron === 'factuur_conflict') {
+    if (huidigProjectId) return null
+    return {
+      klasse: 'afwijking',
+      tekst: 'factuur noemt een ander project — kies zelf',
+      titel: `${detail ?? 'De factuur noemt een projectnummer dat niet het project uit de historie van deze leverancier is.'} Het geheugen vult dan niets in (bronvolgorde: factuur > werknummer > historie).`,
+    }
+  }
   if (!huidigProjectId) return null
+  if (bron === 'geheugen') {
+    return {
+      klasse: 'afwijking',
+      tekst: 'voorstel uit historie',
+      titel: `Project uit de historie van deze leverancier — de factuur zelf noemt geen projectnummer.${toelichting} Controleer; de projectplicht-check blijft de poort.`,
+    }
+  }
   if (bron === 'factuur') {
     return {
       klasse: 'ok',

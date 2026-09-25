@@ -241,13 +241,21 @@ class TestExacteCodeOpDeFactuur:
         assert [r.project_id for r in prefill.regels] == [P_KONING, P_TILBURG]
         assert [r.project_tekst for r in prefill.regels] == ["26140", "26127"]
 
-    def test_inactief_project_is_geen_kandidaat(
+    def test_inactief_project_alleen_bij_exacte_verwijzing_op_de_factuur(
         self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag, omgeving: None
     ) -> None:
+        # Blok 3 feedbackrun A 25-09 (FV-02): "afgesloten projecten nooit voorstellen tenzij de factuur ernaar
+        # verwijst" — een exacte code op de factuur wijst 'm wél aan (het oranje signaal `check_project_afgesloten`
+        # blijft de waarschuwing); werknummer-/fuzzy-stappen en het geheugen kennen alleen actieve projecten
+        # (zie test_project_bronvolgorde.py).
         Scenario.kop_proj = "25001"
         document_id = _upload(administratie_id, gescoopte_gebruiker, opslag)
         prefill = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
-        assert all(r.project_id is None and r.project_bron is None for r in prefill.regels)
+        assert all(r.project_id == P_INACTIEF and r.project_bron == "factuur" for r in prefill.regels)
+        Scenario.kop_proj = "Afgerond werk"  # géén exacte code → fuzzy kent alleen actieve projecten → leeg
+        document_id = _upload(administratie_id, gescoopte_gebruiker, opslag)
+        prefill = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+        assert all(r.project_id is None for r in prefill.regels)
 
     def test_zonder_projectplicht_wordt_niets_gevuld(
         self,

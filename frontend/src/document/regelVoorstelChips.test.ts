@@ -128,6 +128,23 @@ describe('regelVoorstelChips — overstap-vertaling van een open voorstel (Odoo-
   })
 })
 
+describe('regelVoorstelChips — project-bronvolgorde (blok 3 feedbackrun A 25-09, FV-02)', () => {
+  it('geheugen = oranje "voorstel uit historie" zolang het voorstel in het veld staat', () => {
+    const chip = bepaalProjectFactuurChip('geheugen', 'Voorstel uit de historie van deze leverancier', 'p-1', false)
+    expect(chip).toMatchObject({ klasse: 'afwijking', tekst: 'voorstel uit historie' })
+    expect(chip?.titel).toContain('historie')
+    expect(bepaalProjectFactuurChip('geheugen', null, null, false)).toBeNull()
+    expect(bepaalProjectFactuurChip('geheugen', null, 'p-1', true)).toBeNull()
+  })
+
+  it('factuur_conflict = uitleg-chip "kies zelf" zolang het veld leeg is, weg zodra er gekozen is', () => {
+    const chip = bepaalProjectFactuurChip('factuur_conflict', 'Factuur noemt "26999" — niet het project uit de historie', null, false)
+    expect(chip).toMatchObject({ klasse: 'afwijking', tekst: 'factuur noemt een ander project — kies zelf' })
+    expect(chip?.titel).toContain('26999')
+    expect(bepaalProjectFactuurChip('factuur_conflict', null, 'p-1', false)).toBeNull()
+  })
+})
+
 describe('regelVoorstelChips — project uit de factuur (blok 10 07-09, casus Spot Services)', () => {
   it('exacte code / bevestigd werknummer = groen "uit factuur" mét detail', () => {
     const chip = bepaalProjectFactuurChip('factuur', 'Factuur vermeldt "26140" = projectcode van 26140 Koningstraat', 'p-1', false)
@@ -160,7 +177,10 @@ describe('regelVoorstelChips — project uit de factuur (blok 10 07-09, casus Sp
     expect(projectBronUitDto('factuur')).toBe('factuur')
     expect(projectBronUitDto('factuur_onbevestigd')).toBe('factuur_onbevestigd')
     expect(projectBronUitDto('factuur_meerduidig')).toBe('factuur_meerduidig')
-    expect(projectBronUitDto('geheugen')).toBeNull()
+    // Blok 3 feedbackrun A 25-09 (FV-02): 'geheugen' en 'factuur_conflict' zijn sinds 25-09 geldige bronnen.
+    expect(projectBronUitDto('geheugen')).toBe('geheugen')
+    expect(projectBronUitDto('factuur_conflict')).toBe('factuur_conflict')
+    expect(projectBronUitDto('iets')).toBeNull()
     expect(projectBronUitDto(null)).toBeNull()
     expect(projectBronUitDto(undefined)).toBeNull()
   })
