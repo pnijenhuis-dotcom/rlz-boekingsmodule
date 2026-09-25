@@ -10,7 +10,7 @@
 // breedste realistische stand na: alle tellerkolommen gevuld + IBAN-chip in de naamcel
 // (klantenlijst), lange bestandsnamen/afwijzingsredenen/duplicaat-verwijzing (documentenlijst)
 // en een gevulde verzamelbak.
-import { StrictMode } from 'react'
+import { Profiler, StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { WerkvoorraadScreen } from '../werkvoorraad/WerkvoorraadScreen'
@@ -389,22 +389,129 @@ const BEOORDELEN_STAND = {
   dossier_geblokkeerd: 0,
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------
+// Blok 7 feedbackrun A 25-09 (FV-18 "scherm loopt vast bij wisselen tabblad" — EERST REPRODUCEREN): productie-achtige
+// lijstgrootte + meetlus in de pagina zelf, zodat headless Chrome (scripts/tabwissel_meting.mjs, CDP, échte klok — geen
+// --virtual-time-budget: daaronder staat performance.now() stil tijdens een lange taak) een reproduceerbare meting doet.
+//   ?docs=<N>          N ≥ 2 → N gegenereerde documenten voor ADMIN_1 (mix van statussen + chips/signalen zoals Universal
+//                      Steigerbouw: te controleren, klaar om te boeken, vragen, ter accordering, IBAN, mislukt, signalen).
+//   ?tabwissel=<K>     ná de eerste render K × wisselen te_controleren ↔ klaar_om_te_boeken; per wissel de tijd tot de lijst
+//                      opnieuw gerenderd is (rAF ×2 ná de klik) én de fetches; uitkomst als data-attributen op <body>.
+//   ?latency=<ms>      vertraging van élk gemockt antwoord (maakt "geen abort van lopende fetches" meetbaar).
+// Fetch-telling (altijd aan): gestart / afgerond / afgebroken (AbortSignal gehonoreerd) / open (gestart − afgerond − afgebroken).
+const TABWISSEL_PARAMS = new URLSearchParams(window.location.search)
+const DOCS_AANTAL = Number(TABWISSEL_PARAMS.get('docs') ?? '0')
+const MOCK_LATENCY_MS = Number(TABWISSEL_PARAMS.get('latency') ?? '0')
+// ?poll=1: elke 50e rij staat in extractie_wachtrij (en elke 75e op wordt_geboekt) → de lijst pollt elke 3 s (EXTRACTIE_POLL_MS),
+// zoals in productie zodra er ook maar één document in de wachtrij of bij de achtergrond-schrijver staat.
+const POLL_ACTIEF = TABWISSEL_PARAMS.get('poll') === '1'
+
+const GENERATOR_LEVERANCIERS = [
+  'Universal Nederland B.V.', 'Floor Bouwliftenservice', 'Hoogwerkservice Hardinxveld B.V.', 'Huvanco Verhuur- en Handelmaatschappij B.V.',
+  'Steigertekening.nl bv', 'Universal Verkoop B.V.', 'Scafom-rux Nederland B.V.', 'Metselbedrijf Ben Kuijer', 'Argos Packaging Systems',
+  'Damitech B.V.', 'ABS trading', 'H.T.I. Verhuur Wijchen', 'G.J. Rijksen en Zoon', 'Exact Software Nederland B.V.', 'DCTE B.V.',
+]
+// Verdeling ≈ Universal Steigerbouw (veel te controleren, een flinke tab klaar om te boeken, ~10 % bij de klant).
+const GENERATOR_STATUSSEN = [
+  'te_controleren', 'te_controleren', 'te_controleren', 'te_controleren', 'klaar_om_te_boeken', 'klaar_om_te_boeken', 'klaar_om_te_boeken',
+  'ter_accordering', 'vraag_open', 'wacht_op_iban_accordering', 'handmatig_afmaken', 'boeken_mislukt',
+]
+function genereerDocumenten(n: number) {
+  return Array.from({ length: n }, (_, i) => {
+    const status = POLL_ACTIEF && i % 50 === 0 ? 'extractie_wachtrij' : POLL_ACTIEF && i % 75 === 0 ? 'wordt_geboekt' : GENERATOR_STATUSSEN[i % GENERATOR_STATUSSEN.length]
+    const leverancier = GENERATOR_LEVERANCIERS[(i * 7) % GENERATOR_LEVERANCIERS.length]
+    const dag = String(1 + (i % 28)).padStart(2, '0')
+    const maand = String(1 + (i % 9)).padStart(2, '0')
+    const id = `bbbbbbbb-1111-0000-0000-${String(i + 1).padStart(12, '0')}`
+    return {
+      id,
+      bestandsnaam: `${leverancier.split(' ')[0]} - RLZ-2080${String(140000 + i)} - 2026-${maand}-${dag}.${i % 5 === 0 ? 'xml' : 'pdf'}`,
+      status,
+      bron: i % 3 === 0 ? 'upload' : 'email',
+      soort: i % 23 === 0 ? 'verplichting' : 'inkoopfactuur',
+      mogelijk_duplicaat_van:
+        i % 7 === 0 ? { document_id: `bbbbbbbb-1111-0000-0000-${String(i).padStart(12, '0')}`, bestandsnaam: `kopie ${i}.pdf`, aangemaakt_op: '2026-08-01T09:00:00Z' } : null,
+      toegewezen_aan: i % 4 === 0 ? '11111111-0000-0000-0000-000000000002' : null,
+      aangemaakt_op: `2026-${maand}-${dag}T09:${String(i % 60).padStart(2, '0')}:00Z`,
+      laatst_gewijzigd_op: `2026-${maand}-${dag}T10:00:00Z`,
+      afwijzing: null,
+      leverancier,
+      totaalbedrag: ((i * 137.53) % 9000 + 12.5).toFixed(2),
+      factuurdatum: `2026-${maand}-${dag}`,
+      automatisch_geboekt: false,
+      duplicaatsignaal: i % 9 === 0 ? { uitkomst: 'mogelijk_duplicaat', aantal_treffers: 1, berekend_op: '2026-09-20T06:00:00Z' } : null,
+      verplichting_match: i % 11 === 0 ? { uitkomst: i % 22 === 0 ? 'binnen' : 'buiten', offertenummer: 'S00642', overschrijding_excl: '1250.00' } : null,
+      factuurmatch: i % 13 === 0 ? { uitkomst: 'afwijking', verschil_bedrag: '412.00', tarief_ontbreekt: false } : null,
+      accordeur_aan_de_beurt: status === 'ter_accordering' ? { naam: 'Sophia Gerritsen', laag: 2 } : null,
+      klant_akkoord_compleet: false,
+      samengevoegde_exemplaren: i % 17 === 0 ? 2 : 0,
+      afgevoerde_exemplaren: i % 17 === 0 ? 1 : 0,
+      duplicaat_werkvoorraad_van: i % 19 === 0 ? { document_id: id, bestandsnaam: `ouder ${i}.pdf`, aangemaakt_op: '2026-07-01T09:00:00Z' } : null,
+    }
+  })
+}
+const DOCUMENTEN_GEGENEREERD =
+  DOCS_AANTAL >= 2
+    ? {
+        documenten: genereerDocumenten(DOCS_AANTAL),
+        afgehandeld: { verwijderd: 3, afgewezen: 2, samengevoegd: 40, afgevoerd_duplicaat: 12, geboekt: 900, gesplitst: 0, geaccordeerd: 0, totaal: 957 },
+      }
+    : null
+
+const fetchTelling = { gestart: 0, afgerond: 0, afgebroken: 0, perUrl: new Map<string, number>(), echt: [] as string[] }
+declare global {
+  interface Window {
+    __tabwissel?: Record<string, unknown>
+    __fetchTelling?: typeof fetchTelling
+  }
+}
+window.__fetchTelling = fetchTelling
+
+/** Mock-antwoord mét optionele latency én honorering van `init.signal` (AbortError, zoals een échte fetch). */
+function mockAntwoord(maak: () => Response, init?: RequestInit): Promise<Response> {
+  return new Promise<Response>((resolve, reject) => {
+    const signaal = init?.signal
+    const afbreken = () => {
+      fetchTelling.afgebroken += 1
+      reject(new DOMException('The operation was aborted.', 'AbortError'))
+    }
+    const klaar = () => {
+      if (signaal?.aborted) return
+      signaal?.removeEventListener('abort', afbreken)
+      fetchTelling.afgerond += 1
+      resolve(maak())
+    }
+    if (signaal?.aborted) {
+      afbreken()
+      return
+    }
+    signaal?.addEventListener('abort', afbreken, { once: true })
+    if (MOCK_LATENCY_MS > 0) window.setTimeout(klaar, MOCK_LATENCY_MS)
+    else klaar()
+  })
+}
+
 const echteFetch = window.fetch.bind(window)
 window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = String(invoer)
-  if (url.includes('/uren/kantoor/weekstaten?')) return Promise.resolve(jsonResponse(BEOORDELEN_WEEKSTATEN))
-  if (url.includes('/uren/kantoor/meerwerk')) return Promise.resolve(jsonResponse([]))
-  if (url.includes('/uren/kantoor/stand')) return Promise.resolve(jsonResponse(BEOORDELEN_STAND))
-  if (url.endsWith('/auth/administraties')) return Promise.resolve(jsonResponse({ administraties: ADMINISTRATIES }))
-  if (url.includes('/projecten/kantoorbreed')) return Promise.resolve(jsonResponse(PROJECTEN_KANTOORBREED))
-  if (url.includes('/projecten/afsluit-kandidaten')) return Promise.resolve(jsonResponse(AFSLUIT_KANDIDATEN))
-  if (url.endsWith('/werkvoorraad/overzicht')) return Promise.resolve(jsonResponse(WERKVOORRAAD_OVERZICHT))
-  if (url.endsWith('/bank/overzicht')) return Promise.resolve(jsonResponse(BANK_OVERZICHT))
+  fetchTelling.gestart += 1
+  const pad = url.replace(/\?.*$/, '')
+  fetchTelling.perUrl.set(pad, (fetchTelling.perUrl.get(pad) ?? 0) + 1)
+  const mock = (body: unknown) => mockAntwoord(() => jsonResponse(body), init)
+  if (url.includes('/uren/kantoor/weekstaten?')) return mock((BEOORDELEN_WEEKSTATEN))
+  if (url.includes('/uren/kantoor/meerwerk')) return mock(([]))
+  if (url.includes('/uren/kantoor/stand')) return mock((BEOORDELEN_STAND))
+  if (url.endsWith('/auth/administraties')) return mock(({ administraties: ADMINISTRATIES }))
+  if (url.includes('/projecten/kantoorbreed')) return mock((PROJECTEN_KANTOORBREED))
+  if (url.includes('/projecten/afsluit-kandidaten')) return mock((AFSLUIT_KANDIDATEN))
+  if (url.endsWith('/werkvoorraad/overzicht')) return mock((WERKVOORRAAD_OVERZICHT))
+  if (url.endsWith('/bank/overzicht')) return mock((BANK_OVERZICHT))
   if (url.includes('/doorbelasting/') && url.endsWith('/spiegel-taken')) {
     // Eén open spiegel-taak bij Kempen Facilities → de extra kolom "Spiegel-taken" rendert mee.
-    return Promise.resolve(jsonResponse(url.includes(ADMIN_1) ? [{ id: 'taak' }] : []))
+    return mock((url.includes(ADMIN_1) ? [{ id: 'taak' }] : []))
   }
-  if (url.endsWith('/verzamelbak')) return Promise.resolve(jsonResponse(VERZAMELBAK))
+  if (url.endsWith('/verzamelbak')) return mock((VERZAMELBAK))
   if (url.includes('/documenten')) {
     // Blok 8 feedbackrun A (FV-20, 25-09), variant ?alles=1: de "Alles"-weergave — server-side groep=alles mét alle
     // statussen (ook geboekt/verwijderd, grijs) én een totaal > 200 zodat de paginabalk (Vorige/Volgende) meet.
@@ -438,13 +545,13 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
         }),
       )
     }
-    return Promise.resolve(jsonResponse(DOCUMENTEN))
+    return mock((DOCUMENTEN_GEGENEREERD ?? DOCUMENTEN))
   }
-  if (url.endsWith('/medewerkers')) return Promise.resolve(jsonResponse(MEDEWERKERS))
+  if (url.endsWith('/medewerkers')) return mock((MEDEWERKERS))
   // Klantpagina = standen (IA-verbouwing 15-08): bank per rekening + open vragen.
   if (url.includes('/rekeningen')) {
-    return Promise.resolve(
-      jsonResponse({
+    return mock(
+      ({
         rekeningen: [
           { id: 'rek-1', naam: 'Rabobank zakelijk', iban: 'NL02RABO0123456789', open_mutaties: 12 },
           { id: 'rek-2', naam: 'G-rekening', iban: 'NL10INGB0000002277', open_mutaties: 3 },
@@ -456,9 +563,13 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
       }),
     )
   }
+  // Blok 7 (25-09): de twee accordering-leesroutes van de documentenlijst gemockt — vóór 25-09 vielen ze door naar de
+  // échte fetch (vite gaf HTML → apiJson-fout, stil gevangen) en telden ze in de meting als "open".
+  if (url.endsWith('/accordering/instellingen')) return mock(({ ingeschakeld: true, lagen: [] }))
+  if (url.endsWith('/accordering/vervallen-meldingen')) return mock(([]))
   if (url.includes('/vragen')) {
-    return Promise.resolve(
-      jsonResponse({
+    return mock(
+      ({
         vragen: [
           {
             id: 'vraag-1',
@@ -483,6 +594,7 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
       }),
     )
   }
+  fetchTelling.echt.push(url)
   return echteFetch(invoer, init)
 }
 
@@ -515,8 +627,107 @@ if (new URLSearchParams(window.location.search).has('donker')) {
   document.body.classList.add('dark')
 }
 
+
+// Blok 7 (25-09): React-commits tellen (Profiler om de Routes) — renders per wissel zijn een meetgetal, geen gevoel.
+const profiler = { commits: 0, totaalMs: 0, duren: [] as number[] }
+function onRender(_id: string, _fase: string, actualDuration: number) {
+  profiler.commits += 1
+  profiler.totaalMs += actualDuration
+  profiler.duren.push(actualDuration)
+}
+
+const TABWISSEL_AANTAL = Number(TABWISSEL_PARAMS.get('tabwissel') ?? '0')
+if (TABWISSEL_AANTAL > 0) {
+  const wachtOp = (test: () => boolean, timeoutMs = 60000) =>
+    new Promise<void>((resolve, reject) => {
+      const start = performance.now()
+      const tik = () => {
+        if (test()) resolve()
+        else if (performance.now() - start > timeoutMs) reject(new Error('tabwissel: wachten verlopen'))
+        else requestAnimationFrame(tik)
+      }
+      tik()
+    })
+  const tweeFrames = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+  const statusKnop = (label: string) =>
+    Array.from(document.querySelectorAll<HTMLButtonElement>('.lijst-werkbalk .segment[aria-label="Filter op status"] button')).find((b) =>
+      (b.textContent ?? '').startsWith(label),
+    )
+  const langeTaken: number[] = []
+  if ('PerformanceObserver' in window) {
+    try {
+      new PerformanceObserver((lijst) => {
+        for (const e of lijst.getEntries()) langeTaken.push(e.duration)
+      }).observe({ type: 'longtask', buffered: true })
+    } catch {
+      // longtask niet ondersteund → alleen de eigen klok
+    }
+  }
+  const run = async () => {
+    await wachtOp(() => document.querySelector('table.documenten-tabel') !== null && statusKnop('Klaar om te boeken') !== undefined)
+    await tweeFrames()
+    const fetchVoor = { ...fetchTelling }
+    const commitsVoor = profiler.commits
+    const tijden: number[] = []
+    const rijenPerWissel: number[] = []
+    for (let i = 0; i < TABWISSEL_AANTAL; i++) {
+      const doel = i % 2 === 0 ? 'Klaar om te boeken' : 'Te controleren'
+      const knop = statusKnop(doel)
+      if (!knop) throw new Error(`tabwissel: knop "${doel}" ontbreekt`)
+      const t0 = performance.now()
+      knop.click()
+      await wachtOp(() => statusKnop(doel)?.classList.contains('actief') === true)
+      await tweeFrames()
+      tijden.push(performance.now() - t0)
+      rijenPerWissel.push(document.querySelectorAll('table.documenten-tabel tbody tr').length - 1)
+    }
+    // Trailing fetches (polling/effect-lus) krijgen 1,5 s de tijd om zichtbaar te worden.
+    await new Promise((r) => window.setTimeout(r, 1500))
+    const max = Math.max(...tijden)
+    const gem = tijden.reduce((a, b) => a + b, 0) / tijden.length
+    const geheugen = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory
+    const uit = {
+      wissels: TABWISSEL_AANTAL,
+      docs: DOCS_AANTAL,
+      latency: MOCK_LATENCY_MS,
+      maxMs: Math.round(max),
+      gemMs: Math.round(gem),
+      tijden: tijden.map((t) => Math.round(t)),
+      rijen: rijenPerWissel,
+      fetchGestartTijdens: fetchTelling.gestart - fetchVoor.gestart,
+      fetchOpen: fetchTelling.gestart - fetchTelling.afgerond - fetchTelling.afgebroken,
+      fetchAfgebroken: fetchTelling.afgebroken,
+      fetchTotaal: fetchTelling.gestart,
+      fetchEcht: fetchTelling.echt.slice(0, 10),
+      commitDuur: profiler.duren.slice(-40).map((d) => Math.round(d)),
+      fetchPerUrl: Object.fromEntries(fetchTelling.perUrl),
+      commitsTijdens: profiler.commits - commitsVoor,
+      commitsTotaal: profiler.commits,
+      renderMsTotaal: Math.round(profiler.totaalMs),
+      langeTaken: langeTaken.length,
+      langsteTaakMs: Math.round(Math.max(0, ...langeTaken)),
+      heapMb: geheugen ? Math.round((geheugen.usedJSHeapSize / 1048576) * 10) / 10 : null,
+    }
+    window.__tabwissel = uit
+    const b = document.body.dataset
+    b.tabwisselMaxMs = String(uit.maxMs)
+    b.tabwisselGemMs = String(uit.gemMs)
+    b.tabwisselFetchTijdens = String(uit.fetchGestartTijdens)
+    b.fetchOpen = String(uit.fetchOpen)
+    b.tabwisselCommits = String(uit.commitsTijdens)
+    b.tabwisselJson = JSON.stringify(uit)
+    b.tabwisselKlaar = 'ja'
+  }
+  run().catch((err: unknown) => {
+    document.body.dataset.tabwisselKlaar = 'fout'
+    document.body.dataset.tabwisselFout = err instanceof Error ? err.message : String(err)
+  })
+}
+
+const ZONDER_STRICT = TABWISSEL_PARAMS.get('strict') === '0'
+const Wortel = ZONDER_STRICT ? ({ children }: { children: ReactNode }) => <>{children}</> : StrictMode
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+  <Wortel>
     <MemoryRouter initialEntries={[START_URL]}>
       <div className="app">
         <nav className="sidebar">
@@ -532,15 +743,17 @@ createRoot(document.getElementById('root')!).render(
         </nav>
         <div className="main">
           <div className="content">
+            <Profiler id="werkvoorraad" onRender={onRender}>
             <Routes>
               <Route path="/" element={<WerkvoorraadScreen />} />
               <Route path="/projecten" element={<ProjectenKantoorbreedScreen />} />
               <Route path="/meerwerk" element={<MeerwerkScreen />} />
             </Routes>
+            </Profiler>
           </div>
         </div>
       </div>
       <OverflowBadge />
     </MemoryRouter>
-  </StrictMode>,
+  </Wortel>,
 )

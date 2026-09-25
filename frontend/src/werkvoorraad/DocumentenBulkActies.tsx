@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { ApiError, apiPostJson } from '../api/client'
-import type { DocumentListItemDto } from '../api/types'
+import type { AdministratieDto, DocumentListItemDto } from '../api/types'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { AnkerPopup, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Select, useToastOptioneel } from '../ui/basis'
 import { useAdministraties } from './useAdministraties'
@@ -90,11 +90,13 @@ interface BalkProps {
   onWissen: () => void
   /** Ná afloop: lijst herladen (rijen zijn verdwenen of veranderd). */
   onAfgerond: () => void
+  /** Blok 7 (25-09): administraties van het ouder — dan geen eigen GET /auth/administraties per mount (tabwissel). */
+  administraties?: AdministratieDto[] | null
 }
 
-export function DocumentenBulkBalk({ administratieId, administratieNaam, selectie, zichtbaar, onSelecteerZichtbaar, onWissen, onAfgerond }: BalkProps) {
+export function DocumentenBulkBalk({ administratieId, administratieNaam, selectie, zichtbaar, onSelecteerZichtbaar, onWissen, onAfgerond, administraties: voorgeladen }: BalkProps) {
   const { meld } = useToastOptioneel()
-  const { administraties } = useAdministraties()
+  const { administraties } = useAdministraties(voorgeladen)
   const [actie, setActie] = useState<BulkActie | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuKnop = useRef<HTMLButtonElement | null>(null)

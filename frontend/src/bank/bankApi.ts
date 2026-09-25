@@ -289,8 +289,9 @@ export function haalBankOverzicht(): Promise<BankOverzichtDto> {
   return apiJson<BankOverzichtDto>('/bank/overzicht')
 }
 
-export function haalRekeningen(administratieId: string): Promise<RekeningenDto> {
-  return apiJson<RekeningenDto>(`/administraties/${administratieId}/bank/rekeningen`)
+export function haalRekeningen(administratieId: string, init: RequestInit = {}): Promise<RekeningenDto> {
+  // `init.signal` (blok 7 25-09): de documentenlijst breekt de zij-fetch af bij een administratiewissel/unmount.
+  return apiJson<RekeningenDto>(`/administraties/${administratieId}/bank/rekeningen`, init)
 }
 
 export function haalMutaties(administratieId: string, rekeningId: string): Promise<MutatiesDto> {

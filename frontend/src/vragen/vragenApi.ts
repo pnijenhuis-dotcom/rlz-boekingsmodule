@@ -14,12 +14,14 @@ import type {
 export function haalVragenOp(
   administratieId: string,
   opties: { status?: 'open' | 'beantwoord' | 'ingetrokken' | 'afgehandeld'; documentId?: string } = {},
+  init: RequestInit = {},
 ): Promise<VraagLijstDto> {
   const params = new URLSearchParams()
   if (opties.status) params.set('vraag_status', opties.status)
   if (opties.documentId) params.set('document_id', opties.documentId)
   const query = params.toString()
-  return apiJson<VraagLijstDto>(`/administraties/${administratieId}/vragen${query ? `?${query}` : ''}`)
+  // `init.signal` (blok 7 25-09): de documentenlijst breekt de zij-fetch af bij een administratiewissel/unmount.
+  return apiJson<VraagLijstDto>(`/administraties/${administratieId}/vragen${query ? `?${query}` : ''}`, init)
 }
 
 export function stelVraag(

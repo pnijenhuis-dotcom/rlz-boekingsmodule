@@ -65,8 +65,9 @@ export function eenheidLabel(eenheid: string): string {
   return EENHEID_LABELS[eenheid] ?? eenheid
 }
 
-export function haalUrenStand(administratieId: string): Promise<UrenStandDto> {
-  return apiJson<UrenStandDto>(`/uren/kantoor/stand?administratie_id=${administratieId}`)
+export function haalUrenStand(administratieId: string, init: RequestInit = {}): Promise<UrenStandDto> {
+  // `init.signal` (blok 7 25-09): de documentenlijst breekt de zij-fetch af bij een administratiewissel/unmount.
+  return apiJson<UrenStandDto>(`/uren/kantoor/stand?administratie_id=${administratieId}`, init)
 }
 
 /** Beoordelen › Urenstaten (bug 18-09): ingediende weekstaten van één administratie — zelfde definitie als

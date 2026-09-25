@@ -71,7 +71,7 @@ export function WerkvoorraadScreen() {
       return <KlantStanden administratieId={administratieId} administratieNaam={naam} />
     }
     // Landing (besluit 25-08) — óók voor de oude `sectie=documenten`-URL's.
-    return <DocumentenDeelscherm administratieId={administratieId} administratieNaam={naam} />
+    return <DocumentenDeelscherm administratieId={administratieId} administratieNaam={naam} administraties={administraties} />
   }
 
   return <WerkvoorraadIngang administraties={administraties} filter={filter} />

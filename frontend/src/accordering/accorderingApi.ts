@@ -46,8 +46,9 @@ export interface BulkAanbiedenResponseDto {
   overgeslagen: number
 }
 
-export function haalVervallenMeldingen(administratieId: string): Promise<VervallenMeldingDto[]> {
-  return apiJson(`/administraties/${administratieId}/accordering/vervallen-meldingen`)
+export function haalVervallenMeldingen(administratieId: string, init: RequestInit = {}): Promise<VervallenMeldingDto[]> {
+  // `init.signal` (blok 7 25-09): de documentenlijst breekt de zij-fetch af bij een administratiewissel/unmount.
+  return apiJson(`/administraties/${administratieId}/accordering/vervallen-meldingen`, init)
 }
 
 /** Bulk "Ter accordering aanbieden" (punt 2b) — zelfde poorten als de losse knop, per document;
@@ -122,8 +123,9 @@ export interface KandidaatDto {
   naam: string
 }
 
-export function haalAccorderingInstellingen(administratieId: string): Promise<AccorderingInstellingenDto> {
-  return apiJson(`/administraties/${administratieId}/accordering/instellingen`)
+export function haalAccorderingInstellingen(administratieId: string, init: RequestInit = {}): Promise<AccorderingInstellingenDto> {
+  // `init.signal` (blok 7 25-09): de documentenlijst breekt de zij-fetch af bij een administratiewissel/unmount.
+  return apiJson(`/administraties/${administratieId}/accordering/instellingen`, init)
 }
 
 export function zetAccorderingInstellingen(

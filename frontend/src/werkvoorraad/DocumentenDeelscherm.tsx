@@ -7,9 +7,10 @@ import {
   type BulkAanbiedenResponseDto,
   type VervallenMeldingDto,
 } from '../accordering/accorderingApi'
-import { ApiError, apiJson, apiPostJson } from '../api/client'
+import { ApiError, REQUEST_TIMEOUT_MS, apiJson, apiPostJson } from '../api/client'
 import { isAfgehandeld, isWachtenOpAnderen } from '../api/types'
 import type {
+  AdministratieDto,
   AfgehandeldTellersDto,
   DocumentActieResponseDto,
   DocumentListItemDto,
@@ -69,6 +70,33 @@ const EXTRACTIE_POLL_MS = 3000
 const ALLES_PAGINA = 200
 const ZOEK_SERVER_DEBOUNCE_MS = 400
 
+/** Blok 7 feedbackrun A 25-09 (FV-18): één AbortController mét de standaard request-timeout van de client — de
+ * client slaat zijn eigen timeout over zodra een aanroeper een `signal` meegeeft, dus die bewaking komt hier terug.
+ * `stop()` ruimt de timer op ná afloop; `abort()` breekt de lopende request af (wissel/unmount/nieuwere lading). */
+function maakAfbreker(): { signal: AbortSignal; abort: () => void; stop: () => void } {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  return {
+    signal: controller.signal,
+    abort: () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    },
+    stop: () => window.clearTimeout(timer),
+  }
+}
+
+function isAfgebroken(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError'
+}
+
+/** Vingerafdruk van een lijst-antwoord: gelijk = niets veranderd = géén state-update (en dus geen re-render van honderden
+ * rijen). Bewust een string-vergelijking van het hele antwoord — de lijst-DTO is klein per rij en de vergelijking kost
+ * milliseconden, één re-render van 200+ rijen honderden. */
+function lijstVingerafdruk(data: DocumentListResponseDto): string {
+  return JSON.stringify(data)
+}
+
 /** Vaste tab-volgorde (mockup-norm 25-08) — leeft in ./format (gedeeld met de "volgende
  * document"-keuze); onbekende soorten volgen alfabetisch achteraan. Alleen soorten met teller > 0
  * krijgen een tab. */
@@ -110,9 +138,12 @@ function markeerMeldingWeggeklikt(batchId: string): void {
 export function DocumentenDeelscherm({
   administratieId,
   administratieNaam,
+  administraties,
 }: {
   administratieId: string
   administratieNaam: string
+  /** Blok 7 (25-09): de al geladen administraties van het ouder — de bulk-balk hoeft ze dan niet per mount op te halen. */
+  administraties?: AdministratieDto[] | null
 }) {
   const navigate = useNavigate()
   const { meld } = useToastOptioneel()
@@ -178,27 +209,56 @@ export function DocumentenDeelscherm({
   const [algSelectie, setAlgSelectie] = useState<Set<string>>(() => new Set())
   const laatsteAlgKlik = useRef<string | null>(null)
 
-  const laadDocumenten = useCallback(() => {
-    setLijstFout(null)
-    const params = new URLSearchParams()
-    if (allesModus) {
-      // Blok 8 (25-09): de échte "Alles"-weergave — server-side groep + pagina + zoekterm; de toggle doet hier niets
-      // (afgehandelde rijen zitten er al in).
-      params.set('groep', 'alles')
-      params.set('limit', String(ALLES_PAGINA))
-      if (allesOffset > 0) params.set('offset', String(allesOffset))
-      if (zoekServer) params.set('q', zoekServer)
-    } else if (toonAfgehandeld) params.set('toon_afgehandeld', 'true')
-    const query = params.toString()
-    apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten${query ? `?${query}` : ''}`)
-      .then((data) => {
-        setDocumenten(data.documenten)
-        setAfgehandeld(data.afgehandeld ?? null)
-        setGroepTellers(data.groepen ?? null)
-        setAllesTotaal(typeof data.totaal === 'number' ? data.totaal : null)
+  // Blok 7 feedbackrun A 25-09 (FV-18 "scherm loopt vast bij wisselen tabblad" — gemeten, zie
+  // docs/rapporten/2026-09-25-feedbackrun-A-factuurverwerking.md blok 7): de lopende lijst-request leeft in een ref zodat
+  // (1) een nieuwere lading (administratiewissel, toggle, upload, bulk, unmount) de oudere AFBREEKT — een traag ouder
+  // antwoord kan een nieuwer nooit meer overschrijven; (2) de 3-s-poll een tik OVERSLAAT zolang er een request loopt
+  // (productie: de lijstroute van Universal Steigerbouw duurt p50 1,6 s / p95 2,5 s, 219 open documenten) i.p.v. te
+  // stapelen; (3) een poll-antwoord dat byte-gelijk is aan de stand op het scherm géén state-update doet — vóór 25-09
+  // verving élke poll de hele lijst en renderde het scherm honderden rijen opnieuw (95–333 ms per poll bij 400–2000 rijen).
+  const lopendeLading = useRef<{ abort: () => void } | null>(null)
+  const laatsteVingerafdruk = useRef<string | null>(null)
+  const laadDocumenten = useCallback(
+    (opties: { poll?: boolean } = {}) => {
+      if (opties.poll && lopendeLading.current) return
+      lopendeLading.current?.abort()
+      const afbreker = maakAfbreker()
+      lopendeLading.current = afbreker
+      if (!opties.poll) setLijstFout(null)
+      const params = new URLSearchParams()
+      if (allesModus) {
+        // Blok 8 (25-09): de échte "Alles"-weergave — server-side groep + pagina + zoekterm; de toggle doet hier niets
+        // (afgehandelde rijen zitten er al in).
+        params.set('groep', 'alles')
+        params.set('limit', String(ALLES_PAGINA))
+        if (allesOffset > 0) params.set('offset', String(allesOffset))
+        if (zoekServer) params.set('q', zoekServer)
+      } else if (toonAfgehandeld) params.set('toon_afgehandeld', 'true')
+      const query = params.toString()
+      apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten${query ? `?${query}` : ''}`, {
+        signal: afbreker.signal,
       })
-      .catch((err: unknown) => setLijstFout(err instanceof Error ? err.message : 'Onbekende fout'))
-  }, [administratieId, toonAfgehandeld, allesModus, allesOffset, zoekServer])
+        .then((data) => {
+          if (lopendeLading.current !== afbreker) return
+          lopendeLading.current = null
+          afbreker.stop()
+          const vingerafdruk = lijstVingerafdruk(data)
+          if (opties.poll && vingerafdruk === laatsteVingerafdruk.current) return
+          laatsteVingerafdruk.current = vingerafdruk
+          setDocumenten(data.documenten)
+          setAfgehandeld(data.afgehandeld ?? null)
+          setGroepTellers(data.groepen ?? null)
+          setAllesTotaal(typeof data.totaal === 'number' ? data.totaal : null)
+        })
+        .catch((err: unknown) => {
+          if (isAfgebroken(err) || lopendeLading.current !== afbreker) return
+          lopendeLading.current = null
+          afbreker.stop()
+          setLijstFout(err instanceof Error ? err.message : 'Onbekende fout')
+        })
+    },
+    [administratieId, toonAfgehandeld, allesModus, allesOffset, zoekServer],
+  )
 
   // Blok 8 (25-09): zoekterm → server ná een korte pauze; élke wissel van zoekterm of weergave begint op pagina 1.
   useEffect(() => {
@@ -213,7 +273,13 @@ export function DocumentenDeelscherm({
 
   useEffect(() => {
     setDocumenten(null)
+    laatsteVingerafdruk.current = null
     laadDocumenten()
+    return () => {
+      // Administratiewissel/toggle/unmount: de lopende lijst-request afbreken (niets landt meer in een oud scherm).
+      lopendeLading.current?.abort()
+      lopendeLading.current = null
+    }
   }, [laadDocumenten])
 
   // `?status=` uit een chip/kolom-teller (Bij klant / Afgewezen / IBAN / klantoverzicht) kiest het
@@ -229,58 +295,72 @@ export function DocumentenDeelscherm({
   }, [zoekParam])
 
   useEffect(() => {
+    // Blok 7 (25-09): de vier zij-fetches lopen op één AbortController — een administratiewissel of unmount breekt ze
+    // af (vóór 25-09 alleen een `actueel`-vlag: de request liep door en het antwoord werd weggegooid).
     let actueel = true
+    const afbreker = maakAfbreker()
+    const init = { signal: afbreker.signal }
     setRekeningen(null)
     setVragen(null)
     setUrenStand(null)
     setAccorderingAan(false)
-    haalRekeningen(administratieId)
+    haalRekeningen(administratieId, init)
       .then((data) => {
         if (actueel) setRekeningen(data)
       })
       .catch(() => undefined)
-    haalVragenOp(administratieId, { status: 'open' })
+    haalVragenOp(administratieId, { status: 'open' }, init)
       .then((data) => {
         if (actueel) setVragen(data.vragen)
       })
       .catch(() => undefined)
     // Uren & meerwerk: 403/409 = blok bestaat niet voor deze gebruiker/administratie (toon-regel).
-    haalUrenStand(administratieId)
+    haalUrenStand(administratieId, init)
       .then((data) => {
         if (actueel) setUrenStand(data)
       })
       .catch(() => undefined)
     // Klant-accordering aan? Dan is de bulk-actie zinvol (punt 2b). Fout = geen bulk, lijst gewoon.
-    haalAccorderingInstellingen(administratieId)
+    haalAccorderingInstellingen(administratieId, init)
       .then((data) => {
         if (actueel) setAccorderingAan(data.ingeschakeld)
       })
       .catch(() => undefined)
+      .finally(() => afbreker.stop())
     return () => {
       actueel = false
+      afbreker.abort()
     }
   }, [administratieId])
 
   // Vervallen-meldingen (punt 2a): apart effect zodat een bulk-aanbieding 'm kan verversen.
   useEffect(() => {
     let actueel = true
-    haalVervallenMeldingen(administratieId)
+    const afbreker = maakAfbreker()
+    haalVervallenMeldingen(administratieId, { signal: afbreker.signal })
       .then((data) => {
         if (actueel) setVervallenMeldingen(data)
       })
       .catch(() => undefined)
+      .finally(() => afbreker.stop())
     return () => {
       actueel = false
+      afbreker.abort()
     }
   }, [administratieId, meldingVersie])
 
   // Live extractiestatus (async extractie): zolang er documenten in de wachtrij of bij de
   // worker staan, ververst de lijst vanzelf.
+  // Blok 7 (25-09): de interval hangt aan een BOOLEAN, niet aan `documenten` — vóór 25-09 herstartte élk antwoord de
+  // timer (cadans = 3 s + latency; productie-log 24-09 12:04–12:14: een lijst-request elke 4,2–5,7 s, tien op rij) én
+  // elke tik startte een nieuwe request ook als de vorige nog liep. Nu: vaste 3-s-tik, overslaan zolang er een request
+  // loopt (`poll: true`), en een ongewijzigd antwoord raakt de state niet (zie `laadDocumenten`).
+  const pollNodig = documenten?.some((d) => extractieActief(d.status) || boekenActief(d.status)) ?? false
   useEffect(() => {
-    if (!documenten?.some((d) => extractieActief(d.status) || boekenActief(d.status))) return
-    const timer = setInterval(laadDocumenten, EXTRACTIE_POLL_MS)
+    if (!pollNodig) return
+    const timer = setInterval(() => laadDocumenten({ poll: true }), EXTRACTIE_POLL_MS)
     return () => clearInterval(timer)
-  }, [documenten, laadDocumenten])
+  }, [pollNodig, laadDocumenten])
 
   // Boeken sneller (18-09): een rij die van "Wordt geboekt…" naar Geboekt of Boeken mislukt springt, meldt dat als
   // toast zolang de gebruiker in deze administratie staat — een mislukte boeking is geen pop-up meer maar een rode rij
@@ -380,7 +460,11 @@ export function DocumentenDeelscherm({
 
   // Punt 21 (opruimrun 28-08): kolomsortering in de URL (`sort=<kolom>:<asc|desc>`) — deelbaar,
   // terugweg-vast en onderdeel van de lijstcontext (‹ › + doorloop volgen dezelfde volgorde).
-  const sortering = useMemo(() => sorteringUitParam(searchParams.get('sort')), [searchParams])
+  // Blok 7 (25-09): gememoïseerd op de STRING, niet op het `searchParams`-object — dat object is ná élke URL-sync (zie het
+  // context-effect hieronder) nieuw, en een nieuw `sortering`-object maakte `context`, `gefilterd` en de selectie-memo's
+  // opnieuw (filter + sort over álle rijen) terwijl er niets veranderd was.
+  const sortParam = searchParams.get('sort')
+  const sortering = useMemo(() => sorteringUitParam(sortParam), [sortParam])
   const sorteerOp = (kolom: SorteerKolom) => {
     const volgende = volgendeSortering(sortering, kolom)
     const p = new URLSearchParams(searchParams)
@@ -510,10 +594,13 @@ export function DocumentenDeelscherm({
   // Buiten offerte (blok B 04-09, ⑤): eigen teller in het duplicaat-patroon — de documenten
   // zelf blijven in hun gewone statuskolom staan.
   const aantalBuitenOfferte = useMemo(() => (inScope ?? []).filter(isBuitenOfferte).length, [inScope])
-  const aantalMetStatus = useCallback(
-    (status: string) => (inScope ?? []).filter((d) => d.status === status).length,
-    [inScope],
-  )
+  // Blok 7 (25-09): één telling per status i.p.v. per knop een filter over álle rijen bij élke render.
+  const aantalPerStatus = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const d of inScope ?? []) m.set(d.status, (m.get(d.status) ?? 0) + 1)
+    return m
+  }, [inScope])
+  const aantalMetStatus = useCallback((status: string) => aantalPerStatus.get(status) ?? 0, [aantalPerStatus])
 
   // --- Bulk "Ter accordering aanbieden" (punt 2b) ------------------------------------------------
   // Alleen op de tab "Klaar om te boeken" én als accordering voor deze klant aan staat; de poorten
@@ -765,7 +852,7 @@ export function DocumentenDeelscherm({
         </div>
       )}
 
-      <KlantUpload administratieId={administratieId} onGeupload={laadDocumenten} />
+      <KlantUpload administratieId={administratieId} onGeupload={() => laadDocumenten()} />
 
       <div className="panel">
         {/* Tabs per soort (besluit 25-08, C1): alleen soorten met teller > 0; "Alle documenten" = alle soorten.
@@ -986,6 +1073,7 @@ export function DocumentenDeelscherm({
           <DocumentenBulkBalk
             administratieId={administratieId}
             administratieNaam={administratieNaam}
+            administraties={administraties}
             selectie={algSelectie}
             zichtbaar={algSelecteerbaar}
             onSelecteerZichtbaar={(aan) => setAlgSelectie(aan ? new Set(algSelecteerbaar.map((d) => d.id)) : new Set())}
@@ -1018,7 +1106,7 @@ export function DocumentenDeelscherm({
               setDupSelectie(new Set())
               setDupAlleModus(false)
             }}
-            onAfgerond={laadDocumenten}
+            onAfgerond={() => laadDocumenten()}
           />
         )}
 
@@ -1026,7 +1114,7 @@ export function DocumentenDeelscherm({
           <FoutMelding
             melding="De documentenlijst kon niet geladen worden."
             detail={lijstFout}
-            onOpnieuw={laadDocumenten}
+            onOpnieuw={() => laadDocumenten()}
           />
         )}
         {herstellenFout && <FoutMelding melding={herstellenFout} />}
