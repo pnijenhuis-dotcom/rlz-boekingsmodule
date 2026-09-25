@@ -524,16 +524,30 @@ def documenten_lijst(
     # Blok 11 (herstelrun 08-09): één groep opvragen — `kantoor` (standaardlijst = "Alle"), `wachten` ("Wachten op
     # anderen": ter accordering + open vraag) of `afgehandeld` (eindstatussen incl. geboekt). Zonder groep: kantoor +
     # wachten, afgehandeld achter de toggles (bestaande deeplinks ?status=… en ?toon_afgehandeld=… blijven werken).
-    groep: Literal["kantoor", "wachten", "afgehandeld"] | None = None,
+    # Blok 8 feedbackrun A (FV-20, Peter 25-09): `alles` = kantoor ∪ wachten ∪ afgehandeld — altijd server-side
+    # gepagineerd (`limit` default 200, max 500, `offset`) mét `totaal` in de respons; `q` = server-side zoekterm
+    # (alleen mét groep=alles: zoeken vanuit de klantpagina zoekt altijd over álles, mét statuschip per rij).
+    groep: Literal["kantoor", "wachten", "afgehandeld", "alles"] | None = None,
+    q: str | None = None,
+    limit: int | None = Query(default=None, ge=1, le=service.LIJST_ALLES_LIMIT_MAX),
+    offset: int = Query(default=0, ge=0),
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DocumentListResponse:
+    alles = groep == service.GROEP_ALLES
+    zoekterm = (q or "").strip() or None
+    if alles and limit is None:
+        limit = service.LIJST_ALLES_LIMIT_DEFAULT
     items = service.lijst_documenten(
         administratie_id=administratie_id,
         toon_verwijderd=toon_verwijderd,
         toon_afgevoerd=toon_afgevoerd,
         toon_afgehandeld=toon_afgehandeld,
         groep=groep,
+        q=zoekterm if alles else None,
+        limit=limit if alles else None,
+        offset=offset if alles else 0,
     )
+    totaal = service.tel_documenten(administratie_id=administratie_id, groep=groep, q=zoekterm) if alles else None
     # Eén GROUP BY voedt zowel de afgehandeld-tellers als de groep-tellers.
     per_status = service.tel_per_status(administratie_id=administratie_id)
     afgehandeld = service.tel_afgehandeld(administratie_id=administratie_id, per_status=per_status)
@@ -623,7 +637,11 @@ def documenten_lijst(
             kantoor=groepen[service.GROEP_KANTOOR],
             wachten=groepen[service.GROEP_WACHTEN],
             afgehandeld=groepen[service.GROEP_AFGEHANDELD],
+            alles=sum(groepen.values()),
         ),
+        totaal=totaal,
+        limit=limit if alles else None,
+        offset=offset if alles else None,
     )
 
 

@@ -182,8 +182,8 @@ describe('Mogelijk-duplicaat-tab — bulk afvoeren', () => {
     await waitFor(() => expect(screen.queryByTestId('duplicaat-bulk-dialoog')).not.toBeInTheDocument())
     expect(stub.posts).toHaveLength(0)
 
-    // Naar het filter "Alle": de duplicaat-bulk verdwijnt, de gewone rijen hebben geen checkbox.
-    await userEvent.click(screen.getByRole('button', { name: /^Alle \(2\)/ }))
+    // Naar het filter "Open": de duplicaat-bulk verdwijnt, de gewone rijen hebben geen checkbox.
+    await userEvent.click(screen.getByRole('button', { name: /^Open \(2\)/ }))
     await waitFor(() => expect(screen.queryByTestId('duplicaat-bulk-balk')).not.toBeInTheDocument())
     expect(screen.queryByRole('checkbox', { name: /voor afvoeren als duplicaat/ })).not.toBeInTheDocument()
   })

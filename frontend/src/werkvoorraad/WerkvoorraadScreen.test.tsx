@@ -204,14 +204,14 @@ describe('WerkvoorraadScreen — verwijderen/herstellen via het ⋯-rijmenu (des
     renderScherm()
 
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
-    // Standaard: niet in de lijst, niet in "Alle", geen tab "Geboekt".
+    // Standaard: niet in de lijst, niet in "Open", geen tab "Geboekt".
     expect(screen.queryByText('geboekte-factuur.pdf')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Alle (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open (1)' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Geboekt \(/ })).not.toBeInTheDocument()
 
     await gebruiker.click(screen.getByLabelText('Toon afgehandelde documenten (1)'))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Alle (2)' })).toBeInTheDocument())
-    await gebruiker.click(screen.getByRole('button', { name: 'Alle (2)' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open (2)' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: 'Open (2)' }))
     await waitFor(() => expect(screen.getByText('geboekte-factuur.pdf')).toBeInTheDocument())
     const rij = screen.getByText('geboekte-factuur.pdf').closest('tr')
     expect(rij).toHaveClass('afgehandeld')
@@ -301,10 +301,10 @@ describe('WerkvoorraadScreen — verwijderen/herstellen via het ⋯-rijmenu (des
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
     expect(screen.queryByText('verwijderde-factuur.pdf')).not.toBeInTheDocument()
 
-    // De toggle draagt het server-aantal (niets verdwijnt stil); de rij komt grijs mét reden terug onder "Alle".
+    // De toggle draagt het server-aantal (niets verdwijnt stil); de rij komt grijs mét reden terug onder "Open".
     await gebruiker.click(screen.getByLabelText('Toon afgehandelde documenten (1)'))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Alle (2)' })).toBeInTheDocument())
-    await gebruiker.click(screen.getByRole('button', { name: 'Alle (2)' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open (2)' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: 'Open (2)' }))
     await waitFor(() => expect(screen.getByText('verwijderde-factuur.pdf')).toBeInTheDocument())
     expect(screen.getByText('verwijderde-factuur.pdf').closest('tr')).toHaveClass('afgehandeld')
     expect(screen.getByText(/verwijderd: “dubbel”/)).toBeInTheDocument()
@@ -339,12 +339,12 @@ describe('WerkvoorraadScreen — afgehandelde documenten (definitieve aanvulling
 
     await waitFor(() => expect(screen.getByText('Floor Bouwliftenservice - 26219.pdf')).toBeInTheDocument())
     expect(screen.queryByText('Floor Bouwliftenservice - 26219 (2).pdf')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Alle (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open (1)' })).toBeInTheDocument()
     expect(screen.getByText('2 exemplaren samengevoegd')).toBeInTheDocument()
 
     await gebruiker.click(screen.getByLabelText('Toon afgehandelde documenten (2)'))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Alle (2)' })).toBeInTheDocument())
-    await gebruiker.click(screen.getByRole('button', { name: 'Alle (2)' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open (2)' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: 'Open (2)' }))
     await waitFor(() => expect(screen.getByText('Floor Bouwliftenservice - 26219 (2).pdf')).toBeInTheDocument())
     expect(screen.getByText('Floor Bouwliftenservice - 26219 (2).pdf').closest('tr')).toHaveClass('afgehandeld')
     const link = screen.getByRole('link', { name: '→ samengevoegd in Floor Bouwliftenservice - 26219.pdf' })
@@ -660,7 +660,7 @@ describe('Klantpagina — kolommen, zoekveld en statusfilter (mockup #klantpagin
     await waitFor(() => expect(screen.getByText('Eneco Zakelijk')).toBeInTheDocument())
     expect(screen.getByText(/a\.pdf/)).toBeInTheDocument()
     expect(screen.queryByText(/b\.pdf/)).not.toBeInTheDocument()
-    await gebruiker.click(screen.getByRole('button', { name: 'Alle (2)' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Open (2)' }))
     expect(screen.getByText(/b\.pdf/)).toBeInTheDocument()
 
     await gebruiker.type(screen.getByLabelText('Zoek in documenten'), 'eneco')
@@ -734,9 +734,9 @@ describe('Blok D (01-09) — documentenlijst opent standaard op "Te controleren"
     renderScherm()
 
     await waitFor(() => expect(screen.getByText(/klaar\.pdf/)).toBeInTheDocument())
-    // Blok 11: geboekt is afgehandeld — standaard niet in de lijst en niet in "Alle".
+    // Blok 11: geboekt is afgehandeld — standaard niet in de lijst en niet in "Open".
     expect(screen.queryByText(/geboekt\.pdf/)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Alle (1)' })).toHaveClass('actief')
+    expect(screen.getByRole('button', { name: 'Open (1)' })).toHaveClass('actief')
   })
 })
 
@@ -1397,7 +1397,7 @@ describe('Blok 11 (herstelrun 08-09) — "Wachten op anderen" en de teller "Alle
     vi.unstubAllGlobals()
   })
 
-  it('ter accordering en open vraag staan in één tab "Wachten op anderen (N)" die niet in "Alle" meetelt; ?status=ter_accordering blijft werken', async () => {
+  it('ter accordering en open vraag staan in één tab "Wachten op anderen (N)" die niet in "Open" meetelt; ?status=ter_accordering blijft werken', async () => {
     const gebruiker = userEvent.setup()
     installFetchMock({
       documenten: [
@@ -1410,13 +1410,13 @@ describe('Blok 11 (herstelrun 08-09) — "Wachten op anderen" en de teller "Alle
 
     await waitFor(() => expect(screen.getByText(/werk\.pdf/)).toBeInTheDocument())
     // "Alle" telt alleen kantoorwerk; de twee wachtende rijen zitten in de eigen tab.
-    expect(screen.getByRole('button', { name: 'Alle (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open (1)' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Wachten op anderen (2)' })).toBeInTheDocument()
     // Geen losse statusknoppen meer voor bij-klant/vraag.
     expect(screen.queryByRole('button', { name: /Bij klant — ter accordering \(/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Vraag open \(/ })).not.toBeInTheDocument()
 
-    await gebruiker.click(screen.getByRole('button', { name: 'Alle (1)' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Open (1)' }))
     expect(screen.getByText(/werk\.pdf/)).toBeInTheDocument()
     expect(screen.queryByText(/bij-klant\.pdf/)).not.toBeInTheDocument()
     expect(screen.queryByText(/vraag\.pdf/)).not.toBeInTheDocument()

@@ -322,6 +322,8 @@ export interface GroepTellersDto {
   kantoor: number
   wachten: number
   afgehandeld: number
+  /** Blok 8 feedbackrun A (FV-20, 25-09): "Alles (N)" = kantoor + wachten + afgehandeld (optioneel voor oudere servers). */
+  alles?: number
 }
 
 /** Eindstatussen die standaard niet in de documentenlijst staan (besluit Peter 08-09; blok 11: óók geboekt,
@@ -439,6 +441,10 @@ export interface DocumentListResponseDto {
   afgehandeld?: AfgehandeldTellersDto | null
   /** Blok 11 (08-09): tellers per groep kantoor | wachten | afgehandeld. */
   groepen?: GroepTellersDto | null
+  /** Blok 8 feedbackrun A (FV-20, 25-09): alleen bij `groep=alles` — totaal aantal rijen (mét zoekterm) en de pagina. */
+  totaal?: number | null
+  limit?: number | null
+  offset?: number | null
 }
 
 /** Autoboeken-opt-in per leverancier (Instellingen, Beheerder-only — CLAUDE.md-poort vóór het

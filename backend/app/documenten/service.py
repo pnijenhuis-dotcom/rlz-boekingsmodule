@@ -10,7 +10,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import String, and_, cast, func, or_, select, true, update
 from sqlalchemy.orm import Session, aliased
 
 from app.aikosten.service import AiKostenLimietBereikt, AiVerbruikReferentie
@@ -1781,7 +1781,14 @@ AFGEHANDELDE_STATUSSEN: tuple[DocumentStatus, ...] = (
 GROEP_KANTOOR = "kantoor"
 GROEP_WACHTEN = "wachten"
 GROEP_AFGEHANDELD = "afgehandeld"
-LIJST_GROEPEN: tuple[str, ...] = (GROEP_KANTOOR, GROEP_WACHTEN, GROEP_AFGEHANDELD)
+# Feedbackrun A blok 8 (FV-20, Peter 25-09): `alles` = kantoor ∪ wachten ∪ afgehandeld — de échte "Alles (N)"-weergave,
+# altijd server-side gepagineerd (`limit`/`offset`) en de enige groep waarop het zoekveld (`q`) server-side zoekt.
+# De standaardlijst ("Open") blijft kantoorwerk; regel werkvoorraad 1 blijft staan.
+GROEP_ALLES = "alles"
+LIJST_GROEPEN: tuple[str, ...] = (GROEP_KANTOOR, GROEP_WACHTEN, GROEP_AFGEHANDELD, GROEP_ALLES)
+#: Paginering van `groep=alles` (blok 8): standaard 200 rijen per pagina, nooit meer dan 500 in één antwoord.
+LIJST_ALLES_LIMIT_DEFAULT = 200
+LIJST_ALLES_LIMIT_MAX = 500
 _STATUSSEN_PER_GROEP: dict[str, tuple[DocumentStatus, ...]] = {
     GROEP_KANTOOR: KANTOOR_STATUSSEN,
     GROEP_WACHTEN: WACHTEN_STATUSSEN,
@@ -1814,6 +1821,9 @@ def _vraag_open_bij_kantoor():
 
 def _groep_voorwaarde(groep: str):
     """SQL-voorwaarde per lijst-groep; `vraag_open` splitst op de afgeleide kant (zie `_vraag_open_bij_klant`)."""
+    if groep == GROEP_ALLES:
+        # Blok 8 (25-09): alles = élke status — geen toggles, geen uitzonderingen (niets verdwijnt stil).
+        return true()
     statussen = list(_STATUSSEN_PER_GROEP[groep])
     if groep == GROEP_KANTOOR:
         return or_(Document.status.in_(statussen), _vraag_open_bij_kantoor())
@@ -1821,6 +1831,65 @@ def _groep_voorwaarde(groep: str):
         rest = [s for s in statussen if s != DocumentStatus.VRAAG_OPEN]
         return or_(Document.status.in_(rest), _vraag_open_bij_klant())
     return Document.status.in_(statussen)
+
+
+def _zoek_voorwaarde(administratie_id: uuid.UUID, q: str):
+    """Server-side zoekterm (blok 8, FV-20): dezelfde velden als het client-side zoekveld — leverancier (vendor-cache-
+    naam van het opgeslagen boekvoorstel óf de gelezen `leverancier_naam` uit het laatste veldvoorstel), referentie/
+    factuurnummer, bestandsnaam en totaalbedrag (als tekst, "938.06" én "938,06"). Eén ILIKE-patroon,
+    hoofdletterongevoelig; een lege term = geen voorwaarde. Puur SQL, geen tweede bron: de pagina die terugkomt is
+    de waarheid."""
+    term = " ".join(q.split())
+    if not term:
+        return true()
+    patroon = f"%{term}%"
+    patroon_punt = f"%{term.replace(',', '.')}%"
+    voorstel = (
+        select(Boekvoorstel.document_id)
+        .outerjoin(
+            VendorCache,
+            and_(VendorCache.id == Boekvoorstel.vendor_id, VendorCache.administratie_id == administratie_id),
+        )
+        .where(
+            Boekvoorstel.document_id == Document.id,
+            or_(
+                VendorCache.naam.ilike(patroon),
+                Boekvoorstel.referentie.ilike(patroon),
+                cast(Boekvoorstel.totaalbedrag, String).like(patroon_punt),
+            ),
+        )
+    )
+    veldvoorstel = DocumentGebeurtenis.detail["veldvoorstel"]
+    gelezen = select(DocumentGebeurtenis.document_id).where(
+        DocumentGebeurtenis.document_id == Document.id,
+        DocumentGebeurtenis.detail.has_key("veldvoorstel"),
+        or_(
+            veldvoorstel["leverancier_naam"].astext.ilike(patroon),
+            veldvoorstel["factuurnummer"].astext.ilike(patroon),
+            veldvoorstel["totaal_incl"].astext.like(patroon_punt),
+        ),
+    )
+    return or_(Document.bestandsnaam.ilike(patroon), voorstel.exists(), gelezen.exists())
+
+
+def tel_documenten(*, administratie_id: uuid.UUID, groep: str = GROEP_ALLES, q: str | None = None) -> int:
+    """Totaal aantal rijen van één lijst-groep mét dezelfde zoekvoorwaarde als `lijst_documenten` — de `totaal`-teller
+    van de gepagineerde "Alles"-weergave (blok 8)."""
+    if groep not in LIJST_GROEPEN:
+        raise ValueError(f"Onbekende lijst-groep: {groep!r} (kies uit {', '.join(LIJST_GROEPEN)})")
+    with scoped_session(administratie_id) as session:
+        return int(
+            session.scalar(
+                select(func.count())
+                .select_from(Document)
+                .where(
+                    Document.administratie_id == administratie_id,
+                    _groep_voorwaarde(groep),
+                    _zoek_voorwaarde(administratie_id, q or ""),
+                )
+            )
+            or 0
+        )
 
 
 def groep_van_status(status: DocumentStatus) -> str:
@@ -1906,6 +1975,9 @@ def lijst_documenten(
     toon_afgevoerd: bool = False,
     toon_afgehandeld: bool = False,
     groep: str | None = None,
+    q: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[DocumentMetDuplicaat]:
     """`toon_verwijderd=False` (default) verbergt zachtgewiste documenten uit de normale
     werkvoorraad — de "toon verwijderde"-filter (design-pass taak 4) zet dit aan om ze er weer
@@ -1927,7 +1999,12 @@ def lijst_documenten(
     `groep` (blok 11 herstelrun 08-09): `kantoor` = alleen de standaardlijst (KANTOOR_STATUSSEN), `wachten` =
     alleen "Wachten op anderen" (WACHTEN_STATUSSEN), `afgehandeld` = alleen de eindstatussen (ongeacht de
     toggles). Zonder `groep` (default, bestaande deeplinks) komen kantoor + wachten terug en gelden de toggles
-    voor afgehandeld — sinds blok 11 valt ook `geboekt` onder afgehandeld en dus standaard buiten de lijst."""
+    voor afgehandeld — sinds blok 11 valt ook `geboekt` onder afgehandeld en dus standaard buiten de lijst.
+
+    `groep="alles"` (blok 8 feedbackrun A, FV-20 Peter 25-09): kantoor ∪ wachten ∪ afgehandeld, ongeacht de toggles;
+    `q` = server-side zoekterm (`_zoek_voorwaarde`), `limit`/`offset` = paginering (nooit een eindeloze lijst; de
+    aanroeper leest `tel_documenten` voor het totaal). Zonder `q`/`limit` is het gedrag van de bestaande aanroepen
+    byte-gelijk."""
     if groep is not None and groep not in LIJST_GROEPEN:
         raise ValueError(f"Onbekende lijst-groep: {groep!r} (kies uit {', '.join(LIJST_GROEPEN)})")
     with scoped_session(administratie_id) as session:
@@ -1945,7 +2022,12 @@ def lijst_documenten(
                 verborgen.discard(DocumentStatus.SAMENGEVOEGD)
             if verborgen:
                 voorwaarden.append(Document.status.notin_(list(verborgen)))
-        documenten = list(session.scalars(select(Document).where(*voorwaarden).order_by(Document.aangemaakt_op.desc())))
+        if q and q.strip():
+            voorwaarden.append(_zoek_voorwaarde(administratie_id, q))
+        lijst_query = select(Document).where(*voorwaarden).order_by(Document.aangemaakt_op.desc(), Document.id)
+        if limit is not None:
+            lijst_query = lijst_query.offset(max(0, offset)).limit(limit)
+        documenten = list(session.scalars(lijst_query))
         referenties = _duplicaat_referenties_op(
             session, {d.mogelijk_duplicaat_van_id for d in documenten if d.mogelijk_duplicaat_van_id}
         )

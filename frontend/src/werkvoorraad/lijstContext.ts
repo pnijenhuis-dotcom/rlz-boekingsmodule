@@ -13,6 +13,12 @@ import { statusLabel } from './status'
  * `/documenten/X/D?soort=…&status=…&q=…`. Ontbreekt alles → geen context (bestaand gedrag). */
 
 export const STATUSFILTER_ALLE = 'alle'
+/** Blok 8 feedbackrun A (FV-20, Peter 25-09): het filter "Alle (N)" heet in het scherm "Open (N)" — kantoorwerk, ongewijzigde
+ * semantiek en ongewijzigde URL-waarde `alle`; `open` is sinds 25-09 een synoniem in de URL (`normaliseerStatusParam`). */
+export const STATUSFILTER_OPEN_SYNONIEM = 'open'
+/** Sentinel voor de échte "Alles (N)"-weergave (blok 8, 25-09): kantoor ∪ wachten op anderen ∪ afgehandeld — server-side
+ * gepagineerd (`groep=alles`), élke rij mét statuschip. Zelfde prefix-regel als de andere sentinels. */
+export const STATUSFILTER_ALLES = '__alles'
 /** Sentinel voor het autoboeken-filter — met prefix, zodat het nooit met een echte
  * DocumentStatus-waarde uit de backend kan botsen. */
 export const STATUSFILTER_AUTOMATISCH = '__automatisch_geboekt'
@@ -37,6 +43,22 @@ export const SOORT_ALLE = 'alle'
  * "Te controleren" binnen de meegegeven scope, dan valt de default terug op "Alle" — nooit een
  * leeg scherm als eerste beeld. */
 export const STATUS_TE_CONTROLEREN = 'te_controleren'
+
+/** `?status=open` (blok 8, 25-09) = het bestaande "alle"-filter (kantoorwerk, nu "Open (N)"); alle andere waarden
+ * ongewijzigd. Eén plek voor lijst én controlescherm. */
+export function normaliseerStatusParam(status: string | null): string | null {
+  if (status === STATUSFILTER_OPEN_SYNONIEM) return STATUSFILTER_ALLE
+  return status
+}
+
+/** Is dit de "Alles"-weergave (blok 8): het sentinel, óf een niet-lege zoekterm zonder expliciet gekozen tab (binnenkomst,
+ * "Open" of "Alles") — zoeken vanuit de klantpagina zoekt dan altijd over alles (server-side `groep=alles&q=`), mét statuschip
+ * per rij. Op een expliciet gekozen status-/signaaltab (bv. "Mogelijk duplicaat") blijft de zoekterm bínnen die tab. */
+export function isAllesWeergave(statusKeuze: string | null, zoekterm: string): boolean {
+  if (statusKeuze === STATUSFILTER_ALLES) return true
+  if (zoekterm.trim() === '') return false
+  return statusKeuze === null || statusKeuze === STATUSFILTER_ALLE
+}
 
 export function defaultStatusFilter(items: DocumentListItemDto[]): string {
   if (items.some((d) => d.status === STATUS_TE_CONTROLEREN)) return STATUS_TE_CONTROLEREN
@@ -164,6 +186,8 @@ export function voldoetAanStatusFilter(d: DocumentListItemDto, status: string): 
   // Blok 11 (08-09): "Alle" = alles behalve wat bij anderen ligt (ter accordering / open vraag heeft zijn eigen
   // tab); afgehandelde rijen zitten alleen in de lijst als de server ze meegaf (toggle) en tellen dan mee.
   if (status === STATUSFILTER_ALLE) return !isWachtenOpAnderen(d)
+  // Blok 8 (25-09): "Alles" = élke status — de server geeft de pagina (kantoor ∪ wachten ∪ afgehandeld), niets valt af.
+  if (status === STATUSFILTER_ALLES) return true
   if (status === STATUSFILTER_WACHTEN) return isWachtenOpAnderen(d)
   if (status === STATUSFILTER_AUTOMATISCH) return d.automatisch_geboekt
   if (status === STATUSFILTER_DUPLICAAT) return isMogelijkDuplicaat(d)
@@ -211,7 +235,7 @@ export function lijstContextUitParams(params: URLSearchParams): LijstContext | n
   if (soort === null && status === null && q === null && sort === null) return null
   return {
     soort: soort === null || soort === SOORT_ALLE ? null : soort,
-    status: status ?? STATUSFILTER_ALLE,
+    status: normaliseerStatusParam(status) ?? STATUSFILTER_ALLE,
     zoekterm: q ?? '',
     sortering: sorteringUitParam(sort),
   }

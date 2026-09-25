@@ -14,6 +14,7 @@ import type {
   DocumentActieResponseDto,
   DocumentListItemDto,
   DocumentListResponseDto,
+  GroepTellersDto,
   VraagDto,
 } from '../api/types'
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
@@ -32,6 +33,7 @@ import { KlantUpload } from './KlantStanden'
 import {
   SOORT_ALLE,
   STATUSFILTER_ALLE,
+  STATUSFILTER_ALLES,
   STATUSFILTER_AUTOMATISCH,
   STATUSFILTER_BUITEN_OFFERTE,
   STATUSFILTER_DUPLICAAT,
@@ -39,11 +41,13 @@ import {
   STATUSFILTER_WACHTEN,
   defaultStatusFilter,
   filterDocumenten,
+  isAllesWeergave,
   isBuitenOfferte,
   isMogelijkDuplicaat,
   isUrenmatchAfwijking,
   kiesTabVoorStatus,
   lijstContextNaarParams,
+  normaliseerStatusParam,
   sorteringNaarParam,
   sorteringUitParam,
   volgendeSortering,
@@ -60,6 +64,10 @@ import { DocumentenBulkBalk, bereikSelectie, isBulkSelecteerbaar } from './Docum
 
 /** Ververs-interval zolang er documenten in extractie_wachtrij/extractie_bezig staan. */
 const EXTRACTIE_POLL_MS = 3000
+/** Blok 8 feedbackrun A (FV-20, 25-09): "Alles (N)" is server-side gepagineerd — 200 rijen per pagina (server-default,
+ * max 500), nooit een eindeloze client-side lijst; het zoekveld gaat ná een korte pauze server-side (`groep=alles&q=`). */
+const ALLES_PAGINA = 200
+const ZOEK_SERVER_DEBOUNCE_MS = 400
 
 /** Vaste tab-volgorde (mockup-norm 25-08) — leeft in ./format (gedeeld met de "volgende
  * document"-keuze); onbekende soorten volgen alfabetisch achteraan. Alleen soorten met teller > 0
@@ -110,7 +118,8 @@ export function DocumentenDeelscherm({
   const { meld } = useToastOptioneel()
   const [searchParams, setSearchParams] = useSearchParams()
   const soortParam = searchParams.get('soort')
-  const statusParam = searchParams.get('status')
+  // Blok 8 (25-09): `?status=open` = het bestaande "alle"-filter (nu "Open (N)"); deeplinks blijven werken.
+  const statusParam = normaliseerStatusParam(searchParams.get('status'))
   const zoekParam = searchParams.get('q') ?? ''
   const { naamVoor } = useMedewerkers(administratieId)
   const [dichtheid, setDichtheid] = useDichtheid()
@@ -128,6 +137,15 @@ export function DocumentenDeelscherm({
   // `statusFilter` hieronder. Een expliciete status (deep-link/kolom-teller/‹ ›) wint altijd.
   const [statusKeuze, setStatusKeuze] = useState<string | null>(statusParam)
   const zoekveldRef = useRef<HTMLInputElement | null>(null)
+  // Blok 8 feedbackrun A (FV-20, Peter 25-09): "Alles (N)" = kantoor ∪ wachten op anderen ∪ afgehandeld, server-side
+  // gepagineerd; een niet-lege zoekterm schakelt de lijst óók op "alles" (zoeken vanuit de klantpagina zoekt altijd over
+  // alles, mét statuschip per rij). `zoekServer` = de zoekterm ná debounce die naar de server gaat; `allesOffset`/
+  // `allesTotaal`/`groepTellers` = de pagina-stand en de server-tellers uit het antwoord.
+  const [zoekServer, setZoekServer] = useState(zoekParam.trim())
+  const [allesOffset, setAllesOffset] = useState(0)
+  const [allesTotaal, setAllesTotaal] = useState<number | null>(null)
+  const [groepTellers, setGroepTellers] = useState<GroepTellersDto | null>(null)
+  const allesModus = isAllesWeergave(statusKeuze, zoekServer)
   // Chip-rij-standen (verrijking — een fout hier blokkeert de lijst nooit, zelfde patroon als de
   // standen-pagina).
   const [rekeningen, setRekeningen] = useState<RekeningenDto | null>(null)
@@ -163,15 +181,35 @@ export function DocumentenDeelscherm({
   const laadDocumenten = useCallback(() => {
     setLijstFout(null)
     const params = new URLSearchParams()
-    if (toonAfgehandeld) params.set('toon_afgehandeld', 'true')
+    if (allesModus) {
+      // Blok 8 (25-09): de échte "Alles"-weergave — server-side groep + pagina + zoekterm; de toggle doet hier niets
+      // (afgehandelde rijen zitten er al in).
+      params.set('groep', 'alles')
+      params.set('limit', String(ALLES_PAGINA))
+      if (allesOffset > 0) params.set('offset', String(allesOffset))
+      if (zoekServer) params.set('q', zoekServer)
+    } else if (toonAfgehandeld) params.set('toon_afgehandeld', 'true')
     const query = params.toString()
     apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten${query ? `?${query}` : ''}`)
       .then((data) => {
         setDocumenten(data.documenten)
         setAfgehandeld(data.afgehandeld ?? null)
+        setGroepTellers(data.groepen ?? null)
+        setAllesTotaal(typeof data.totaal === 'number' ? data.totaal : null)
       })
       .catch((err: unknown) => setLijstFout(err instanceof Error ? err.message : 'Onbekende fout'))
-  }, [administratieId, toonAfgehandeld])
+  }, [administratieId, toonAfgehandeld, allesModus, allesOffset, zoekServer])
+
+  // Blok 8 (25-09): zoekterm → server ná een korte pauze; élke wissel van zoekterm of weergave begint op pagina 1.
+  useEffect(() => {
+    const term = zoekterm.trim()
+    if (term === zoekServer) return
+    const timer = window.setTimeout(() => setZoekServer(term), ZOEK_SERVER_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+  }, [zoekterm, zoekServer])
+  useEffect(() => {
+    setAllesOffset(0)
+  }, [zoekServer, statusKeuze, soortParam])
 
   useEffect(() => {
     setDocumenten(null)
@@ -326,8 +364,11 @@ export function DocumentenDeelscherm({
   // default "Te controleren" (staat er niets te controleren, dan "Alle": nooit een leeg eerste
   // beeld; kiesTabVoorStatus kiest de tab waarin het filter iets oplevert). Navigatie bínnen het
   // scherm (tab-klik zet `soort=`) houdt het bestaande gedrag: status-reset naar "Alle".
-  const statusFilter =
-    statusKeuze ?? (soortParam === null && documenten !== null ? defaultStatusFilter(documenten) : STATUSFILTER_ALLE)
+  // Blok 8 (25-09): een niet-lege zoekterm = de "Alles"-weergave (zoeken gaat altijd over alle statussen, mét statuschip);
+  // leeg zoekveld = terug naar de gekozen groep.
+  const statusFilter = isAllesWeergave(statusKeuze, zoekterm)
+    ? STATUSFILTER_ALLES
+    : (statusKeuze ?? (soortParam === null && documenten !== null ? defaultStatusFilter(documenten) : STATUSFILTER_ALLE))
 
   // Zonder soort-param: de eerste tab met open werk — of, bij een voorgefilterde status (punt 1a),
   // de eerste tab waarin dat filter iets oplevert; niets open → alle documenten.
@@ -451,8 +492,18 @@ export function DocumentenDeelscherm({
     () => Array.from(new Set((inScope ?? []).filter((d) => !isWachtenOpAnderen(d)).map((d) => d.status))).sort(),
     [inScope],
   )
-  const aantalAlle = useMemo(() => (inScope ?? []).filter((d) => !isWachtenOpAnderen(d)).length, [inScope])
-  const aantalWachten = useMemo(() => (inScope ?? []).filter(isWachtenOpAnderen).length, [inScope])
+  // Blok 8 (25-09): in de "Alles"-weergave bevat de geladen pagina álle statussen — de tellers "Open" en "Wachten" komen
+  // dan uit de server-groeptellers (één GROUP BY), niet uit de pagina; in de "Open"-weergave blijft de telling zoals ze was.
+  const aantalAlleClient = useMemo(() => (inScope ?? []).filter((d) => !isWachtenOpAnderen(d)).length, [inScope])
+  const aantalWachtenClient = useMemo(() => (inScope ?? []).filter(isWachtenOpAnderen).length, [inScope])
+  const aantalAlle = allesModus ? (groepTellers?.kantoor ?? aantalAlleClient) : aantalAlleClient
+  const aantalWachten = allesModus ? (groepTellers?.wachten ?? aantalWachtenClient) : aantalWachtenClient
+  const aantalAlles =
+    allesModus && allesTotaal !== null && zoekServer
+      ? allesTotaal
+      : (groepTellers?.alles ??
+        (groepTellers ? groepTellers.kantoor + groepTellers.wachten + groepTellers.afgehandeld : null) ??
+        aantalAlleClient + aantalWachtenClient + (afgehandeld?.totaal ?? 0))
   const heeftAutomatischGeboekt = useMemo(() => (inScope ?? []).some((d) => d.automatisch_geboekt), [inScope])
   const aantalMogelijkDuplicaat = useMemo(() => (inScope ?? []).filter(isMogelijkDuplicaat).length, [inScope])
   const aantalUrenmatch = useMemo(() => (inScope ?? []).filter(isUrenmatchAfwijking).length, [inScope])
@@ -744,6 +795,9 @@ export function DocumentenDeelscherm({
               Alle documenten
             </button>
           </div>
+          {/* Blok 8 (25-09): in de "Alles"-weergave staan de afgehandelde rijen er al in — de toggle is dan niet van
+              toepassing en verdwijnt (geen dode knop). */}
+          {!allesModus && (
           <label
             style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}
             title="Geboekte (mét boekstuknummer), verwijderde, afgewezen, samengevoegde en als duplicaat afgevoerde documenten — grijs, met reden en verwijzing. Geboekte documenten vind je ook via Archief en Zoeken."
@@ -751,6 +805,7 @@ export function DocumentenDeelscherm({
             <Checkbox checked={toonAfgehandeld} onChange={(e) => setToonAfgehandeld(e.target.checked)} />
             Toon afgehandelde documenten{afgehandeld && afgehandeld.totaal > 0 ? ` (${afgehandeld.totaal})` : ''}
           </label>
+          )}
         </div>
         {/* Segment-filters (mockup #scherm-docs) + zoekveld + dichtheid (punt 3b). */}
         <div className="lijst-werkbalk">
@@ -759,8 +814,20 @@ export function DocumentenDeelscherm({
               type="button"
               className={statusFilter === STATUSFILTER_ALLE ? 'actief' : undefined}
               onClick={() => setStatusKeuze(STATUSFILTER_ALLE)}
+              title="Kantoorwerk: alles wat het kantoor zelf kan oppakken — wat bij anderen ligt staat onder 'Wachten op anderen', afgehandeld en geboekt onder 'Alles'"
             >
-              Alle ({aantalAlle})
+              Open ({aantalAlle})
+            </button>
+            {/* Blok 8 feedbackrun A (FV-20, 25-09): de échte "Alles" — óók wachten op anderen, geboekt en afgehandeld;
+                server-side gepagineerd, élke rij mét statuschip. */}
+            <button
+              type="button"
+              className={statusFilter === STATUSFILTER_ALLES ? 'actief' : undefined}
+              onClick={() => setStatusKeuze(STATUSFILTER_ALLES)}
+              title="Alle documenten van deze klant, ongeacht status: ook wachten op anderen, geboekt en afgehandeld — per 200 rijen"
+              data-testid="filter-alles"
+            >
+              Alles ({aantalAlles})
             </button>
             {aanwezigeStatussen.map((s) => (
               <button
@@ -980,7 +1047,14 @@ export function DocumentenDeelscherm({
             </table>
           </div>
         )}
-        {inScope !== null && inScope.length === 0 && (
+        {inScope !== null && inScope.length === 0 && allesModus && zoekServer && (
+          // Blok 8 (25-09): een server-side zoekterm zonder treffer — gezocht over álle statussen, nooit "nog geen documenten".
+          <p className="hint" data-testid="alles-zoek-leeg">
+            Geen documenten gevonden voor "{zoekServer}" — gezocht over alle statussen (ook wachten op anderen, geboekt en
+            afgehandeld).
+          </p>
+        )}
+        {inScope !== null && inScope.length === 0 && !(allesModus && zoekServer) && (
           <p className="hint">
             {soort
               ? `Geen ${soortLabel(soort).toLowerCase()} voor deze administratie.`
@@ -1448,6 +1522,38 @@ export function DocumentenDeelscherm({
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+        {/* Blok 8 feedbackrun A (FV-20, 25-09): paginering van de "Alles"-weergave — 200 rijen per pagina, teller
+            "rijen a–b van N", knoppen Vorige/Volgende; nooit een eindeloze client-side lijst. */}
+        {allesModus && allesTotaal !== null && allesTotaal > ALLES_PAGINA && (
+          <div
+            className="hint"
+            role="navigation"
+            aria-label="Pagina's van alle documenten"
+            data-testid="alles-paginering"
+            style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}
+          >
+            <span>
+              Rijen {allesOffset + 1}–{Math.min(allesOffset + ALLES_PAGINA, allesTotaal)} van {allesTotaal}
+              {zoekServer ? ` voor "${zoekServer}"` : ''}
+            </span>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={allesOffset === 0}
+              onClick={() => setAllesOffset(Math.max(0, allesOffset - ALLES_PAGINA))}
+            >
+              ← Vorige {ALLES_PAGINA}
+            </button>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={allesOffset + ALLES_PAGINA >= allesTotaal}
+              onClick={() => setAllesOffset(allesOffset + ALLES_PAGINA)}
+            >
+              Volgende {ALLES_PAGINA} →
+            </button>
           </div>
         )}
       </div>

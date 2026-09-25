@@ -164,6 +164,42 @@ class TestStandaardlijst:
         assert PROJECT_25011 is not None
 
 
+class TestAllesEnZoeken:
+    """Feedbackrun A blok 8 (FV-20, Peter 25-09): "Alle" toonde niet alles. `groep=alles` = kantoor ∪ wachten ∪
+    afgehandeld (server-side gepagineerd, `totaal`), en het zoekveld zoekt daar server-side (`q`) — de BDO-factuur die
+    bij de klant ter accordering ligt (wachten op anderen) én de geboekte Universal-Nederland-factuur zijn zo vindbaar;
+    de standaardlijst ("Open") blijft kantoorwerk."""
+
+    def test_groep_alles_is_de_unie_met_totaal_en_pagina(self, keten: Keten, statussen) -> None:
+        alles = keten.lijst(groep="alles")
+        ids = {d["id"] for d in alles["documenten"]}
+        assert ids >= {str(v) for v in statussen.values()}, "alles = te_controleren + geboekt + ter_accordering + vraag"
+        assert alles["totaal"] == len(alles["documenten"]) and alles["limit"] == 200 and alles["offset"] == 0
+        assert alles["groepen"]["alles"] == (
+            alles["groepen"]["kantoor"] + alles["groepen"]["wachten"] + alles["groepen"]["afgehandeld"]
+        )
+        # Élke rij draagt zijn status (statuschip): de geboekte rij mét boekstuk, de ter-accordering-rij mét accordeur.
+        per_id = {d["id"]: d for d in alles["documenten"]}
+        assert per_id[str(statussen["geboekt"])]["status"] == "geboekt"
+        assert per_id[str(statussen["geboekt"])]["geboekt_in_rlz"]["boekstuknummer"]
+        assert per_id[str(statussen["ter_accordering"])]["accordeur_aan_de_beurt"]["naam"] == "S. Bakker"
+        # Paginering: twee pagina's van 2 dekken samen minstens de vier casusdocumenten, zonder overlap.
+        p1 = {d["id"] for d in keten.lijst(groep="alles", limit=2, offset=0)["documenten"]}
+        p2 = {d["id"] for d in keten.lijst(groep="alles", limit=2, offset=2)["documenten"]}
+        assert len(p1) == 2 and not (p1 & p2)
+        # De standaardlijst ("Open") blijft kantoorwerk: geboekt en ter accordering horen daar niet in.
+        assert str(statussen["geboekt"]) not in keten.standaardlijst_ids()
+
+    def test_zoeken_vindt_wachten_op_anderen_en_geboekt(self, keten: Keten, statussen) -> None:
+        bij_klant = keten.lijst(groep="alles", q="BDO")
+        assert {d["id"] for d in bij_klant["documenten"]} == {str(statussen["ter_accordering"])}
+        assert bij_klant["totaal"] == 1
+        geboekt = keten.lijst(groep="alles", q="RLZ-2080143037")
+        assert {d["id"] for d in geboekt["documenten"]} == {str(statussen["geboekt"])}
+        assert geboekt["documenten"][0]["status"] == "geboekt"
+        assert keten.lijst(groep="alles", q="bestaat-niet-xyz")["documenten"] == []
+
+
 class TestDocumentlinkVolgtDeSoort:
     """Bundelrun 24-09 blok 7a (BUG 23-09, Van Boxtel): de vraag-thread linkte hard naar `/documenten/…`. De vraag-data
     draagt nu de documentsoort en de server-spiegel `deeplink.document_pad` kiest het scherm — voor de Floor-vraag

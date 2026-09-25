@@ -405,7 +405,41 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
     return Promise.resolve(jsonResponse(url.includes(ADMIN_1) ? [{ id: 'taak' }] : []))
   }
   if (url.endsWith('/verzamelbak')) return Promise.resolve(jsonResponse(VERZAMELBAK))
-  if (url.includes('/documenten')) return Promise.resolve(jsonResponse(DOCUMENTEN))
+  if (url.includes('/documenten')) {
+    // Blok 8 feedbackrun A (FV-20, 25-09), variant ?alles=1: de "Alles"-weergave — server-side groep=alles mét alle
+    // statussen (ook geboekt/verwijderd, grijs) én een totaal > 200 zodat de paginabalk (Vorige/Volgende) meet.
+    if (PARAMS.has('alles') && url.includes('groep=alles')) {
+      return Promise.resolve(
+        jsonResponse({
+          ...DOCUMENTEN,
+          documenten: [
+            ...DOCUMENTEN.documenten,
+            {
+              ...DOCUMENTEN.documenten[0],
+              id: 'bbbbbbbb-0000-0000-0000-000000000031',
+              bestandsnaam: 'Universal Nederland B.V - RLZ-2080143037 - 2026-08-01.xml',
+              status: 'geboekt',
+              mogelijk_duplicaat_van: null,
+              geboekt_in_rlz: { systeem: 'rlz', boekstuknummer: 'RLZ-25-00003231', memoriaal_boekstuknummer: null, vindplaats_hint: null },
+            },
+            {
+              ...DOCUMENTEN.documenten[0],
+              id: 'bbbbbbbb-0000-0000-0000-000000000032',
+              bestandsnaam: 'exact-online-abonnement-september-2026-herzonden-kopie-administratie.pdf',
+              status: 'ter_accordering',
+              mogelijk_duplicaat_van: null,
+              accordeur_aan_de_beurt: { gebruiker_id: 'dddddddd-0000-0000-0000-000000000009', naam: 'S. Bakker-van der Hoogenband', laag: 2 },
+            },
+          ],
+          groepen: { kantoor: 6, wachten: 1, afgehandeld: 527, alles: 534 },
+          totaal: 534,
+          limit: 200,
+          offset: 0,
+        }),
+      )
+    }
+    return Promise.resolve(jsonResponse(DOCUMENTEN))
+  }
   if (url.endsWith('/medewerkers')) return Promise.resolve(jsonResponse(MEDEWERKERS))
   // Klantpagina = standen (IA-verbouwing 15-08): bank per rekening + open vragen.
   if (url.includes('/rekeningen')) {
@@ -459,7 +493,9 @@ const START_URL = PARAMS.has('beoordelen')
   ? `/meerwerk?administratie=${ADMIN_1}&tab=urenstaten`
   : PARAMS.has('projecten')
   ? (PARAMS.get('tab') === 'afsluiten' ? '/projecten?tab=afsluiten' : '/projecten')
-  : PARAMS.has('docs')
+  : PARAMS.has('alles')
+    ? `/?administratie=${ADMIN_1}&sectie=documenten&status=__alles`
+    : PARAMS.has('docs')
     ? `/?administratie=${ADMIN_1}&sectie=documenten`
     : PARAMS.has('klant')
       ? `/?administratie=${ADMIN_1}`

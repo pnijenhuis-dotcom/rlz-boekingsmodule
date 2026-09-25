@@ -189,7 +189,7 @@ class TestAfgehandeldStandaardVerborgen:
             "geaccordeerd": 0,
             "totaal": 5,
         }
-        assert body["groepen"] == {"kantoor": 2, "wachten": 0, "afgehandeld": 5}
+        assert body["groepen"] == {"kantoor": 2, "wachten": 0, "afgehandeld": 5, "alles": 7}
         floor = next(d for d in body["documenten"] if d["id"] == str(ids["floor"]))
         assert floor["samengevoegde_exemplaren"] == 3 and floor["afgevoerde_exemplaren"] == 1
         assert floor["samengevoegd_in"] is None
@@ -385,7 +385,7 @@ class TestBlok11LijstGroepen:
             str(ids["vraag"]),
             str(ids["vraag_klant"]),
         }
-        assert body["groepen"] == {"kantoor": 2, "wachten": 2, "afgehandeld": 1}
+        assert body["groepen"] == {"kantoor": 2, "wachten": 2, "afgehandeld": 1, "alles": 5}
         assert body["afgehandeld"]["geboekt"] == 1 and body["afgehandeld"]["totaal"] == 1
 
         per_groep = (

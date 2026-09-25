@@ -467,6 +467,8 @@ class GroepTellersDto(BaseModel):
     kantoor: int = 0
     wachten: int = 0
     afgehandeld: int = 0
+    # Blok 8 feedbackrun A (FV-20, 25-09): "Alles (N)" = kantoor + wachten + afgehandeld (zonder zoekterm).
+    alles: int = 0
 
 
 class DocumentListItemResponse(BaseModel):
@@ -604,6 +606,10 @@ class DocumentListResponse(BaseModel):
     afgehandeld: AfgehandeldTellersDto | None = None
     # Blok 11 (08-09): tellers per groep kantoor | wachten | afgehandeld (altijd meegegeven).
     groepen: GroepTellersDto | None = None
+    # Blok 8 feedbackrun A (FV-20, 25-09): alleen bij `groep=alles` — totaal aantal rijen (mét zoekterm) + de pagina.
+    totaal: int | None = None
+    limit: int | None = None
+    offset: int | None = None
 
 
 class DocumentGebeurtenisResponse(BaseModel):
