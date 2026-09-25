@@ -13,6 +13,7 @@ import { ChecksPopup } from '../ui/ChecksPopup'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   boekDoorbelastingRun,
+  haalAangifteLetOpOp,
   haalDoorbelastingMappingsOp,
   haalDoorbelastingRunOp,
   startDoorbelastingRun,
@@ -46,6 +47,24 @@ export function DoorbelastingReviewScreen() {
   const [boekenFout, setBoekenFout] = useState<string | null>(null)
   const [boekResultaat, setBoekResultaat] = useState<Record<string, string> | null>(null)
   const [popupChecks, setPopupChecks] = useState<{ melding: string | null; checks: CheckRapportDto } | null>(null)
+  // Blok 4 feedbackrun A 25-09 (FV-16): LET-OP "factuurdatum in ingediende aangifte" per kant — lees-only, eigen
+  // (tragere) request náást de run-load; een laadfout is zichtbaar "niet toetsbaar", nooit stil.
+  const [aangifteLetOp, setAangifteLetOp] = useState<string[] | 'laden' | 'fout'>('laden')
+  useEffect(() => {
+    if (!administratieId || !documentId) return
+    let actief = true
+    setAangifteLetOp('laden')
+    haalAangifteLetOpOp(administratieId, documentId)
+      .then((dto) => {
+        if (actief) setAangifteLetOp(dto.let_op)
+      })
+      .catch(() => {
+        if (actief) setAangifteLetOp('fout')
+      })
+    return () => {
+      actief = false
+    }
+  }, [administratieId, documentId])
 
   useEffect(() => {
     if (!administratieId || !documentId) return
@@ -157,6 +176,25 @@ export function DoorbelastingReviewScreen() {
             'regel-id meegeven).'
           }
         />
+      )}
+      {aangifteLetOp === 'fout' && (
+        <div className="hint" style={{ color: 'var(--orange)' }} data-testid="aangifte-letop">
+          LET OP: aangifte-status niet toetsbaar — controleer zelf of de factuurdatum in een ingediende btw-aangifte valt.
+        </div>
+      )}
+      {Array.isArray(aangifteLetOp) && aangifteLetOp.length > 0 && (
+        <div className="alertbanner" data-testid="aangifte-letop">
+          <div className="icon">!</div>
+          <div>
+            <b>LET OP — btw-aangifte al ingediend:</b>{' '}
+            {aangifteLetOp.map((regel) => (
+              <div key={regel}>{regel}</div>
+            ))}
+            <span className="hint" style={{ margin: 0 }}>
+              Boeken kan gewoon; beide kanten boeken op hetzelfde tijdvak (factuurdatum).
+            </span>
+          </div>
+        </div>
       )}
       {bevroren && !volledigGeboekt && (
         <div className="alertbanner">

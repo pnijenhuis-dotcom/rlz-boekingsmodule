@@ -1205,6 +1205,13 @@ export function BoekvoorstelPanel({
    * := het 0 %-tarief) of zet_tarief (het ene tarief dat de factuur-btw verklaart; de btw volgt via de tarief-handler).
    * De check draait daarna gewoon opnieuw (autosave + checks); de server blijft de poort. */
   const voerCheckActieUit = (actie: CheckActieDto) => {
+    if (actie.code === 'aangifte_bevestigen') {
+      // Blok 4 feedbackrun A 25-09 (FV-16): de bewuste keuze "Boeken (btw in volgend tijdvak)" op de ORANJE rij
+      // "Factuurdatum valt in een ingediende aangifteperiode" — de server legt 'm vast (tijdlijn + audit) en geeft het
+      // verse rapport terug; de rij blijft oranje ("bevestigd door …") zonder actie. Geen poort, geen regelwijziging.
+      void bevestigAangifteperiode()
+      return
+    }
     if (actie.code === 'btw_in_kosten_alles') {
       // 22-09 (niet-btw-plichtige administratie): élke regel bruto (netto := netto + btw, btw 0) mét de "geen btw"-code
       // van de administratie (null = leeg — de PUT gaat dan zonder TaxRate); de check draait daarna opnieuw.
@@ -1543,6 +1550,23 @@ export function BoekvoorstelPanel({
     if (wijzigingsVersieRef.current === versieBijStart && rapport && Array.isArray(rapport.resultaten)) {
       setCheckRapport(rapport)
       setChecksActueel(true)
+    }
+  }
+
+  const bevestigAangifteperiode = async () => {
+    const versieBijStart = wijzigingsVersieRef.current
+    setControlerenFout(null)
+    try {
+      const rapport = await apiJson<CheckRapportDto>(
+        `/administraties/${administratieId}/documenten/${documentId}/boekvoorstel/aangifte-periode-bevestigen`,
+        { method: 'POST' },
+      )
+      if (wijzigingsVersieRef.current === versieBijStart && rapport && Array.isArray(rapport.resultaten)) {
+        setCheckRapport(rapport)
+        setChecksActueel(true)
+      }
+    } catch (err) {
+      setControlerenFout(err instanceof ApiError ? err.message : 'Bevestigen van de aangifteperiode mislukt.')
     }
   }
 
@@ -2826,7 +2850,7 @@ export function BoekvoorstelPanel({
                               {r.melding}
                               {EXTERNE_CHECK_NAMEN.has(r.naam) && externHint && <span className="hint">{externHint}</span>}
                               {/* 18-09: acties op de rij ("signalering zonder handeling is niet af") — btw in kosten / zet N %. */}
-                              {!r.ok && r.acties && r.acties.length > 0 && (
+                              {(!r.ok || r.signaal) && r.acties && r.acties.length > 0 && (
                                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }} data-testid={`check-acties-${r.naam}`}>
                                   {r.acties.map((a) => (
                                     <button

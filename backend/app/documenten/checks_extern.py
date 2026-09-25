@@ -170,6 +170,9 @@ class ExternRapport:
     nog_niet: bool = False
     uit_cache: bool = False
     duur_ms: dict[str, float] = field(default_factory=dict)
+    #: Blok 4 feedbackrun A 25-09 (FV-16): factuurdatum vs ingediende btw-aangiften (`TaxDeclarations`, één GET) — JSON
+    #: van `aangifteperiode.AangifteToets`; None = niet getoetst (rapport van vóór 25-09 / storings-tak).
+    aangifte: dict[str, Any] | None = None
 
     @property
     def cachebaar(self) -> bool:
@@ -193,6 +196,7 @@ class ExternRapport:
             "duplicaat_over_crediteuren": _resultaat_json(self.duplicaat_over_crediteuren),
             "crediteur_niet_gekoppeld": self.crediteur_niet_gekoppeld,
             "duur_ms": dict(self.duur_ms),
+            "aangifte": dict(self.aangifte) if self.aangifte else None,
         }
 
     @classmethod
@@ -207,6 +211,7 @@ class ExternRapport:
             crediteur_niet_gekoppeld=d.get("crediteur_niet_gekoppeld"),
             uit_cache=True,
             duur_ms=dict(d.get("duur_ms") or {}),
+            aangifte=dict(d["aangifte"]) if d.get("aangifte") else None,
         )
 
     @classmethod

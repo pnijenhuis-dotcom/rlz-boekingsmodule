@@ -677,6 +677,38 @@ def storno_toets(
     )
 
 
+@router.get(
+    "/doorbelasting/{administratie_id}/documenten/{document_id}/aangifte-letop",
+    response_model=schemas.AangifteLetOpResponse,
+)
+def aangifte_letop(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AangifteLetOpResponse:
+    """Blok 4 feedbackrun A 25-09 (FV-16): lees-only LET-OP voor de doorbelastingspreview — valt de factuurdatum aan de
+    bron-kant of bij een doelentiteit in een ingediende btw-aangifte, dan zegt de preview dat (beide kanten boeken op
+    hetzelfde tijdvak; RLZ verschuift de btw). Nooit blokkerend, nooit een 500: credential-/leesfouten zijn zichtbare
+    "niet toetsbaar"-kanten."""
+    kanten = boeken.aangifte_letop_voor_document(administratie_id=administratie_id, document_id=document_id)
+    let_op: list[str] = []
+    for t in kanten:
+        if t.toegestaan:
+            continue
+        if t.periode_start is not None:
+            periode = f"{t.periode_start.isoformat()} t/m {t.periode_eind.isoformat() if t.periode_eind else '?'}"
+            let_op.append(
+                f"beide kanten zelfde tijdvak — {t.kant} valt in ingediende aangifte {periode}; "
+                "RLZ verschuift de btw naar het eerstvolgende open tijdvak"
+            )
+        else:
+            let_op.append(f"{t.kant}: aangifte-status niet toetsbaar — {t.reden}")
+    return schemas.AangifteLetOpResponse(
+        kanten=[schemas.KantToetsDto(kant=t.kant, toegestaan=t.toegestaan, reden=t.reden) for t in kanten],
+        let_op=let_op,
+    )
+
+
 # --- Intercompany-leveranciers per administratie (nachtrun 08/09-09 blok 1) ---------------------------------------
 # Instellingen › Administraties › ‹BV› › Klant-accordering, blok "Intercompany — accordering overslaan". Lezen voor
 # elke kantoorrol mét scope, schrijven Beheerder-only; dezelfde tabel als de doorbelasting-mapping (geen tweede bron).

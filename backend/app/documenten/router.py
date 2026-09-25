@@ -1247,6 +1247,29 @@ def boekvoorstel_checks_uitvoeren(
     return _naar_check_rapport_response(rapport)
 
 
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel/aangifte-periode-bevestigen",
+    response_model=schemas.CheckRapportResponse,
+)
+def boekvoorstel_aangifteperiode_bevestigen(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.CheckRapportResponse:
+    """Blok 4 feedbackrun A 25-09 (FV-16, aangepaste vorm): de bewuste keuze "Boeken (btw in volgend tijdvak)" op de
+    oranje check-rij "Factuurdatum valt in een ingediende aangifteperiode" — tijdlijn + audit, geen blokkade. 409 als er
+    (volgens de actuele toets) niets te bevestigen valt."""
+    try:
+        rapport = boekvoorstel.bevestig_aangifteperiode(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except boekvoorstel.BoekvoorstelFout as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_check_rapport_response(rapport)
+
+
 #: Voorverwarmen: max 1 tegelijk per proces (lage prioriteit — een tweede aanvraag wordt zichtbaar overgeslagen).
 _voorverwarm_slot = threading.Semaphore(1)
 AUDIT_VOORVERWARMD = "checks_voorverwarmd"

@@ -1,5 +1,6 @@
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
 import type {
+  AangifteLetOpDto,
   BoekenIngeschakeldDto,
   DoelProjectenDto,
   VerdeelsleutelDto,
@@ -233,6 +234,12 @@ export async function haalDoorbelastingFactuurBlob(administratieId: string, boek
   const resp = await apiFetch(`/doorbelasting/${administratieId}/boekingen/${boekingId}/factuur`)
   if (!resp.ok) throw new Error(`Factuur-PDF ophalen mislukt (${resp.status})`)
   return URL.createObjectURL(await resp.blob())
+}
+
+/** Blok 4 feedbackrun A 25-09 (FV-16): lees-only LET-OP voor de preview — factuurdatum in een ingediende aangifte aan
+ * één van beide kanten. Een laadfout degradeert naar "niet toetsbaar" (de aanroeper toont dat als LET-OP). */
+export function haalAangifteLetOpOp(administratieId: string, documentId: string): Promise<AangifteLetOpDto> {
+  return apiJson<AangifteLetOpDto>(`/doorbelasting/${administratieId}/documenten/${documentId}/aangifte-letop`)
 }
 
 export function haalStornoToetsOp(administratieId: string, documentId: string): Promise<StornoToetsDto> {

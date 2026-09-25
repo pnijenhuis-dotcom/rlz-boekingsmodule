@@ -269,6 +269,15 @@ class StornoToetsResponse(BaseModel):
     per_boeking: dict[uuid.UUID, BoekingStornoToetsDto]
 
 
+class AangifteLetOpResponse(BaseModel):
+    """Blok 4 feedbackrun A 25-09 (FV-16): LET-OP in de doorbelastingspreview — per kant (bron-verkoop, doel-spiegel) of
+    de factuurdatum in een ingediende btw-aangifte valt. `let_op` = de leesbare regels (leeg = niets te melden); nooit
+    blokkerend."""
+
+    kanten: list[KantToetsDto]
+    let_op: list[str]
+
+
 # --- Intercompany-leveranciers per administratie (nachtrun 08/09-09 blok 1; zelfde tabel als de mapping) ---------
 
 

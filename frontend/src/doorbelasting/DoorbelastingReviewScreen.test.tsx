@@ -153,6 +153,8 @@ function runMetVerdeling(overrides: Partial<DoorbelastingRunDto> = {}): Doorbela
 }
 
 interface MockOpties {
+  /** Blok 4 feedbackrun A 25-09: antwoord van `/aangifte-letop` (default: niets te melden). */
+  aangifteLetOp?: string[] | 'fout'
   run?: DoorbelastingRunDto
   runNaBoeken?: DoorbelastingRunDto
   verdelingResponse?: DoorbelastingRunDto
@@ -193,6 +195,10 @@ function installFetchMock(opties: MockOpties = {}) {
         return Promise.resolve(jsonResponse(opties.runNaBoeken ?? opties.run ?? runMetVerdeling()))
       }
       if (url.endsWith('/spiegel-taken')) return Promise.resolve(jsonResponse([]))
+      if (url.endsWith('/aangifte-letop')) {
+        if (opties.aangifteLetOp === 'fout') return Promise.resolve(jsonResponse({ detail: 'kapot' }, 500))
+        return Promise.resolve(jsonResponse({ kanten: [], let_op: opties.aangifteLetOp ?? [] }))
+      }
       return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
     }),
   )
@@ -211,6 +217,31 @@ function renderScherm() {
 describe('DoorbelastingReviewScreen', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it('blok 4 (25-09): LET-OP als één kant op de factuurdatum in een ingediende btw-aangifte valt — nooit blokkerend', async () => {
+    installFetchMock({
+      aangifteLetOp: [
+        'beide kanten zelfde tijdvak — spiegel-inkoopfactuur (Veldhoven Recreatie B.V.) valt in ingediende aangifte 2026-07-01 t/m 2026-09-30; RLZ verschuift de btw naar het eerstvolgende open tijdvak',
+      ],
+    })
+    renderScherm()
+    const banner = await screen.findByTestId('aangifte-letop')
+    expect(banner).toHaveTextContent(/btw-aangifte al ingediend/)
+    expect(banner).toHaveTextContent(/spiegel-inkoopfactuur \(Veldhoven Recreatie B\.V\.\)/)
+    // De boekknop blijft gewoon bruikbaar (100%-verdeling, checks groen).
+    expect(await screen.findByRole('button', { name: 'Doorbelasten in RLZ ✓' })).toBeEnabled()
+  })
+
+  it('blok 4 (25-09): geen LET-OP zonder ingediende periode; een laadfout is zichtbaar "niet toetsbaar"', async () => {
+    installFetchMock()
+    const { unmount } = renderScherm()
+    await screen.findByText('Multiplex 18mm (12×)')
+    expect(screen.queryByTestId('aangifte-letop')).not.toBeInTheDocument()
+    unmount()
+    installFetchMock({ aangifteLetOp: 'fout' })
+    renderScherm()
+    expect(await screen.findByTestId('aangifte-letop')).toHaveTextContent(/niet toetsbaar/)
   })
 
   it('toont per bron-regel de 100%-chip; een regel zonder verdeling heet "niet doorbelast"', async () => {

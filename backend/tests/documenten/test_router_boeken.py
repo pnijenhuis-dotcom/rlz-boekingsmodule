@@ -91,6 +91,7 @@ class TestBoekvoorstelEndpoints:
             "Duplicaatcheck",
             "Duplicaat bij andere crediteur",
             "Duplicaat (module)",  # blok 1 07-09
+            "Factuurdatum valt in een ingediende aangifteperiode",  # blok 4 feedbackrun A 25-09 (FV-16): oranje, nooit blokkerend
         }
 
     def test_put_met_mismatch_totaal_geeft_geblokkeerd_checkrapport(
@@ -152,6 +153,7 @@ class TestBoekvoorstelEndpoints:
             "Duplicaatcheck",
             "Duplicaat bij andere crediteur",
             "Duplicaat (module)",  # blok 1 07-09
+            "Factuurdatum valt in een ingediende aangifteperiode",  # blok 4 feedbackrun A 25-09 (FV-16): oranje, nooit blokkerend
         }
         assert all(r["ok"] for r in body["checks"]["resultaten"])
 

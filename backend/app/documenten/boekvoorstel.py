@@ -20,6 +20,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+from app.documenten import aangifteperiode
 from app.documenten import betaalstatus as betaalstatus_regels
 from app.documenten import checks_extern, leverancier_iban, regelsom, veldvoorstel_regels
 from app.documenten import kop_omschrijving as kop_omschrijving_regels
@@ -2763,6 +2764,10 @@ def voer_checks_uit(
         timing.tel("checks.lokaal", (time.perf_counter() - t_bouw) * 1000)
         return replace(
             rapport,
+            resultaten=(
+                *rapport.resultaten,
+                _aangifte_check(administratie_id=administratie_id, document_id=document_id, voorstel=voorstel, ext=None),
+            ),
             extern_gecontroleerd_op=ext.gecontroleerd_op,
             extern_uit_cache=ext.uit_cache,
             extern_nog_niet=ext.nog_niet,
@@ -2817,12 +2822,33 @@ def voer_checks_uit(
         resultaten.insert(4, pa)
     # 07-09: "Duplicaat (module)" als laatste rij, ná de twee live-RLZ-duplicaatchecks.
     resultaten.append(module_check)
+    # Blok 4 feedbackrun A 25-09 (FV-16): oranje rij "factuurdatum in ingediende aangifteperiode" mét de bewuste keuze
+    # als actie — uit het externe rapport (cache of verse run); "loopt nog" (CACHE-modus) = nog niet getoetst.
+    resultaten.append(
+        _aangifte_check(administratie_id=administratie_id, document_id=document_id, voorstel=voorstel, ext=ext)
+    )
     timing.tel("checks.lokaal", (time.perf_counter() - t_bouw) * 1000)
     return CheckRapport(
         tuple(resultaten),
         extern_gecontroleerd_op=ext.gecontroleerd_op,
         extern_uit_cache=ext.uit_cache,
         extern_nog_niet=ext.nog_niet,
+    )
+
+
+def _aangifte_check(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    voorstel: BoekvoorstelData,
+    ext: checks_extern.ExternRapport | None,
+) -> CheckResultaat:
+    """Blok 4 (25-09): de check-rij uit de externe toets + de eventuele bewuste keuze (tijdlijn-notitie, lokaal)."""
+    toets = aangifteperiode.AangifteToets.uit_json(ext.aangifte) if ext is not None else None
+    with scoped_session(administratie_id) as session:
+        bevestiging = aangifteperiode.bevestiging_voor(session, document_id)
+    return aangifteperiode.check_resultaat(
+        toets=toets, factuurdatum=voorstel.factuurdatum, bevestiging=bevestiging, boek_cyclus=voorstel.boek_cyclus
     )
 
 
@@ -2923,8 +2949,15 @@ def _extern_rapport(
                     eigen_rlz_document_id=eigen_rlz_id,
                     uitgezonderde_rlz_document_ids=keten,
                 ),
+                # Blok 4 feedbackrun A 25-09 (FV-16): factuurdatum vs ingediende btw-aangiften — één GET TaxDeclarations,
+                # parallel mét de duplicaatquery's; gecachet op de vingerafdruk (de factuurdatum zit erin). Odoo = n.v.t.
+                "checks.aangifte": lambda: (
+                    aangifteperiode.nvt("Odoo — geen Reeleezee-aangiften")
+                    if backend_naam == "odoo"
+                    else aangifteperiode.toets_factuurdatum(client, voorstel.factuurdatum)
+                ),
             }
-            uitkomsten, duur_parallel = checks_extern.voer_parallel_uit(taken=taken)
+            uitkomsten, duur_parallel = checks_extern.voer_parallel_uit(taken=taken, max_workers=3)
             duur.update(duur_parallel)
     finally:
         if eigen_client and eigen_port is not None:
@@ -2952,6 +2985,11 @@ def _extern_rapport(
                 f"Kon niet over crediteuren heen toetsen: {dup_over}",
                 signaal=True,
             )
+        aangifte = uitkomsten.get("checks.aangifte")
+        if isinstance(aangifte, Exception):
+            # Een onverwachte fout in de aangifte-toets is geen stilte: oranje "niet leesbaar" (wél cachebaar — de
+            # volgende wijziging van de vingerafdruk of "Opnieuw controleren" toetst opnieuw).
+            aangifte = aangifteperiode.AangifteToets(toegestaan=False, leesfout=str(aangifte))
         ext = checks_extern.ExternRapport(
             gecontroleerd_op=nu,
             vertrouwde_ibans=tuple(sorted(vertrouwde_ibans)),
@@ -2960,6 +2998,7 @@ def _extern_rapport(
             duplicaat=dup,
             duplicaat_over_crediteuren=dup_over,
             duur_ms=duur,
+            aangifte=aangifte.naar_json() if isinstance(aangifte, aangifteperiode.AangifteToets) else None,
         )
     if ext.cachebaar:
         with timing.met("checks.cache"):
@@ -2971,3 +3010,37 @@ def _extern_rapport(
                 backend=backend_naam,
             )
     return ext
+
+
+class NietsTeBevestigen(BoekvoorstelFout):
+    """Blok 4 (25-09): de factuurdatum valt (volgens de actuele toets) niet in een ingediende aangifteperiode."""
+
+
+def bevestig_aangifteperiode(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID
+) -> CheckRapport:
+    """De bewuste keuze "Boeken (btw in volgend tijdvak)" (blok 4 feedbackrun A 25-09, FV-16): toetst eerst de actuele
+    stand (checks in AUTO-modus — cache of verse run, de mens klikte zojuist op de rij), legt de keuze vast als
+    tijdlijn-notitie + audit en geeft het verse rapport terug (de rij is dan oranje "bevestigd door …" zonder actie)."""
+    rapport = voer_checks_uit(administratie_id=administratie_id, document_id=document_id, extern=checks_extern.AUTO)
+    rij = aangifteperiode.rij_uit(rapport.resultaten)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = _laad_document(session, document_id=document_id)
+        voorstel = session.get(Boekvoorstel, document_id)
+        cache = checks_extern.lees_cache(administratie_id=administratie_id, document_id=document_id)
+        toets = aangifteperiode.AangifteToets.uit_json((cache.rapport or {}).get("aangifte") if cache else None)
+        if rij is None or toets is None or not toets.ingediend:
+            raise NietsTeBevestigen("De factuurdatum valt niet in een ingediende aangifteperiode — niets te bevestigen")
+        try:
+            aangifteperiode.bevestig(
+                session,
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=actor_id,
+                toets=toets,
+                boek_cyclus=voorstel.boek_cyclus if voorstel is not None else 0,
+                document_status=document.status,
+            )
+        except aangifteperiode.NietsTeBevestigen as exc:
+            raise NietsTeBevestigen(str(exc)) from exc
+    return voer_checks_uit(administratie_id=administratie_id, document_id=document_id, extern=checks_extern.CACHE)

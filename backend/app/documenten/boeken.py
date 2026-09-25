@@ -14,7 +14,7 @@ from app.config import settings  # noqa: F401 — re-export: tests en herstel-CL
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
-from app.documenten import checks_extern, veldvoorstel_regels, volumerem
+from app.documenten import aangifteperiode, checks_extern, veldvoorstel_regels, volumerem
 from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
 from app.documenten.boekstand import volgend_volgnummer
 from app.documenten.boekvoorstel import BoekvoorstelData, _laatste_veldvoorstel, haal_boekvoorstel_op, voer_checks_uit
@@ -63,6 +63,17 @@ class BoekenGeblokkeerdDoorChecks(BoekenFout):
     def __init__(self, rapport: CheckRapport) -> None:
         self.rapport = rapport
         super().__init__("Boeken geblokkeerd door harde checks")
+
+
+class AutoboekGeweigerdDoorSignaal(BoekenFout):
+    """Blok 4 feedbackrun A 25-09: het AUTOMATISCHE pad boekt nooit op een oranje aangifte-rij (factuurdatum in een
+    ingediende btw-aangifte zonder bewuste keuze) — bestaande regel "oranje = niet automatisch boeken". Een mens
+    ziet de rij mét de actie; het document blijft staan."""
+
+    def __init__(self, rapport: CheckRapport, reden: str) -> None:
+        self.rapport = rapport
+        self.reden = reden
+        super().__init__(reden)
 
 
 class BoekenUitgeschakeld(BoekenFout):
@@ -516,6 +527,14 @@ def boek_document(
         )
         if rapport.geblokkeerd:
             raise BoekenGeblokkeerdDoorChecks(rapport)
+        # Blok 4 feedbackrun A 25-09 (FV-16): oranje aangifte-rij zonder bewuste keuze — een mens mag door (nagekomen
+        # facturen zijn legitiem; de boek-transactie schrijft dan een tijdlijnregel), het automatische pad nooit.
+        aangifte_rij = aangifteperiode.rij_uit(rapport.resultaten)
+        aangifte_onbevestigd = aangifte_rij is not None and aangifteperiode.is_onbevestigd_signaal(aangifte_rij)
+        if aangifte_onbevestigd and (extra_overgang_detail or {}).get(volumerem.AUTOMATISCH_MARKERING):
+            raise AutoboekGeweigerdDoorSignaal(
+                rapport, f"oranje signaal — {aangifte_rij.melding} — mens beoordeelt (bewuste keuze vereist)"
+            )
 
         with scoped_session(administratie_id, actor_id=actor_id) as session:
             document = session.get(Document, document_id)
@@ -708,6 +727,10 @@ def boek_document(
             regels=voorstel.regels,
             actor_id=actor_id,
         )
+        # Blok 4 (25-09): geboekt zonder voorafgaande bevestiging van de aangifteperiode → één tijdlijnregel ín de
+        # boek-transactie (niets verdwijnt stil).
+        if aangifte_onbevestigd and aangifte_rij is not None:
+            _noteer_aangifte_onbevestigd(session, document_id=document_id, actor_id=actor_id, rapport=rapport)
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -748,4 +771,26 @@ def boek_document(
         rlz_document_id=rlz_document_id,
         rlz_boekstuknummer=rlz_boekstuknummer,
         mini_voorraad=mini_voorraad_resultaat,
+    )
+
+
+def _noteer_aangifte_onbevestigd(
+    session, *, document_id: uuid.UUID, actor_id: uuid.UUID, rapport: CheckRapport
+) -> None:  # noqa: ANN001
+    """Blok 4 (25-09): de periode uit het (gecachte) externe rapport terugvinden en de tijdlijnregel schrijven."""
+    from app.documenten import checks_extern as _ce
+
+    document = session.get(Document, document_id)
+    if document is None:
+        return
+    rij = (
+        _ce.lees_cache(administratie_id=document.administratie_id, document_id=document_id)
+        if document.administratie_id
+        else None
+    )
+    toets = aangifteperiode.AangifteToets.uit_json((rij.rapport or {}).get("aangifte") if rij is not None else None)
+    if toets is None:
+        toets = aangifteperiode.AangifteToets(toegestaan=False)
+    aangifteperiode.noteer_geboekt_zonder_bevestiging(
+        session, document_id=document_id, actor_id=actor_id, toets=toets, document_status=document.status
     )

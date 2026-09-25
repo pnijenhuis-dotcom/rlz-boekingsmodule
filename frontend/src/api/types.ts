@@ -2064,6 +2064,13 @@ export interface StornoToetsDto {
   per_boeking: Record<string, StornoToetsBoekingDto>
 }
 
+/** Blok 4 feedbackrun A 25-09 (FV-16): LET-OP in de doorbelastingspreview — per kant (bron-verkoop / doel-spiegel) of de
+ * factuurdatum in een ingediende btw-aangifte valt; `let_op` = leesbare regels (leeg = niets te melden), nooit blokkerend. */
+export interface AangifteLetOpDto {
+  kanten: StornoToetsKantDto[]
+  let_op: string[]
+}
+
 export interface SpiegelTaakDto {
   boeking_id: string
   document_id: string

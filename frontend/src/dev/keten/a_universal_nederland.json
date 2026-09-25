@@ -385,6 +385,13 @@
     "melding": "Geen ander document in deze administratie met hetzelfde bestand, dezelfde referentie + bedrag of dezelfde crediteur + referentie",
     "signaal": false,
     "acties": []
+   },
+   {
+    "naam": "Factuurdatum valt in een ingediende aangifteperiode",
+    "ok": true,
+    "melding": "Factuurdatum 2026-08-01 valt in een open aangifteperiode",
+    "signaal": false,
+    "acties": []
    }
   ],
   "extern_gecontroleerd_op": "2026-09-08T12:00:00Z",

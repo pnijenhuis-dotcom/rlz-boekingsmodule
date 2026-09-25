@@ -1459,3 +1459,65 @@ def storno_toets_voor_document(
             for client in doel_clients.values():
                 client.close()
     return resultaat
+
+
+# --- Blok 4 feedbackrun A 25-09 (FV-16): LET-OP in de doorbelastingspreview ---------------------------------------
+
+
+def aangifte_letop_voor_document(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    bron_client: RlzClient | None = None,
+    doel_client_factory: Callable[[uuid.UUID], RlzClient] | None = None,
+) -> list[KantToets]:
+    """LEES-ONLY toets voor de doorbelastingspreview: valt de FACTUURDATUM van het bron-document (= BookDate aan beide
+    kanten, CLAUDE.md "Boekingsdatum = BookDate") in een INGEDIENDE btw-aangifte aan de bron-kant of bij een onboarded
+    doelentiteit, dan is dat een LET-OP ("beide kanten zelfde tijdvak — ‹kant› valt in ingediende aangifte ‹periode›").
+    Nooit blokkerend (nagekomen facturen zijn legitiem; RLZ verschuift de btw naar het eerstvolgende open tijdvak).
+    Onleesbare aangifte-status of ontbrekende credentials = zichtbare "niet toetsbaar"-kant (toegestaan=False mét reden
+    zonder periode), nooit een 500. Geen boekingen/mappings = lege lijst zonder RLZ-call."""
+    with scoped_session(administratie_id) as session:
+        voorstel = session.get(Boekvoorstel, document_id)
+        factuurdatum = voorstel.factuurdatum if voorstel is not None else None
+        doelen = [
+            (m.doelentiteit_naam, m.doel_administratie_id)
+            for m in session.scalars(
+                select(DoorbelastingMapping).where(
+                    DoorbelastingMapping.administratie_id == administratie_id,
+                    DoorbelastingMapping.doel_administratie_id.is_not(None),
+                )
+            )
+        ]
+    if factuurdatum is None:
+        return []
+    uit: list[KantToets] = []
+    eigen_bron = bron_client is None
+    try:
+        if bron_client is None:
+            bron_client = _rlz_client_voor(administratie_id)
+    except GeenRlzCredentials as exc:
+        return [KantToets(kant="verkoopfactuur (bron-administratie)", toegestaan=False, reden=str(exc))]
+    eigen_doel_clients = doel_client_factory is None
+    if doel_client_factory is None:
+        doel_client_factory = _rlz_client_voor
+    doel_clients: dict[uuid.UUID, RlzClient] = {}
+    try:
+        uit.append(AangiftePoort(bron_client).toets_boekdatum(factuurdatum, kant="verkoopfactuur (bron-administratie)"))
+        for naam, doel_administratie_id in doelen:
+            kant = f"spiegel-inkoopfactuur ({naam})"
+            assert doel_administratie_id is not None
+            if doel_administratie_id not in doel_clients:
+                try:
+                    doel_clients[doel_administratie_id] = doel_client_factory(doel_administratie_id)
+                except GeenRlzCredentials as exc:
+                    uit.append(KantToets(kant=kant, toegestaan=False, reden=f"geen RLZ-credentials — {exc}"))
+                    continue
+            uit.append(AangiftePoort(doel_clients[doel_administratie_id]).toets_boekdatum(factuurdatum, kant=kant))
+    finally:
+        if eigen_bron:
+            bron_client.close()
+        if eigen_doel_clients:
+            for client in doel_clients.values():
+                client.close()
+    return uit

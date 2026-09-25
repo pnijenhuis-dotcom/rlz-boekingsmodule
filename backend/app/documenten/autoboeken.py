@@ -721,6 +721,8 @@ def probeer_autoboeken_na_extractie(
         boeken_service.AccorderingVereist,
         boeken_service.BoekenUitgeschakeld,
         boeken_service.VolumeremBereikt,
+        # Blok 4 feedbackrun A 25-09: oranje aangifte-rij zonder bewuste keuze — nooit automatisch boeken.
+        boeken_service.AutoboekGeweigerdDoorSignaal,
     ) as exc:
         return _weiger(administratie_id=administratie_id, document_id=document_id, reden=str(exc))
     except boeken_service.RlzBoekingMislukt as exc:
