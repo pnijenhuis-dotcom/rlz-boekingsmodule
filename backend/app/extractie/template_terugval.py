@@ -36,8 +36,9 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from app.crediteuren.naam import normaliseer_crediteurnaam_woorden
 from app.extractie.btw_nummer import normaliseer_kvk_nummer, valideer_btw_nummer
-from app.extractie.controle import VendorKandidaat, _genormaliseerd
+from app.extractie.controle import VendorKandidaat
 from app.extractie.iban import is_geldig_iban, normaliseer_iban
 
 logger = logging.getLogger(__name__)
@@ -678,9 +679,11 @@ def herken_crediteur(
         if len(vendor_ids) == 1:
             vendor_id = next(iter(vendor_ids))
             return Herkenning(vendor_id, "iban", next(i for i in gevonden if ibans.get(i) == vendor_id))
-    genormaliseerd = f" {_genormaliseerd(volledig)} "
+    # 25-09 (blok 2): de sleutel-normalisatie kent geen spaties meer; de tekst-zoeking op woordgrenzen gebruikt de
+    # woorden-variant (zelfde regels, spaties behouden) zodat "andere" niet midden in een ander woord treft.
+    genormaliseerd = f" {normaliseer_crediteurnaam_woorden(volledig)} "
     op_naam = [
-        k for k in kandidaten if k.naam and len(naam := _genormaliseerd(k.naam)) >= 5 and f" {naam} " in genormaliseerd
+        k for k in kandidaten if k.naam and len(naam := normaliseer_crediteurnaam_woorden(k.naam)) >= 5 and f" {naam} " in genormaliseerd
     ]
     if len({k.id for k in op_naam}) == 1:
         return Herkenning(op_naam[0].id, "naam", op_naam[0].naam)

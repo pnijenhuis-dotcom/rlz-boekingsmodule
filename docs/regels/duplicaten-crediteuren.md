@@ -87,6 +87,43 @@
   niemand gebruikt (0 audits `extern_duplicaat_toch_verschillend`), dus `afgemelde_extern_ids` is in productie nog leeg — de uitzonderingsroute
   blijft "niet gemeten" tot de eerste klik (dispatch-onderdeel `extern-geboekt`).
 
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 2 -->
+- **Crediteur-naamclusters — gelijkende naam is oranje, nooit automatisch samengevoegd (Peter 25-09, FV-21 gebruikersfeedback
+  Universal: `Floor Bouwliftenservice`/`Floor bouwliftenservice`, `Universal Nederland B.V.`/`Universal nederland B.V.`; geen
+  migratie; BESLISSINGEN "CREDITEUR-NAAMCLUSTERS — GELIJKENDE NAAM IS ORANJE, NOOIT AUTOMATISCH SAMENGEVOEGD (Peter 25-09)"):**
+  (1) **Eén normalisatie** `app/crediteuren/naam.py::normaliseer_crediteurnaam` — casefold, diakrieten weg, rechtsvorm-tokens
+  (b.v./bv/b v, n.v./nv, v.o.f./vof, c.v./cv) weg, "holding" blijft ONDERSCHEIDEND (regel intake 27/28-08), leestekens en spaties
+  weg → één sleutel ("floorbouwliftenservice"); gebruikt door de naam-sleutel van `dubbele_crediteuren` én door de extractie-match
+  (`controle._genormaliseerd`), zodat "FLOOR BOUWLIFTENSERVICE B.V." op de factuur exact op de crediteur landt en "Jansen Holding"
+  niet stil op "Jansen B.V.". Gelijkend-maar-anders ("Universal Verkoop", "Bouwadvies West") = andere sleutel = géén cluster.
+  (2) **Alleen-naam = oranje.** Een cluster dat uitsluitend op de naam-sleutel matcht (geen btw/KvK/IBAN-sleutel, geen gedeeld
+  KvK) is NOOIT eenduidig (`afhandeling.classificeer`, reden `REDEN_ALLEEN_NAAM`); `auto_afhandelen` slaat 'm over — het systeem
+  voegt nooit samen op naam (verschillende entiteiten met gelijkende naam bestaan). Het dubbelen-scherm toont de chip
+  "gelijkende naam — bevestig" (oranje `Badge warn`, `service.CHIP_NAAM_BEVESTIG`) mét de bestaande handelingen "Voorkeur kiezen…"
+  (= bevestigen via `afhandelen`, bron mens) en "Geen dubbel — afmelden" (reden verplicht). KvK-conflict blijft "verschillend
+  KvK — géén dubbel" mét afmelden primair. btw-/KvK-/IBAN-clusters en de grens N = 3 ongewijzigd.
+  (3) **Ná bevestiging** leest alles over het cluster: verliezer → `voorkeur_vendor_id` (`crediteuren/voorkeur.py`), geheugen/
+  kenmerk/IBAN's verhuisd (bestaand `handel_af`); `kandidaten_met_kenmerken` en `_raad_vendor_id` geven de voorkeur → een nieuwe
+  factuur mét afwijkende schrijfwijze koppelt aan het bevestigde cluster, nooit een nieuwe crediteur. Vóór bevestiging geven twee
+  bruikbare records mét dezelfde sleutel géén suggestie (nooit auto-toewijzen bij twijfel).
+  (4) **Lees-only CLI** `crediteuren-naamclusters (--alles | --administratie <uuid|naamdeel>) [--detail] [--json-uit]`
+  (`app/crediteuren/naamclusters_cli.py`, nameting-allowlist, dispatch-onderdeel `crediteuren-naamclusters`): per administratie
+  in eigen RLS-scope clusters/crediteuren/KvK-conflict/afgemeld/bevestigd (mens), kapotte administratie = FOUT-regel, TOTAAL-regel
+  eindigt op "automatisch samengevoegd op naam: 0 (nooit)". Guards `tests/crediteuren/test_naam.py`, `test_naamclusters.py`
+  (élke CLI-vorm letterlijk), gouden-set-casus b `TestSchrijfwijzeFloor`, vitest `CrediteurenDubbelenScreen.test.tsx`. Werkt in
+  productie: niet gemeten.
+
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 5 -->
+- **Crediteur bewerken — kenmerk 'handmatig', IBAN uitsluitend via de wisselroute (Peter 25-09; FV-15; geen migratie; BESLISSINGEN
+  "CREDITEUR AANMAKEN ALS ZIJPANEEL NAAST DE FACTUUR + CREDITEUR BEWERKEN (Peter 25-09)"):** KvK/btw uit het bewerk-paneel worden in
+  `crediteur_kenmerk` opgeslagen mét bron `handmatig` (`sync/service._zet_kenmerk_handmatig`) — de bestaande regel in
+  `neem_over_uit_veldvoorstel` laat een handmatig nummer nooit meer door de factuur overschrijven; een ongeldige vorm (KvK ≠ 8 cijfers,
+  btw zonder proef) is een zichtbare waarschuwing, niet opgeslagen. De naam van een ándere niet-verdwenen crediteur is een 409 mét dat
+  id (nooit twee gelijke namen). Vertrouwde IBAN's veranderen NOOIT via deze route: `CrediteurWijzigInput` heeft geen `iban` (422), het
+  paneel toont de set lees-only en verwijst naar de IBAN-wissel/vier-ogen-route (`IbanAanbiedenVorm`); bij AANMAKEN blijft het IBAN
+  meegaan als vertrouwd (bestaande regel 02-09). Meetlat `db-lezen crediteur-mutaties` (audit `crediteur_aangemaakt_in_rlz` +
+  `crediteur_gewijzigd` mét oud→nieuw naast de cache-rij).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Crediteur-dedup + duplicaat over crediteuren heen (CLAUDE.md `ed6d176` r. 374–386)

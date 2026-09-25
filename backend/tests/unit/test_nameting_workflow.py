@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -615,3 +615,46 @@ def test_nameting_sh_bundelrun_24_09_allowlist_en_weigerlijst() -> None:
         "doorbelasting-bedragen-gelijktrekken) echo doorbelasting-btw ;;",
     ):
         assert re.search(r"^\s*" + re.escape(regel), sh, flags=re.M), f"via_gh_onderdeel mist: {regel}"
+
+
+# --- feedbackrun A 25-09: negen dispatch-onderdelen (vier plekken elk: if-tak + options + via_gh_onderdeel + OORDEEL_BRON-else-tak) ------
+FEEDBACKRUN_ONDERDELEN_25_09 = {
+    "xml-documenten": "scripts/gcp/nameting.sh xml-documenten-rapport --alles --detail",
+    "crediteuren-naamclusters": "scripts/gcp/nameting.sh crediteuren-naamclusters --alles --detail",
+    "project-bronvolgorde": 'scripts/gcp/nameting.sh db-lezen project-prefill-herkomst --administratie "Universal Steigerbouw" $FILTER',
+    "aangifteperiode": 'scripts/gcp/nameting.sh db-lezen aangifteperiode-bevestigingen --administratie "$ADM"',
+    "crediteur-paneel": 'scripts/gcp/nameting.sh db-lezen crediteur-mutaties --administratie "$ADM" --param dagen=7',
+    "btw-netto": 'scripts/gcp/nameting.sh db-lezen btw-herrekend --administratie "$ADM" --param dagen=7 --param aanleiding=netto',
+    "tabwissel": 'httpRequest.requestUrl:"/auth/administraties"',
+    "lijst-alles": 'httpRequest.requestUrl:"groep=alles"',
+    "comfort-controlescherm": 'scripts/gcp/nameting.sh db-lezen document-feiten --administratie "Universal Steigerbouw" --max-rijen 20',
+}
+
+
+@pytest.mark.parametrize("onderdeel", sorted(FEEDBACKRUN_ONDERDELEN_25_09))
+def test_feedbackrun_25_09_onderdeel_alleen_op_verzoek_lees_only_met_eigen_oordeel(tmp_path: Path, onderdeel: str) -> None:
+    """Feedbackrun A 25-09 (negen blokken): élk meetrecept is een dispatch-onderdeel mét de vier plekken, niet in 'alles',
+    uitkomst in verkenning/nameting-<onderdeel>-<dd-mm>.txt mét eigen oordeelregel (else-tak)."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert f'if [[ "$ONDERDEEL" == "{onderdeel}" ]]; then' in meet
+    assert FEEDBACKRUN_ONDERDELEN_25_09[onderdeel] in meet
+    assert f'UIT="verkenning/nameting-{onderdeel}-$DATUM.txt"' in meet
+    assert f'"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "{onderdeel}"' not in meet, "niet in 'alles'"
+    oordeel = _draai_oordeel(
+        tmp_path,
+        onderdeel,
+        {f"nameting-{onderdeel}-14-09.txt": "kop\nOordeel: TOTAAL 2 — testuitkomst — exit 0\n", "nameting-vgg-replay-14-09.txt": REPLAY},
+    )
+    assert oordeel.startswith("Oordeel: TOTAAL 2 — testuitkomst"), oordeel
+
+
+def test_nameting_sh_feedbackrun_25_09_allowlist_en_via_gh() -> None:
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    allow = re.search(r'^ALLOWLIST="([^"]+)"', sh, flags=re.M)
+    assert allow
+    woorden = allow.group(1).split()
+    for cmd in ("xml-documenten-rapport", "crediteuren-naamclusters"):
+        assert cmd in woorden, cmd
+    for onderdeel in FEEDBACKRUN_ONDERDELEN_25_09:
+        cmd = {"xml-documenten": "xml-documenten-rapport"}.get(onderdeel, onderdeel)
+        assert re.search(r"^\s*" + re.escape(f"{cmd}) echo {onderdeel} ;;"), sh, flags=re.M), f"via_gh_onderdeel mist: {onderdeel}"

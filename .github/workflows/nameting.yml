@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie | doorbelasting-btw)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie | doorbelasting-btw | xml-documenten | crediteuren-naamclusters | project-bronvolgorde | aangifteperiode | crediteur-paneel | btw-netto | tabwissel | lijst-alles | comfort-controlescherm)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" && "$ONDERDEEL" != "doorbelasting-btw" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" && "$ONDERDEEL" != "doorbelasting-btw" && "$ONDERDEEL" != "xml-documenten" && "$ONDERDEEL" != "crediteuren-naamclusters" && "$ONDERDEEL" != "project-bronvolgorde" && "$ONDERDEEL" != "aangifteperiode" && "$ONDERDEEL" != "crediteur-paneel" && "$ONDERDEEL" != "btw-netto" && "$ONDERDEEL" != "tabwissel" && "$ONDERDEEL" != "lijst-alles" && "$ONDERDEEL" != "comfort-controlescherm" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -750,6 +750,224 @@ jobs:
             if [[ "$AC_5XX" -ge 1 ]]; then AC_STAND="ROOD — 5xx op de kaart-route"; elif [[ "$AC_0XXX" -ge 1 ]]; then AC_STAND="ROOD — koppeling mét 0xxx-afschrijvingsrekening ná de deploy"; elif [[ "$AC_200" -ge 1 ]]; then AC_STAND="werkt in productie: ja (kaart gebruikt, afschrijvingsrekening 4xxx, 0 × 5xx)"; else AC_STAND="niet gemeten (kaart ongebruikt sinds de deploy — herstel BLOw = klikpunt Peter)"; fi
             echo "Oordeel: POST aanmaken 200 = $AC_200, 5xx = $AC_5XX, koppelingen mét 0xxx = $AC_0XXX — $AC_STAND — exit $rc_ac" >> "$UIT"
             echo "STATUS activa-conventie: rapport in $UIT (exit $rc_ac = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "xml-documenten" ]]; then
+            # Feedbackrun A 25-09 (BESLISSINGEN "UBL ZONDER BEELD — SAMENVATTINGSKAART I.P.V. RUWE XML, ONLEESBARE XML = HANDMATIG AFMAKEN MÉT REDEN (Peter 25-09)"): lees-only meetrecept.
+            UIT="verkenning/nameting-xml-documenten-$DATUM.txt"
+            rc_fa=0
+            SINDS_FA="${SINDS_FEEDBACKRUN_A:-2026-09-25T18:00:00Z}"
+            {
+              echo "== xml-documenten-rapport --alles --detail (lees-only, TOTAAL-regel = oordeel) =="
+              scripts/gcp/nameting.sh xml-documenten-rapport --alles --detail 2> nameting-fa.stderr || { rc_fa=$?; echo "(nameting.sh exit $rc_fa — stderr:)"; cat nameting-fa.stderr; }
+              echo
+              echo "== db-lezen documenten-open Universal Steigerbouw RLZ-2080142898 (document 250895e8: status tot Peter boekt/koppelt) =="
+              scripts/gcp/nameting.sh db-lezen documenten-open --administratie "Universal Steigerbouw" --param bestandsnaam=2080142898 2> nameting-fa.stderr || { rc_fa=$?; echo "(nameting.sh exit $rc_fa — stderr:)"; cat nameting-fa.stderr; }
+              echo
+              echo "== request-log ubl-samenvatting sinds $SINDS_FA =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestUrl:"/ubl-samenvatting" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-fa-ubl-samenvatting.txt || rc_fa=$?
+              cat nameting-fa-ubl-samenvatting.txt
+              [[ -s nameting-fa-ubl-samenvatting.txt ]] || echo "(geen requests sinds de deploy — ongebruikt)"
+              echo
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_fa)" >> "$UIT"
+            TOT="$(grep -m1 -o 'TOTAAL [0-9]* xml-documenten[^\n]*' "$UIT" || true)"
+            KAART="$(awk -F'\t' '$3 == "200"' nameting-fa-ubl-samenvatting.txt | wc -l | tr -d ' ')"
+            echo "Oordeel: ${TOT:-geen totaalregel} · ubl-samenvatting 200 = $KAART (0 = kaart ongebruikt, niet gemeten) — exit $rc_fa" >> "$UIT"
+            echo "STATUS xml-documenten: rapport in $UIT (exit $rc_fa = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "crediteuren-naamclusters" ]]; then
+            # Feedbackrun A 25-09 (BESLISSINGEN "CREDITEUR-NAAMCLUSTERS — GELIJKENDE NAAM IS ORANJE, NOOIT AUTOMATISCH SAMENGEVOEGD (Peter 25-09)"): lees-only meetrecept.
+            UIT="verkenning/nameting-crediteuren-naamclusters-$DATUM.txt"
+            rc_fa=0
+            SINDS_FA="${SINDS_FEEDBACKRUN_A:-2026-09-25T18:00:00Z}"
+            {
+              echo "== crediteuren-naamclusters --alles --detail (lees-only; verwacht Universal Steigerbouw: Floor Bouwliftenservice-cluster open) =="
+              scripts/gcp/nameting.sh crediteuren-naamclusters --alles --detail 2> nameting-fa.stderr || { rc_fa=$?; echo "(nameting.sh exit $rc_fa — stderr:)"; cat nameting-fa.stderr; }
+              echo "== request-log afhandelen sinds $SINDS_FA =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="POST" httpRequest.requestUrl:"/crediteuren/dubbelen/afhandelen" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-fa-afhandelen.txt || rc_fa=$?
+              cat nameting-fa-afhandelen.txt
+              [[ -s nameting-fa-afhandelen.txt ]] || echo "(geen requests sinds de deploy — ongebruikt)"
+              echo
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_fa)" >> "$UIT"
+            TOT="$(grep -m1 -o 'TOTAAL [0-9]* naam-cluster[^\n]*' "$UIT" || true)"
+            echo "Oordeel: ${TOT:-geen totaalregel} — exit $rc_fa" >> "$UIT"
+            echo "STATUS crediteuren-naamclusters: rapport in $UIT (exit $rc_fa = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "project-bronvolgorde" ]]; then
+            # Feedbackrun A 25-09 (BESLISSINGEN "PROJECT-BRONVOLGORDE — FACTUUR EN CACHECODE VÓÓR HET GEHEUGEN, GEHEUGEN ALTIJD ZICHTBAAR (Peter 25-09)"): lees-only meetrecept.
+            UIT="verkenning/nameting-project-bronvolgorde-$DATUM.txt"
+            rc_fa=0
+            SINDS_FA="${SINDS_FEEDBACKRUN_A:-2026-09-25T18:00:00Z}"
+            {
+              for FILTER in "" "--param project_bron=factuur_conflict" "--param project_bron=geheugen"; do
+                echo "== db-lezen project-prefill-herkomst --administratie Universal Steigerbouw $FILTER =="
+                # shellcheck disable=SC2086
+                scripts/gcp/nameting.sh db-lezen project-prefill-herkomst --administratie "Universal Steigerbouw" $FILTER 2> nameting-fa.stderr || { rc_fa=$?; echo "(nameting.sh exit $rc_fa — stderr:)"; cat nameting-fa.stderr; }
+                echo
+              done
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_fa)" >> "$UIT"
+            STIL="$(grep -c 'leverancier_geheugen |  |' "$UIT" || true)"
+            echo "Oordeel: regels mét herkomst leverancier_geheugen zonder project_bron = $STIL (0 = GROEN: het stille pad komt niet meer voor) — exit $rc_fa" >> "$UIT"
+            echo "STATUS project-bronvolgorde: rapport in $UIT (exit $rc_fa = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "aangifteperiode" ]]; then
+            # Feedbackrun A 25-09 (BESLISSINGEN "FACTUURDATUM IN EEN INGEDIENDE AANGIFTEPERIODE — ORANJE CHECK, GEEN BLOKKADE (Peter 25-09)"): lees-only meetrecept.
+            UIT="verkenning/nameting-aangifteperiode-$DATUM.txt"
+            rc_fa=0
+            SINDS_FA="${SINDS_FEEDBACKRUN_A:-2026-09-25T18:00:00Z}"
+            {
+              echo "== request-log bevestigen sinds $SINDS_FA =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestUrl:"aangifte-periode-bevestigen" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-fa-bevestigen.txt || rc_fa=$?
+              cat nameting-fa-bevestigen.txt
+              [[ -s nameting-fa-bevestigen.txt ]] || echo "(geen requests sinds de deploy — ongebruikt)"
+              echo
+              echo "== request-log letop sinds $SINDS_FA =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestUrl:"aangifte-letop" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-fa-letop.txt || rc_fa=$?
+              cat nameting-fa-letop.txt
+              [[ -s nameting-fa-letop.txt ]] || echo "(geen requests sinds de deploy — ongebruikt)"
+              echo
+              for ADM in "Universal Steigerbouw" "Kempen Facilities"; do
+                echo "== db-lezen aangifteperiode-bevestigingen --administratie $ADM =="
+                scripts/gcp/nameting.sh db-lezen aangifteperiode-bevestigingen --administratie "$ADM" 2> nameting-fa.stderr || { rc_fa=$?; echo "(nameting.sh exit $rc_fa — stderr:)"; cat nameting-fa.stderr; }
+                echo
+              done
+              echo "== server_timing boekvoorstel_checks mét stap checks.aangifte =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" jsonPayload.message="server_timing" jsonPayload.route="boekvoorstel_checks" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 200 --format='value(timestamp,jsonPayload.duur_ms)' > nameting-fa-timing.txt || rc_fa=$?
+              grep -c "checks.aangifte" nameting-fa-timing.txt || echo "(geen server_timing-regel mét checks.aangifte)"
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_fa)" >> "$UIT"
+            B200="$(awk -F'\t' '$3 == "200"' nameting-fa-bevestigen.txt | wc -l | tr -d ' ')"
+            B5XX="$(awk -F'\t' '$3 ~ /^5/' nameting-fa-bevestigen.txt nameting-fa-letop.txt | wc -l | tr -d ' ')"
+            TIM="$(grep -c "checks.aangifte" nameting-fa-timing.txt || true)"
+            if [[ "$B5XX" -ge 1 ]]; then ST="ROOD"; elif [[ "$TIM" -ge 1 ]]; then ST="toets loopt mee (ja)"; else ST="niet gemeten"; fi
+            echo "Oordeel: bevestigingen 200 = $B200, 5xx = $B5XX, server_timing checks.aangifte = $TIM — $ST — exit $rc_fa" >> "$UIT"
+            echo "STATUS aangifteperiode: rapport in $UIT (exit $rc_fa = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "crediteur-paneel" ]]; then
+            # Feedbackrun A 25-09 (BESLISSINGEN "CREDITEUR AANMAKEN ALS ZIJPANEEL NAAST DE FACTUUR + CREDITEUR BEWERKEN (Peter 25-09)"): lees-only meetrecept.
+            UIT="verkenning/nameting-crediteur-paneel-$DATUM.txt"
+            rc_fa=0
+            SINDS_FA="${SINDS_FEEDBACKRUN_A:-2026-09-25T18:00:00Z}"
+            {
+              echo "== request-log crediteuren sinds $SINDS_FA =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestUrl:"/crediteuren" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-fa-crediteuren.txt || rc_fa=$?
+              cat nameting-fa-crediteuren.txt
+              [[ -s nameting-fa-crediteuren.txt ]] || echo "(geen requests sinds de deploy — ongebruikt)"
+              echo
+              for ADM in "Universal Steigerbouw" "BLOW"; do
+                echo "== db-lezen crediteur-mutaties --administratie $ADM --param dagen=7 =="
+                scripts/gcp/nameting.sh db-lezen crediteur-mutaties --administratie "$ADM" --param dagen=7 2> nameting-fa.stderr || { rc_fa=$?; echo "(nameting.sh exit $rc_fa — stderr:)"; cat nameting-fa.stderr; }
+                echo
+              done
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_fa)" >> "$UIT"
+            PUT200="$(awk -F'\t' '$2 == "PUT" && $3 == "200"' nameting-fa-crediteuren.txt | wc -l | tr -d ' ')"
+            C5XX="$(awk -F'\t' '$3 ~ /^5/' nameting-fa-crediteuren.txt | wc -l | tr -d ' ')"
+            GEW="$(grep -c "crediteur_gewijzigd" "$UIT" || true)"
+            if [[ "$C5XX" -ge 1 ]]; then ST="ROOD"; elif [[ "$PUT200" -ge 1 && "$GEW" -ge 1 ]]; then ST="JA"; else ST="NIET GEMETEN (ongebruikt)"; fi
+            echo "Oordeel: PUT crediteuren 200 = $PUT200, 5xx = $C5XX, audit crediteur_gewijzigd = $GEW — $ST — exit $rc_fa" >> "$UIT"
+            echo "STATUS crediteur-paneel: rapport in $UIT (exit $rc_fa = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "btw-netto" ]]; then
+            # Feedbackrun A 25-09 (BESLISSINGEN "BTW-BEDRAG VOLGT HET TARIEF ÓÓK BIJ NETTOWIJZIGING (Peter 25-09)"): lees-only meetrecept.
+            UIT="verkenning/nameting-btw-netto-$DATUM.txt"
+            rc_fa=0
+            SINDS_FA="${SINDS_FEEDBACKRUN_A:-2026-09-25T18:00:00Z}"
+            {
+              for ADM in "BLOW" "Universal Steigerbouw" "Kempen Facilities"; do
+                echo "== db-lezen btw-herrekend --administratie $ADM --param dagen=7 --param aanleiding=netto =="
+                scripts/gcp/nameting.sh db-lezen btw-herrekend --administratie "$ADM" --param dagen=7 --param aanleiding=netto 2> nameting-fa.stderr || { rc_fa=$?; echo "(nameting.sh exit $rc_fa — stderr:)"; cat nameting-fa.stderr; }
+                echo
+              done
+              echo "== request-log put-boekvoorstel sinds $SINDS_FA =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="PUT" httpRequest.requestUrl:"/boekvoorstel" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-fa-put-boekvoorstel.txt || rc_fa=$?
+              cat nameting-fa-put-boekvoorstel.txt
+              [[ -s nameting-fa-put-boekvoorstel.txt ]] || echo "(geen requests sinds de deploy — ongebruikt)"
+              echo
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_fa)" >> "$UIT"
+            N="$(grep -c "| netto |" "$UIT" || true)"
+            P5XX="$(awk -F'\t' '$3 ~ /^5/' nameting-fa-put-boekvoorstel.txt | wc -l | tr -d ' ')"
+            echo "Oordeel: btw-netto: $N notities aanleiding=netto over 3 administraties (7 d), PUT 5xx = $P5XX ($([[ "$N" -ge 1 ]] && echo ja || echo "niet gemeten (ongebruikt)")) — exit $rc_fa" >> "$UIT"
+            echo "STATUS btw-netto: rapport in $UIT (exit $rc_fa = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "tabwissel" ]]; then
+            # Feedbackrun A 25-09 (BESLISSINGEN "TABWISSEL DOCUMENTENLIJST — GEMETEN, FETCH PER WISSEL EN POLL-STORM WEG (Peter 25-09)"): lees-only meetrecept.
+            UIT="verkenning/nameting-tabwissel-$DATUM.txt"
+            rc_fa=0
+            SINDS_FA="${SINDS_FEEDBACKRUN_A:-2026-09-25T18:00:00Z}"
+            {
+              echo "== request-log lijst sinds $SINDS_FA =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="GET" httpRequest.requestUrl=~"/administraties/[0-9a-f-]+/documenten(\\?.*)?$" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-fa-lijst.txt || rc_fa=$?
+              cat nameting-fa-lijst.txt
+              [[ -s nameting-fa-lijst.txt ]] || echo "(geen requests sinds de deploy — ongebruikt)"
+              echo
+              echo "== request-log auth-administraties sinds $SINDS_FA =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestUrl:"/auth/administraties" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-fa-auth-administraties.txt || rc_fa=$?
+              cat nameting-fa-auth-administraties.txt
+              [[ -s nameting-fa-auth-administraties.txt ]] || echo "(geen requests sinds de deploy — ongebruikt)"
+              echo
+              echo "== lijst-requests per minuut per client (max) =="
+              awk -F'\t' '{split($1,t,":"); print t[1]":"t[2], $5}' nameting-fa-lijst.txt | sort | uniq -c | sort -rn | head -5 || true
+              echo "== auth/administraties per minuut per client (max) =="
+              awk -F'\t' '{split($1,t,":"); print t[1]":"t[2]}' nameting-fa-auth-administraties.txt | sort | uniq -c | sort -rn | head -5 || true
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_fa)" >> "$UIT"
+            MAXL="$(awk -F'\t' '{split($1,t,":"); print t[1]":"t[2]}' nameting-fa-lijst.txt | sort | uniq -c | sort -rn | head -1 | awk '{print $1}')"
+            MAXA="$(awk -F'\t' '{split($1,t,":"); print t[1]":"t[2]}' nameting-fa-auth-administraties.txt | sort | uniq -c | sort -rn | head -1 | awk '{print $1}')"
+            if [[ "${MAXL:-0}" -gt 20 || "${MAXA:-0}" -gt 3 ]]; then ST="ROOD"; elif [[ -s nameting-fa-lijst.txt ]]; then ST="GROEN"; else ST="NIET GEMETEN"; fi
+            echo "Oordeel: $ST — lijst-requests/min max ${MAXL:-0}, auth/administraties/min max ${MAXA:-0} — exit $rc_fa" >> "$UIT"
+            echo "STATUS tabwissel: rapport in $UIT (exit $rc_fa = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "lijst-alles" ]]; then
+            # Feedbackrun A 25-09 (BESLISSINGEN "DOCUMENTENLIJST — OPEN (N) EN EEN ÉCHTE ALLES (N) MÉT SERVER-SIDE ZOEKEN (Peter 25-09)"): lees-only meetrecept.
+            UIT="verkenning/nameting-lijst-alles-$DATUM.txt"
+            rc_fa=0
+            SINDS_FA="${SINDS_FEEDBACKRUN_A:-2026-09-25T18:00:00Z}"
+            {
+              echo "== request-log alles sinds $SINDS_FA =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestUrl:"groep=alles" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-fa-alles.txt || rc_fa=$?
+              cat nameting-fa-alles.txt
+              [[ -s nameting-fa-alles.txt ]] || echo "(geen requests sinds de deploy — ongebruikt)"
+              echo
+              echo "== db-lezen documenten-open --administratie Universal Steigerbouw (referentie voor de tellers) =="
+              scripts/gcp/nameting.sh db-lezen documenten-open --administratie "Universal Steigerbouw" 2> nameting-fa.stderr || { rc_fa=$?; echo "(nameting.sh exit $rc_fa — stderr:)"; cat nameting-fa.stderr; }
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_fa)" >> "$UIT"
+            N="$(awk -F'\t' '$3 == "200"' nameting-fa-alles.txt | wc -l | tr -d ' ')"
+            Q="$(grep -c "q=" nameting-fa-alles.txt || true)"
+            X="$(awk -F'\t' '$3 ~ /^5/' nameting-fa-alles.txt | wc -l | tr -d ' ')"
+            if [[ "$X" -ge 1 ]]; then ST="ROOD"; elif [[ "$N" -ge 1 ]]; then ST="GROEN"; else ST="NIET GEMETEN (ongebruikt)"; fi
+            echo "Oordeel: $ST — lijst-alles: $N × groep=alles 200 (waarvan $Q mét zoekterm), $X × 5xx — exit $rc_fa" >> "$UIT"
+            echo "STATUS lijst-alles: rapport in $UIT (exit $rc_fa = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "comfort-controlescherm" ]]; then
+            # Feedbackrun A 25-09 (BESLISSINGEN "COMFORT CONTROLESCHERM — BIJLAGEVERWIJZING, KOP → REGELS, REKENEN IN BEDRAGVELDEN, SPLITTER, VERDELEN-KNOP, PERIODE VAN–TOT (Peter 25-09)"): lees-only meetrecept.
+            UIT="verkenning/nameting-comfort-controlescherm-$DATUM.txt"
+            rc_fa=0
+            SINDS_FA="${SINDS_FEEDBACKRUN_A:-2026-09-25T18:00:00Z}"
+            {
+              echo "== request-log put-bv sinds $SINDS_FA =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="PUT" httpRequest.requestUrl:"/boekvoorstel" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-fa-put-bv.txt || rc_fa=$?
+              cat nameting-fa-put-bv.txt
+              [[ -s nameting-fa-put-bv.txt ]] || echo "(geen requests sinds de deploy — ongebruikt)"
+              echo
+              echo "== request-log pv sinds $SINDS_FA =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="GET" httpRequest.requestUrl:"/projectverdeling" timestamp>="'"$SINDS_FA"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-fa-pv.txt || rc_fa=$?
+              cat nameting-fa-pv.txt
+              [[ -s nameting-fa-pv.txt ]] || echo "(geen requests sinds de deploy — ongebruikt)"
+              echo
+              echo "== db-lezen document-feiten --administratie Universal Steigerbouw (tijdlijn: detail.kop_doorgezet / periode) =="
+              scripts/gcp/nameting.sh db-lezen document-feiten --administratie "Universal Steigerbouw" --max-rijen 20 2> nameting-fa.stderr || { rc_fa=$?; echo "(nameting.sh exit $rc_fa — stderr:)"; cat nameting-fa.stderr; }
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_fa)" >> "$UIT"
+            N="$(awk -F'\t' '$3 == "200"' nameting-fa-put-bv.txt | wc -l | tr -d ' ')"
+            M="$(grep -c "kop_doorgezet" "$UIT" || true)"
+            K="$(awk -F'\t' '$3 == "200"' nameting-fa-pv.txt | wc -l | tr -d ' ')"
+            echo "Oordeel: comfort-controlescherm: PUT boekvoorstel 200 = $N, tijdlijnregels kop_doorgezet = $M, GET projectverdeling 200 = $K ($([[ "$N" -ge 1 && "$M" -ge 1 ]] && echo ja || echo "niet gemeten (ongebruikt)")) — exit $rc_fa" >> "$UIT"
+            echo "STATUS comfort-controlescherm: rapport in $UIT (exit $rc_fa = uitkomst)"
           fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only

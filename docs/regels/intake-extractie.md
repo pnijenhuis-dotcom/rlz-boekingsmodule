@@ -216,6 +216,31 @@
   `tests/intake/test_tweelingen_herstel.py`, gouden-set-casus b `TestVastlySuffixStam`, vitest `BundelenActie.test.tsx`.
   Werkt in productie: niet gemeten (dispatch-onderdeel `vastly-tweelingen`).
 
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 1 (FV-01) -->
+- **UBL zonder beeld = samenvattingskaart, onleesbare XML = handmatig afmaken mét reden (Peter 25-09; FV-01, casus Universal
+  Nederland RLZ-2080142898 → Universal Steigerbouw, document 250895e8; geen migratie; BESLISSINGEN "UBL ZONDER BEELD —
+  SAMENVATTINGSKAART I.P.V. RUWE XML, ONLEESBARE XML = HANDMATIG AFMAKEN MÉT REDEN (Peter 25-09)"):** (1) **Vaststelling:** de UBL van
+  02-09 was deterministisch geparst (referentie, 775,26 / 938,06, 1 regel) maar kwam zónder haar PDF binnen (PDF → splitsingsvoorstel,
+  UBL → verzamelbak → handmatig toegewezen; `bron_bestandsnaam` leeg) en het bijlage-paneel toonde voor een XML-hoofdbestand zonder
+  beeld (`beeld.py` stap 3) de RUWE XML — dat was "het blok code". (2) **Parser** (`documenten/ubl.py`): `GeenGeldigeUbl` draagt altijd
+  een leesbare reden — vóór het parsen gzip/zip/PDF-met-xml-naam/leeg (`_herken_geen_xml`), daarna "Geen geldige XML: …" of "root-element
+  <X> is geen UBL Invoice of CreditNote" (root op de LOKALE naam: RLZ `doc:`-prefix én exporteurs zonder default-namespace lezen; BOM/UTF-16
+  las expat al); `ubl_onvolledig_reden` = geen factuurnummer/totaal/regels ("UBL onvolledig — ontbreekt: …"); `cbc:Note` "Werk: …" →
+  `note` + kop-`project_tekst` (tekst ná "Werk:", deterministisch via `project_tekst_uit_note`; de bestaande match-motor maakt er
+  exacte code 26084 = groen van — casus a prefillt sindsdien het project uit de UBL). (3) **Extractie-afronding** (`service._rond_
+  extractie_af`): een niet-parsebare óf onvolledige XML gaat naar HANDMATIG_AFMAKEN mét detail `ubl_parse_fout` (kop-voorstel blijft
+  bewaard bij onvolledig) en tijdlijnregel "XML niet leesbaar — handmatig afmaken: ‹reden›" (was: te_controleren zonder voorstel). Het
+  intake-pad blijft: onleesbare UBL → verzamelbak `ubl_invalide` (§2d-failsafe). (4) **Route** `GET /administraties/{id}/documenten/{doc}/
+  ubl-samenvatting` (`documenten/ubl_samenvatting.py`, kantoor + accordeur, scope, lees-only, geen AI): 200 mét kop, partijen, totalen,
+  KvK/btw/IBAN, betalingskenmerk, note/project_tekst, regels (aantal/netto/btw%/btw-bedrag) en `onvolledig`; niet leesbaar = 200
+  `leesbaar=false` + dezelfde reden als de tijdlijn; geen XML-hoofdbestand = 422. (5) **Nazorg lees-only** `xml-documenten-rapport
+  [--administratie <uuid|naamdeel>] [--alles] [--detail] [--json-uit]` (`documenten/xml_rapport.py`; per administratie in eigen RLS-scope):
+  status, beeld (bron_pdf/ingesloten_pdf/geen), reden, PDF-tweeling in hetzelfde intake-bericht (administratie + verzamelbak), voorstel
+  (`verzamelbak-nabundelen --ook-toegewezen` / `intake-herlezen --alleen-ubl`), oordeelregel "TOTAAL N xml-documenten · M zonder beeld ·
+  K niet leesbaar · T mét PDF-tweeling · fouten F"; nameting-allowlist, dispatch-onderdeel `xml-documenten`. Guards
+  `tests/documenten/test_ubl_rlz_export.py`, `test_xml_niet_leesbaar.py`, gouden-set-casus **a2** `tests/keten/test_a2_ubl_zonder_beeld.py`.
+  Werkt in productie: niet gemeten (klikpunt: 250895e8 openen ná deploy → kaart; PDF-tweeling koppelen via nabundelen).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verzamelbak "Niet toegewezen" (preview, optimistisch toewijzen, verplaatsen, documentenlijst) (CLAUDE.md `ed6d176` r. 494–528)

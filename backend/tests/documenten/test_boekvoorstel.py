@@ -363,6 +363,7 @@ class TestVoerChecksUit:
             "IBAN-wissel",
             "Duplicaatcheck",
             "Duplicaat (module)",  # blok 1 07-09: eigen-DB-check draait óók in de storings-tak (geen RLZ nodig)
+            "Factuurdatum valt in een ingediende aangifteperiode",  # blok 4 feedbackrun A 25-09: oranje "niet getoetst" in de storings-tak
         ]
         (
             verplichte_velden,
@@ -376,7 +377,9 @@ class TestVoerChecksUit:
             iban_wissel,
             duplicaatcheck,
             duplicaat_module,
+            aangifte,
         ) = rapport.resultaten
+        assert aangifte.ok and aangifte.signaal  # storings-tak: oranje "niet getoetst", nooit een blokkade (blok 4 25-09)
         assert duplicaat_module.ok  # geen tegenhanger in de eigen database
         assert afdeling.ok  # toggle uit = check zwijgt (blok A 28-08)
         assert betaalstatus.ok  # losse upload = geen declaratie: niet van toepassing (blok 3 bundel 08-09)

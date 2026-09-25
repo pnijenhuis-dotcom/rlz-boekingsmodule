@@ -192,12 +192,15 @@ def test_document_detail_bevat_tijdlijn_en_veldvoorstel(
     resp = client.get(f"/administraties/{administratie_id}/documenten/{document_id}", headers=headers)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["status"] == "te_controleren"
+    # Feedbackrun A 25-09 blok 1 (FV-01): deze minimale UBL draagt geen regels/datum → "UBL onvolledig" =
+    # handmatig_afmaken mét reden (nooit een leeg voorstel zonder uitleg); het kop-voorstel blijft bewaard.
+    assert body["status"] == "handmatig_afmaken"
     assert body["veldvoorstel"]["factuurnummer"] == "F-1"
     naar_statussen = [g["naar_status"] for g in body["tijdlijn"]]
-    # Blok 3 herstelrun 08-09: de UBL-kop wordt bij intake gepersisteerd — één extra tijdlijnregel (autosave-notitie,
-    # status blijft te_controleren).
-    assert naar_statussen == ["ontvangen", "extractie_bezig", "te_controleren", "te_controleren"]
+    assert naar_statussen[:3] == ["ontvangen", "extractie_bezig", "handmatig_afmaken"]
+    assert set(naar_statussen[3:]) <= {"handmatig_afmaken"}
+    laatste_extractie = next(g for g in body["tijdlijn"] if g["naar_status"] == "handmatig_afmaken")
+    assert "ubl_parse_fout" in (laatste_extractie.get("detail") or {})
 
 
 def test_document_detail_onbekend_document_geeft_404(

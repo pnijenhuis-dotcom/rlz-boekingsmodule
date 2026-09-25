@@ -291,6 +291,51 @@
   rapporten 18-09 en 19-09 is hiermee GESLOTEN: nee. De € 1.239,05 op de twee "Afgesloten"-projecten (beslispunt 1, 19-09) blijft een
   apart klikpunt (eerst de 8 actieve "Afgesloten"-projecten afsluiten via Projecten › Afsluiten?).
 
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 3 -->
+- **Project-bronvolgorde — factuur en cachecode vóór het geheugen, geheugen altijd zichtbaar (Peter 25-09, feedbackrun A blok 3 / FV-02
+  in aangepaste vorm; geen migratie; BESLISSINGEN "PROJECT-BRONVOLGORDE — FACTUUR EN CACHECODE VÓÓR HET GEHEUGEN, GEHEUGEN ALTIJD
+  ZICHTBAAR (Peter 25-09)"):** het leverancier-geheugen blijft (auto-first, autoboeken) maar is voor het PROJECT de LAATSTE bron en nooit
+  stil. Volgorde per regel (`regel_prefill.verrijk_prefill`): (1) projectreferentie/werknummer op de factuur — bestaand blok 10
+  (`match.bepaal_project_uit_factuur`: exacte code groen > bevestigde werknummer-mapping groen > onbevestigd/fuzzy oranje); (2) klant-loze
+  projectcode-herkenning op het FORMAAT van de administratie: `match.ProjectcodeFormaat.uit_kandidaten` leidt uit de projectcache de
+  nummerlengtes en de tweecijferige jaarvoorvoegsels van de bestaande codes af (Universal: 3-cijferig en JJnnn mét JJ = 25/26 — nooit
+  hardcoded, nooit vrije tekst; een administratie zonder cijfer-prefixen heeft een leeg formaat en slaat de stap over), `nummers_in` leest
+  cijfer-tokens (3–6 cijfers, niet als deel van een bedrag/datum) uit `proj`-tekst, regelomschrijving en UBL-`cbc:Note` (sinds 25-09 als
+  `note` in het UBL-veldvoorstel; `_ubl_project_tekst` valt erop terug), `bepaal_project_uit_tekst`: precies één project mét die
+  cijfer-prefix (`nummer.cijfer_prefix`) → `project_bron = factuur` (groen); meerdere nummers/projecten → `factuur_meerduidig` (niets
+  invullen, chip + keuze); (3) geheugen — alleen als (1)/(2) niets gaven én de regel nog geen `project_bron` draagt: gevuld mét
+  `prefill_herkomst.project = leverancier_geheugen` én `project_bron = geheugen` (chip "voorstel uit historie", oranje-informatief; weg
+  zodra de mens het veld aanraakt). **Conflict:** noemt de factuur een nummer in het formaat dat niet de code van het geheugen-project is
+  (`match.factuur_noemt_ander_project`), dan wordt NIETS ingevuld: `project_bron = factuur_conflict` mét detail "Factuur noemt ‹nr› — …
+  kies zelf" (chip "factuur noemt een ander project — kies zelf", alleen zolang het veld leeg is); bij projectplicht blijft de harde check
+  "Verplichte velden" de poort. **Afgesloten/inactief:** nooit voorstellen tenzij de factuur er exact naar verwijst — stap 2 kent daarvoor
+  óók de inactieve projecten (`laad_projectkandidaten(…, inclusief_inactief=True)`; het oranje signaal `check_project_afgesloten` blijft
+  de waarschuwing), werknummer/fuzzy/geheugen alleen actieve; wijst alleen de historie naar een inactief project → niets,
+  `project_bron = geheugen_afgesloten`. Geen bron + geen geheugen + projectplicht = leeg (check rood, bestaand). **Autoboek-pad**
+  (`autoboeken.probeer_autoboeken_na_extractie`): de conflict-toets loopt per regel VÓÓR de geheugen-poort → weiger-reden "factuur noemt
+  projectnummer ‹nr› — niet het geheugen-project; mens kiest het project" (audit `autoboeken_geweigerd`); een geheugen-project zonder
+  conflict boekt zoals vóór 25-09 (opt-in per leverancier, alle harde checks). Frontend: `ProjectBron` + `geheugen` en `factuur_conflict`
+  (`regelVoorstelChips.bepaalProjectFactuurChip`, bestaande chip-plek in de projectkolom; de generieke GeheugenChipBlok zwijgt dan).
+  Meetlat: bibliotheekquery `project-prefill-herkomst` (per administratie, optioneel `project_bron`) — herkomst `leverancier_geheugen`
+  zónder `project_bron` mag ná de deploy niet meer voorkomen; dispatch-onderdeel `project-bronvolgorde`. Guards
+  `tests/documenten/test_project_bronvolgorde.py`, `test_project_uit_factuur.py` (inactief-regel herschreven), gouden-set-casus i
+  `TestBronvolgordeProject`, keten-export casus a (RLZ-UBL: project 26084 uit `cbc:Note`), vitest `regelVoorstelChips.test.ts`.
+  Werkt in productie: niet gemeten.
+
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 9 (FV-12) -->
+- **Knop "Verdelen over projecten" mét de standaard-verdeelsleutel van de administratie (Peter 25-09, FV-12; geen migratie;
+  BESLISSINGEN "COMFORT CONTROLESCHERM — BIJLAGEVERWIJZING, KOP → REGELS, REKENEN IN BEDRAGVELDEN, SPLITTER, VERDELEN-KNOP, PERIODE
+  VAN–TOT (Peter 25-09)"):** naast "+ Regel toevoegen" staat bij projectplicht een `btn secondary` "Verdelen over projecten" (zelfde
+  actie als de tekstknop en de lege-projectkolom-actie van 04-09). Het Projectverdeling-blok opent met de STANDAARDSLEUTEL van de
+  administratie — `app/projectverdeling/service.py::standaard_sleutel`, nooit hardcoded per klant: (1) een expliciete
+  administratie-instelling (bestaat nog niet; de Beheerder-tab kent alleen drempel en wachtweken — zodra die er komt wint die),
+  (2) de meest gebruikte sleutel in de GEBOEKTE verdelingen van de laatste 12 maanden van die administratie (`omzet_maand` |
+  `omzet_jaar` | `vaste_regels`; Universal = omzetsleutel komt zo uit de historie, besluit Peter 21-09), (3) default `omzet_maand`;
+  gelijkspel = omzet_maand > omzet_jaar > vaste_regels. Veld `standaard_sleutel` op de verdeling-DTO; het blok toont "standaard voor
+  deze administratie: …", de standaard staat in het geopende blok als chip en de ~20 methode-opties staan achter de `linkbtn`
+  "Anders…"; de verdeling blijft achteraf aanpasbaar (bestaand). Guard `tests/projectverdeling/test_standaard_sleutel.py`, vitest
+  `ProjectverdelingBlok.test.tsx`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)

@@ -44,8 +44,8 @@ from app.documenten import (
 from app.documenten import (
     betaalstatus as betaalstatus_regels,
 )
-from app.documenten.afbeelding import AFBEELDING_SUFFIXEN, AfbeeldingOnbruikbaar, afbeelding_naar_pdf, is_afbeelding
 from app.documenten import periode as periode_regels
+from app.documenten.afbeelding import AFBEELDING_SUFFIXEN, AfbeeldingOnbruikbaar, afbeelding_naar_pdf, is_afbeelding
 from app.documenten.checks import CheckRapport
 from app.documenten.mime import content_type_voor
 from app.documenten.models import DocumentSoort, DocumentStatus, IbanAccorderingStatus, IbanSoort, VraagStatus

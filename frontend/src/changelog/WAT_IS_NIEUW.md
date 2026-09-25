@@ -6,6 +6,58 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-25 — Negen verbeteringen uit de gebruikersfeedback op de factuurverwerking (Universal)
+
+<!-- feedbackrun-A-factuurverwerking-25-09 -->
+
+### Blok 1 — XML-facturen (UBL) leesbaar in beeld
+
+- **XML-facturen (UBL) zonder PDF worden leesbaar getoond.** Kwam een factuur als XML-bestand binnen zonder bijbehorende PDF, dan zag u in het bijlage-paneel de ruwe XML-code. Nu ziet u daar een overzichtelijke kaart: leverancier, afnemer, factuurnummer, datums, totalen, KvK/btw/IBAN en de factuurregels. De XML-code zelf staat nog achter "XML-bron tonen".
+- **Onleesbare XML wordt gemeld in plaats van leeg gelaten.** Is een XML-bestand geen (volledige) UBL-factuur — bijvoorbeeld gecomprimeerd, beschadigd of een ander documenttype — dan krijgt het document de status "Handmatig afmaken" met een duidelijke reden ("XML niet leesbaar: …") in het scherm én in de tijdlijn.
+- **Projectnummer uit de RLZ-export.** Staat op een UBL van Universal Nederland de regel "Werk: 26084 - …", dan vult de module het project 26084 voor als "uit factuur".
+
+### Blok 2 — Crediteuren in twee schrijfwijzen
+
+- **Crediteuren met dezelfde naam in twee schrijfwijzen** (bijvoorbeeld "Floor Bouwliftenservice" en "Floor bouwliftenservice") staan nu als oranje cluster "gelijkende naam — bevestig" in Inzicht › Crediteuren. U bevestigt zelf welke crediteur de voorkeur krijgt; de module voegt nooit automatisch samen op naam. Na uw bevestiging landt een nieuwe factuur met een afwijkende schrijfwijze op de bevestigde crediteur en telt de boekingshistorie van beide records mee in het voorstel.
+
+### Blok 3 — Project uit de factuur vóór de historie
+
+- **Project op de factuur wint van de historie.** Het projectnummer op de boekingsregel komt voortaan eerst uit de factuur zelf: het werknummer of projectnummer op de factuur (ook een nummer in de regeltekst of in de bijgevoegde e-factuur), in het nummerformaat van uw administratie. Pas als de factuur niets noemt, stelt de module het project uit eerdere boekingen van dezelfde leverancier voor — en dat ziet u dan aan de chip "voorstel uit historie". Noemt de factuur een ánder nummer dan de historie, dan vult de module niets in en vraagt ze u te kiezen ("factuur noemt een ander project — kies zelf"). Afgesloten projecten worden alleen voorgesteld als de factuur er letterlijk naar verwijst. Automatisch boeken gebeurt nooit als factuur en historie elkaar tegenspreken.
+
+### Blok 4 — Factuurdatum in een ingediende btw-aangifte
+
+- **Factuur in een al ingediende btw-periode? Dan zie je dat nu op het controlescherm.** Valt de factuurdatum in een periode waarvan de btw-aangifte al is ingediend, dan staat er een oranje controle "Factuurdatum valt in een ingediende aangifteperiode" met uitleg: Reeleezee verschuift de btw dan naar het eerstvolgende open tijdvak. Boeken blijft gewoon mogelijk (nagekomen facturen komen voor); met de knop "Boeken (btw in volgend tijdvak)" leg je die keuze bewust vast in de tijdlijn. Automatisch boeken doet dit nooit zelf — daar kijkt altijd een mens naar.
+- **Doorbelasten: waarschuwing als één van beide kanten in een ingediende aangifte valt.** Het reviewscherm van de doorbelasting toont een LET OP als de factuurdatum bij de bron-administratie of bij een doelentiteit in een al ingediende btw-periode ligt — beide kanten boeken op hetzelfde tijdvak. Boeken kan gewoon.
+
+### Blok 5 — Crediteur aanmaken en bewerken naast de factuur
+
+- **Nieuwe crediteur aanmaken mét de factuur in beeld.** Het venster "Nieuwe crediteur in Reeleezee" is een zijpaneel geworden: de factuur blijft links leesbaar en scrollbaar terwijl je rechts naam, KvK-nummer, btw-nummer, IBAN en adres controleert. Wat op de factuur (of in de UBL) staat is al ingevuld, met een chip "uit factuur" of "uit UBL" per veld. Zonder IBAN opslaan mag (bijvoorbeeld bij incasso of buitenland) — je krijgt een waarschuwing, geen blokkade.
+- **Crediteur achteraf aanpassen vanuit het controlescherm.** Onder de gekozen crediteur staat nu "Gegevens bewerken…": naam, adres, KvK- en btw-nummer pas je in hetzelfde zijpaneel aan; Reeleezee wordt meteen bijgewerkt en de wijziging staat in de tijdlijn. Een rekeningnummer toevoegen of wijzigen loopt bewust via de bestaande IBAN-route (vier ogen), nooit als los invulveld.
+
+### Blok 6 — Btw rekent mee bij een nettowijziging
+
+- Het btw-bedrag op een boekingsregel rekent nu ook mee als je het nettobedrag wijzigt — niet alleen bij een ander btw-tarief. Dat geldt ook voor regels die al ingevuld waren en voor de samengevoegde regel.
+- Heb je het btw-bedrag zelf getypt, dan blijft dat staan zolang het nettobedrag gelijk blijft; wijzig je daarna het netto, dan wordt de btw opnieuw berekend en zie je de chip "btw herrekend (netto gewijzigd)" plus een regel in de tijdlijn.
+- Staat er nog geen btw-code op de regel, dan laat de module het btw-bedrag met rust en zegt de chip "tarief onbekend — btw niet herrekend".
+
+### Blok 7 — Wisselen van tabblad op een grote lijst
+
+- Wisselen tussen "Te controleren" en "Klaar om te boeken" op een grote documentenlijst is lichter geworden: het scherm haalt bij zo'n wissel niets meer op van de server, en zolang een document nog verwerkt of geboekt wordt, ververst de lijst rustig elke 3 seconden zonder zichzelf steeds opnieuw te tekenen als er niets veranderd is. Een verouderd antwoord van de server kan een nieuwere lijst niet meer overschrijven.
+
+### Blok 8 — Open, Alles en zoeken over alles
+
+- Op de klantpagina heet het filter "Alle" nu "Open": dat is het werk dat het kantoor zelf kan oppakken. Daarnaast staat een echte knop "Alles" die álle documenten van de klant toont — ook wat bij anderen wacht, wat al geboekt is en wat is afgehandeld — per 200 rijen met bladerknoppen en op elke rij de status.
+- Zoeken op de klantpagina zoekt voortaan door alle documenten heen, ongeacht status: een factuur die bij de klant ter accordering ligt of al geboekt is, vindt u nu gewoon op leverancier, factuurnummer, bedrag of bestandsnaam. Geen treffer? Dan zegt het scherm dat er over alle statussen is gezocht.
+
+### Blok 9 — Kleine verbeteringen in het controlescherm
+
+- Een verwijzing naar een bijlage in de omschrijving ("huur juli conform bijgevoegd overzicht") wordt automatisch weggelaten; u ziet dan het label "ingekort". Uw eigen tekst wordt nooit aangepast.
+- Boven de boekingsregels kunt u nu in één keer een project en een btw-code voor álle regels kiezen; per regel kunt u daarna nog afwijken. De tijdlijn laat zien wat er is doorgezet.
+- In bedragvelden kunt u rekenen: typ bijvoorbeeld `20+30` of `1.250,50*2` en het veld rekent het uit zodra u eruit gaat (ook `-`, `/` en haakjes). Naast het veld blijft staan waar het bedrag vandaan komt.
+- Het boekingsformulier is standaard breder dan het factuurbeeld en de scheiding sleept soepeler; uw eigen ingestelde breedte blijft onthouden. Het scherm scrolt niet meer horizontaal.
+- De knop "Verdelen over projecten" staat nu bij de boekingsregels en kiest meteen de verdeelmethode die deze administratie gewoonlijk gebruikt; via "Anders…" kiest u een andere.
+- De periode van een factuur staat nu als "van … tot …" (bijvoorbeeld "1 jul – 31 jul 2026") naast de weeknummers; staat er geen periode op de factuur, dan ziet u duidelijk dat de week van de factuurdatum een aanname is.
+
 ## 2026-09-24 — Doorbelasting: btw exact zoals Reeleezee rekent, factuur-PDF weer op de spiegel
 
 <!-- doorbelasting-btw-rlz-vorm-24-09 -->

@@ -246,6 +246,130 @@
   `tests/keten/test_lijst_standaard_en_wachten.py::TestDocumentlinkVolgtDeSoort` (de Floor-vraag draagt `document_soort`, de spiegel
   kiest het pad). Werkt in productie: niet gemeten (meetrecept in het rapport `2026-09-24-bundelrun-zeven-punten.md`).
 
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 3 -->
+- **Controlescherm — projectveld volgt de bronvolgorde factuur > cachecode > historie (Peter 25-09, FV-02):** het projectveld draagt
+  sinds 25-09 altijd zijn herkomst als chip: "uit factuur" (groen), "uit factuur, nog niet bevestigd" (oranje), "voorstel uit historie"
+  (oranje, geheugen als laatste bron — nooit meer stil gevuld), "factuur noemt een ander project — kies zelf" (oranje, leeg: conflict tussen
+  factuur en historie) of "factuur noemt een project — meerdere passen, kies"; volledige tekst en motor in
+  `docs/regels/verplichtingen-projecten-voorraad.md` alinea "Project-bronvolgorde (Peter 25-09)".
+
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 5 -->
+- **Crediteur-zijpaneel + bewerken vanuit het controlescherm (Peter 25-09; gebruikersfeedback Universal FV-14 "crediteur aanmaken
+  zonder zicht op de factuur" + FV-15 "crediteur achteraf aanpassen"; geen migratie; BESLISSINGEN "CREDITEUR AANMAKEN ALS ZIJPANEEL
+  NAAST DE FACTUUR + CREDITEUR BEWERKEN (Peter 25-09)"):** (1) "+ Nieuwe crediteur in RLZ" is geen modale dialoog meer maar het
+  niet-modale zijpaneel `ui/basis/Zijpaneel` (`document/CrediteurPaneel.tsx`; aside rechts, `role=dialog` `aria-modal=false`, geen
+  overlay/scroll-lock/focus-trap, Escape/✕ sluit, focus terug naar de opener) — de factuur links blijft leesbaar en scrollbaar. Velden
+  naam · KvK · btw-nummer · IBAN · adres (straat/postcode/plaats/land als vrije velden, voorgevuld uit het UBL-adres `leverancier_adres`,
+  anders leeg — géén nieuw AI-veld), chips "uit factuur"/"uit UBL" per veld; opslaan = de bestaande Vendor-PUT (`POST …/crediteuren`, nu
+  mét `adres`). Ontbrekend IBAN = waarschuwing "geen IBAN vastgelegd — incasso of buitenland? … via de IBAN-route (vier ogen)", nooit
+  een blokkade. (2) Crediteur-kaart draagt bij een gekozen crediteur de `linkbtn` "Gegevens bewerken…" → hetzelfde paneel in bewerk-modus
+  (`GET /administraties/{id}/crediteuren/{vendor_id}`: naam, KvK, btw, adres, vertrouwde IBAN's lees-only, backend) en opslaan via
+  `PUT /administraties/{id}/crediteuren/{vendor_id}` (`sync/service.wijzig_crediteur`: zelfde schrijf-failsafe-poort als aanmaken, RLZ
+  `put_vendor` op het BESTAANDE id, cache-rij bij, audit `crediteur_gewijzigd` oud→nieuw, melding "bijgewerkt in RLZ · let op: …").
+  (3) IBAN's nooit via het bewerk-paneel: de `PUT` kent geen `iban` (422), het paneel toont de vertrouwde set lees-only en "IBAN
+  toevoegen/wijzigen → IBAN-route (vier ogen)" opent de bestaande `IbanAanbiedenVorm` inline onder de crediteur-kaart. (4) Adres naar RLZ
+  is fail-open (`FullAddress` + `City`; 4xx → PUT zonder adres + zichtbare waarschuwing "adres niet door Reeleezee geaccepteerd"; Odoo =
+  waarschuwing "niet naar Odoo geschreven", bewerken op Odoo = 409 "niet ondersteund"). Harnas `harness.html?crediteurpaneel=1` in de
+  overflow-sweep; keten-sweep 11/11 zonder nieuwe baseline. Guards: vitest `CrediteurPaneel.test.tsx`, `BoekvoorstelPanel.ubl.test.tsx`;
+  backend `tests/sync/test_crediteur_bewerken.py`; keten `test_h_bdo_ubl_zonder_ai.py` (UBL-adresregel). Werkt in productie: niet
+  gemeten (dispatch-onderdeel `crediteur-paneel`, meetlat `db-lezen crediteur-mutaties`).
+
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 8 -->
+- **"Open (N)" + een échte "Alles (N)" + server-side zoeken over alles (Peter 25-09, feedbackrun A blok 8 / FV-20 "zoeken onder
+  'alle' doorzoekt alleen te controleren — de Exact-factuur op 'wachten op anderen' is niet vindbaar"; geen migratie; BESLISSINGEN
+  "DOCUMENTENLIJST — "OPEN (N)" EN EEN ÉCHTE "ALLES (N)" MÉT SERVER-SIDE ZOEKEN (Peter 25-09)"):** (1) het kantoorwerk-filter heet
+  "Open (N)" (was "Alle"; semantiek en URL-waarde `alle` ongewijzigd, `status=open` is een synoniem via
+  `lijstContext.normaliseerStatusParam`; regel 1 "de standaardlijst is kantoorwerk, Wachten op anderen apart" blijft). (2) "Alles (N)"
+  = server-side `groep=alles` (`service.GROEP_ALLES`: kantoor ∪ wachten ∪ afgehandeld, élke status, geen toggles), altijd gepagineerd
+  (`limit` default 200 / max 500, `offset`, respons `totaal`/`limit`/`offset`; `tel_documenten` = dezelfde voorwaarden als de lijst),
+  N = `groepen.alles`; élke rij mét `StatusChip`, afgehandeld grijs, paginabalk "Rijen a–b van N · ← Vorige 200 · Volgende 200 →"
+  (`btn secondary`) alleen bij N > 200; de toggle "Toon afgehandelde documenten" is in die weergave verborgen. (3) Een niet-lege
+  zoekterm vanaf binnenkomst, "Open" of "Alles" schakelt de lijst op `groep=alles&q=` (debounce 400 ms; `isAllesWeergave`):
+  `_zoek_voorwaarde` = ILIKE over bestandsnaam, vendor-cache-naam/referentie/totaalbedrag-als-tekst van het opgeslagen boekvoorstel
+  én `leverancier_naam`/`factuurnummer`/`totaal_incl` van het laatste veldvoorstel in de tijdlijn ("938,06" ≡ "938.06"); geen
+  treffer = "Geen documenten gevonden voor … — gezocht over alle statussen", leeg zoekveld = terug naar de gekozen groep; op een
+  expliciet gekozen status-/signaaltab blijft de zoekterm bínnen die tab (duplicaat-bulk "Alle N op deze tab"). (4) Zonder
+  `groep=alles` zijn `q`/`limit`/`offset` inert en het antwoord byte-gelijk; `_STATUSSEN_PER_GROEP` blijft de drie basisgroepen;
+  rolpoort ongewijzigd; doorloop/‹ ›/sortering volgen `status=__alles` als lijstcontext. Guards
+  `tests/documenten/test_lijst_alles_paginering.py`, gouden set `test_lijst_standaard_en_wachten.py::TestAllesEnZoeken`, vitest
+  `DocumentenDeelscherm.alles.test.tsx`, sweep-variant `harness-werkvoorraad.html?alles=1`. Werkt in productie: niet gemeten
+  (dispatch-onderdeel `lijst-alles`: request-log `groep=alles` + `db-lezen documenten-open`).
+
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 1 (FV-01) -->
+- **Bijlage-paneel bij een XML-document — kaart, nooit ruwe XML (Peter 25-09, FV-01; geen migratie; BESLISSINGEN "UBL ZONDER BEELD —
+  SAMENVATTINGSKAART I.P.V. RUWE XML, ONLEESBARE XML = HANDMATIG AFMAKEN MÉT REDEN (Peter 25-09)"):** serveert `/bestand` XML (UBL zonder
+  PDF-beeld), dan rendert `DocumentDetailScreen` de `UblSamenvattingKaart` (`document/UblSamenvattingKaart.tsx`: chip "uit UBL —
+  deterministisch gelezen", kop/partijen/totalen/identiteit/opmerking mét chip "project uit factuur", regeltabel in `.tabel-scroll`) uit
+  `GET …/ubl-samenvatting`; de XML-bron staat uitsluitend achter de `linkbtn` "XML-bron tonen" (inklapbaar, standaard dicht). Niet leesbaar
+  (`leesbaar=false`, of `onvolledig`) = chip "XML niet leesbaar: ‹reden›" in de kaart én — bij status handmatig_afmaken mét tijdlijn-detail
+  `ubl_parse_fout` — dezelfde chip in het paneel "Handmatig afmaken" (`laatsteXmlNietLeesbaar`), zonder "Opnieuw extraheren" (alleen PDF's);
+  het paneel en de tijdlijn spreken elkaar nooit tegen. Harnas-casus `a_ubl_zonder_beeld` (`keten_sweep.sh`, fixture-velden `bijlage_xml` +
+  `ubl_samenvatting`), vitest `UblSamenvattingKaart.test.tsx` + `DocumentDetailScreen.test.tsx` "XML-bijlage".
+
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 7 -->
+- **Tabwissel documentenlijst — gemeten, fetch per wissel en poll-storm weg (Peter 25-09, FV-18 "scherm loopt vast bij wisselen
+  tabblad"; geen migratie; BESLISSINGEN "TABWISSEL DOCUMENTENLIJST — GEMETEN, FETCH PER WISSEL EN POLL-STORM WEG (Peter 25-09)"):**
+  (1) **Meten vóór fixen.** Het werkvoorraad-harnas kent `?docs=N` (N gegenereerde documenten, mix zoals Universal Steigerbouw),
+  `?tabwissel=K` (de pagina wisselt zelf K × te_controleren ↔ klaar_om_te_boeken en meet klik → gerenderd), `?latency=ms`, `?poll=1`
+  (rijen in extractie_wachtrij/wordt_geboekt → de 3-s-poll actief) en `?strict=0`; `frontend/scripts/tabwissel_meting.mjs` drijft
+  headless Chrome via CDP mét de échte klok (het overflow-sweep-recept `--virtual-time-budget` is hier onbruikbaar: onder virtuele
+  tijd staat `performance.now()` stil tijdens een lange taak). `scripts/tabwissel_meting.sh` = de standaardset (400/2000 documenten,
+  latency 300; grens 500/2000 ms per wissel, 0 open fetches, 0 paginafouten). Vóór de fix: 400 rijen max 298 ms/gem 85 ms per wissel,
+  2000 rijen max 638/gem 429; 0 lijst-requests per wissel — een tabwissel is client-side. (2) **Wat wél gevonden is:** (a) mét
+  klant-accordering aan deed `DocumentenBulkBalk` per tabwissel een `GET /auth/administraties` (mount per wissel; productie tot
+  14/min per client) → de balk krijgt de lijst nu van het ouder (`useAdministraties(voorgeladen)`), een tabwissel start NOOIT een
+  server-request; (b) de 3-s-poll hing aan `documenten`: élk antwoord herstartte de timer (productie-log 24-09 12:04–12:14: tien
+  lijst-requests op rij, 4,1–5,7 s uiteen = 3 s + latency 1,1–2,6 s), tikken stapelden bij een trage server en élk antwoord verving
+  de hele lijst (volledige re-render, 95–333 ms per poll bij 400–2000 rijen) → nu een vaste 3-s-tik op een boolean, overslaan zolang
+  een request loopt, byte-gelijk antwoord = géén state-update; (c) geen abort: `laadDocumenten` en de vier zij-fetches lopen op een
+  `AbortController` (ref; nieuwere lading breekt de oudere af — een trage oudere request overschrijft nooit een nieuwere stand;
+  wissel/unmount breekt af; de client-timeout blijft via `maakAfbreker`); (d) `sortering` gememoïseerd op de string-param en tellers
+  per status in één `Map` (geen dubbele filter + sort per wissel). Productiefeiten (lees-only): lijstroute Universal Steigerbouw p50
+  1,56 s / p95 2,51 s (n = 59, 24–25-09), 219 open documenten. (3) **Niet gedaan (beslispunt):** rij-memoïsatie/virtualisatie —
+  de kale renderkost per wissel is lineair in het aantal rijen (zonder StrictMode ~65 ms bij 130, ~270 ms bij 640 rijen, dev-build)
+  en de rij-JSX wordt door blok 8 geraakt; de lijstroute-latency zelf. Guards: vitest `DocumentenDeelscherm.tabwissel.test.tsx`
+  (rood op de code van vóór 25-09), `WerkvoorraadScreen.test.tsx` ongewijzigd groen, overflow-sweep werkvoorraad 48/48. Werkt in
+  productie: niet gemeten (dispatch-onderdeel `tabwissel`: lijst-requests per minuut per client, `/auth/administraties` per
+  minuut per client, cadans 3,0–3,3 s bij een actieve poll).
+
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 9 -->
+- **Comfort controlescherm 25-09 — bijlageverwijzing, kop → regels, rekenen in bedragvelden, splitter, periode van–tot (Peter 25-09;
+  gebruikersfeedback Universal FV-05/07/08/10/11/13; geen migratie; BESLISSINGEN "COMFORT CONTROLESCHERM — BIJLAGEVERWIJZING, KOP →
+  REGELS, REKENEN IN BEDRAGVELDEN, SPLITTER, VERDELEN-KNOP, PERIODE VAN–TOT (Peter 25-09)"):** (1) **Bijlageverwijzing gestript (FV-05).**
+  `kop_omschrijving.strip_bijlageverwijzingen` haalt een verwijzing naar een bijlage ("conform bijgevoegd overzicht", "zie bijlage(n)",
+  "volgens bijlage 2", "cfm. overzicht", "zie bijgevoegde specificatie voor details", "conform onderliggende specificatie", …;
+  deterministische lijst, hoofdletterongevoelig) uitsluitend van de STAART van de automatische kop-omschrijving (regel- en
+  betreft-bron); een tekst die alleen zo'n verwijzing is wordt leeg → volgende bron; midden in een zin wordt nooit geknipt ("zie
+  bijlage voor de huur van juli" blijft); een handmatige omschrijving wordt nooit geraakt; nooit inhoud verzonnen.
+  `KopOmschrijving.ingekort` → `omschrijving_ingekort` op de boekvoorstel-response → chip "ingekort" naast de herkomst-chip. (2)
+  **Kop → regels (FV-07).** Bij ≥ 2 boekingsregels staan boven de tabel "Project voor alle regels" (alleen bij projectplicht) en
+  "Btw-code voor alle regels"; een keuze wordt per regel doorgezet via dezelfde regelwijziging als een handmatige keuze (de
+  18-09-regel "btw volgt het tarief" herrekent per regel), per regel daarna overschrijfbaar; de eerstvolgende PUT draagt
+  `kop_doorgezet {project|btw: n, project_naam|btw_code}` en de server schrijft één tijdlijnregel "Kop → regels: project ‹naam› op N
+  regels · btw ‹code› op N regels" (`DocumentGebeurtenis.detail.kop_doorgezet`, nooit op een autosave, nooit zonder aantal). (3)
+  **Rekenen in bedragvelden (FV-08).** Netto/bruto- en btw-velden accepteren een rekenexpressie (`20+30`, `1.250,50*2`, `100/3`,
+  `(10+5)*2`, `+ - * /`, haakjes, unaire min; komma = decimaal, punten dan duizendtallen; `×`/`÷`/`:` als synoniem), bij blur/Enter
+  deterministisch uitgerekend door de eigen parser `document/bedragExpressie.ts` (shunting-yard, geen `eval`/`Function`; + en − in
+  centen-integers, × en ÷ exact, eindresultaat ROUND_HALF_UP 2 decimalen); het veld toont het resultaat mét chip "= 20+30" tot de
+  volgende wijziging; een kaal getal blijft ongewijzigd; tussentijds wordt een expressie nooit weggeschreven; ongeldig (lege
+  operand, deling door 0, twee getallen zonder operator) = niets uitgerekend, terug op de laatst opgeslagen waarde. (4) **Geen
+  horizontale overflow + formulier standaard breder + soepel slepen (FV-10/11).** Het controlescherm-harnas is op
+  1440/1385/1280/1170/1024/768 (licht/donker, mét/zonder projectplicht) zonder pagina-overflow — de regeltabel scrolt intern in
+  `.tabel-scroll` (kolomminima 27-08 ongewijzigd). De splitter-default is 42 % factuurbeeld / 58 % formulier (`ReviewSplitter.
+  STANDAARD_PCT`, `.docpane` fallback); een bewaarde voorkeur per gebruiker (`localStorage rlz.controle.docpaneBreedtePct`) wint
+  altijd; slepen = `setPointerCapture` op de grens, geen tekstselectie en `col-resize`-cursor op de pagina tijdens het slepen,
+  rAF-throttling, breedte op 0,1 % afgerond; het verkoopscherm houdt zijn eigen 35 %. (5) **Periode "van … tot …" (FV-13).** Het
+  enige periode-element op een scherm is het kopveld "Periode (weken)" op het controlescherm. De terugval zonder gelezen periode
+  (ISO-week van de factuurdatum) heet letterlijk "week van de factuurdatum (aanname)" en draagt géén bereik; een periode uit de
+  factuur draagt `datum_van`/`datum_tot` op `BoekvoorstelPeriodeDto` (exacte datums als de factuur die noemt — bij een opgeslagen
+  periode opnieuw uit de bewaarde `periode_tekst` herleid zolang de weken kloppen —, anders maandag t/m zondag van het weekbereik;
+  `periode.datumbereik`) → chip "1 jul – 31 jul 2026 (wk 27–31 · 2026) · uit factuur". De weeklogica en de kolommen van 0120 zijn
+  ongewijzigd; er wordt niets extra gepersisteerd. Guards: `tests/documenten/test_kop_omschrijving_bijlage.py`, `test_kop_doorgezet.py`,
+  `test_periode_datumbereik.py`, keten-casus c (Spot Services), vitest `bedragExpressie.test.ts`, `BedragModusInput.test.tsx`,
+  `ReviewSplitter.test.tsx`, `BoekvoorstelPanel.kopDoorzetten.test.tsx`, `BoekvoorstelPanel.periode.test.tsx`,
+  `kopDoorgezetTijdlijn.test.ts`; keten-baselines van de detail-casussen ververst (gewilde UI-wijziging). Werkt in productie: niet
+  gemeten (dispatch-onderdeel `comfort-controlescherm`).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Na boeken direct door, lijstcontext, sneltoetsen, actiebalk, boekingsregels-kolommen (CLAUDE.md `ed6d176` r. 271–294)

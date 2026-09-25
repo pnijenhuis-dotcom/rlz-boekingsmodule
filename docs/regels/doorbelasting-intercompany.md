@@ -106,6 +106,18 @@
   `2026-09-25-nameting-doorbelasting-btw-rlz-vorm-na-deploy.md`). Lees-only instrument `doorbelasting-factuur-pdf-toets` (blok 4) blijft
   bestaan als telling per klasse.
 
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 4 -->
+- **LET-OP in de doorbelastingspreview bij een ingediende aangifteperiode (Peter 25-09; FV-16 aangepaste vorm; geen migratie;
+  BESLISSINGEN "FACTUURDATUM IN EEN INGEDIENDE AANGIFTEPERIODE — ORANJE CHECK, GEEN BLOKKADE (Peter 25-09)"):** beide kanten van een
+  doorbelasting boeken op dezelfde `BookDate` (factuurdatum van het bron-document). `GET /doorbelasting/{aid}/documenten/{did}/
+  aangifte-letop` (`doorbelasting/boeken.py::aangifte_letop_voor_document`, lees-only, hergebruik `AangiftePoort` per client — patroon
+  `storno_toets_voor_document`) toetst de factuurdatum aan de bron-kant én bij élke onboarded doelentiteit; valt één kant in een
+  ingediende btw-aangifte, dan toont het reviewscherm de LET-OP-banner "beide kanten zelfde tijdvak — ‹kant› valt in ingediende
+  aangifte ‹periode›; RLZ verschuift de btw naar het eerstvolgende open tijdvak" (`data-testid="aangifte-letop"`). Geen credential of
+  onleesbare aangifte-status = zichtbare kant "niet toetsbaar" (nooit een 500, nooit stil); NOOIT blokkerend — de boekknop blijft
+  bruikbaar. Guards `tests/doorbelasting/test_preview_aangifte_letop.py` (IC-paar: één kant ingediend = LET-OP; beide open = niets;
+  geen credential doel = zichtbaar), vitest `DoorbelastingReviewScreen.test.tsx`. Werkt in productie: niet gemeten.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kempen-doorbelasting (motor, spiegel, storno-blokkade, tegenboek-pad, factuur-PDF, projecten) (CLAUDE.md `ed6d176` r. 829–936)

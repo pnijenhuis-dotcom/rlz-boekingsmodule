@@ -20,9 +20,8 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten import aangifteperiode
+from app.documenten import aangifteperiode, checks_extern, leverancier_iban, regelsom, veldvoorstel_regels
 from app.documenten import betaalstatus as betaalstatus_regels
-from app.documenten import checks_extern, leverancier_iban, regelsom, veldvoorstel_regels
 from app.documenten import kop_omschrijving as kop_omschrijving_regels
 from app.documenten import periode as periode_regels
 from app.documenten.checks import (

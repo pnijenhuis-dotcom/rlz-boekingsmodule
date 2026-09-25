@@ -39,6 +39,17 @@ def normaliseer_crediteurnaam(naam: str | None) -> str:
     return _NIET_ALFANUMERIEK.sub("", zonder_rechtsvorm)
 
 
+def normaliseer_crediteurnaam_woorden(naam: str | None) -> str:
+    """Zelfde regels, maar mét enkele spaties tussen de woorden ("bouwmaat nederland") — voor een tekst-ZOEKING op
+    woordgrenzen (template-terugval `herken_crediteur`: de naam moet als los woordblok in de tekstlaag staan; zonder
+    spaties zou "andere" midden in een ander woord treffen)."""
+    if not naam:
+        return ""
+    laag = _zonder_diakrieten(str(naam)).casefold()
+    zonder_rechtsvorm = _RECHTSVORM.sub(" ", laag)
+    return " ".join(_NIET_ALFANUMERIEK.sub(" ", zonder_rechtsvorm).split())
+
+
 def zelfde_crediteurnaam(a: str | None, b: str | None) -> bool:
     """True als beide namen dezelfde (niet-lege) genormaliseerde sleutel dragen."""
     sa, sb = normaliseer_crediteurnaam(a), normaliseer_crediteurnaam(b)

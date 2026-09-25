@@ -280,6 +280,56 @@
   de data-stap: 0 administraties (ARVUM/Rubicon true) — het detector-aanwezig-pad heeft in productie geen casus meer (bewust: geen dag langer
   een kapotte prefill voor één LET-OP-rij als bewijs).
 
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 4 -->
+- **Factuurdatum in een ingediende aangifteperiode = ORANJE check mét bewuste keuze, nooit een blokkade (Peter 25-09; FV-16 in de
+  aangepaste vorm; geen migratie; BESLISSINGEN "FACTUURDATUM IN EEN INGEDIENDE AANGIFTEPERIODE — ORANJE CHECK, GEEN BLOKKADE (Peter
+  25-09)"):** (1) De check-rij `Factuurdatum valt in een ingediende aangifteperiode` (`app/documenten/aangifteperiode.py`) toetst de
+  FACTUURDATUM (= `BookDate`, boekingsdatum = factuurdatum) via de bestaande aangiftelezer `app/rlz/aangifte.py` (`GET TaxDeclarations`,
+  Status 2 ingediend / 3 afgehandeld; `StartDate`/`Date`) — in het EXTERNE deel van de checks (`checks_extern.ExternRapport.aangifte`,
+  parallel mét de duplicaatquery's, gecachet op de vingerafdruk: de factuurdatum zit erin). Uitkomst ORANJE (`signaal`, ok=True):
+  "Factuurdatum ‹d› valt in de ingediende btw-aangifte ‹start› t/m ‹eind› — RLZ verschuift de btw naar het eerstvolgende open tijdvak"
+  mét de handeling **"Boeken (btw in volgend tijdvak)"** (actiecode `aangifte_bevestigen`, check-acties gelden sinds 25-09 óók op
+  signaal-rijen). Nagekomen facturen zijn legitiem: géén blokkade. RLZ-fout op de aangiften = oranje "niet leesbaar — niet toetsbaar",
+  storings-tak (geen verbinding) = oranje "niet getoetst", Odoo-administratie = groen "n.v.t.", geen factuurdatum = groen.
+  (2) **Bewuste keuze** = `POST …/boekvoorstel/aangifte-periode-bevestigen` (`boekvoorstel.bevestig_aangifteperiode`): tijdlijn-notitie
+  `aangifteperiode_bevestigd` (periode + boek_cyclus, idempotent; ná corrigeren/storno opnieuw kiezen) + audit `aangifteperiode_bevestigd`
+  oud→nieuw; de rij toont daarna oranje "bewust geboekt (btw in volgend tijdvak) — bevestigd door ‹naam› op ‹datum›" zonder actie; 409
+  als er (volgens de actuele toets) niets te bevestigen valt. (3) **Boeken zonder bevestiging** blijft mogelijk; de boek-transactie
+  schrijft dan de tijdlijnregel `aangifteperiode_geboekt_onbevestigd` "geboekt mét factuurdatum in ingediende aangifte ‹periode› (niet
+  vooraf bevestigd)" — niets verdwijnt stil. (4) **Autoboek-pad:** het automatische pad (`automatisch_geboekt`-markering) boekt nooit op
+  deze oranje rij — `boeken.AutoboekGeweigerdDoorSignaal`, in `autoboeken.py` als zichtbare weigerreden geauditeerd ("oranje signaal — …
+  mens beoordeelt (bewuste keuze vereist)"). Alleen déze signaalrij is zo gepoort; de overige oranje signalen blokkeren het autoboek-pad
+  in code niet (beslispunt). (5) **Meetlat:** `db-lezen aangifteperiode-bevestigingen --administratie … [--param dagen=30]` (soort
+  `bevestigd` / `geboekt_onbevestigd`), request-log op de bevestigroute, `server_timing`-stap `checks.aangifte`; dispatch-onderdeel
+  `aangifteperiode`. Guards: `tests/documenten/test_check_aangifteperiode.py`, gouden-set-casus **ao**
+  `tests/keten/test_ao_factuurdatum_ingediende_aangifte.py` (BDO 2026-07-02 in een administratie mét ingediende Q3-aangifte), vitest
+  `BoekvoorstelPanel.aangifteperiode.test.tsx`. Werkt in productie: niet gemeten.
+
+<!-- toegevoegd 25-09-2026, opdracht "feedbackrun-A-factuurverwerking" blok 6 -->
+- **Btw-bedrag herrekent bij nettowijziging (FV-09, Peter 25-09; gebruikersfeedback Universal; geen migratie; BESLISSINGEN
+  "BTW-BEDRAG VOLGT HET TARIEF ÓÓK BIJ NETTOWIJZIGING (Peter 25-09)"):** aanvulling op regel (1) van 18-09 ("btw-bedrag volgt het
+  tarief, altijd"). Vastgesteld vóór de fix: tarief wijzigen herrekende, maar netto wijzigen NIET op een geladen regel mét btw, niet
+  in de samengevoegde modus en niet ná een mens-getypt btw-bedrag — `BoekvoorstelPanel` zette bij het laden `btwHandmatig =
+  Boolean(btw_bedrag)` (25-08), waardoor élke regel mét een bedrag als "van de mens" telde. Sinds 25-09: (1) `btwHandmatig` =
+  uitsluitend "de mens typte het btw-veld zelf in deze sessie"; bij laden (opgeslagen én AI-regels) altijd `false`. (2) Élke
+  nettowijziging (ook via een grootboekwissel die de btw laat volgen) herrekent btw := netto × percentage, cent-exact ROUND_HALF_UP
+  via `document/regelsom.ts::btwUitTarief` (spiegel van `regelsom.py`; de float-`berekenBtwBedrag` is uit het paneel weg) — óók op
+  een geladen regel en in de samengevoegde modus (dezelfde `wijzigRegel`-tak; de wissel bewaart per modus de eigen regels). (3) Een
+  mens-getypt btw-bedrag wint zolang het netto niet wijzigt (omschrijving/grootboek/project raken 'm niet); wijzigt het netto
+  daarna, dan wordt herrekend mét chip "btw herrekend (netto gewijzigd)" (`regel-btw-herrekend-netto-chip`, blijft staan tot een
+  nieuwe btw-/tariefhandeling) en schrijft de server op een échte PUT de tijdlijnregel "Btw herrekend — regel n: netto € a → € b,
+  btw € c → € d (netto gewijzigd)" (`boekvoorstel._btw_herrekend_notities`, sleutel `btw_herrekend`, veld `aanleiding` = `netto`;
+  `tarief` = de 18-09-notitie; alleen btw gewijzigd = mens-invoer = geen notitie; nooit op de autosave). (4) Tarief onbekend (geen
+  btw-code of geen percentage in de cache) → het btw-veld blijft onaangeraakt mét chip "tarief onbekend — btw niet herrekend"
+  (`regel-btw-niet-herrekend-chip`; nooit stil wissen); btw in de kosten → btw 0,00 blijft (netto = bruto). (5) De harde check
+  "Btw-bedrag past bij tarief", de marge (1 ct × samengevoegde regels, max 5) en `regelsom.py` zijn ONGEWIJZIGD — het scherm rekent
+  voor, de server blijft de poort. Mens-btw is een sessie-begrip: de server kent geen per-regel-handmatigheid, dus heropenen + netto
+  wijzigen herrekent altijd (beslispunt: persistente mens-btw = aparte opdracht). Meetlat: querybibliotheek `db-lezen btw-herrekend
+  --administratie … --param aanleiding=netto` (dispatch-onderdeel `btw-netto`). Guards: vitest `BoekvoorstelPanel.btwNetto.test.tsx`
+  (vaststelling a/b/c/d + fix), `btwHerrekendTijdlijn.test.ts`, `regelsomBtwTarief.test.ts`; backend
+  `tests/documenten/test_btw_herrekend_netto.py`, gouden-set-casus ae (`test_netto_gewijzigd_btw_herrekend_geeft_tijdlijnregel_met_aanleiding_netto`).
+  Werkt in productie: niet gemeten.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Btw-tarief buitenland (CLAUDE.md `ed6d176` r. 354–360)
