@@ -138,13 +138,22 @@ describe('BoekvoorstelPanel — factuurperiode (blok 11)', () => {
 
     await waitFor(() => expect(wekenVeld()).not.toBeNull())
     expect(wekenVeld()!.value).toBe('36')
-    expect(screen.getByTestId('periode-chip')).toHaveTextContent('wk 36 · 2026 · afgeleid van factuurdatum')
+    // FV-13 (25-09): de terugval heet letterlijk een aanname en draagt geen "van … tot …".
+    expect(screen.getByTestId('periode-chip')).toHaveTextContent('wk 36 · 2026 · week van de factuurdatum (aanname)')
 
     await gebruiker.clear(wekenVeld()!)
     await gebruiker.type(wekenVeld()!, 'abc')
     expect(screen.getByText(/Onherkenbare periode/)).toBeInTheDocument()
     await waitFor(() => expect(putBodies.length).toBeGreaterThan(0), { timeout: 4000 })
     expect((putBodies[putBodies.length - 1] as { periode: unknown }).periode).toBeNull()
+  })
+
+  it('FV-13 (25-09): toont "van … tot …" uit de factuur naast de weeknummers', async () => {
+    const metDatums = { jaar: 2026, week_van: 27, week_tot: 31, herkomst: 'factuur', tekst: '01-07-2026 t/m 31-07-2026', datum_van: '2026-07-01', datum_tot: '2026-07-31' }
+    installFetchMock(boekvoorstel({ periode: metDatums }), {}, [])
+    renderPanel()
+    await waitFor(() => expect(screen.getByTestId('periode-chip')).toBeInTheDocument())
+    expect(screen.getByTestId('periode-chip')).toHaveTextContent('1 jul – 31 jul 2026 (wk 27–31 · 2026) · uit factuur')
   })
 
   it('zonder periode (geen factuurdatum) zijn de velden leeg en is er geen chip', async () => {

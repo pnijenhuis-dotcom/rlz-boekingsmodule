@@ -59,6 +59,7 @@ import { KOLOM_PX, minimaleTabelbreedte } from './boekingsregelsKolommen'
 import { aantalTariefstaffels, boekbareAiRegels } from './nulregels'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
 import { CrediteurPaneel, type NieuweCrediteurResultaat } from './CrediteurPaneel'
+import { rekenBedragExpressieUit } from './bedragExpressie'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import { bouwGrootboekBtwDefaultMap } from './grootboekBtwDefault'
 import {
@@ -430,7 +431,9 @@ const PERIODE_HERKOMST: Record<string, { label: string; klasse: string; titel: s
     titel: 'De factuur noemt een maand — omgezet naar de weken van die maand.',
   },
   afgeleid_van_factuurdatum: {
-    label: 'afgeleid van factuurdatum',
+    // FV-13 (25-09): de terugval is een AANNAME, geen periode — dat staat er letterlijk (was "afgeleid van factuurdatum",
+    // wat als "de factuur gaat over één week" gelezen werd).
+    label: 'week van de factuurdatum (aanname)',
     klasse: 'chip geheugen',
     titel: 'Geen periode op de factuur gevonden — de week van de factuurdatum als aanname. Controleer en corrigeer zo nodig.',
   },
@@ -508,13 +511,26 @@ export function parsePeriodeInvoer(weken: string, jaar: string): { jaar: number;
   return { jaar: j, week_van: w[0], week_tot: w[1] }
 }
 
+/** FV-13 (25-09): "1 jul – 31 jul 2026" uit `datum_van`/`datum_tot` (exacte factuurdatums, anders ma t/m zo van de weken);
+ * null zonder bereik (terugval = aanname). */
+export function periodeDatumLabel(p: { datum_van?: string | null; datum_tot?: string | null }): string | null {
+  if (!p.datum_van || !p.datum_tot) return null
+  const van = new Date(`${p.datum_van}T00:00:00`)
+  const tot = new Date(`${p.datum_tot}T00:00:00`)
+  if (Number.isNaN(van.getTime()) || Number.isNaN(tot.getTime())) return null
+  const kort = (d: Date) => d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' }).replace('.', '')
+  if (van.getFullYear() === tot.getFullYear()) return `${kort(van)} – ${kort(tot)} ${tot.getFullYear()}`
+  return `${kort(van)} ${van.getFullYear()} – ${kort(tot)} ${tot.getFullYear()}`
+}
+
 function PeriodeChip({ periode }: { periode: BoekvoorstelPeriodeDto }) {
   const chip = PERIODE_HERKOMST[periode.herkomst]
   if (!chip) return null
   const titel = periode.tekst ? `${chip.titel} Gelezen tekst: "${periode.tekst}".` : chip.titel
+  const datums = periodeDatumLabel(periode)
   return (
     <span className={chip.klasse} title={titel} data-testid="periode-chip">
-      {periodeLabel(periode)} · {chip.label}
+      {datums ? `${datums} (${periodeLabel(periode)})` : periodeLabel(periode)} · {chip.label}
     </span>
   )
 }
@@ -814,7 +830,7 @@ export function BoekvoorstelPanel({
   // staat zolang de invoer gelijk is aan wat de server afleidde/bewaarde; wijzigen = chip weg, opslaan = de server
   // beslist (gelijk aan de afleiding → automatisch blijft; anders mens-override, herkomst 'handmatig').
   const [omschrijving, setOmschrijving] = useState('')
-  const [omschrijvingServer, setOmschrijvingServer] = useState<{ tekst: string; herkomst: string } | null>(null)
+  const [omschrijvingServer, setOmschrijvingServer] = useState<{ tekst: string; herkomst: string; ingekort?: boolean } | null>(null)
   const [factuurdatum, setFactuurdatum] = useState('')
   const [vervaldatum, setVervaldatum] = useState('')
   const [vervaldatumSignaal, setVervaldatumSignaal] = useState<string | null>(null)
@@ -930,7 +946,9 @@ export function BoekvoorstelPanel({
         setReferentie(dto.referentie ?? '')
         setOmschrijving(dto.omschrijving ?? '')
         setOmschrijvingServer(
-          dto.omschrijving && dto.omschrijving_herkomst ? { tekst: dto.omschrijving, herkomst: dto.omschrijving_herkomst } : null,
+          dto.omschrijving && dto.omschrijving_herkomst
+            ? { tekst: dto.omschrijving, herkomst: dto.omschrijving_herkomst, ingekort: dto.omschrijving_ingekort === true }
+            : null,
         )
         setFactuurdatum(dto.factuurdatum ?? '')
         setVervaldatum(dto.vervaldatum ?? '')
@@ -1378,6 +1396,23 @@ export function BoekvoorstelPanel({
     veranderInvoer()
   }
 
+  // FV-07 (25-09): kop-niveau keuze → doorgezet naar álle regels; de keuze zelf is alleen weergave (de regels zijn de
+  // waarheid) en reist één keer als `kop_doorgezet` mee in de eerstvolgende PUT (tijdlijnregel "kop → regels").
+  const [kopProjectId, setKopProjectId] = useState<string | null>(null)
+  const [kopTaxrateId, setKopTaxrateId] = useState<string | null>(null)
+  const kopDoorgezetRef = useRef<{ project?: number; btw?: number; project_naam?: string; btw_code?: string } | null>(null)
+  const zetKopVeld = (veld: 'projectId' | 'taxrateId', id: string | null) => {
+    if (veld === 'projectId') setKopProjectId(id)
+    else setKopTaxrateId(id)
+    if (id === null) return
+    const label = (veld === 'projectId' ? projectOpties : taxrateOpties).find((o) => o.id === id)?.label
+    for (const r of regels) wijzigRegel(r.key, veld, id)
+    kopDoorgezetRef.current = {
+      ...(kopDoorgezetRef.current ?? {}),
+      ...(veld === 'projectId' ? { project: regels.length, project_naam: label } : { btw: regels.length, btw_code: label }),
+    }
+  }
+
   // Aanbetaling-verrekenregel (deel 4 punt 3): elke nieuwe aanlevering (volgnummer) wordt één
   // keer als regel toegevoegd — negatief netto op de vooruit-rekening, btw 0. Btw-code: het
   // 0%-tarief uit de sync-cache als dat eenduidig is ("Nul tarief"/enige 0%-optie), anders leeg
@@ -1500,9 +1535,12 @@ export function BoekvoorstelPanel({
               btw_in_kosten: r.btwInKosten,
               omschrijving: r.omschrijving || null,
             })),
+            // FV-07 (25-09): één keer mee ná een kop-niveau doorzet (server schrijft de tijdlijnregel).
+            ...(kopDoorgezetRef.current ? { kop_doorgezet: kopDoorgezetRef.current } : {}),
           }),
         },
       )
+      kopDoorgezetRef.current = null
       if (wijzigingsVersieRef.current === versieBijStart) {
         setCheckRapport(resultaat.checks)
         setChecksActueel(true)
@@ -1512,7 +1550,7 @@ export function BoekvoorstelPanel({
         if (bv && typeof bv === 'object' && 'omschrijving' in bv) {
           const tekst = bv.omschrijving ?? null
           const herkomst = bv.omschrijving_herkomst ?? null
-          setOmschrijvingServer(tekst && herkomst ? { tekst, herkomst } : null)
+          setOmschrijvingServer(tekst && herkomst ? { tekst, herkomst, ingekort: bv.omschrijving_ingekort === true } : null)
           if (tekst !== null && omschrijving.trim() === '') setOmschrijving(tekst)
         }
         // Blok 11: de serverstand van de periode ná opslaan (herkomst 'mens' bij een correctie) — de chip volgt die.
@@ -2112,8 +2150,18 @@ export function BoekvoorstelPanel({
                 onChange={(e) => wijzigOmschrijving(e.target.value)}
               />
               {omschrijvingChip && (
-                <div style={{ marginTop: 4 }}>
+                <div style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <KopOmschrijvingChip herkomst={omschrijvingChip} />
+                  {/* FV-05 (25-09): bijlageverwijzing ("conform bijgevoegd overzicht") uit de automatische tekst gestript. */}
+                  {omschrijvingServer?.ingekort && omschrijvingChip !== 'handmatig' && (
+                    <span
+                      className="chip stil"
+                      data-testid="kop-omschrijving-ingekort-chip"
+                      title="Een verwijzing naar een bijlage (‘conform bijgevoegd overzicht’, ‘zie bijlage’) is uit de automatische omschrijving gelaten — die zegt niets over de boeking. Typ zelf een tekst als je die toch wilt."
+                    >
+                      ingekort
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -2389,6 +2437,40 @@ export function BoekvoorstelPanel({
                 samenvoegen niet mogelijk: {samenvoegenNietMogelijkReden}
               </span>
             )}
+          </div>
+        )}
+        {/* FV-07 (feedbackrun A 25-09): project en btw-code één keer op FACTUURNIVEAU kiezen → doorgezet naar álle regels
+            (via wijzigRegel per regel, dus de 18-09-btw-herrekening loopt gewoon), per regel daarna overschrijfbaar. Alleen
+            zichtbaar bij ≥ 2 regels; project alleen bij projectplicht. De PUT draagt `kop_doorgezet` → tijdlijn "kop → regels". */}
+        {!isReadOnly && regels.length >= 2 && (
+          <div className="grid2" style={{ marginBottom: 10 }} data-testid="kop-doorzetten">
+            {projectVerplicht && (
+              <div>
+                <SearchableCombobox
+                  label="Alle regels — project"
+                  opties={projectOpties}
+                  laden={projectLaden}
+                  laadFout={projectFout}
+                  onOpnieuw={() => setCacheVersie((v) => v + 1)}
+                  waarde={kopProjectId}
+                  onWijzig={(id) => zetKopVeld('projectId', id)}
+                  placeholder="Kies één project voor alle regels…"
+                />
+              </div>
+            )}
+            <div>
+              <SearchableCombobox
+                label="Alle regels — btw"
+                opties={taxrateGefilterd.opties}
+                ingeklapteGroep={taxrateGefilterd.ingeklapteGroep}
+                laden={taxrateLaden}
+                laadFout={taxrateFout}
+                onOpnieuw={() => setCacheVersie((v) => v + 1)}
+                waarde={kopTaxrateId}
+                onWijzig={(id) => zetKopVeld('taxrateId', id)}
+                placeholder="Kies één btw-code voor alle regels…"
+              />
+            </div>
           </div>
         )}
         <div className="tabel-scroll">
@@ -2694,10 +2776,23 @@ export function BoekvoorstelPanel({
                       <input
                         aria-label="Btw bedrag"
                         inputMode="decimal"
-                        title="Bijvoorbeeld 1234,56 of 1234.56"
+                        title="Bijvoorbeeld 1234,56 of 1234.56 — of een berekening zoals 20+30 (uitgerekend bij het verlaten van het veld)"
                         style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                         value={regel.btw}
                         onChange={(e) => wijzigRegel(regel.key, 'btw', e.target.value)}
+                        // FV-08 (feedbackrun A 25-09): rekenexpressie in het btw-veld — bij blur/Enter uitgerekend (eigen parser).
+                        onBlur={(e) => {
+                          const uit = rekenBedragExpressieUit(e.target.value)
+                          if (uit !== null) wijzigRegel(regel.key, 'btw', uit)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return
+                          const uit = rekenBedragExpressieUit((e.target as HTMLInputElement).value)
+                          if (uit !== null) {
+                            e.preventDefault()
+                            wijzigRegel(regel.key, 'btw', uit)
+                          }
+                        }}
                       />
                       {/* 18-09: de grijze hint "tarief geeft € … — factuur leidend" (REGELRIJ-UI 25-08 (b)) is vervangen
                           door de HARDE check "Btw-bedrag past bij tarief" mét acties in de controles-tabel. */}
@@ -2745,6 +2840,13 @@ export function BoekvoorstelPanel({
             <button type="button" className="btn secondary" onClick={voegRegelToe}>
               + Regel toevoegen
             </button>
+            {/* FV-12 (25-09): "Verdelen" bij het regelblok — opent het Projectverdeling-blok mét de standaardsleutel van de
+                administratie (Universal = omzetsleutel, besluit 21-09; server-afleiding, nooit hardcoded). */}
+            {projectVerplicht && onVerdelenGevraagd && (
+              <button type="button" className="btn secondary" onClick={onVerdelenGevraagd} data-testid="verdelen-knop">
+                Verdelen over projecten
+              </button>
+            )}
             {regelsomToets.basis !== null && regelsomToets.sluitAan !== null && (
               <span className={`chip ${regelsomToets.sluitAan ? 'ok' : 'afwijking'}`}>
                 {regelsomToets.sluitAan

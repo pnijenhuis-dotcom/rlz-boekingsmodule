@@ -20,6 +20,7 @@ markers); afkap op een veilige `MAX_LENGTE` van 255 tekens met een ellipsis — 
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 MAX_LENGTE = 255
@@ -35,6 +36,53 @@ HERKOMST_HANDMATIG = "handmatig"
 class KopOmschrijving:
     tekst: str | None
     herkomst: str | None
+    # FV-05 (feedbackrun A 25-09): True = uit de bron is een verwijzing naar een bijlage gestript ("huur juli conform
+    # bijgevoegd overzicht" → "huur juli"); chip "ingekort" op het controlescherm. Nooit op een handmatige tekst.
+    ingekort: bool = False
+
+
+# FV-05 (feedbackrun A 25-09, Universal: "huur juli conform bijgevoegd overzicht"): verwijzingen naar bijlagen zeggen
+# niets over de boeking en worden uit de automatische kop-omschrijving gestript. DETERMINISTISCHE lijst — alleen als
+# STAART van de tekst (met wat er nog achter kan staan: een punt, haakjes, "voor details"), nooit midden in een zin:
+# "zie bijlage voor de huur van juli" blijft staan (strippen zou de betekenis breken). Hoofdletterongevoelig.
+_BIJLAGE_KERN = (
+    r"(?:conform|volgens|cf\.?|cfm\.?|zie|als per|per|o\.?b\.?v\.?|op basis van|overeenkomstig)\s+"
+    r"(?:de\s+|het\s+|onze\s+|uw\s+)?"
+    r"(?:bijgevoegd(?:e)?\s+|meegezonden\s+|meegestuurde\s+|aangehechte\s+|bijgesloten\s+)?"
+    r"(?:overzicht(?:en)?|specificatie(?:s)?|bijlage(?:n)?|opgave|urenstaat|urenoverzicht|werkbon(?:nen)?|"
+    r"onderliggende\s+specificatie)"
+    r"(?:\s+\d+)?"
+)
+_BIJLAGE_STAART = re.compile(
+    r"(?:^|[\s,;:(\-–—])" + _BIJLAGE_KERN + r"(?:\s*\)|[\s.,;:)]*)?(?:\s+voor\s+(?:de\s+)?details)?[\s.,;:)]*$",
+    re.IGNORECASE,
+)
+_ALLEEN_BIJLAGE = re.compile(r"^\s*(?:zie\s+)?bijlage(?:n)?[\s.:]*$", re.IGNORECASE)
+_LOSSE_HAAKJES = re.compile(r"\s*\(\s*\)\s*")
+
+
+def strip_bijlageverwijzingen(tekst: str | None) -> tuple[str | None, bool]:
+    """(geschoonde tekst, gestript?) — verwijzingen naar een bijlage aan de STAART van de tekst weg ("huur juli conform
+    bijgevoegd overzicht" → "huur juli", "Huur juli (zie bijlage)" → "Huur juli"); een tekst die niets anders is dan zo'n
+    verwijzing wordt leeg (None) zodat de volgende bron aan de beurt komt. Nooit iets verzinnen, nooit midden in een
+    zin knippen. Herhaalt zich zolang er een staart te strippen is ("… zie specificatie, conform bijlage")."""
+    schoon = normaliseer(tekst)
+    if schoon is None:
+        return None, False
+    if _ALLEEN_BIJLAGE.match(schoon):
+        return None, True
+    gestript = False
+    for _ in range(3):
+        nieuw = _BIJLAGE_STAART.sub("", schoon, count=1)
+        nieuw = normaliseer(_LOSSE_HAAKJES.sub(" ", nieuw)) or ""
+        nieuw = nieuw.rstrip(" ,;:-–—(").strip()
+        if nieuw == schoon:
+            break
+        gestript = True
+        schoon = nieuw
+    if not schoon:
+        return None, gestript
+    return schoon, gestript
 
 
 def normaliseer(tekst: object) -> str | None:
@@ -67,10 +115,13 @@ def bepaal_kop_omschrijving(
     regels)" telt niet als regeltekst — de aanroeper filtert die eruit)."""
     regels = [normaliseer(r) for r in regel_omschrijvingen]
     if len(regels) == 1 and regels[0]:
-        return KopOmschrijving(tekst=kap_af(regels[0]), herkomst=HERKOMST_REGEL)
-    betreft_schoon = normaliseer(betreft)
+        # FV-05: bijlageverwijzing van de staart; blijft er niets over → volgende bron.
+        regel_schoon, regel_ingekort = strip_bijlageverwijzingen(regels[0])
+        if regel_schoon:
+            return KopOmschrijving(tekst=kap_af(regel_schoon), herkomst=HERKOMST_REGEL, ingekort=regel_ingekort)
+    betreft_schoon, betreft_ingekort = strip_bijlageverwijzingen(betreft)
     if betreft_schoon:
-        return KopOmschrijving(tekst=kap_af(betreft_schoon), herkomst=HERKOMST_FACTUUR)
+        return KopOmschrijving(tekst=kap_af(betreft_schoon), herkomst=HERKOMST_FACTUUR, ingekort=betreft_ingekort)
     delen = [d for d in (normaliseer(leverancier_naam), normaliseer(referentie)) if d]
     if delen:
         return KopOmschrijving(tekst=kap_af(" ".join(delen)), herkomst=HERKOMST_AFGELEID)

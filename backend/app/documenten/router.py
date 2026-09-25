@@ -45,6 +45,7 @@ from app.documenten import (
     betaalstatus as betaalstatus_regels,
 )
 from app.documenten.afbeelding import AFBEELDING_SUFFIXEN, AfbeeldingOnbruikbaar, afbeelding_naar_pdf, is_afbeelding
+from app.documenten import periode as periode_regels
 from app.documenten.checks import CheckRapport
 from app.documenten.mime import content_type_voor
 from app.documenten.models import DocumentSoort, DocumentStatus, IbanAccorderingStatus, IbanSoort, VraagStatus
@@ -333,6 +334,7 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
         prefill_automatisch=data.prefill_automatisch,
         omschrijving=data.omschrijving,
         omschrijving_herkomst=data.omschrijving_herkomst,
+        omschrijving_ingekort=data.omschrijving_ingekort,
         periode=(
             schemas.BoekvoorstelPeriodeDto(
                 jaar=data.periode.jaar,
@@ -340,6 +342,11 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
                 week_tot=data.periode.week_tot,
                 herkomst=data.periode.herkomst,
                 tekst=data.periode.tekst,
+                **(
+                    {"datum_van": bereik[0], "datum_tot": bereik[1]}
+                    if (bereik := periode_regels.datumbereik(data.periode, factuurdatum=data.factuurdatum))
+                    else {}
+                ),
             )
             if data.periode is not None
             else None
@@ -1102,6 +1109,8 @@ def boekvoorstel_opslaan(
             regels_samenvoegen=invoer.regels_samenvoegen,
             afdeling_id=invoer.afdeling_id,
             omschrijving=invoer.omschrijving,
+            # FV-07 (25-09): kop-niveau project/btw doorgezet naar álle regels → tijdlijnregel.
+            kop_doorgezet=invoer.kop_doorgezet.model_dump() if invoer.kop_doorgezet is not None else None,
             periode=(
                 (invoer.periode.jaar, invoer.periode.week_van, invoer.periode.week_tot or invoer.periode.week_van)
                 if invoer.periode is not None

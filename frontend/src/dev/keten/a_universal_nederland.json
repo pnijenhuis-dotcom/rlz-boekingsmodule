@@ -238,12 +238,15 @@
   "prefill_automatisch": true,
   "omschrijving": "Huurperiode juli 2026, conform huuroverzicht",
   "omschrijving_herkomst": "regel",
+  "omschrijving_ingekort": false,
   "periode": {
    "jaar": 2026,
    "week_van": 31,
    "week_tot": 31,
    "herkomst": "afgeleid_van_factuurdatum",
-   "tekst": null
+   "tekst": null,
+   "datum_van": null,
+   "datum_tot": null
   },
   "betaalstatus": null,
   "betaalstatus_herkomst": null,

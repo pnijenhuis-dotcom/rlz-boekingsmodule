@@ -34,6 +34,47 @@ if TYPE_CHECKING:
 CHECK_NAAM = "Projectverdeling"
 _BEVROREN = frozenset({DocumentStatus.GEBOEKT, DocumentStatus.VERWIJDERD})
 
+# FV-12 (feedbackrun A 25-09): de standaard-verdeelsleutel van een administratie voor de knop "Verdelen".
+SLEUTEL_OMZET_MAAND = "omzet_maand"
+SLEUTEL_OMZET_JAAR = "omzet_jaar"
+SLEUTEL_VASTE_REGELS = "vaste_regels"
+_SLEUTEL_RANG = {SLEUTEL_OMZET_MAAND: 0, SLEUTEL_OMZET_JAAR: 1, SLEUTEL_VASTE_REGELS: 2}
+
+
+def standaard_sleutel(session: Session, *, administratie_id: uuid.UUID, vandaag: date | None = None) -> str:
+    """FV-12: welke methode de knop "Verdelen over projecten" standaard kiest — NOOIT hardcoded per klant.
+    Volgorde: (1) een expliciete administratie-instelling (bestaat niet — de Beheerder-tab kent alleen drempel en
+    wachtweken; zodra die er komt, wint die hier); (2) de meest gebruikte sleutel in de GEBOEKTE verdelingen van de
+    laatste 12 maanden van deze administratie (Universal: omzetsleutel — besluit Peter 21-09 — komt zo vanzelf uit de
+    historie); (3) `omzet_maand` als default. Gelijkspel = omzet_maand > omzet_jaar > vaste_regels."""
+    vandaag = vandaag or vandaag_nl()
+    grens = datetime(vandaag.year - 1, vandaag.month, vandaag.day, tzinfo=UTC)
+    rijen = session.execute(
+        select(Projectverdeling.pro_rato_periode, Projectverdeling.pro_rato_soort, Projectverdeling.vaste_regels).where(
+            Projectverdeling.administratie_id == administratie_id,
+            Projectverdeling.status == pv.STATUS_GEBOEKT,
+            Projectverdeling.geboekt_op.is_not(None),
+            Projectverdeling.geboekt_op >= grens,
+        )
+    ).all()
+    telling: dict[str, int] = {}
+    for start, soort, _vaste in rijen:
+        if start is None:
+            sleutel = SLEUTEL_VASTE_REGELS
+        elif soort == pv.SOORT_JAAR:
+            sleutel = SLEUTEL_OMZET_JAAR
+        else:
+            sleutel = SLEUTEL_OMZET_MAAND
+        telling[sleutel] = telling.get(sleutel, 0) + 1
+    if not telling:
+        return SLEUTEL_OMZET_MAAND
+    return max(telling, key=lambda s: (telling[s], -_SLEUTEL_RANG[s]))
+
+
+def standaard_sleutel_voor(*, administratie_id: uuid.UUID, vandaag: date | None = None) -> str:
+    with scoped_session(administratie_id) as session:
+        return standaard_sleutel(session, administratie_id=administratie_id, vandaag=vandaag)
+
 
 class ProjectverdelingServiceFout(Exception):
     """Domeinfout (422/409 in de router)."""

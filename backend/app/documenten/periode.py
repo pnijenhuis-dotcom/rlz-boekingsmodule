@@ -62,6 +62,11 @@ class FactuurPeriode:
     herkomst: str
     # De letterlijk voorgelezen tekst van de factuur (None bij terugval/mens zonder gelezen tekst).
     tekst: str | None = None
+    # FV-13 (feedbackrun A 25-09): de exacte datums als de factuur die noemt ("01-07-2026 t/m 31-07-2026", "juli 2026")
+    # — niet gepersisteerd (de kolommen zijn weken), wél via `datumbereik()` herleidbaar uit de tekst; het controlescherm
+    # toont dan "1 jul – 31 jul 2026" i.p.v. alleen weeknummers. None = geen exacte datums bekend.
+    datum_van: date | None = None
+    datum_tot: date | None = None
 
     @property
     def weken(self) -> tuple[tuple[int, int], ...]:
@@ -115,7 +120,8 @@ def periode_van_datumbereik(begin: date, eind: date, *, herkomst: str, tekst: st
     eind_jaar, week_tot = week_van_datum(eind)
     if eind_jaar > jaar:
         week_tot = laatste_week_van_jaar(jaar)
-    return maak_periode(jaar, week_van, week_tot, herkomst=herkomst, tekst=tekst)
+    periode = maak_periode(jaar, week_van, week_tot, herkomst=herkomst, tekst=tekst)
+    return FactuurPeriode(**{**periode.__dict__, "datum_van": begin, "datum_tot": eind})
 
 
 def periode_van_maand(jaar: int, maand: int, *, tekst: str | None) -> FactuurPeriode:
@@ -129,7 +135,8 @@ def periode_van_maand(jaar: int, maand: int, *, tekst: str | None) -> FactuurPer
         week_van = 1
     if eind_jaar > jaar:
         week_tot = laatste_week_van_jaar(jaar)
-    return maak_periode(jaar, week_van, week_tot, herkomst=HERKOMST_FACTUUR_MAAND, tekst=tekst)
+    periode = maak_periode(jaar, week_van, week_tot, herkomst=HERKOMST_FACTUUR_MAAND, tekst=tekst)
+    return FactuurPeriode(**{**periode.__dict__, "datum_van": eerste, "datum_tot": laatste})
 
 
 # --- tekst → periode ---------------------------------------------------------------------------------------------
@@ -274,6 +281,27 @@ def bepaal_periode(
     if herkend is not None:
         return herkend
     return terugval_van_factuurdatum(factuurdatum, tekst=(" ".join(tekst.split()) if tekst and tekst.strip() else None))
+
+
+def datumbereik(periode: FactuurPeriode | None, *, factuurdatum: date | None) -> tuple[date, date] | None:
+    """FV-13: "van … tot …" voor het controlescherm. Exacte datums als de factuur die noemt (uit `datum_van/_tot`, of
+    opnieuw uit de bewaarde tekst herleid — de kolommen dragen alleen weken); anders de maandag t/m zondag van het
+    weekbereik voor een periode UIT de factuur of van de mens. De terugval (afgeleid van de factuurdatum) geeft None:
+    dat is een aanname, geen periode — het scherm zegt dat dan letterlijk."""
+    if periode is None or periode.herkomst == HERKOMST_AFGELEID_FACTUURDATUM:
+        return None
+    if periode.datum_van is not None and periode.datum_tot is not None:
+        return periode.datum_van, periode.datum_tot
+    if periode.tekst and periode.herkomst in HERKOMSTEN_UIT_FACTUUR:
+        herleid = normaliseer_periode(periode.tekst, factuurdatum=factuurdatum)
+        if herleid is not None and herleid.sleutel == periode.sleutel and herleid.datum_van and herleid.datum_tot:
+            return herleid.datum_van, herleid.datum_tot
+    try:
+        van = date.fromisocalendar(periode.jaar, periode.week_van, 1)
+        tot = date.fromisocalendar(periode.jaar, periode.week_tot, 7)
+    except ValueError:
+        return None
+    return van, tot
 
 
 def label(periode: FactuurPeriode) -> str:

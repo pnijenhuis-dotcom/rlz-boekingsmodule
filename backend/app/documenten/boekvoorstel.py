@@ -226,6 +226,8 @@ class BoekvoorstelData:
     # "regel" | "factuur" | "afgeleid" | "handmatig" | None (chip op het controlescherm).
     omschrijving: str | None = None
     omschrijving_herkomst: str | None = None
+    # FV-05 (feedbackrun A 25-09): bijlageverwijzing uit de automatische omschrijving gestript → chip "ingekort".
+    omschrijving_ingekort: bool = False
     # Blok 11 vervolgrun 07-09 (kosten op weekniveau — datalaag): de ISO-week(s) waarop de factuur betrekking heeft,
     # mét herkomst (`factuur`/`factuur_maand` = voorgelezen en deterministisch genormaliseerd, `afgeleid_van_
     # factuurdatum` = terugval, `mens` = correctie via de PUT, wint altijd) en de ruwe factuurtekst. Kolommen op
@@ -930,6 +932,8 @@ def _afdeling_velden(
 # zelfde JSON-patroon als de A10-prefill-snapshot; geen kolom, geen migratie — opdracht blok 9).
 # ---------------------------------------------------------------------------------------------
 KOP_OMSCHRIJVING_SLEUTEL = "kop_omschrijving"
+#: FV-07 (25-09): tijdlijn-notitie "kop → regels: project ‹naam› op N regels" / "btw ‹code› op N regels".
+KOP_DOORGEZET_SLEUTEL = "kop_doorgezet"
 
 
 def _laatste_kop_omschrijving_notitie(gebeurtenissen: list[DocumentGebeurtenis]) -> dict | None:
@@ -1023,7 +1027,12 @@ def _met_kop_omschrijving(
         regels=regels,
         veldvoorstel=veldvoorstel,
     )
-    return replace(data, omschrijving=afgeleid.tekst, omschrijving_herkomst=afgeleid.herkomst)
+    return replace(
+        data,
+        omschrijving=afgeleid.tekst,
+        omschrijving_herkomst=afgeleid.herkomst,
+        omschrijving_ingekort=afgeleid.ingekort,
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1965,8 +1974,13 @@ def sla_boekvoorstel_op(
     omschrijving: str | None = None,
     periode: tuple[int, int, int] | None = None,
     betaalstatus: str | None = None,
+    kop_doorgezet: dict | None = None,
 ) -> BoekvoorstelData:
-    """`betaalstatus` (blok 3 bundel 08-09) = de RLZ-betaalstatus zoals de client 'm toont. None = niet meegegeven
+    """`kop_doorgezet` (FV-07 feedbackrun A 25-09) = {"project": n, "btw": n, "project_naam", "btw_code"}: de mens koos
+    project en/of btw-code op factuurniveau en de client zette die door naar álle regels — de server schrijft één
+    tijdlijnregel `kop_doorgezet` (nooit op een autosave); de regels zelf reizen gewoon als `regels` mee.
+
+    `betaalstatus` (blok 3 bundel 08-09) = de RLZ-betaalstatus zoals de client 'm toont. None = niet meegegeven
     (oude client/autoboeken) → opgeslagen stand blijft, of de automatische afleiding (kanaal/factuur) wordt
     gepersisteerd; "" = terug naar automatisch; gelijk aan de afleiding = automatische herkomst; afwijkend = `mens`
     (wint; audit oud→nieuw). Zie `_verwerk_betaalstatus`.
@@ -2147,6 +2161,22 @@ def sla_boekvoorstel_op(
                 vendor_id=vendor_id,
                 actor_id=actor_id,
                 regels_samenvoegen=regels_samenvoegen,
+            )
+
+        if kop_doorgezet and not autosave and (kop_doorgezet.get("project") or kop_doorgezet.get("btw")):
+            # FV-07 (25-09): "kop → regels" — één zichtbare tijdlijnregel per doorzet-actie (mens-actor).
+            session.add(
+                DocumentGebeurtenis(
+                    document_id=document_id,
+                    van_status=document.status,
+                    naar_status=document.status,
+                    actor_id=actor_id,
+                    detail={
+                        KOP_DOORGEZET_SLEUTEL: {
+                            k: v for k, v in kop_doorgezet.items() if k in ("project", "btw", "project_naam", "btw_code") and v
+                        }
+                    },
+                )
             )
 
         if omschrijving is not None and not autosave:

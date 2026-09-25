@@ -29,11 +29,19 @@ def _deel(d: pv.VerdeelDeel) -> schemas.VerdeelDeelDto:
 
 
 def naar_dto(
-    document_id: uuid.UUID, data: pv.ProjectverdelingData | None, *, beschikbaar: bool = True
+    document_id: uuid.UUID,
+    data: pv.ProjectverdelingData | None,
+    *,
+    beschikbaar: bool = True,
+    standaard_sleutel: str | None = None,
 ) -> schemas.ProjectverdelingDto:
     if data is None:
         return schemas.ProjectverdelingDto(
-            document_id=document_id, status="geen", opgeslagen=False, beschikbaar=beschikbaar
+            document_id=document_id,
+            status="geen",
+            opgeslagen=False,
+            beschikbaar=beschikbaar,
+            standaard_sleutel=standaard_sleutel,
         )
     return schemas.ProjectverdelingDto(
         document_id=document_id,
@@ -41,6 +49,7 @@ def naar_dto(
         opgeslagen=data.opgeslagen,
         prefill=data.prefill,
         beschikbaar=beschikbaar,
+        standaard_sleutel=standaard_sleutel,
         basisbedrag=data.basisbedrag,
         vaste_regels=[
             schemas.VasteRegelDto(project_id=r.project_id, bedrag=r.bedrag, hint=r.hint, project_naam=r.project_naam)
@@ -87,7 +96,11 @@ def _lees(administratie_id: uuid.UUID, document_id: uuid.UUID) -> schemas.Projec
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     # B1/B2 (04-09): 'geen' + beschikbaar=True = leeg maar bruikbaar blok (opt-in = alleen prefill).
     return naar_dto(
-        document_id, voorstel.projectverdeling, beschikbaar=service.is_beschikbaar(administratie_id=administratie_id)
+        document_id,
+        voorstel.projectverdeling,
+        beschikbaar=service.is_beschikbaar(administratie_id=administratie_id),
+        # FV-12 (25-09): de standaard-verdeelsleutel van de administratie voor de knop "Verdelen".
+        standaard_sleutel=service.standaard_sleutel_voor(administratie_id=administratie_id),
     )
 
 

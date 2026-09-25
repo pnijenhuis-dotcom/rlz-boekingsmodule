@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectverdelingDto } from '../api/types'
-import { ProjectverdelingBlok, defaultPeriode } from './ProjectverdelingBlok'
+import { ProjectverdelingBlok, defaultPeriode, jaarPeriode } from './ProjectverdelingBlok'
 
 const ADM = 'aaaaaaaa-0000-0000-0000-000000000001'
 const DOC = 'bbbbbbbb-0000-0000-0000-000000000002'
@@ -210,6 +210,32 @@ describe('ProjectverdelingBlok', () => {
     await waitFor(() => expect(puts.length).toBe(1), { timeout: 3000 })
     expect(puts[0]).toEqual({ vaste_regels: [], pro_rato_periode: defaultPeriode() })
     expect(await screen.findByText(/Restant — pro rato omzet/)).toBeInTheDocument()
+  })
+
+  it('FV-12 (25-09): de knop opent met de standaardsleutel van de administratie (omzet_jaar) en toont "Anders…"', async () => {
+    const puts: unknown[] = []
+    installFetchMock({
+      get: { document_id: DOC, status: 'geen', opgeslagen: false, beschikbaar: true, standaard_sleutel: 'omzet_jaar' },
+      puts,
+      putAntwoord: { ...PREFILL, standaard_sleutel: 'omzet_jaar', pro_rato_periode: jaarPeriode(), pro_rato_periode_label: '2026 (t/m augustus)' },
+    })
+    renderBlok()
+    expect(await screen.findByTestId('pv-standaard-sleutel')).toHaveTextContent('standaard voor deze administratie: pro rato omzet (heel jaar)')
+    await userEvent.click(screen.getByRole('button', { name: 'Verdelen over projecten…' }))
+    await waitFor(() => expect(puts.length).toBe(1), { timeout: 3000 })
+    expect(puts[0]).toEqual({ vaste_regels: [], pro_rato_periode: jaarPeriode() })
+    // De ~20 methodes staan achter "Anders…"; de standaard staat als chip.
+    expect(screen.queryByLabelText('Pro rato omzetperiode')).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: 'Anders…' }))
+    expect(screen.getByLabelText('Pro rato omzetperiode')).toBeInTheDocument()
+  })
+
+  it('FV-12 (25-09): standaardsleutel vaste_regels opent zonder pro rato mét één lege vaste regel', async () => {
+    installFetchMock({ get: { document_id: DOC, status: 'geen', opgeslagen: false, beschikbaar: true, standaard_sleutel: 'vaste_regels' } })
+    renderBlok()
+    await userEvent.click(await screen.findByRole('button', { name: 'Verdelen over projecten…' }))
+    expect(await screen.findByTestId('pv-vaste-regel')).toBeInTheDocument()
+    expect(screen.getByTestId('pv-standaard-methode')).toHaveTextContent('vaste regels')
   })
 
   it('zonder opt-in: alleen de tekstknop "Verdelen over projecten…"; klik = voorstel pro rato (vorige maand) opgeslagen', async () => {

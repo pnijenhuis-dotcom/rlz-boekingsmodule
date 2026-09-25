@@ -1,8 +1,8 @@
 /** PDF-viewer-splitter (kliktest Peter 2026-08-08): breedte versleepbaar, voorkeur in
  * localStorage, vergroot/verklein-knop. Puur layout — geen viewer-library. */
 
-import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from './ReviewSplitter'
 
 // Node 22+ schaduwt window.localStorage in de jsdom-testomgeving met zijn eigen (lege)
@@ -43,11 +43,12 @@ describe('ReviewSplitter', () => {
     window.localStorage.clear()
   })
 
-  it('start op de standaardbreedte en leest een bewaarde voorkeur terug', () => {
+  it('start op de standaardbreedte (FV-11: 42 % viewer, 58 % formulier) en leest een bewaarde voorkeur terug', () => {
     const eerste = render(<Harnas />)
-    expect(docpaneBreedte()).toBe('50%')
+    expect(docpaneBreedte()).toBe('42%')
     eerste.unmount()
 
+    // Een opgeslagen voorkeur wint altijd van de default.
     window.localStorage.setItem('rlz.controle.docpaneBreedtePct', '62')
     render(<Harnas />)
     expect(docpaneBreedte()).toBe('62%')
@@ -56,7 +57,27 @@ describe('ReviewSplitter', () => {
   it('negeert een onbruikbare bewaarde waarde', () => {
     window.localStorage.setItem('rlz.controle.docpaneBreedtePct', '999')
     render(<Harnas />)
-    expect(docpaneBreedte()).toBe('50%')
+    expect(docpaneBreedte()).toBe('42%')
+  })
+
+  it('FV-11: vraagt pointer capture op de grens, zet tekstselectie uit tijdens het slepen en herstelt daarna', () => {
+    render(<Harnas />)
+    const review = screen.getByTestId('review')
+    review.getBoundingClientRect = () =>
+      ({ left: 0, width: 1000, top: 0, height: 800, right: 1000, bottom: 800, x: 0, y: 0 }) as DOMRect
+    const separator = screen.getByRole('separator') as HTMLDivElement & { setPointerCapture: (id: number) => void }
+    const capture = vi.fn()
+    separator.setPointerCapture = capture
+    separator.releasePointerCapture = vi.fn()
+    fireEvent.pointerDown(separator, { clientX: 500, pointerId: 7 })
+    expect(capture).toHaveBeenCalledWith(7)
+    expect(document.body.style.userSelect).toBe('none')
+    expect(document.body.style.cursor).toBe('col-resize')
+    fireEvent.pointerMove(window, { clientX: 550 })
+    fireEvent.pointerUp(window)
+    expect(document.body.style.userSelect).toBe('')
+    expect(document.body.style.cursor).toBe('')
+    expect(docpaneBreedte()).toBe('55%')
   })
 
   it('versleept de breedte met pointer-events en bewaart de voorkeur bij loslaten', () => {
@@ -74,7 +95,7 @@ describe('ReviewSplitter', () => {
     expect(window.localStorage.getItem('rlz.controle.docpaneBreedtePct')).toBe('60')
   })
 
-  it('klemt het slepen binnen de min/max-grenzen', () => {
+  it('klemt het slepen binnen de min/max-grenzen (tweede beweging in hetzelfde frame volgt ná het frame — rAF-throttling)', async () => {
     render(<Harnas />)
     const review = screen.getByTestId('review')
     review.getBoundingClientRect = () =>
@@ -85,19 +106,20 @@ describe('ReviewSplitter', () => {
     fireEvent.pointerMove(window, { clientX: 990 })
     expect(docpaneBreedte()).toBe('75%')
     fireEvent.pointerMove(window, { clientX: 10 })
-    expect(docpaneBreedte()).toBe('28%')
+    await waitFor(() => expect(docpaneBreedte()).toBe('28%'))
     fireEvent.pointerUp(window)
+    expect(docpaneBreedte()).toBe('28%')
   })
 
   it('is met het toetsenbord te bedienen (pijltjes op de separator)', () => {
     render(<Harnas />)
     const separator = screen.getByRole('separator')
     fireEvent.keyDown(separator, { key: 'ArrowRight' })
-    expect(docpaneBreedte()).toBe('52%')
+    expect(docpaneBreedte()).toBe('44%')
     fireEvent.keyDown(separator, { key: 'ArrowLeft' })
     fireEvent.keyDown(separator, { key: 'ArrowLeft' })
-    expect(docpaneBreedte()).toBe('48%')
-    expect(window.localStorage.getItem('rlz.controle.docpaneBreedtePct')).toBe('48')
+    expect(docpaneBreedte()).toBe('40%')
+    expect(window.localStorage.getItem('rlz.controle.docpaneBreedtePct')).toBe('40')
   })
 
   it('vergroot-knop zet de viewer breed en weer terug, zonder de voorkeur te overschrijven', () => {

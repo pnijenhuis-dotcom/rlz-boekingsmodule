@@ -530,6 +530,9 @@ export interface ProjectverdelingDto {
   /** B1 (04-09): blok bruikbaar op élk inkoopdocument van een administratie mét projectplicht of actieve projecten;
    * false = geen projecten → geen blok. Ontbreekt bij oudere antwoorden = true. */
   beschikbaar?: boolean
+  /** FV-12 (25-09): standaardmethode van de administratie voor de knop "Verdelen over projecten" — afgeleid uit de
+   * geboekte verdelingen van de laatste 12 maanden (Universal = omzetsleutel), default 'omzet_maand'. */
+  standaard_sleutel?: 'omzet_maand' | 'omzet_jaar' | 'vaste_regels' | null
   basisbedrag?: string | null
   vaste_regels?: ProjectverdelingVasteRegelDto[]
   pro_rato?: boolean
@@ -930,6 +933,10 @@ export interface BoekvoorstelPeriodeDto {
   week_tot: number
   herkomst: 'factuur' | 'factuur_maand' | 'afgeleid_van_factuurdatum' | 'mens'
   tekst?: string | null
+  /** FV-13 (25-09): "van … tot …" — exacte datums uit de factuur of ma t/m zo van het weekbereik; ontbreekt bij de
+   * terugval (aanname uit de factuurdatum). ISO-datum. */
+  datum_van?: string | null
+  datum_tot?: string | null
 }
 
 export interface BoekvoorstelDto {
@@ -951,6 +958,8 @@ export interface BoekvoorstelDto {
    * 'afgeleid' (leverancier + factuurnummer) — of 'handmatig' (door de mens gezet, wint altijd); null = niets. */
   omschrijving?: string | null
   omschrijving_herkomst?: 'regel' | 'factuur' | 'afgeleid' | 'handmatig' | null
+  /** FV-05 (25-09): een bijlageverwijzing ("conform bijgevoegd overzicht") is uit de automatische omschrijving gestript → chip "ingekort". */
+  omschrijving_ingekort?: boolean
   /** Blok 11 vervolgrun 07-09 (kosten op weekniveau — datalaag): de ISO-week(s) waarop de factuur betrekking heeft,
    * mét herkomst — 'factuur' (voorgelezen tekst, deterministisch genormaliseerd) | 'factuur_maand' (maand → weekbereik)
    * | 'afgeleid_van_factuurdatum' (terugval) | 'mens' (correctie via de PUT, wint altijd); null = geen factuurdatum. */

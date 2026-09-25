@@ -429,12 +429,15 @@
   "prefill_automatisch": true,
   "omschrijving": "Telefonie en internet september 2026",
   "omschrijving_herkomst": "factuur",
+  "omschrijving_ingekort": false,
   "periode": {
    "jaar": 2026,
    "week_van": 36,
    "week_tot": 40,
    "herkomst": "factuur",
-   "tekst": "01-09-2026 t/m 30-09-2026"
+   "tekst": "01-09-2026 t/m 30-09-2026",
+   "datum_van": "2026-09-01",
+   "datum_tot": "2026-09-30"
   },
   "betaalstatus": "Wordt automatisch geïncasseerd",
   "betaalstatus_herkomst": "factuur",

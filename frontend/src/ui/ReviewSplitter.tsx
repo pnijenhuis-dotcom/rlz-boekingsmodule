@@ -19,7 +19,9 @@ import type { CSSProperties } from 'react'
 const OPSLAG_SLEUTEL = 'rlz.controle.docpaneBreedtePct'
 const MIN_PCT = 28
 const MAX_PCT = 75
-const STANDAARD_PCT = 50
+// FV-11 (feedbackrun A 25-09, Universal: "boekingsscherm standaard breder dan de factuurweergave"): de default is 42 % voor
+// het factuurbeeld (58 % voor het formulier mét de 6/7-koloms regeltabel). Alleen de default — een bewaarde voorkeur wint.
+const STANDAARD_PCT = 42
 const VERGROOT_PCT = 70
 const TOETS_STAP_PCT = 2
 
@@ -32,7 +34,8 @@ export interface ReviewSplitterOpties {
 }
 
 function klem(pct: number): number {
-  return Math.min(MAX_PCT, Math.max(MIN_PCT, pct))
+  // Op 0,1 % afgerond (FV-11): geen 55.00000000000001 % in de CSS-variabele/opslag.
+  return Math.round(Math.min(MAX_PCT, Math.max(MIN_PCT, pct)) * 10) / 10
 }
 
 function bewaardeBreedte(sleutel: string, standaard: number): number {
@@ -91,15 +94,65 @@ export function useReviewSplitter(opties: ReviewSplitterOpties = {}): ReviewSpli
       setSlepen(true)
       setVergroot(false) // handmatig slepen wint van de vergroot-stand
 
-      const beweeg = (ev: PointerEvent) => {
+      // FV-11 (25-09, "slepen loopt stroef"): pointer capture op de grens (de muis mag buiten de hitzone), geen
+      // tekstselectie/col-resize-cursor op de hele pagina tijdens het slepen, en de breedte volgt per animatieframe
+      // (rAF-throttling) i.p.v. per pointer-event.
+      const grens = event.currentTarget
+      const pointerId = event.pointerId
+      try {
+        grens.setPointerCapture?.(pointerId)
+      } catch {
+        // jsdom/oudere browsers zonder pointer capture — window-listeners hieronder vangen het alsnog.
+      }
+      const body = document.body
+      const vorigeSelect = body.style.userSelect
+      const vorigeCursor = body.style.cursor
+      body.style.userSelect = 'none'
+      body.style.cursor = 'col-resize'
+      let frame: number | null = null
+      let wachtend = false
+      let laatsteX = event.clientX
+
+      const pas = () => {
         const rect = container.getBoundingClientRect()
         if (rect.width <= 0) return
-        zetBreedte(((ev.clientX - rect.left) / rect.width) * 100)
+        zetBreedte(((laatsteX - rect.left) / rect.width) * 100)
+      }
+      const beweeg = (ev: PointerEvent) => {
+        laatsteX = ev.clientX
+        // Eerste beweging in een frame direct toepassen; alles daarna in datzelfde frame één keer ná het frame.
+        if (frame !== null) {
+          wachtend = true
+          return
+        }
+        pas()
+        if (typeof window.requestAnimationFrame === 'function') {
+          frame = window.requestAnimationFrame(() => {
+            frame = null
+            if (wachtend) {
+              wachtend = false
+              pas()
+            }
+          })
+        }
       }
       const los = () => {
+        if (frame !== null && typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(frame)
+        frame = null
+        if (wachtend) {
+          wachtend = false
+          pas()
+        }
         window.removeEventListener('pointermove', beweeg)
         window.removeEventListener('pointerup', los)
         window.removeEventListener('pointercancel', los)
+        try {
+          grens.releasePointerCapture?.(pointerId)
+        } catch {
+          // al losgelaten
+        }
+        body.style.userSelect = vorigeSelect
+        body.style.cursor = vorigeCursor
         setSlepen(false)
         bewaarBreedte(opslagSleutel, laatstePct.current)
       }

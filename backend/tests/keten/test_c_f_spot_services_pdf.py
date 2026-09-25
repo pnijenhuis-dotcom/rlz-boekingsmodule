@@ -71,6 +71,10 @@ class TestControlescherm:
         assert voorstel.omschrijving == "Week 34"
         assert voorstel.periode is not None and (voorstel.periode.week_van, voorstel.periode.week_tot) == (34, 34)
         assert dto["referentie"] == "2026-608" and len(dto["regels"]) == 3
+        # FV-05 (25-09): "Week 34" bevat geen bijlageverwijzing → niet ingekort; het DTO-veld reist mee naar het scherm.
+        assert dto["omschrijving_ingekort"] is False and voorstel.omschrijving_ingekort is False
+        # FV-13 (25-09): een weekopgave uit de factuur draagt "van … tot …" (maandag t/m zondag van week 34 2026).
+        assert dto["periode"]["datum_van"] == "2026-08-17" and dto["periode"]["datum_tot"] == "2026-08-23"
 
     def test_checks_alleen_grootboek_ontbreekt(self, keten: Keten, spot: uuid.UUID) -> None:
         keten.open_controlescherm(spot)

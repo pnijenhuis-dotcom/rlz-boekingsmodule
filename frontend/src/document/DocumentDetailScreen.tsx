@@ -51,6 +51,7 @@ import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/Rev
 import { isMiniVoorraadNotitie, miniVoorraadMelding, miniVoorraadTijdlijnTekst } from '../materiaal/miniVoorraadTijdlijn'
 import { isPrefillAutosaveNotitie, prefillAutosaveTijdlijnTekst } from './prefillAutosaveTijdlijn'
 import { isKopOmschrijvingNotitie, kopOmschrijvingTijdlijnTekst } from './kopOmschrijvingTijdlijn'
+import { isKopDoorgezetNotitie, kopDoorgezetTijdlijnTekst } from './kopDoorgezetTijdlijn'
 import { btwHerrekendTijdlijnTekst, isBtwHerrekendNotitie } from './btwHerrekendTijdlijn'
 import { accorderingHerberekendTekst } from './accorderingHerberekendTijdlijn'
 import { accorderingOvergeslagenTijdlijnTekst, isAccorderingOvergeslagenNotitie } from './accorderingOvergeslagenTijdlijn'
@@ -1551,6 +1552,12 @@ export function DocumentDetailScreen() {
                       {g.detail && isKopOmschrijvingNotitie(g.detail) && (
                         <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-kop-omschrijving">
                           {kopOmschrijvingTijdlijnTekst(g.detail)}
+                        </div>
+                      )}
+                      {/* FV-07 (25-09): project/btw op factuurniveau doorgezet naar alle regels. */}
+                      {g.detail && isKopDoorgezetNotitie(g.detail) && (
+                        <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-kop-doorgezet">
+                          {kopDoorgezetTijdlijnTekst(g.detail)}
                         </div>
                       )}
                       {/* Blok 4 bundel 08-09: intercompany-leverancier → klant-accordering overgeslagen (leveranciersregel). */}

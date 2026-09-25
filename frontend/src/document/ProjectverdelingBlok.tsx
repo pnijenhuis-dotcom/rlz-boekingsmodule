@@ -67,6 +67,18 @@ export interface PeriodeOptie {
   label: string
 }
 
+/** FV-12 (25-09): jaarperiode-code voor de sleutel 'omzet_jaar' — het lopende jaar zodra er een afgesloten maand is,
+ * anders het vorige jaar (zelfde regel als `periodeOpties`). */
+export function jaarPeriode(vandaag = new Date()): string {
+  return vandaag.getMonth() > 0 ? `${vandaag.getFullYear()}` : `${vandaag.getFullYear() - 1}`
+}
+
+export function sleutelLabel(sleutel: string | null | undefined): string {
+  if (sleutel === 'omzet_jaar') return 'pro rato omzet (heel jaar)'
+  if (sleutel === 'vaste_regels') return 'vaste regels per project'
+  return 'pro rato omzet (maand)'
+}
+
 /** Keuzelijst voor "pro rato ▾": de laatste 12 afgesloten maanden + de jaaropties (D4 07-09, mockup-notitie ⑩):
  * het lopende jaar zodra er minstens één afgesloten maand is ("pro rato omzet 2026 (t/m augustus)") en het vorige
  * jaar ("pro rato omzet 2025"). Jaar = omzet per project over de afgesloten maanden van dat kalenderjaar. */
@@ -183,6 +195,8 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
   const [opslaanBezig, setOpslaanBezig] = useState(false)
   const [syncBezig, setSyncBezig] = useState(false)
   const [herverdeelOpen, setHerverdeelOpen] = useState(false)
+  // FV-12 (25-09): de keuzelijst met álle methodes staat achter "Anders…" zolang de administratie een standaardsleutel heeft.
+  const [toonMethodes, setToonMethodes] = useState(false)
   const timer = useRef<number | null>(null)
   const laatsteVerzonden = useRef<string>('')
   const blokRef = useRef<HTMLDivElement | null>(null)
@@ -199,14 +213,27 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
   const magProject = magProjectAanmaken(rol)
   const [nieuwProjectVoorRij, setNieuwProjectVoorRij] = useState<string | null>(null)
 
+  // FV-12 (25-09): openen = de STANDAARD-verdeelsleutel van de administratie (server: geboekte verdelingen laatste 12
+  // maanden, default omzet per maand; Universal = omzetsleutel — nooit hardcoded). 'omzet_jaar' = het lopende jaar zodra
+  // er een afgesloten maand is, anders het vorige jaar; 'vaste_regels' = pro rato uit + één lege vaste regel.
+  const openMetStandaard = useCallback((sleutel: string | null | undefined) => {
+    setGeopend(true)
+    if (sleutel === 'vaste_regels') {
+      setProRato(false)
+      setRijen((huidig) => (huidig.length ? huidig : [{ sleutel: `nieuw-${Date.now()}-0`, projectId: null, bedrag: '', hint: '' }]))
+      return
+    }
+    setProRato(true)
+    setPeriode(sleutel === 'omzet_jaar' ? jaarPeriode() : defaultPeriode())
+  }, [])
+
   // B1 (04-09): de lege stand van de project-kolom biedt "Verdelen over projecten…" aan — zelfde actie als de
-  // tekstknop hieronder (pro rato vorige maand als startpunt), plus in beeld scrollen.
+  // tekstknop hieronder (standaardsleutel als startpunt), plus in beeld scrollen.
   useEffect(() => {
     if (openVerzoek === 0 || !bewerkbaar) return
-    setGeopend(true)
-    setProRato(true)
-    setPeriode(defaultPeriode())
+    openMetStandaard(dto?.standaard_sleutel)
     blokRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- alleen op een nieuw verzoek, niet op elke dto-verversing
   }, [openVerzoek, bewerkbaar])
 
   // Laden (+ herladen bij elke boekvoorstel-opslag: het restant volgt de regels).
@@ -285,17 +312,14 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
     if (!bewerkbaar) return null
     return (
       <div className="projectverdeling-blok" data-testid="projectverdeling-blok" ref={blokRef}>
-        <button
-          type="button"
-          className="linkbtn"
-          onClick={() => {
-            setGeopend(true)
-            setProRato(true)
-            setPeriode(defaultPeriode())
-          }}
-        >
+        <button type="button" className="linkbtn" onClick={() => openMetStandaard(dto.standaard_sleutel)}>
           Verdelen over projecten…
         </button>
+        {dto.standaard_sleutel && (
+          <span className="pv-hint" style={{ marginLeft: 8 }} data-testid="pv-standaard-sleutel">
+            standaard voor deze administratie: {sleutelLabel(dto.standaard_sleutel)}
+          </span>
+        )}
       </div>
     )
   }
@@ -433,6 +457,14 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
               <td>
                 {alleenLezen ? (
                   <span className="chip klaar">{dto.pro_rato ? 'pro rato' : 'uit'}</span>
+                ) : !toonMethodes && dto.standaard_sleutel ? (
+                  // FV-12 (25-09): de standaardsleutel van de administratie staat; de ~20 methodes verschijnen pas ná "Anders…".
+                  <span data-testid="pv-standaard-methode">
+                    <span className="chip klaar">{proRato ? periodeLabel(periode) : 'vaste regels'}</span>{' '}
+                    <button type="button" className="linkbtn" onClick={() => setToonMethodes(true)}>
+                      Anders…
+                    </button>
+                  </span>
                 ) : (
                   <select
                     className="pv-periode"

@@ -725,6 +725,10 @@ class BoekvoorstelPeriodeDto(BaseModel):
     week_tot: int
     herkomst: str
     tekst: str | None = None
+    # FV-13 (feedbackrun A 25-09): "van … tot …" — exacte datums uit de factuur, anders ma t/m zo van het weekbereik;
+    # None bij de terugval (aanname uit de factuurdatum — het scherm noemt dat letterlijk).
+    datum_van: date | None = None
+    datum_tot: date | None = None
 
 
 class BoekvoorstelPeriodeInput(StrikteInvoer):
@@ -757,6 +761,9 @@ class BoekvoorstelResponse(BaseModel):
     # "handmatig" (door de mens gezet, wint altijd) | None (niets bruikbaar).
     omschrijving: str | None = None
     omschrijving_herkomst: str | None = None
+    # FV-05 (feedbackrun A 25-09): True = een bijlageverwijzing ("conform bijgevoegd overzicht") is uit de automatische
+    # omschrijving gestript — chip "ingekort" (nooit bij "handmatig").
+    omschrijving_ingekort: bool = False
     # Blok 11 vervolgrun 07-09: factuurperiode (ISO-weken) mét herkomst — chip + inline correctie op het controlescherm.
     periode: BoekvoorstelPeriodeDto | None = None
     # Blok 3 bundel 08-09 (RLZ-betaalstatus, migratie 0126): één van de acht RLZ-waarden letterlijk (RLZ "Betaling" =
@@ -833,6 +840,17 @@ class BoekvoorstelInput(StrikteInvoer):
     # Fix 3: de weergavekeuze van de controleur bij opslaan — wordt als voorkeur per
     # (administratie, crediteur) onthouden. None = niet meegegeven, voorkeur ongemoeid.
     regels_samenvoegen: bool | None = None
+    # FV-07 (feedbackrun A 25-09): de mens zette project en/of btw-code op FACTUURNIVEAU en de client zette die door naar
+    # álle regels; de server schrijft daar één tijdlijnregel "kop → regels" voor. Sleutels `project` | `btw`, waarde = het
+    # aantal regels; optioneel `project_naam` / `btw_code` (tekst) voor de leesbare regel. None = niet meegegeven.
+    kop_doorgezet: KopDoorgezetInput | None = None
+
+
+class KopDoorgezetInput(StrikteInvoer):
+    project: int | None = Field(default=None, ge=1, le=500)
+    btw: int | None = Field(default=None, ge=1, le=500)
+    project_naam: str | None = Field(default=None, max_length=200)
+    btw_code: str | None = Field(default=None, max_length=200)
 
 
 class CheckActieDto(BaseModel):

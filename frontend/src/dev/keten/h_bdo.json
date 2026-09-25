@@ -240,12 +240,15 @@
   "prefill_automatisch": true,
   "omschrijving": "Samenstellen jaarrekening en aangifte vennootschapsbelasting 2025",
   "omschrijving_herkomst": "regel",
+  "omschrijving_ingekort": false,
   "periode": {
    "jaar": 2026,
    "week_van": 27,
    "week_tot": 27,
    "herkomst": "afgeleid_van_factuurdatum",
-   "tekst": null
+   "tekst": null,
+   "datum_van": null,
+   "datum_tot": null
   },
   "betaalstatus": null,
   "betaalstatus_herkomst": null,

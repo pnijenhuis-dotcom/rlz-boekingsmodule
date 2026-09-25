@@ -777,12 +777,15 @@
   "prefill_automatisch": true,
   "omschrijving": "Week 34",
   "omschrijving_herkomst": "factuur",
+  "omschrijving_ingekort": false,
   "periode": {
    "jaar": 2026,
    "week_van": 34,
    "week_tot": 34,
    "herkomst": "factuur",
-   "tekst": "Week 34"
+   "tekst": "Week 34",
+   "datum_van": "2026-08-17",
+   "datum_tot": "2026-08-23"
   },
   "betaalstatus": null,
   "betaalstatus_herkomst": null,
