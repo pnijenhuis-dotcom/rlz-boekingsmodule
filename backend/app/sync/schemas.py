@@ -68,6 +68,28 @@ class NieuweCrediteurInput(StrikteInvoer):
     btw_nummer: str | None = None
     iban: str | None = None
     document_id: uuid.UUID | None = None
+    # Blok 5 feedbackrun 25-09 (FV-14): adres uit de UBL (of handmatig) — vrije velden, géén nieuw AI-veld.
+    adres: CrediteurAdresInput | None = None
+
+
+class CrediteurAdresInput(StrikteInvoer):
+    straat: str | None = None
+    postcode: str | None = None
+    plaats: str | None = None
+    land: str | None = None
+
+    def als_dict(self) -> dict[str, str]:
+        return {k: v for k, v in self.model_dump().items() if v}
+
+
+class CrediteurWijzigInput(StrikteInvoer):
+    """FV-15 (25-09): bewerken vanuit het controlescherm — naam/adres/KvK/btw. BEWUST géén `iban`: dat loopt
+    uitsluitend via de IBAN-wissel/vier-ogen-route (`extra="forbid"` → 422 als iemand het toch stuurt)."""
+
+    naam: str
+    kvk_nummer: str | None = None
+    btw_nummer: str | None = None
+    adres: CrediteurAdresInput | None = None
 
 
 class NieuweCrediteurResponse(BaseModel):
@@ -77,6 +99,26 @@ class NieuweCrediteurResponse(BaseModel):
     btw_opgeslagen: bool = False
     iban_vertrouwd: bool = False
     waarschuwingen: list[str] = []
+
+
+class CrediteurAdresDto(BaseModel):
+    straat: str | None = None
+    postcode: str | None = None
+    plaats: str | None = None
+    land: str | None = None
+    regel: str | None = None
+
+
+class CrediteurDetailDto(BaseModel):
+    """Bewerk-modus van het crediteur-zijpaneel (FV-15): vertrouwde IBAN's zijn lees-only."""
+
+    id: uuid.UUID
+    naam: str | None
+    kvk_nummer: str | None
+    btw_nummer: str | None
+    adres: CrediteurAdresDto
+    vertrouwde_ibans: list[str]
+    backend: str
 
 
 class DubbeleCrediteurDto(BaseModel):

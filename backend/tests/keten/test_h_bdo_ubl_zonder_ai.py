@@ -82,6 +82,9 @@ class TestPrefillEnChecks:
         assert veldvoorstel.get("kvk_nummer") == "91000006"
         assert veldvoorstel.get("btw_nummer") == "NL100039595B01"
         assert veldvoorstel.get("vervaldatum") == "2026-07-16"
+        # Blok 5 feedbackrun 25-09 (FV-14): het UBL-adres voedt de adresvelden van het crediteur-zijpaneel — één
+        # leesbare regel (straat huisnummer, postcode plaats, land), nooit een AI-veld.
+        assert veldvoorstel.get("leverancier_adres") == "Philitelaan 73, 5617 AM Eindhoven, NL"
         voorstel = keten.prefill(document_id)
         assert voorstel.vervaldatum is not None and voorstel.vervaldatum.isoformat() == "2026-07-16"
 

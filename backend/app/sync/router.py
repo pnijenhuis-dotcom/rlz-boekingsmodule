@@ -164,6 +164,7 @@ def crediteur_aanmaken(
             btw_nummer=invoer.btw_nummer,
             iban=invoer.iban,
             document_id=invoer.document_id,
+            adres=invoer.adres.als_dict() if invoer.adres else None,
         )
     except service.CrediteurBestaatAl as exc:
         # De bestaande vendor_id reist mee zodat de frontend de bestaande crediteur direct kan
@@ -172,6 +173,81 @@ def crediteur_aanmaken(
             status_code=status.HTTP_409_CONFLICT,
             detail={"message": str(exc), "vendor_id": str(exc.vendor_id)},
         ) from exc
+    except service.CrediteurAanmakenUitgeschakeld as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except service.SyncFout as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except GeenRlzCredentials as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except RlzApiError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return schemas.NieuweCrediteurResponse(
+        id=crediteur.id,
+        naam=crediteur.naam,
+        kvk_opgeslagen=crediteur.kvk_opgeslagen,
+        btw_opgeslagen=crediteur.btw_opgeslagen,
+        iban_vertrouwd=crediteur.iban_vertrouwd,
+        waarschuwingen=list(crediteur.waarschuwingen),
+    )
+
+
+@router.get(
+    "/administraties/{administratie_id}/crediteuren/{vendor_id}",
+    response_model=schemas.CrediteurDetailDto,
+)
+def crediteur_detail(
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.CrediteurDetailDto:
+    """Blok 5 feedbackrun 25-09 (FV-15): huidige stand voor het bewerk-paneel — naam, KvK/btw (kenmerk), adres,
+    vertrouwde IBAN's (lees-only). Lees-only, geen RLZ-call."""
+    try:
+        d = service.crediteur_detail(administratie_id=administratie_id, vendor_id=vendor_id)
+    except service.CrediteurNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.CrediteurDetailDto(
+        id=d.id,
+        naam=d.naam,
+        kvk_nummer=d.kvk_nummer,
+        btw_nummer=d.btw_nummer,
+        adres=schemas.CrediteurAdresDto(**d.adres),
+        vertrouwde_ibans=list(d.vertrouwde_ibans),
+        backend=d.backend,
+    )
+
+
+@router.put(
+    "/administraties/{administratie_id}/crediteuren/{vendor_id}",
+    response_model=schemas.NieuweCrediteurResponse,
+)
+def crediteur_wijzigen(
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    invoer: schemas.CrediteurWijzigInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.NieuweCrediteurResponse:
+    """Blok 5 feedbackrun 25-09 (FV-15): crediteur achteraf bewerken (naam/adres → RLZ, KvK/btw → kenmerk 'handmatig',
+    audit `crediteur_gewijzigd`). Zelfde failsafe-poort als aanmaken; IBAN nooit hierlangs (422 via extra="forbid")."""
+    try:
+        crediteur = service.wijzig_crediteur(
+            administratie_id=administratie_id,
+            actor_id=actor.id,
+            vendor_id=vendor_id,
+            naam=invoer.naam,
+            kvk_nummer=invoer.kvk_nummer,
+            btw_nummer=invoer.btw_nummer,
+            adres=invoer.adres.als_dict() if invoer.adres else None,
+        )
+    except service.CrediteurNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except service.CrediteurBestaatAl as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": str(exc), "vendor_id": str(exc.vendor_id)},
+        ) from exc
+    except service.CrediteurBewerkenNietOndersteund as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except service.CrediteurAanmakenUitgeschakeld as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except service.SyncFout as exc:

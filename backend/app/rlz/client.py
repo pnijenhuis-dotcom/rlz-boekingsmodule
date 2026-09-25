@@ -161,6 +161,18 @@ class Tempo:
             self.webfilter_treffers += 1
 
 
+def adres_als_regel(adres: dict[str, str] | None) -> str | None:
+    """Eén leesbare adresregel "Straat 1, 1234 AB Plaats, NL" uit {straat, postcode, plaats, land} (zelfde vorm als
+    `documenten/ubl._leverancier_adres`) — lege delen vallen weg, niets = None."""
+    if not adres:
+        return None
+    straat = " ".join(adres.get("straat", "").split())
+    plaats = " ".join(t for t in (adres.get("postcode", "").strip(), adres.get("plaats", "").strip()) if t)
+    land = adres.get("land", "").strip()
+    delen = [d for d in (straat, plaats, land) if d]
+    return ", ".join(delen) or None
+
+
 class RlzClient:
     """HTTP-client voor de Reeleezee REST-API (OData v4), één instantie per webservice-login.
 
@@ -277,10 +289,28 @@ class RlzClient:
         sinds 15-09 (administratienaam volgt de bron) leest de stamgegevens-sync 'm met de gedeelde gescoped login."""
         return self.root().get("Administrations").get("value", [])
 
-    def put_vendor(self, vendor_id: uuid.UUID, *, name: str, payment_due_days: int | None = None) -> httpx.Response:
+    def put_vendor(
+        self,
+        vendor_id: uuid.UUID,
+        *,
+        name: str,
+        payment_due_days: int | None = None,
+        adres: dict[str, str] | None = None,
+    ) -> httpx.Response:
+        """`PUT Vendors/{id}` — Name (+ PaymentDueDays). Blok 5 feedbackrun 25-09 (FV-14): optioneel `adres`
+        ({straat, postcode, plaats, land}) als `FullAddress` (één regel) + `City` — beide zijn bewezen VELDEN van
+        het Vendor-DTO (publieke Help-pagina PUT-adminId-Vendors-id), de schrijfbaarheid is niet live geverifieerd:
+        de aanroeper (sync/service) valt bij een 4xx terug op een PUT zonder adres (fail-open, zichtbare waarschuwing).
+        `AddressList`/`Country` zijn sub-DTO's zonder leesbaar model — bewust niet meegestuurd (nooit gokken)."""
         body: dict[str, Any] = {"id": str(vendor_id), "Name": name}
         if payment_due_days is not None:
             body["PaymentDueDays"] = payment_due_days
+        if adres:
+            volledig = adres_als_regel(adres)
+            if volledig:
+                body["FullAddress"] = volledig
+            if adres.get("plaats"):
+                body["City"] = adres["plaats"]
         return self.put(f"Vendors/{vendor_id}", body)
 
     def put_purchase_invoice(

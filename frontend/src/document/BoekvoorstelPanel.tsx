@@ -58,7 +58,7 @@ import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
 import { KOLOM_PX, minimaleTabelbreedte } from './boekingsregelsKolommen'
 import { aantalTariefstaffels, boekbareAiRegels } from './nulregels'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
-import { NieuweCrediteurDialog, type NieuweCrediteurResultaat } from './NieuweCrediteurDialog'
+import { CrediteurPaneel, type NieuweCrediteurResultaat } from './CrediteurPaneel'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import { bouwGrootboekBtwDefaultMap } from './grootboekBtwDefault'
 import {
@@ -861,6 +861,10 @@ export function BoekvoorstelPanel({
   // Fix 2: "nieuwe crediteur aanmaken in RLZ" vanaf het voorstelblok onder het crediteur-veld.
   // v2 ⑥: "+ Nieuwe crediteur in RLZ" als dialoog, voorgevuld uit de scan.
   const [nieuweCrediteurOpen, setNieuweCrediteurOpen] = useState(false)
+  // Blok 5 feedbackrun 25-09 (FV-15): hetzelfde zijpaneel in bewerk-modus voor de gekozen crediteur; de IBAN-route
+  // (vier ogen) opent vanuit het paneel inline onder de crediteur-kaart — nooit een vrij IBAN-veld bij bewerken.
+  const [crediteurBewerkenOpen, setCrediteurBewerkenOpen] = useState(false)
+  const [ibanRouteOpen, setIbanRouteOpen] = useState(false)
   const [crediteurMelding, setCrediteurMelding] = useState<string | null>(null)
 
   const [checkRapport, setCheckRapport] = useState<CheckRapportDto | null>(null)
@@ -1852,7 +1856,44 @@ export function BoekvoorstelPanel({
                   >
                     + Nieuwe crediteur in RLZ
                   </button>
+                  {vendorId !== null && (
+                    <button
+                      type="button"
+                      className="linkbtn"
+                      style={{ marginLeft: 12 }}
+                      data-testid="crediteur-bewerken"
+                      title="Naam, adres, KvK en btw-nummer van deze crediteur aanpassen (Reeleezee + geheugen); rekeningnummers via de IBAN-route"
+                      onClick={() => setCrediteurBewerkenOpen(true)}
+                    >
+                      Gegevens bewerken…
+                    </button>
+                  )}
                 </div>
+                {ibanRouteOpen && vendorId !== null && onIbanAangeboden && (
+                  <div style={{ marginTop: 8 }} data-testid="crediteur-iban-route-vorm">
+                    <div className="hint" style={{ marginTop: 0 }}>
+                      Een rekeningnummer toevoegen of wijzigen loopt via de <b>IBAN-route (vier ogen)</b>: een ingestelde
+                      accordeur (nooit uzelf) beoordeelt en maakt het rekeningnummer vertrouwd.
+                    </div>
+                    <IbanAanbiedenVorm
+                      administratieId={administratieId}
+                      documentId={documentId}
+                      initieelIban={typeof veldvoorstel?.iban === 'string' ? veldvoorstel.iban : ''}
+                      knopTekst="Rekening ter accordering aanbieden"
+                      onAangeboden={() => {
+                        setIbanRouteOpen(false)
+                        onIbanAangeboden()
+                      }}
+                      onAlVertrouwd={() => {
+                        setIbanRouteOpen(false)
+                        void checksVers()
+                      }}
+                    />
+                    <button type="button" className="linkbtn" onClick={() => setIbanRouteOpen(false)}>
+                      Sluiten
+                    </button>
+                  </div>
+                )}
                 {aiKop?.vendor && (
                   <div style={{ marginTop: 4 }}>
                     <AiChip score={aiKop.vendor.score} drempel={aiKop.drempel} match={aiKop.vendor.match} bron={aiKop.bron} />
@@ -1949,7 +1990,7 @@ export function BoekvoorstelPanel({
         </div>
       )}
       {nieuweCrediteurOpen && (
-        <NieuweCrediteurDialog
+        <CrediteurPaneel
           administratieId={administratieId}
           documentId={documentId}
           voorgevuld={{
@@ -1958,13 +1999,38 @@ export function BoekvoorstelPanel({
             btw_nummer: gelezenNummers?.btw_nummer ?? null,
             iban: gelezenIban,
           }}
-          herkomst={{ kvk: Boolean(gelezenNummers?.kvk_nummer), btw: Boolean(gelezenNummers?.btw_nummer), iban: gelezenIban !== null }}
+          herkomst={{
+            kvk: Boolean(gelezenNummers?.kvk_nummer),
+            btw: Boolean(gelezenNummers?.btw_nummer),
+            iban: gelezenIban !== null,
+            adres: Boolean(ubl?.leverancier_adres),
+          }}
           bron={gelezenBronLabel}
           adres={ubl?.leverancier_adres ?? null}
           extractieLoopt={extractieLoopt && !ai && !ubl}
           onAangemaakt={naNieuweCrediteur}
           onBestaand={naBestaandeCrediteur}
           onSluit={() => setNieuweCrediteurOpen(false)}
+        />
+      )}
+      {crediteurBewerkenOpen && vendorId !== null && (
+        <CrediteurPaneel
+          administratieId={administratieId}
+          documentId={documentId}
+          modus="bewerken"
+          vendorId={vendorId}
+          voorgevuld={{ naam: optieWeergave(vendorOpties, vendorId), kvk_nummer: null, btw_nummer: null, iban: null }}
+          herkomst={{}}
+          onAangemaakt={naNieuweCrediteur}
+          onBestaand={naBestaandeCrediteur}
+          onGewijzigd={(resultaat) => {
+            setCrediteurBewerkenOpen(false)
+            setCacheVersie((v) => v + 1)
+            const w = resultaat.waarschuwingen ?? []
+            setCrediteurMelding(`Crediteur „${resultaat.naam ?? ''}” bijgewerkt in RLZ${w.length ? ` · let op: ${w.join('; ')}` : ''}`)
+          }}
+          onIbanRoute={onIbanAangeboden ? () => setIbanRouteOpen(true) : undefined}
+          onSluit={() => setCrediteurBewerkenOpen(false)}
         />
       )}
       <div className="panel">

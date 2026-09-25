@@ -2634,6 +2634,39 @@ tr.geselecteerd td.acties {
   white-space: nowrap;
 }
 
+/* Zijpaneel (blok 5 feedbackrun 25-09, FV-14): niet-modaal paneel rechts — de factuur-viewer links blijft zichtbaar
+   en scrollbaar (geen overlay). Onder 1120px (gestapelde panes) neemt het paneel bijna de volle breedte, nog steeds
+   boven de pagina (fixed) zodat de factuur eronder bereikbaar blijft door het paneel te sluiten. */
+.zijpaneel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: min(460px, calc(100vw - 16px));
+  max-width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-zweef);
+  padding: 18px 20px 24px;
+  z-index: 55;
+  box-sizing: border-box;
+}
+
+.zijpaneel-kop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.zijpaneel .row,
+.zijpaneel .grid2 > div {
+  min-width: 0;
+}
+
 /* Controlescherm v2 (mockup controlescherm-v2.html, akkoord Peter 02-09): werkvolgorde-layout —
    crediteur-kaart, sticky actiebalk mét afwijkingen-banner, inklapregels onderaan. */
 .crediteur-kaart .waarschuwing {

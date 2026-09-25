@@ -16,3 +16,4 @@ export { ToastProvider, useToast, useToastOptioneel, type ToastSoort } from './T
 export { MultiSelect, type MultiSelectOptie } from './MultiSelect'
 export { Paginering, paginaSlice, aantalPaginas, PAGINA_GROOTTE } from './Paginering'
 export { AnkerPopup, berekenPositie, type Anker, type AnkerKant, type AnkerUitlijning } from './AnkerPopup'
+export { Zijpaneel } from './Zijpaneel'

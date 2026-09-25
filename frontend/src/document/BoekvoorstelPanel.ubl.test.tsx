@@ -126,7 +126,8 @@ describe('BoekvoorstelPanel — UBL deterministisch (blok 3 08-09)', () => {
     expect(within(dialoog).getByLabelText(/Btw-nummer/)).toHaveValue('NL123456782B01')
     expect(within(dialoog).getByLabelText(/IBAN/)).toHaveValue('NL91ABNA0417164300')
     expect(within(dialoog).getByTestId('nieuwe-crediteur-adres')).toHaveTextContent('Kantoorlaan 12, 5611 AB Eindhoven, NL')
-    expect(within(dialoog).getAllByText('uit UBL').length).toBe(3)
+    // Blok 5 25-09 (FV-14): KvK · btw · IBAN · adres = vier chips "uit UBL" (het adres is sinds 25-09 een eigen veldset).
+    expect(within(dialoog).getAllByText('uit UBL').length).toBe(4)
     expect(within(dialoog).queryByTestId('nieuwe-crediteur-verwerking-loopt')).not.toBeInTheDocument()
 
     await gebruiker.click(within(dialoog).getByRole('button', { name: 'Aanmaken in RLZ ✓' }))
@@ -136,6 +137,8 @@ describe('BoekvoorstelPanel — UBL deterministisch (blok 3 08-09)', () => {
           naam: 'Voorbeeld Accountancy, Tax & Legal B.V.',
           kvk_nummer: '87654321',
           btw_nummer: 'NL123456782B01',
+          // Blok 5 25-09 (FV-14): het UBL-adres gaat als vrije velden mee naar de Vendor-PUT.
+          adres: { straat: 'Kantoorlaan 12', postcode: '5611 AB', plaats: 'Eindhoven', land: 'NL' },
           iban: 'NL91ABNA0417164300',
           document_id: DOCUMENT_ID,
         },

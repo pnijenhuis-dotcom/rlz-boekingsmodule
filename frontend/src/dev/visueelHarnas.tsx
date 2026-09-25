@@ -107,6 +107,9 @@ const MET_GEHEUGEN = PARAMS.has('geheugen')
 const MET_VRAAG = PARAMS.has('vraag')
 const MET_CHECKS = PARAMS.has('checks')
 const MET_DUPLICAAT = PARAMS.has('duplicaat')
+// Blok 5 feedbackrun 25-09 (FV-14): ?crediteurpaneel=1 klikt ná het laden op "+ Nieuwe crediteur in RLZ" zodat het
+// niet-modale zijpaneel (Zijpaneel, rechts over de formpane, viewer links vrij) in de overflow-sweep meemeet.
+const MET_CREDITEURPANEEL = PARAMS.has('crediteurpaneel')
 
 const BOEKVOORSTEL = {
   document_id: DOCUMENT_ID,
@@ -326,6 +329,23 @@ function AutoChecksProef() {
   return null
 }
 
+/** ?crediteurpaneel=1 (blok 5 25-09): opent het crediteur-zijpaneel via de linkbtn "+ Nieuwe crediteur in RLZ" —
+ * headless Chrome klikt zelf niet, het harnas doet het (zelfde patroon als AutoChecksProef). */
+function AutoCrediteurPaneelProef() {
+  useEffect(() => {
+    if (!MET_CREDITEURPANEEL) return
+    const timer = setInterval(() => {
+      const knoppen = Array.from(document.querySelectorAll<HTMLButtonElement>('button.linkbtn'))
+      const knop = knoppen.find((b) => b.textContent?.trim() === '+ Nieuwe crediteur in RLZ')
+      if (!knop) return
+      clearInterval(timer)
+      knop.click()
+    }, 100)
+    return () => clearInterval(timer)
+  }, [])
+  return null
+}
+
 // ?donker=1 — dark mode voor headless verificatie (thema.ts-klassepatroon).
 if (PARAMS.has('donker')) {
   document.documentElement.classList.add('dark')
@@ -358,6 +378,7 @@ createRoot(document.getElementById('root')!).render(
       <OverflowBadge />
       <FocusGbProef />
       <AutoChecksProef />
+      <AutoCrediteurPaneelProef />
     </MemoryRouter>
   </StrictMode>,
 )

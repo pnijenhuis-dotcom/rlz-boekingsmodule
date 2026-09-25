@@ -18,7 +18,7 @@ from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
 from app.documenten.rlz_ids import rlz_vendor_id
 from app.rlz import leesroutes
-from app.rlz.client import RlzClient
+from app.rlz.client import RlzApiError, RlzClient, adres_als_regel
 from app.rlz.credentials import GeenRlzCredentials, client_voor_rlz_admin_id
 from app.sync.models import ProjectCache, TaxRateCache, VendorCache
 
@@ -440,6 +440,7 @@ def maak_crediteur_aan(
     btw_nummer: str | None = None,
     iban: str | None = None,
     document_id: uuid.UUID | None = None,
+    adres: dict[str, str] | None = None,
 ) -> NieuweCrediteur:
     """Maakt een crediteur aan in RLZ (fix 2, 2026-07-10: de AI las een leverancier die nog niet
     in de crediteuren-cache staat — het controlescherm biedt dan "nieuwe crediteur aanmaken in
@@ -478,6 +479,7 @@ def maak_crediteur_aan(
         if bestaande is not None:
             raise CrediteurBestaatAl(bestaande.id, bestaande.naam or naam)
 
+    adres_waarschuwing: str | None = None
     if client is None and _is_odoo(administratie_id):
         # Odoo-adapter (0016): res.partner groepsgedeeld, lookup-vóór-create op btw → KvK → naam (besluit 02-09);
         # de UUID is de deterministische odoo_uuid van de partner (id-koppeling meteen geschreven).
@@ -488,15 +490,20 @@ def maak_crediteur_aan(
         )
         vendor_id = partner.vendor_id
         brondata_bron = {"odoo_id": partner.odoo_id, "backend": "odoo", "bron": "app_aangemaakt"}
+        if adres and adres_als_regel(adres):
+            adres_waarschuwing = "adres niet naar Odoo geschreven (partner-adres via deze route niet ondersteund)"
     else:
         vendor_id = rlz_vendor_id(administratie_id, naam)
         client, eigen_client = _open_client_indien_nodig(administratie_id, client)
         try:
-            client.put_vendor(vendor_id, name=naam)
+            adres_waarschuwing = _put_vendor_fail_open(client, vendor_id, naam=naam, adres=adres)
         finally:
             if eigen_client:
                 client.close()
         brondata_bron = {"bron": "app_aangemaakt"}
+        if adres and adres_als_regel(adres) and adres_waarschuwing is None:
+            brondata_bron["FullAddress"] = adres_als_regel(adres)
+            brondata_bron["adres_velden"] = _schoon_adres(adres)
 
     now = datetime.now(UTC)
     with scoped_session(administratie_id, actor_id=actor_id) as session:
@@ -534,7 +541,12 @@ def maak_crediteur_aan(
     # op de eerste factuur van een nieuwe entiteit). Nooit stil: elke overgeslagen waarde is een
     # waarschuwing in het resultaat.
     waarschuwingen: list[str] = []
+    if adres_waarschuwing:
+        waarschuwingen.append(adres_waarschuwing)
     kvk_ok = btw_ok = iban_ok = False
+    if not iban:
+        # FV-14 (25-09): ontbrekend IBAN = WAARSCHUWING, geen blokkade (incasso/buitenland) — later via de IBAN-route.
+        waarschuwingen.append(IBAN_ONTBREEKT_WAARSCHUWING)
     if kvk_nummer or btw_nummer:
         from app.documenten.crediteur_kenmerk import neem_over_uit_veldvoorstel
         from app.extractie.btw_nummer import normaliseer_kvk_nummer, valideer_btw_nummer
@@ -575,6 +587,253 @@ def maak_crediteur_aan(
         kvk_opgeslagen=kvk_ok,
         btw_opgeslagen=btw_ok,
         iban_vertrouwd=iban_ok,
+        waarschuwingen=tuple(waarschuwingen),
+    )
+
+
+IBAN_ONTBREEKT_WAARSCHUWING = (
+    "geen IBAN vastgelegd — incasso of buitenland? Toevoegen kan later via de IBAN-route (vier ogen)"
+)
+ADRES_NIET_GEACCEPTEERD = "adres niet door Reeleezee geaccepteerd — alleen de naam is opgeslagen"
+
+
+def _schoon_adres(adres: dict[str, str] | None) -> dict[str, str]:
+    return {k: " ".join(str(v).split()) for k, v in (adres or {}).items() if v and str(v).strip()}
+
+
+def _put_vendor_fail_open(
+    client: RlzClient, vendor_id: uuid.UUID, *, naam: str, adres: dict[str, str] | None
+) -> str | None:
+    """Vendor-PUT mét adres; weigert RLZ de body (4xx) dan nog één keer ZONDER adres — de naam gaat altijd, het
+    adres alleen als RLZ het accepteert (blok 5 feedbackrun 25-09: schrijfbaarheid van `FullAddress`/`City` niet
+    live bewezen). Terug: de waarschuwing (adres verworpen) of None. Een fout op de naam-PUT zelf gooit gewoon."""
+    if not (adres and adres_als_regel(adres)):
+        client.put_vendor(vendor_id, name=naam)
+        return None
+    try:
+        client.put_vendor(vendor_id, name=naam, adres=adres)
+        return None
+    except RlzApiError as exc:
+        if not 400 <= exc.status_code < 500:
+            raise
+        client.put_vendor(vendor_id, name=naam)
+        return f"{ADRES_NIET_GEACCEPTEERD} ({exc.status_code})"
+
+
+class CrediteurNietGevonden(SyncFout):
+    """Geen (niet-verdwenen) crediteur mét dit id in de cache van deze administratie."""
+
+
+class CrediteurBewerkenNietOndersteund(SyncFout):
+    """Odoo-administratie: partnergegevens wijzigen via deze route is niet gebouwd — zichtbaar, nooit stil."""
+
+
+@dataclass(frozen=True)
+class CrediteurDetail:
+    """Bewerk-modus van het crediteur-zijpaneel (FV-15): huidige stand uit cache + kenmerk + vertrouwde IBAN's
+    (lees-only in het paneel — IBAN's wijzigen loopt ALTIJD via de IBAN-wissel/vier-ogen-route)."""
+
+    id: uuid.UUID
+    naam: str | None
+    kvk_nummer: str | None
+    btw_nummer: str | None
+    adres: dict[str, str | None]
+    vertrouwde_ibans: tuple[str, ...]
+    backend: str
+
+
+def _adres_uit_brondata(brondata: dict | None) -> dict[str, str | None]:
+    """RLZ-sync levert `FullAddress`/`City` (Vendor-DTO); onze eigen writes bewaren daarnaast `adres_velden`."""
+    b = brondata or {}
+    velden = b.get("adres_velden") if isinstance(b.get("adres_velden"), dict) else {}
+    return {
+        "straat": velden.get("straat") or None,
+        "postcode": velden.get("postcode") or None,
+        "plaats": velden.get("plaats") or b.get("City") or None,
+        "land": velden.get("land") or None,
+        "regel": b.get("FullAddress") or None,
+    }
+
+
+def crediteur_detail(*, administratie_id: uuid.UUID, vendor_id: uuid.UUID) -> CrediteurDetail:
+    from app.documenten.leverancier_iban import vertrouwde_ibans
+    from app.documenten.models import CrediteurKenmerk
+
+    with scoped_session(administratie_id) as session:
+        rij = session.get(VendorCache, (vendor_id, administratie_id))
+        if rij is None or rij.verdwenen_uit_bron_op is not None:
+            raise CrediteurNietGevonden(f"Onbekende crediteur: {vendor_id}")
+        kenmerk = session.get(CrediteurKenmerk, (administratie_id, vendor_id))
+        detail = CrediteurDetail(
+            id=rij.id,
+            naam=rij.naam,
+            kvk_nummer=kenmerk.kvk_nummer if kenmerk else (rij.brondata or {}).get("ChamberOfCommerceNumber"),
+            btw_nummer=kenmerk.btw_nummer if kenmerk else None,
+            adres=_adres_uit_brondata(rij.brondata),
+            vertrouwde_ibans=(),
+            backend="odoo" if _is_odoo(administratie_id) else "rlz",
+        )
+    return dataclasses.replace(
+        detail, vertrouwde_ibans=tuple(sorted(vertrouwde_ibans(administratie_id=administratie_id, vendor_id=vendor_id)))
+    )
+
+
+def _zet_kenmerk_handmatig(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    kvk_nummer: str | None,
+    btw_nummer: str | None,
+    actor_id: uuid.UUID,
+) -> tuple[dict, dict, list[str]]:
+    """KvK/btw uit het bewerk-paneel = MENS-keuze (bron 'handmatig' — wint voortaan van de factuur, bestaande regel
+    in `neem_over_uit_veldvoorstel`). Ongeldige vorm = waarschuwing, niet opgeslagen; leeg laten = ongewijzigd."""
+    from app.documenten.models import CrediteurKenmerk
+    from app.extractie.btw_nummer import normaliseer_kvk_nummer, valideer_btw_nummer
+
+    waarschuwingen: list[str] = []
+    rij = session.get(CrediteurKenmerk, (administratie_id, vendor_id))
+    oud = {"kvk_nummer": rij.kvk_nummer if rij else None, "btw_nummer": rij.btw_nummer if rij else None}
+    nieuw = dict(oud)
+    btw_geverifieerd = False
+    if kvk_nummer:
+        kvk = normaliseer_kvk_nummer(kvk_nummer)
+        if kvk is None:
+            waarschuwingen.append(f"KvK-nummer '{kvk_nummer}' heeft geen geldige vorm — niet opgeslagen")
+        else:
+            nieuw["kvk_nummer"] = kvk
+    if btw_nummer:
+        btw = valideer_btw_nummer(btw_nummer)
+        if btw is None:
+            waarschuwingen.append(f"Btw-nummer '{btw_nummer}' heeft geen geldige vorm — niet opgeslagen")
+        else:
+            nieuw["btw_nummer"] = btw.genormaliseerd
+            btw_geverifieerd = bool(btw.geverifieerd)
+    if nieuw != oud:
+        if rij is None:
+            rij = CrediteurKenmerk(administratie_id=administratie_id, vendor_id=vendor_id)
+            session.add(rij)
+        if nieuw["kvk_nummer"] != oud["kvk_nummer"]:
+            rij.kvk_nummer = nieuw["kvk_nummer"]
+            rij.kvk_nummer_bron = "handmatig"
+        if nieuw["btw_nummer"] != oud["btw_nummer"]:
+            rij.btw_nummer = nieuw["btw_nummer"]
+            rij.btw_nummer_geverifieerd = btw_geverifieerd
+            rij.btw_nummer_bron = "handmatig"
+        rij.laatst_uit_document_id = vendor_id
+        rij.bijgewerkt_door = actor_id
+        rij.bijgewerkt_op = datetime.now(UTC)
+    return oud, nieuw, waarschuwingen
+
+
+def wijzig_crediteur(
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    naam: str,
+    kvk_nummer: str | None = None,
+    btw_nummer: str | None = None,
+    adres: dict[str, str] | None = None,
+    client: RlzClient | None = None,
+) -> NieuweCrediteur:
+    """FV-15 (blok 5 feedbackrun 25-09): crediteur achteraf bewerken vanuit het controlescherm — naam + adres naar RLZ
+    (`put_vendor` op het BESTAANDE id, fail-open op het adres), KvK/btw als mens-kenmerk ('handmatig'), cache-rij bij,
+    audit `crediteur_gewijzigd` oud→nieuw. Dezelfde schrijf-failsafe-poort als aanmaken. Géén IBAN-veld: IBAN's lopen
+    uitsluitend via de IBAN-wissel/vier-ogen-route. Odoo = zichtbaar niet ondersteund (409), nooit een stille no-op."""
+    naam = " ".join(naam.split())
+    if not naam:
+        raise SyncFout("Crediteurnaam mag niet leeg zijn")
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise SyncFout(f"Onbekende administratie: {administratie_id}")
+        instelling = session.get(BoekenInstelling, True)
+        if not administratie.boeken_ingeschakeld or instelling is None or not instelling.globaal_ingeschakeld:
+            raise CrediteurAanmakenUitgeschakeld(
+                "Crediteuren bewerken in RLZ staat uit voor deze administratie "
+                "(schrijf-failsafe: zelfde toggle als boeken, plus de globale kill switch)"
+            )
+    with scoped_session(administratie_id) as session:
+        rij = session.get(VendorCache, (vendor_id, administratie_id))
+        if rij is None or rij.verdwenen_uit_bron_op is not None:
+            raise CrediteurNietGevonden(f"Onbekende crediteur: {vendor_id}")
+        oude_naam = rij.naam
+        oud_adres = _adres_uit_brondata(rij.brondata)
+        andere = session.scalars(
+            select(VendorCache).where(
+                VendorCache.administratie_id == administratie_id,
+                VendorCache.verdwenen_uit_bron_op.is_(None),
+                VendorCache.id != vendor_id,
+                func.lower(VendorCache.naam) == naam.lower(),
+            )
+        ).first()
+        if andere is not None:
+            raise CrediteurBestaatAl(andere.id, andere.naam or naam)
+    if client is None and _is_odoo(administratie_id):
+        raise CrediteurBewerkenNietOndersteund(
+            "Crediteurgegevens bewerken is voor een Odoo-administratie niet ondersteund — pas de partner in Odoo aan"
+        )
+    client, eigen_client = _open_client_indien_nodig(administratie_id, client)
+    try:
+        adres_waarschuwing = _put_vendor_fail_open(client, vendor_id, naam=naam, adres=adres)
+    finally:
+        if eigen_client:
+            client.close()
+    waarschuwingen: list[str] = []
+    if adres_waarschuwing:
+        waarschuwingen.append(adres_waarschuwing)
+    now = datetime.now(UTC)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        rij = session.get(VendorCache, (vendor_id, administratie_id))
+        assert rij is not None
+        brondata = dict(rij.brondata or {})
+        brondata["Name"] = naam
+        if adres is not None and adres_waarschuwing is None:
+            schoon = _schoon_adres(adres)
+            brondata["adres_velden"] = schoon
+            regel = adres_als_regel(adres)
+            if regel:
+                brondata["FullAddress"] = regel
+            else:
+                brondata.pop("FullAddress", None)
+            if schoon.get("plaats"):
+                brondata["City"] = schoon["plaats"]
+        rij.naam = naam
+        rij.brondata = brondata
+        rij.laatst_gesynchroniseerd = now
+        oud_k, nieuw_k, kenmerk_w = _zet_kenmerk_handmatig(
+            session,
+            administratie_id=administratie_id,
+            vendor_id=vendor_id,
+            kvk_nummer=kvk_nummer,
+            btw_nummer=btw_nummer,
+            actor_id=actor_id,
+        )
+        waarschuwingen.extend(kenmerk_w)
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="vendor_cache",
+            record_id=vendor_id,
+            actie="crediteur_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"naam": oude_naam, "adres": oud_adres, **oud_k},
+            nieuwe_waarde={"naam": naam, "adres": _adres_uit_brondata(brondata), **nieuw_k, "bron": "controlescherm"},
+            administratie_id=administratie_id,
+        )
+    from app.documenten.leverancier_iban import vertrouwde_ibans
+
+    if not vertrouwde_ibans(administratie_id=administratie_id, vendor_id=vendor_id):
+        waarschuwingen.append(IBAN_ONTBREEKT_WAARSCHUWING)
+    return NieuweCrediteur(
+        id=vendor_id,
+        naam=naam,
+        kvk_opgeslagen=nieuw_k["kvk_nummer"] is not None and nieuw_k["kvk_nummer"] != oud_k["kvk_nummer"],
+        btw_opgeslagen=nieuw_k["btw_nummer"] is not None and nieuw_k["btw_nummer"] != oud_k["btw_nummer"],
+        iban_vertrouwd=False,
         waarschuwingen=tuple(waarschuwingen),
     )
 

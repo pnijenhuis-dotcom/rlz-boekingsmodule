@@ -29,6 +29,8 @@ class FakeRlzClient:
         self.opgevraagde_paden: list[str] = []
         self.opgevraagde_params: list[dict[str, Any] | None] = []
         self.aangemaakte_vendors: list[tuple[Any, str]] = []
+        self.vendor_puts: list[dict[str, Any]] = []
+        self.adres_fout: Exception | None = None
 
     def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         self.opgevraagde_paden.append(path)
@@ -37,16 +39,23 @@ class FakeRlzClient:
             raise self._fouten[path]
         return {"value": self._data.get(path, [])}
 
-    def put_vendor(self, vendor_id: Any, *, name: str, payment_due_days: int | None = None) -> None:
+    def put_vendor(
+        self, vendor_id: Any, *, name: str, payment_due_days: int | None = None, adres: dict[str, str] | None = None
+    ) -> None:
         """Voor de crediteur-aanmaakflow (fix 2, 2026-07-10): registreert de schrijfactie zodat
-        tests kunnen verifiëren dát en waarmee er naar RLZ geschreven zou zijn."""
+        tests kunnen verifiëren dát en waarmee er naar RLZ geschreven zou zijn. Blok 5 25-09: `vendor_puts`
+        bewaart óók het adres; `adres_fout` (RlzApiError) speelt "RLZ weigert het adres" na (fail-open-pad)."""
+        if adres and getattr(self, "adres_fout", None) is not None:
+            raise self.adres_fout
         self.aangemaakte_vendors.append((vendor_id, name))
+        self.vendor_puts.append({"vendor_id": vendor_id, "name": name, "adres": adres})
 
     def for_administration(self, admin_id: str) -> FakeRlzClient:
         gescoped = FakeRlzClient(self._data, fouten=self._fouten)
         gescoped.admin_id = admin_id
         gescoped.opgevraagde_paden = self.opgevraagde_paden  # zelfde "verbinding", gedeelde log
         gescoped.aangemaakte_vendors = self.aangemaakte_vendors
+        gescoped.vendor_puts = self.vendor_puts
         return gescoped
 
     def close(self) -> None:

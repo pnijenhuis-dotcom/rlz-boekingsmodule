@@ -1028,6 +1028,28 @@ export interface GeheugenVoorstelDto {
 
 /** 18-09 (btw volgt tarief): handeling op een check-rij — `code` 'btw_in_kosten' | 'zet_tarief', `regel` 1-gebaseerd,
  * `taxrate_id` = het tarief dat de actie zet (null = geen geschikt tarief in de cache → alleen tekst). */
+/** Blok 5 feedbackrun 25-09 (FV-14/FV-15): adres van een crediteur — vrije velden, `regel` = de leesbare
+ * één-regel-vorm (RLZ FullAddress). */
+export interface CrediteurAdresDto {
+  straat: string | null
+  postcode: string | null
+  plaats: string | null
+  land: string | null
+  regel: string | null
+}
+
+/** `GET /administraties/{id}/crediteuren/{vendor_id}` — bewerk-modus van het crediteur-zijpaneel (FV-15). De
+ * vertrouwde IBAN's zijn lees-only: wijzigen loopt uitsluitend via de IBAN-wissel/vier-ogen-route. */
+export interface CrediteurDetailDto {
+  id: string
+  naam: string | null
+  kvk_nummer: string | null
+  btw_nummer: string | null
+  adres: CrediteurAdresDto
+  vertrouwde_ibans: string[]
+  backend: 'rlz' | 'odoo' | string
+}
+
 export interface CheckActieDto {
   /** 22-09: `btw_in_kosten_alles` (regel 0) = álle regels bruto met btw 0 en de "geen btw"-code (niet-btw-plichtige administratie). */
   code: 'btw_in_kosten' | 'zet_tarief' | 'btw_in_kosten_alles' | string
