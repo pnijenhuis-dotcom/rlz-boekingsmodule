@@ -52,8 +52,12 @@ def test_ongeldige_xml_faalt() -> None:
 
 
 def test_xml_zonder_ubl_velden_faalt() -> None:
-    with pytest.raises(GeenGeldigeUbl, match="Geen UBL-Invoice-velden"):
+    # FV-01 (25-09): een vreemd root-element krijgt een leesbare reden (het scherm toont 'm als chip).
+    with pytest.raises(GeenGeldigeUbl, match="root-element <root> is geen UBL Invoice of CreditNote"):
         parseer_ubl_factuur(b"<root><iets>anders</iets></root>")
+    # Wél een Invoice-root maar zonder ID/PayableAmount: de oude reden blijft.
+    with pytest.raises(GeenGeldigeUbl, match="Geen UBL-Invoice-velden"):
+        parseer_ubl_factuur(b"<Invoice><iets>anders</iets></Invoice>")
 
 
 def test_doctype_wordt_geweigerd() -> None:

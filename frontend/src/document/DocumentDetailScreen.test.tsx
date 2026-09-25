@@ -33,6 +33,9 @@ interface MockOpties {
   /** Override voor GET …/boekvoorstel. */
   boekvoorstel?: unknown
   taxrates?: unknown[]
+  /** FV-01 (25-09): /bestand serveert XML (i.p.v. PDF) en /ubl-samenvatting deze kaart. */
+  bijlageXml?: string
+  ublSamenvatting?: unknown
 }
 
 function installFetchMock(detail: unknown, opties?: MockOpties) {
@@ -73,6 +76,12 @@ function installFetchMock(detail: unknown, opties?: MockOpties) {
       if (url.includes('/accordering/documenten/')) return Promise.resolve(jsonResponse(null))
       if (url.endsWith(`/documenten/${DOCUMENT_ID}`)) return Promise.resolve(jsonResponse(detail))
       if (url.endsWith('/al-betaald')) return Promise.resolve(jsonResponse(opties?.alBetaald ?? { toetsbaar: false, treffers: [] }))
+      if (url.endsWith('/ubl-samenvatting')) {
+        if (opties?.ublSamenvatting === undefined) return Promise.resolve(new Response(null, { status: 404 }))
+        return Promise.resolve(jsonResponse(opties.ublSamenvatting))
+      }
+      if (url.endsWith('/bestand') && opties?.bijlageXml !== undefined)
+        return Promise.resolve(new Response(opties.bijlageXml, { status: 200, headers: { 'Content-Type': 'application/xml' } }))
       if (url.endsWith('/bestand')) return Promise.resolve(new Response(new Blob(['%PDF-1.4']), { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
       if (url.endsWith('/boekvoorstel')) {
         return Promise.resolve(
@@ -1651,5 +1660,82 @@ describe('DocumentDetailScreen — redirect naar het reviewscherm van de soort (
     renderScherm()
     await screen.findByText('factuur.pdf', { exact: false })
     expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`)
+  })
+})
+
+// ————— FV-01 (feedbackrun A 25-09): UBL zonder beeld = kaart, nooit ruwe XML; onleesbare XML = chip mét reden —————
+
+describe('DocumentDetailScreen — XML-bijlage (FV-01, 25-09)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const XML = '<?xml version="1.0"?><doc:Invoice><cbc:ID>RLZ-2080142898</cbc:ID></doc:Invoice>'
+  const UBL_VOORSTEL = { ...AI_VOORSTEL, bron: 'ubl', factuurnummer: 'RLZ-2080142898', leverancier_naam: 'Universal Nederland B.V.' }
+
+  it('een UBL zonder PDF-beeld toont de samenvattingskaart en de XML alleen achter "XML-bron tonen"', async () => {
+    installFetchMock(
+      detailMet({
+        bestandsnaam: 'Universal Nederland B.V - RLZ-2080142898 - 2026-07-20.xml',
+        veldvoorstel: UBL_VOORSTEL,
+        tijdlijn: [
+          { van_status: null, naar_status: 'ontvangen', actor_id: 'x', actor_is_systeem: false, detail: null, tijdstip: '2026-09-02T16:03:00Z' },
+          { van_status: 'extractie_bezig', naar_status: 'te_controleren', actor_id: 'sys', actor_is_systeem: true, detail: { veldvoorstel: UBL_VOORSTEL }, tijdstip: '2026-09-02T16:03:01Z' },
+        ],
+      }),
+      {
+        bijlageXml: XML,
+        ublSamenvatting: {
+          leesbaar: true,
+          leverancier: 'Universal Nederland B.V.',
+          afnemer: 'Universal Steigerbouw B.V.',
+          factuurnummer: 'RLZ-2080142898',
+          factuurdatum: '2026-07-20',
+          valuta: 'EUR',
+          totaal_excl: '775.26',
+          totaal_btw: '162.80',
+          totaal_incl: '938.06',
+          regelaantal: 1,
+          regels: [{ volgnummer: 1, omschrijving: 'Huur steigermateriaal', netto_bedrag: '775.26', btw_percentage: '21', btw_bedrag: '162.80' }],
+        },
+      },
+    )
+
+    renderScherm()
+
+    const kaart = await screen.findByTestId('ubl-kaart')
+    expect(await within(kaart).findByText('Universal Steigerbouw B.V.')).toBeInTheDocument()
+    expect(within(kaart).getByText('€ 938,06 incl.')).toBeInTheDocument()
+    expect(screen.queryByTestId('xml-bron')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'XML-bron tonen' }))
+    expect(screen.getByTestId('xml-bron')).toHaveTextContent('RLZ-2080142898')
+    expect(screen.queryByRole('button', { name: '↻ Opnieuw extraheren' })).not.toBeInTheDocument()
+  })
+
+  it('een onleesbare XML (handmatig_afmaken + ubl_parse_fout) toont de chip "XML niet leesbaar: ‹reden›" zonder her-extractieknop', async () => {
+    const reden = 'gecomprimeerd bestand (gzip) — lever de XML zelf aan'
+    installFetchMock(
+      detailMet({
+        bestandsnaam: 'export.xml',
+        status: 'handmatig_afmaken',
+        veldvoorstel: null,
+        tijdlijn: [
+          { van_status: null, naar_status: 'ontvangen', actor_id: 'x', actor_is_systeem: false, detail: null, tijdstip: '2026-09-02T16:03:00Z' },
+          { van_status: 'extractie_bezig', naar_status: 'handmatig_afmaken', actor_id: 'sys', actor_is_systeem: true, detail: { ubl_parse_fout: reden, reden: `XML niet leesbaar — handmatig afmaken: ${reden}` }, tijdstip: '2026-09-02T16:03:01Z' },
+        ],
+      }),
+      { bijlageXml: '\x1f\x8b', ublSamenvatting: { leesbaar: false, reden, regels: [] } },
+    )
+
+    renderScherm()
+
+    const banner = await screen.findByTestId('xml-niet-leesbaar-banner-chip')
+    expect(banner).toHaveTextContent(`XML niet leesbaar: ${reden}`)
+    expect(screen.getByText(/Dit XML-bestand is geen leesbare UBL-factuur/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '↻ Opnieuw extraheren' })).not.toBeInTheDocument()
+    // Het bijlage-paneel zegt hetzelfde als de tijdlijn.
+    const kaartChip = await screen.findByTestId('xml-niet-leesbaar-chip')
+    expect(kaartChip).toHaveTextContent(reden)
+    expect(screen.queryByTestId('xml-bron')).not.toBeInTheDocument()
   })
 })

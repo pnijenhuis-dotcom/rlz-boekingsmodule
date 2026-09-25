@@ -867,6 +867,33 @@ def document_bestand(
     )
 
 
+@bestand_router.get(
+    "/administraties/{administratie_id}/documenten/{document_id}/ubl-samenvatting",
+    response_model=schemas.UblSamenvattingDocumentResponse,
+)
+def document_ubl_samenvatting(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _rol: CurrentGebruiker = Depends(vereis_kantoor_of_accordeur),
+) -> schemas.UblSamenvattingDocumentResponse:
+    """FV-01 (25-09): leesbare UBL-kaart voor een XML-document zonder beeld — de bijlage-kolom toont déze kaart i.p.v.
+    de ruwe XML. Lees-only, dezelfde parser als de intake. Niet-parsebaar = 200 mét `leesbaar=false` + reden (dezelfde
+    tekst als de tijdlijn); geen XML-hoofdbestand = 422."""
+    from app.documenten import ubl_samenvatting
+
+    try:
+        s = ubl_samenvatting.samenvatting_voor_document(administratie_id=administratie_id, document_id=document_id)
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ubl_samenvatting.GeenXmlDocument as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return schemas.UblSamenvattingDocumentResponse(
+        **{k: v for k, v in s.__dict__.items() if k != "regels"},
+        regels=[schemas.UblSamenvattingRegelDocumentDto(**r.__dict__) for r in s.regels],
+    )
+
+
 @bestand_router.get("/administraties/{administratie_id}/documenten/{document_id}/bronbestand")
 def document_bronbestand(
     administratie_id: uuid.UUID,

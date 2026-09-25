@@ -637,6 +637,39 @@ tr.subrij .eerste-sync-rij ul {
   border: none;
 }
 
+/* FV-01 (25-09): UBL-samenvattingskaart in het bijlage-paneel (i.p.v. ruwe XML); de XML-bron alleen op verzoek. */
+.ubl-kaart {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+}
+.ubl-kaart-velden {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.ubl-kaart-velden dt {
+  color: var(--muted);
+}
+.ubl-kaart-velden dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ubl-kaart-regels {
+  width: 100%;
+  font-size: 13px;
+}
+.ubl-kaart-regels th,
+.ubl-kaart-regels td {
+  padding: 4px 6px;
+  vertical-align: top;
+}
+
 .xml-bron {
   background: var(--bg);
   border: 1px solid var(--border);

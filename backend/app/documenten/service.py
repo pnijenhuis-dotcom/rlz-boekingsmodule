@@ -39,7 +39,7 @@ from app.documenten.models import (
 from app.documenten.pdf import tel_paginas
 from app.documenten.statusmachine import OngeldigeStatusovergang, valideer_overgang
 from app.documenten.storage import DocumentOpslag
-from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
+from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur, ubl_onvolledig_reden
 from app.documenten.wachtrij import (
     CloudRunJobExtractieWachtrij,
     DirecteExtractieWachtrij,
@@ -388,6 +388,20 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
         try:
             voorstel = parseer_ubl_factuur(inhoud)
             veldvoorstel = voorstel.als_dict()
+            # FV-01 (25-09): parseert wél, maar zonder factuurnummer/totaal/regels is er niets boekbaars — handmatig
+            # afmaken mét de reden als chip; het kop-voorstel blijft bewaard (niets verdwijnt stil).
+            if (onvolledig := ubl_onvolledig_reden(voorstel)) is not None:
+                detail = {"veldvoorstel": veldvoorstel, "ubl_parse_fout": onvolledig}
+                doel_status = DocumentStatus.HANDMATIG_AFMAKEN
+                veldvoorstel = None
+        except GeenGeldigeUbl as exc:
+            # FV-01 (25-09): een XML die geen UBL is → HANDMATIG_AFMAKEN (was: te_controleren mét alleen een
+            # tijdlijn-detail — het scherm toonde dan de ruwe XML en een leeg voorstel). De reden reist als
+            # `ubl_parse_fout` mee; het controlescherm toont 'm als chip "XML niet leesbaar: ‹reden›".
+            detail = {"ubl_parse_fout": str(exc)}
+            doel_status = DocumentStatus.HANDMATIG_AFMAKEN
+            veldvoorstel = None
+        if veldvoorstel is not None:
             if document.administratie_id is not None:
                 # Blok 3 herstelrun 08-09 (casus BDO 6088744): crediteur-match btw → KvK → IBAN → naam, zelfde
                 # vorm als het AI-voorstel (`vendor_suggestie`/`vendor_waarschuwing`) — de UBL is deterministisch
@@ -401,8 +415,6 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
                     taxrates=_taxrate_kandidaten(session, administratie_id=document.administratie_id),
                 )
             detail = {"veldvoorstel": veldvoorstel}
-        except GeenGeldigeUbl as exc:
-            detail = {"ubl_parse_fout": str(exc)}
     elif suffix == _PDF_SUFFIX:
         detail, blokkeer = _pdf_extractie_detail(session, document=document, opslag=opslag)
         if blokkeer:
@@ -438,7 +450,8 @@ def _extractie_reden(detail: dict | None, doel_status: DocumentStatus) -> str:
     if "ai_extractie_onvolledig" in d:
         return "extractie afgerond — regelset niet aantoonbaar compleet, handmatig afmaken"
     if "ubl_parse_fout" in d:
-        return "UBL onleesbaar — handmatig invullen"
+        # FV-01 (25-09): de reden zelf in de tijdlijnregel — nooit alleen "onleesbaar".
+        return f"XML niet leesbaar — handmatig afmaken: {d['ubl_parse_fout']}"
     if "waarborg_parse_fout" in d:
         return "waarborgbericht onleesbaar — handmatig beoordelen"
     if "bron_parse_fout" in d:

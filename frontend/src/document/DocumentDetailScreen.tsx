@@ -32,6 +32,7 @@ import { TegenboekSectie } from './TegenboekSectie'
 import { CorrectieBalk, CorrigerenDialog, CorrigerenMenuItem, correctieTijdlijnTekst, corrigerenMogelijk, useCorrigerenDialoog } from './CorrigerenActie'
 import { AfwijsModal } from './AfwijsModal'
 import { metViewerOpties } from './pdfWeergaveUrl'
+import { UblSamenvattingKaart } from './UblSamenvattingKaart'
 import { DuplicaatAfvoerSectie } from './DuplicaatAfvoer'
 import { VerplaatsModal } from './VerplaatsModal'
 import { redenNietVerplaatsbaar } from './verplaatsen'
@@ -314,7 +315,21 @@ function laatsteExtractieProbleem(detail: DocumentDetailDto): string | null {
     if (g.naar_status === 'te_controleren' || g.naar_status === 'handmatig_afmaken') {
       if (g.detail && 'ai_extractie_fout' in g.detail) return String(g.detail.ai_extractie_fout)
       if (g.detail && 'ai_extractie_onvolledig' in g.detail) return String(g.detail.ai_extractie_onvolledig)
+      // FV-01 (25-09): een XML die geen (volledige) UBL is → handmatig afmaken mét de reden als chip.
+      if (g.detail && 'ubl_parse_fout' in g.detail) return String(g.detail.ubl_parse_fout)
       return null
+    }
+  }
+  return null
+}
+
+/** FV-01 (25-09): de laatste extractie-uitkomst was een niet-leesbare XML (`ubl_parse_fout`) — het paneel toont
+ * dan de chip "XML niet leesbaar: ‹reden›" i.p.v. de AI-tekst. */
+function laatsteXmlNietLeesbaar(detail: DocumentDetailDto): string | null {
+  for (let i = detail.tijdlijn.length - 1; i >= 0; i--) {
+    const g = detail.tijdlijn[i]
+    if (g.naar_status === 'te_controleren' || g.naar_status === 'handmatig_afmaken') {
+      return g.detail && 'ubl_parse_fout' in g.detail ? String(g.detail.ubl_parse_fout) : null
     }
   }
   return null
@@ -680,6 +695,7 @@ export function DocumentDetailScreen() {
 
   const extractieProbleem = laatsteExtractieProbleem(detail)
   const extractieOvergeslagen = laatsteExtractieOvergeslagen(detail)
+  const xmlNietLeesbaar = laatsteXmlNietLeesbaar(detail)
   const isHandmatigAfmaken = detail.status === 'handmatig_afmaken'
   const achtergrondBezig = extractieActief(detail.status)
 
@@ -980,8 +996,15 @@ export function DocumentDetailScreen() {
                   </p>
                 </object>
               )}
+              {/* FV-01 (25-09): een UBL zonder PDF-beeld toont de leesbare samenvattingskaart — nooit meer de ruwe XML
+                  als standaardweergave; de XML-bron staat achter "XML-bron tonen". */}
               {bijlage?.xmlTekst !== null && bijlage?.xmlTekst !== undefined && (
-                <pre className="xml-bron">{bijlage.xmlTekst}</pre>
+                <UblSamenvattingKaart
+                  administratieId={administratieId}
+                  documentId={documentId}
+                  xmlTekst={bijlage.xmlTekst}
+                  bestandsnaam={detail.bestandsnaam}
+                />
               )}
               {bijlage && !bijlage.contentType.includes('pdf') && bijlage.xmlTekst === null && (
                 <p className="hint">Geen inline weergave voor dit bestandstype.</p>
@@ -1268,24 +1291,36 @@ export function DocumentDetailScreen() {
             <div className="panel">
               <h2>
                 {isHandmatigAfmaken ? 'Handmatig afmaken' : 'AI-extractie mislukt'}{' '}
-                <span className={`chip ${isHandmatigAfmaken ? 'blokkerend' : 'afwijking'}`}>
-                  {isHandmatigAfmaken ? 'regelset onvolledig — geen voorstel' : 'handmatig of opnieuw'}
-                </span>
+                {xmlNietLeesbaar ? (
+                  // FV-01 (25-09): de reden uit de tijdlijn als chip — het bijlage-paneel zegt hetzelfde.
+                  <span className="chip blokkerend" data-testid="xml-niet-leesbaar-banner-chip">
+                    XML niet leesbaar: {xmlNietLeesbaar}
+                  </span>
+                ) : (
+                  <span className={`chip ${isHandmatigAfmaken ? 'blokkerend' : 'afwijking'}`}>
+                    {isHandmatigAfmaken ? 'regelset onvolledig — geen voorstel' : 'handmatig of opnieuw'}
+                  </span>
+                )}
               </h2>
               <p className="hint" style={{ marginTop: 0 }}>
-                {extractieProbleem}
+                {xmlNietLeesbaar
+                  ? 'Dit XML-bestand is geen leesbare UBL-factuur. Vul het boekingsvoorstel handmatig in, of vraag de leverancier om een geldige UBL of de factuur-PDF; een PDF-tweeling uit dezelfde mail koppelt het kantoor via de verzamelbak (samenvoegen).'
+                  : extractieProbleem}
               </p>
               {opnieuwFout && <div className="fout">{opnieuwFout}</div>}
-              <div className="actions">
-                <button
-                  type="button"
-                  className="btn secondary"
-                  disabled={opnieuwBezig}
-                  onClick={() => void opnieuwExtraheren()}
-                >
-                  {opnieuwBezig ? 'Bezig met extraheren…' : '↻ Opnieuw extraheren'}
-                </button>
-              </div>
+              {isPdf && (
+                // Alleen PDF's: een UBL wordt deterministisch geparst, opnieuw "lezen" bestaat daar niet (server 409).
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={opnieuwBezig}
+                    onClick={() => void opnieuwExtraheren()}
+                  >
+                    {opnieuwBezig ? 'Bezig met extraheren…' : '↻ Opnieuw extraheren'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

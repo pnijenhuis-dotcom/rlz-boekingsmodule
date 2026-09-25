@@ -102,17 +102,18 @@ def test_niet_ubl_xml_zet_parse_fout_in_detail(
         actor_id=gescoopte_gebruiker,
         opslag=opslag,
     )
-    assert resultaat.status == DocumentStatus.TE_CONTROLEREN  # de stub blokkeert niet op een parse-fout
+    # FV-01 (25-09): een XML die geen UBL is = handmatig afmaken mét de reden (was: te_controleren zonder voorstel).
+    assert resultaat.status == DocumentStatus.HANDMATIG_AFMAKEN
 
     with admin_engine.connect() as conn:
         detail = conn.execute(
             text(
                 "SELECT detail FROM boekhouding.document_gebeurtenis "
-                "WHERE document_id = :id AND naar_status = 'te_controleren'"
+                "WHERE document_id = :id AND naar_status = 'handmatig_afmaken'"
             ),
             {"id": resultaat.document_id},
         ).scalar_one()
-    assert "ubl_parse_fout" in detail
+    assert "root-element <root>" in detail["ubl_parse_fout"]
 
 
 def test_duplicaat_detectie_binnen_dezelfde_administratie(

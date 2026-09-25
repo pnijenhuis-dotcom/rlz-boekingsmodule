@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree as ET
@@ -26,7 +27,37 @@ _CREDITNOTE_ROOT = "{urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2}C
 
 
 class GeenGeldigeUbl(Exception):
-    """De inhoud is geen (herkenbare) UBL-factuur-XML."""
+    """De inhoud is geen (herkenbare) UBL-factuur-XML. De melding is de LEESBARE reden die het controlescherm toont
+    als chip "XML niet leesbaar: ‹reden›" (FV-01, 25-09) — nooit alleen een parser-regelnummer."""
+
+
+# FV-01 (25-09): magic bytes van veelvoorkomende niet-XML-inhoud, zodat de reden een mens iets zegt.
+_GZIP_MAGIC = b"\x1f\x8b"
+_ZIP_MAGIC = b"PK\x03\x04"
+_PDF_MAGIC = b"%PDF"
+#: Lokale root-namen die een UBL-factuur kunnen zijn; alles anders (orderbevestiging, RLZ-export van een ander
+#: documenttype, HTML) is géén UBL-factuur. Bewust op de LOKALE naam: SI-UBL 1.x/RLZ gebruikt het prefix `doc:`, sommige
+#: exporteurs laten de default-namespace weg — de kindelementen (cbc/cac) zijn de echte sleutel.
+_BEKENDE_ROOTS = {"Invoice", "CreditNote"}
+
+
+def _lokale_naam(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _herken_geen_xml(inhoud: bytes) -> str | None:
+    """Reden vóór het parsen: gecomprimeerd/binair/leeg — de expat-melding "invalid token: line 1, column 0" zegt een
+    mens niets. None = gewoon proberen te parsen."""
+    kop = inhoud.lstrip(b"\xef\xbb\xbf\xff\xfe\xfe\xff \t\r\n")[:8]
+    if not kop:
+        return "leeg bestand"
+    if kop.startswith(_GZIP_MAGIC):
+        return "gecomprimeerd bestand (gzip) — lever de XML zelf aan"
+    if kop.startswith(_ZIP_MAGIC):
+        return "zip-archief in plaats van XML — lever de XML zelf aan"
+    if kop.startswith(_PDF_MAGIC):
+        return "PDF met een .xml-bestandsnaam — hernoem of lever de PDF apart aan"
+    return None
 
 
 @dataclass(frozen=True)
@@ -103,9 +134,12 @@ class UblVeldvoorstel:
     # 49 = direct debit → betaalstatus "Wordt automatisch geïncasseerd" (app/documenten/betaalstatus.py,
     # deterministisch).
     payment_means_code: str | None = None
-    # Blok 3 feedbackrun A 25-09 (FV-02): de document-notitie `cbc:Note` — RLZ's eigen export zet daar het werk in
-    # ("Werk: 26084 - Opdrachtgever A (W03611)"); deterministische bron voor de projectcode-herkenning (nooit AI).
+    # FV-01 (25-09, RLZ-export-UBL): `cbc:Note` op documentniveau. RLZ's export zet er "Werk: 26084 - Opdrachtgever A
+    # (W03611)" in — óns projectnummer + het werknummer van de leverancier. `project_tekst` = de tekst ná "Werk:"
+    # (kop-`project_tekst`, zelfde sleutel als het AI-voorstel; `app/projecten/match.py` matcht deterministisch:
+    # exacte code 26084 → groen, werknummer W03611 via de mapping). Geen "Werk:"-note = None (nooit een gok).
     note: str | None = None
+    project_tekst: str | None = None
 
     def als_dict(self) -> dict:
         d = asdict(self)
@@ -314,14 +348,21 @@ def parseer_ubl_factuur(inhoud: bytes) -> UblVeldvoorstel:
     Parseert zowel UBL Invoice als UBL CreditNote (381) — de velden zijn gelijkvormig, alleen
     de regel-elementen verschillen (InvoiceLine vs CreditNoteLine) en een CreditNote draagt de
     BillingReference-herleiding naar de oorspronkelijke factuur."""
+    if (reden := _herken_geen_xml(inhoud)) is not None:
+        raise GeenGeldigeUbl(reden)
     if b"<!DOCTYPE" in inhoud[:4096].upper():
         raise GeenGeldigeUbl("XML met DOCTYPE wordt geweigerd (entity-expansion-risico)")
     try:
+        # expat leest een UTF-8-BOM en een UTF-16-declaratie zelf (RLZ-export: utf-8 mét standalone="yes").
         root = ET.fromstring(inhoud)
     except ET.ParseError as exc:
         raise GeenGeldigeUbl(f"Geen geldige XML: {exc}") from exc
+    if _lokale_naam(root.tag) not in _BEKENDE_ROOTS:
+        # FV-01 (25-09): een XML mét een ander root-element (bv. een orderbevestiging, een RLZ-export van een ander
+        # documenttype) is geen UBL-factuur — leesbare reden i.p.v. lege velden.
+        raise GeenGeldigeUbl(f"root-element <{_lokale_naam(root.tag)}> is geen UBL Invoice of CreditNote")
 
-    is_creditnota = root.tag == _CREDITNOTE_ROOT
+    is_creditnota = root.tag == _CREDITNOTE_ROOT or _lokale_naam(root.tag) == "CreditNote"
 
     def _tekst(pad: str) -> str | None:
         el = root.find(pad, _NS)
@@ -365,6 +406,7 @@ def parseer_ubl_factuur(inhoud: bytes) -> UblVeldvoorstel:
 
     if factuurnummer is None and totaal_incl is None:
         raise GeenGeldigeUbl("Geen UBL-Invoice-velden gevonden (ID/PayableAmount ontbreken)")
+    note = _tekst("cbc:Note")
 
     return UblVeldvoorstel(
         factuurnummer=factuurnummer,
@@ -389,8 +431,35 @@ def parseer_ubl_factuur(inhoud: bytes) -> UblVeldvoorstel:
         leverancier_adres=_leverancier_adres(partij),
         betalingskenmerk=betalingskenmerk.text.strip() if betalingskenmerk is not None else None,
         payment_means_code=payment_means_code,
-        note=" ".join(" ".join(t for t in (_tekst("cbc:Note"),) if t).split()) or None,
+        note=note,
+        project_tekst=project_tekst_uit_note(note),
     )
+
+
+_WERK_NOTE = re.compile(r"^\s*werk\s*:\s*(.+?)\s*$", re.IGNORECASE)
+
+
+def project_tekst_uit_note(note: str | None) -> str | None:
+    """RLZ-export: `cbc:Note` "Werk: 26084 - Opdrachtgever A (W03611)" → "26084 - Opdrachtgever A (W03611)" (kop-
+    projecttekst voor de deterministische match-motor). Elke andere note = None — een vrije opmerking is geen
+    project."""
+    if not note:
+        return None
+    m = _WERK_NOTE.match(note)
+    return m.group(1) if m else None
+
+
+def ubl_onvolledig_reden(voorstel: UblVeldvoorstel) -> str | None:
+    """FV-01 (25-09): een UBL die wél parseert maar geen boekbare kern draagt (geen factuurnummer, geen totaal of geen
+    regels) is voor het controlescherm "niet leesbaar" — handmatig afmaken mét reden, nooit stil te_controleren."""
+    ontbrekend = [
+        o
+        for o in nlcius_kernvelden_ontbrekend(voorstel)
+        if o.startswith(("factuurnummer", "totaalbedrag", "factuurregels"))
+    ]
+    if not ontbrekend:
+        return None
+    return "UBL onvolledig — ontbreekt: " + ", ".join(ontbrekend)
 
 
 def is_ubl_veldvoorstel(veldvoorstel: dict | None) -> bool:

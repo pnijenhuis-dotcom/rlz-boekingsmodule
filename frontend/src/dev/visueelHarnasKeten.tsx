@@ -40,6 +40,10 @@ interface KetenFixture {
   lijst_afgehandeld?: { documenten: Array<Record<string, unknown> & { status: string }>; [k: string]: unknown }
   stamgegevens?: Record<string, string>
   bank?: KetenBankFixture
+  /** FV-01 (25-09, casus a_ubl_zonder_beeld): het hoofdbestand is de UBL zelf (geen PDF-beeld) — /bestand serveert
+   * deze XML en /ubl-samenvatting de kaart die de backend-ketentest via de échte route exporteerde. */
+  bijlage_xml?: string
+  ubl_samenvatting?: Record<string, unknown>
 }
 
 const FIXTURES = import.meta.glob('./keten/*.json', { eager: true }) as Record<string, { default: KetenFixture }>
@@ -151,7 +155,15 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
     if (pad.endsWith('/bank/aanbetalingen')) return Promise.resolve(jsonResponse({ aanbetalingen: [] }))
     if (pad.endsWith('/splitsingen')) return Promise.resolve(jsonResponse({ splitsingen: [] }))
   }
+  if (pad.endsWith('/ubl-samenvatting')) {
+    return Promise.resolve(jsonResponse(fixture.ubl_samenvatting ?? { leesbaar: false, reden: 'geen kaart in de fixture' }))
+  }
   if (pad.endsWith('/bestand')) {
+    if (fixture.bijlage_xml) {
+      return Promise.resolve(
+        new Response(fixture.bijlage_xml, { status: 200, headers: { 'Content-Type': 'application/xml' } }),
+      )
+    }
     return Promise.resolve(new Response(MINI_PDF, { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
   }
   if (pad.includes('/accordering/documenten/')) return Promise.resolve(jsonResponse(null))

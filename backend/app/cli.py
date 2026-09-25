@@ -3505,6 +3505,10 @@ def main(argv: list[str] | None = None) -> int:
     from app.documenten.btw_tarief_cli import register as register_btw_tarief
 
     register_btw_tarief(subparsers)  # btw-tarief-afwijking-rapport (lees-only, nameting-allowlist)
+    from app.documenten.xml_rapport import dispatch as dispatch_xml_rapport  # 25-09 FV-01 (lees-only)
+    from app.documenten.xml_rapport import register as register_xml_rapport
+
+    register_xml_rapport(subparsers)  # xml-documenten-rapport (lees-only, nameting-allowlist)
     from app.beheer.btw_plichtig_cli import dispatch as dispatch_btw_plichtig  # 22-09: btw-plichtig per administratie
     from app.beheer.btw_plichtig_cli import register as register_btw_plichtig
 
@@ -4333,6 +4337,8 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_odoo_sync
     if (uitkomst_btw_tarief := dispatch_btw_tarief(args)) is not None:  # 18-09, lees-only
         return uitkomst_btw_tarief
+    if (uitkomst_xml_rapport := dispatch_xml_rapport(args)) is not None:  # 25-09 FV-01, lees-only
+        return uitkomst_xml_rapport
     if (uitkomst_btw_plichtig := dispatch_btw_plichtig(args)) is not None:  # 22-09: btw-plichtig per administratie
         return uitkomst_btw_plichtig
     if (uitkomst_appupdate := dispatch_appupdate(args)) is not None:  # OTA 16-09 nacht

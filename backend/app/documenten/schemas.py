@@ -612,6 +612,46 @@ class DocumentListResponse(BaseModel):
     offset: int | None = None
 
 
+class UblSamenvattingRegelDocumentDto(BaseModel):
+    volgnummer: int
+    omschrijving: str | None = None
+    aantal: str | None = None
+    eenheid: str | None = None
+    netto_bedrag: str | None = None
+    btw_percentage: str | None = None
+    btw_bedrag: str | None = None
+    soort: str | None = None
+
+
+class UblSamenvattingDocumentResponse(BaseModel):
+    """FV-01 (25-09): de leesbare kaart van een UBL-document zonder beeld (controlescherm, i.p.v. ruwe XML).
+    `leesbaar=False` + `reden` = dezelfde tekst als de tijdlijn-detail `ubl_parse_fout` (chip "XML niet leesbaar")."""
+
+    leesbaar: bool
+    reden: str | None = None
+    bestandsnaam: str | None = None
+    is_creditnota: bool = False
+    leverancier: str | None = None
+    afnemer: str | None = None
+    factuurnummer: str | None = None
+    factuurdatum: str | None = None
+    vervaldatum: str | None = None
+    valuta: str | None = None
+    totaal_excl: str | None = None
+    totaal_btw: str | None = None
+    totaal_incl: str | None = None
+    kvk_nummer: str | None = None
+    btw_nummer: str | None = None
+    iban: str | None = None
+    leverancier_adres: str | None = None
+    betalingskenmerk: str | None = None
+    note: str | None = None
+    project_tekst: str | None = None
+    regelaantal: int = 0
+    regels: list[UblSamenvattingRegelDocumentDto] = []
+    onvolledig: str | None = None
+
+
 class DocumentGebeurtenisResponse(BaseModel):
     van_status: str | None
     naar_status: str

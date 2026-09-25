@@ -48,6 +48,7 @@
    "factuurdatum": "2026-07-02",
    "factuurnummer": "6088744",
    "is_creditnota": false,
+   "project_tekst": null,
    "betalingskenmerk": null,
    "leverancier_naam": "BDO Accountancy, Tax & Legal B.V.",
    "vendor_suggestie": {
@@ -138,6 +139,7 @@
       "factuurdatum": "2026-07-02",
       "factuurnummer": "6088744",
       "is_creditnota": false,
+      "project_tekst": null,
       "betalingskenmerk": null,
       "leverancier_naam": "BDO Accountancy, Tax & Legal B.V.",
       "vendor_suggestie": {
@@ -462,8 +464,12 @@
   "groepen": {
    "kantoor": 1,
    "wachten": 0,
-   "afgehandeld": 0
-  }
+   "afgehandeld": 0,
+   "alles": 1
+  },
+  "totaal": null,
+  "limit": null,
+  "offset": null
  },
  "lijst_afgehandeld": {
   "documenten": [
@@ -523,8 +529,12 @@
   "groepen": {
    "kantoor": 1,
    "wachten": 0,
-   "afgehandeld": 0
-  }
+   "afgehandeld": 0,
+   "alles": 1
+  },
+  "totaal": null,
+  "limit": null,
+  "offset": null
  },
  "stamgegevens": {
   "grootboek_advies": "44444444-0000-0000-0000-000000004700"

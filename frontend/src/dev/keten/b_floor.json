@@ -192,6 +192,7 @@
    "factuurdatum": "2026-08-13",
    "factuurnummer": "26219",
    "is_creditnota": false,
+   "project_tekst": null,
    "betalingskenmerk": null,
    "leverancier_naam": "Floor Bouwliftenservice",
    "vendor_suggestie": {
@@ -426,6 +427,7 @@
       "factuurdatum": "2026-08-13",
       "factuurnummer": "26219",
       "is_creditnota": false,
+      "project_tekst": null,
       "betalingskenmerk": null,
       "leverancier_naam": "Floor Bouwliftenservice",
       "vendor_suggestie": {
@@ -845,8 +847,12 @@
   "groepen": {
    "kantoor": 1,
    "wachten": 0,
-   "afgehandeld": 1
-  }
+   "afgehandeld": 1,
+   "alles": 2
+  },
+  "totaal": null,
+  "limit": null,
+  "offset": null
  },
  "lijst_afgehandeld": {
   "documenten": [
@@ -962,7 +968,11 @@
   "groepen": {
    "kantoor": 1,
    "wachten": 0,
-   "afgehandeld": 1
-  }
+   "afgehandeld": 1,
+   "alles": 2
+  },
+  "totaal": null,
+  "limit": null,
+  "offset": null
  }
 }

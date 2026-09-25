@@ -1037,8 +1037,12 @@
   "groepen": {
    "kantoor": 1,
    "wachten": 0,
-   "afgehandeld": 0
-  }
+   "afgehandeld": 0,
+   "alles": 1
+  },
+  "totaal": null,
+  "limit": null,
+  "offset": null
  },
  "lijst_afgehandeld": {
   "documenten": [
@@ -1098,8 +1102,12 @@
   "groepen": {
    "kantoor": 1,
    "wachten": 0,
-   "afgehandeld": 0
-  }
+   "afgehandeld": 0,
+   "alles": 1
+  },
+  "totaal": null,
+  "limit": null,
+  "offset": null
  },
  "stamgegevens": {
   "grootboek_inhuur": "44444444-0000-0000-0000-000000004400"
