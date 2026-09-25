@@ -6,6 +6,8 @@ export const BTW_HERREKEND_SLEUTEL = 'btw_herrekend'
 
 interface BtwHerrekendRegel {
   regel?: unknown
+  /** 'tarief' (18-09) | 'netto' (FV-09, 25-09); ontbreekt = oude notitie = tarief. */
+  aanleiding?: unknown
   btw_van?: unknown
   btw_naar?: unknown
   netto_van?: unknown
@@ -23,12 +25,27 @@ function euro(w: unknown): string {
   return Number.isFinite(n) ? `€ ${n.toFixed(2).replace('.', ',')}` : '—'
 }
 
-/** "Btw herrekend uit tarief — regel 1: btw € 20,24 → € 0,00 (btw in de kosten: netto € 96,36 → € 116,60)". */
+/** "Btw herrekend uit tarief — regel 1: btw € 20,24 → € 0,00 (btw in de kosten: netto € 96,36 → € 116,60)" of, bij een
+ * nettowijziging (FV-09, 25-09): "Btw herrekend — regel 1: netto € 96,36 → € 100,00, btw € 20,24 → € 21,00 (netto
+ * gewijzigd)". Een notitie mét beide aanleidingen splitst in twee zinnen. */
 export function btwHerrekendTijdlijnTekst(detail: Record<string, unknown>): string {
   const regels = detail[BTW_HERREKEND_SLEUTEL] as BtwHerrekendRegel[]
-  const delen = regels.map((r) => {
-    const basis = `regel ${typeof r.regel === 'number' ? r.regel : '?'}: btw ${euro(r.btw_van)} → ${euro(r.btw_naar)}`
-    return r.in_kosten ? `${basis} (btw in de kosten: netto ${euro(r.netto_van)} → ${euro(r.netto_naar)})` : basis
-  })
-  return `Btw herrekend uit tarief — ${delen.join('; ')}`
+  const nettoRegels = regels.filter((r) => r.aanleiding === 'netto')
+  const tariefRegels = regels.filter((r) => r.aanleiding !== 'netto')
+  const zinnen: string[] = []
+  if (tariefRegels.length > 0) {
+    const delen = tariefRegels.map((r) => {
+      const basis = `regel ${typeof r.regel === 'number' ? r.regel : '?'}: btw ${euro(r.btw_van)} → ${euro(r.btw_naar)}`
+      return r.in_kosten ? `${basis} (btw in de kosten: netto ${euro(r.netto_van)} → ${euro(r.netto_naar)})` : basis
+    })
+    zinnen.push(`Btw herrekend uit tarief — ${delen.join('; ')}`)
+  }
+  if (nettoRegels.length > 0) {
+    const delen = nettoRegels.map(
+      (r) =>
+        `regel ${typeof r.regel === 'number' ? r.regel : '?'}: netto ${euro(r.netto_van)} → ${euro(r.netto_naar)}, btw ${euro(r.btw_van)} → ${euro(r.btw_naar)} (netto gewijzigd)`,
+    )
+    zinnen.push(`Btw herrekend — ${delen.join('; ')}`)
+  }
+  return zinnen.join(' · ')
 }

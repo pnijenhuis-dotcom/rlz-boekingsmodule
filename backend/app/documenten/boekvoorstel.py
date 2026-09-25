@@ -1887,18 +1887,38 @@ def _gebeurtenissen_van(session: Session, document_id: uuid.UUID) -> list[Docume
 BTW_HERREKEND_SLEUTEL = "btw_herrekend"
 
 
+#: `aanleiding` in een `btw_herrekend`-notitie: het tarief wisselde (18-09) of het netto wijzigde (FV-09, 25-09).
+BTW_HERREKEND_AANLEIDING_TARIEF = "tarief"
+BTW_HERREKEND_AANLEIDING_NETTO = "netto"
+
+
 def _btw_herrekend_notities(vorige: list[BoekvoorstelRegel], nieuwe: list) -> list[dict]:
-    """Regels (op volgnummer) waar het TARIEF én het BTW-BEDRAG tegelijk veranderden = de mens (of een check-actie) koos
-    een ander tarief en de btw volgde (regel 1 opdracht 18-09) — incl. "btw in kosten" (nieuw tarief 0 %, btw 0,
-    netto = oude netto + oude btw). Alleen opgeslagen-regel → opgeslagen-regel; een nieuwe/verwijderde regel telt niet."""
+    """Regels (op volgnummer) waar het btw-bedrag herrekend is — twee aanleidingen:
+    - `tarief` (regel 1 opdracht 18-09): TARIEF én BTW-BEDRAG veranderden tegelijk = de mens (of een check-actie) koos
+      een ander tarief en de btw volgde — incl. "btw in kosten" (nieuw tarief 0 %, btw 0, netto = oude netto + oude
+      btw);
+    - `netto` (FV-09, feedbackrun A 25-09 blok 6): zelfde tarief, het NETTO wijzigde én het btw-bedrag wijzigde mee =
+      het scherm herrekende de btw uit het tarief ná een nettowijziging ("Btw herrekend — regel n: netto € a → € b,
+      btw € c → € d (netto gewijzigd)"). Een btw-wijziging zónder netto- of tariefwijziging is een mens-invoer en geen
+      notitie.
+    Alleen opgeslagen-regel → opgeslagen-regel; een nieuwe/verwijderde regel telt niet."""
     uit: list[dict] = []
     for i, (oud, nw) in enumerate(zip(vorige, nieuwe, strict=False), start=1):
-        if oud.taxrate_id is None or nw.taxrate_id is None or oud.taxrate_id == nw.taxrate_id:
-            continue
         if oud.btw_bedrag is None or nw.btw_bedrag is None or oud.btw_bedrag == nw.btw_bedrag:
             continue
+        tarief_gewisseld = oud.taxrate_id is not None and nw.taxrate_id is not None and oud.taxrate_id != nw.taxrate_id
+        netto_gewijzigd = (
+            oud.netto_bedrag is not None and nw.netto_bedrag is not None and oud.netto_bedrag != nw.netto_bedrag
+        )
+        if tarief_gewisseld:
+            aanleiding = BTW_HERREKEND_AANLEIDING_TARIEF
+        elif netto_gewijzigd and oud.taxrate_id is not None and oud.taxrate_id == nw.taxrate_id:
+            aanleiding = BTW_HERREKEND_AANLEIDING_NETTO
+        else:
+            continue
         in_kosten = bool(
-            nw.btw_bedrag == 0
+            tarief_gewisseld
+            and nw.btw_bedrag == 0
             and oud.netto_bedrag is not None
             and nw.netto_bedrag is not None
             and nw.netto_bedrag == oud.netto_bedrag + oud.btw_bedrag
@@ -1906,6 +1926,7 @@ def _btw_herrekend_notities(vorige: list[BoekvoorstelRegel], nieuwe: list) -> li
         uit.append(
             {
                 "regel": i,
+                "aanleiding": aanleiding,
                 "van_taxrate_id": str(oud.taxrate_id),
                 "naar_taxrate_id": str(nw.taxrate_id),
                 "btw_van": str(oud.btw_bedrag),

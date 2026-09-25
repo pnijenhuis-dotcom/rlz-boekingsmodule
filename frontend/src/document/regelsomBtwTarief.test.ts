@@ -27,3 +27,18 @@ describe('regelsom — btw volgt het tarief (18-09)', () => {
     expect(btwPastBijTarief(96.36, 20.24, 0)).toBe(false)
   })
 })
+
+/** FV-09 (25-09, blok 6): de netto-tak van het controlescherm rekent via dezelfde spiegel — cent-exact, ook op halve centen
+ * en negatieve (credit)regels; nooit een float-Math.round. */
+describe('regelsom — btw uit tarief bij nettowijziging (FV-09, 25-09)', () => {
+  it('halve cent naar boven, credit spiegelbeeldig (ROUND_HALF_UP op |bedrag|)', () => {
+    expect(btwUitTarief(100, 0.21)).toBe(21)
+    expect(btwUitTarief(0.5, 0.09)).toBe(0.05)
+    expect(btwUitTarief(-100, 0.21)).toBe(-21)
+    expect(btwUitTarief(-0.5, 0.09)).toBe(-0.05)
+    expect(btwUitTarief(1.005, 0.21)).toBe(0.21)
+  })
+  it('0 % geeft 0', () => {
+    expect(btwUitTarief(123.45, 0)).toBe(0)
+  })
+})

@@ -17,7 +17,7 @@ import type {
 } from '../api/types'
 import { alsAiVoorstel, alsUblVoorstel, zekerheidPct, type AiVoorstel, type VeldvoorstelBron } from './aiVoorstel'
 import { extractieActief } from '../werkvoorraad/status'
-import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
+import { bedragAlsGetal, normaliseerBedrag } from './bedrag'
 import { anderModus, useBedragModus } from './bedragModus'
 import { BedragModusInput } from './BedragModusInput'
 import { crediteurSuggesties } from './crediteurSuggesties'
@@ -132,9 +132,16 @@ interface RegelState {
   btw: string
   /** Design-pass taak 3: zodra de gebruiker zelf iets in het btw-veld typt, stopt de automatische
    * afleiding (netto x taxrate-percentage) met dat veld te overschrijven — "overschrijfbaar", dus
-   * één keer aangeraakt blijft het van de gebruiker. Een geladen regel met een al opgeslagen
-   * btw-bedrag telt ook als "handmatig" (kan een eerdere handmatige invoer zijn geweest). */
+   * één keer aangeraakt blijft het van de gebruiker ZOLANG het netto niet wijzigt. FV-09 (25-09): een
+   * geladen regel mét een opgeslagen btw-bedrag telt NIET meer als handmatig — "er staat een bedrag" is
+   * geen mens-keuze, en het btw-bedrag hoort het tarief te volgen bij élke nettowijziging. */
   btwHandmatig: boolean
+  /** FV-09 (25-09): de mens had het btw-veld zelf getypt en daarna het netto gewijzigd → btw herrekend uit het
+   * tarief, chip "btw herrekend (netto gewijzigd)"; de server schrijft de tijdlijnregel (aanleiding `netto`). */
+  btwHerrekendNetto: boolean
+  /** FV-09 (25-09): netto gewijzigd maar het tarief is onbekend (geen btw-code of geen percentage in de cache) —
+   * het btw-veld blijft staan, chip "tarief onbekend — btw niet herrekend" (nooit stil). */
+  btwNietHerrekend: boolean
   /** Herkomst van de vooringevulde btw-code (punt 3, 26-08): 'factuur' = door code afgeleid uit
    * netto/btw van de gelezen regel. Toont de chip "uit factuur (21%)" zolang de controleur het
    * veld niet zelf aanraakt — daarna is de keuze van de mens (zelfde regel als de AI-chip).
@@ -236,6 +243,8 @@ function nieuweRegel(): RegelState {
     btwInKosten: false,
     factuurBtwPercentage: null,
     bedragNietGelezen: false,
+    btwHerrekendNetto: false,
+    btwNietHerrekend: false,
   }
 }
 
@@ -247,7 +256,8 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     projectId: r.project_id,
     netto: r.netto_bedrag ?? '',
     btw: r.btw_bedrag ?? '',
-    btwHandmatig: Boolean(r.btw_bedrag),
+    // FV-09 (25-09): een opgeslagen/voorgesteld btw-bedrag is geen mens-keuze — het volgt het tarief bij nettowijziging.
+    btwHandmatig: false,
     btwBron: btwBronUitDto(r.btw_bron, r.taxrate_id),
     btwDetail:
       r.btw_bron_detail ??
@@ -265,6 +275,8 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     btwInKosten: false,
     factuurBtwPercentage: percentageUitDto(r.factuur_btw_percentage),
     bedragNietGelezen: Boolean(r.bedrag_niet_gelezen) && !r.netto_bedrag,
+    btwHerrekendNetto: false,
+    btwNietHerrekend: false,
   }
 }
 
@@ -303,7 +315,7 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     projectId: null,
     netto: r.netto_bedrag ?? '',
     btw: r.btw_bedrag ?? '',
-    btwHandmatig: Boolean(r.btw_bedrag),
+    btwHandmatig: false, // FV-09 (25-09): AI-gelezen btw is geen mens-keuze
     btwBron: btwBronUitDto(r.btw_bron, r.taxrate_id),
     // AI-veldvoorstel-regels kennen geen verlegd-keuze (die reist mee op de server-prefill); wél het kolom-percentage.
     btwDetail: r.btw_bron === 'factuur_regel' ? factuurRegelPctTekst(percentageUitDto(r.btw_kolom_percentage)) : null,
@@ -322,6 +334,8 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     btwInKosten: false,
     factuurBtwPercentage: percentageUitDto(r.btw_kolom_percentage),
     bedragNietGelezen: Boolean(r.bedrag_niet_gelezen) && !r.netto_bedrag,
+    btwHerrekendNetto: false,
+    btwNietHerrekend: false,
   }))
 }
 
@@ -1074,7 +1088,7 @@ export function BoekvoorstelPanel({
             const percentage = percentageMap[vulling.taxrateId]
             const netto = bedragAlsGetal(bijgewerkt.netto)
             if (percentage !== undefined && netto !== null) {
-              bijgewerkt.btw = formatEuro(berekenBtwBedrag(netto, percentage))
+              bijgewerkt.btw = formatEuro(btwUitTarief(netto, percentage))
             }
           }
           return bijgewerkt
@@ -1273,8 +1287,11 @@ export function BoekvoorstelPanel({
         }
         if (veld === 'btw') {
           // Rechtstreekse invoer in het btw-veld zelf — vanaf nu is dit veld van de gebruiker;
-          // leegmaken laat de automatische afleiding weer meedraaien (design-pass taak 3).
+          // leegmaken laat de automatische afleiding weer meedraaien (design-pass taak 3). FV-09 (25-09): het
+          // mens-bedrag wint zolang het NETTO niet wijzigt (zie de netto-tak hieronder).
           bijgewerkt.btwHandmatig = waarde !== ''
+          bijgewerkt.btwHerrekendNetto = false
+          bijgewerkt.btwNietHerrekend = false
           if (waarde && (bedragAlsGetal(waarde) ?? 0) !== 0) bijgewerkt.btwInKosten = false
         } else if (veld === 'taxrateId') {
           // 18-09 (Peter, casus Rituals 88-186308: "nul % btw invullen is auto btw bedrag op nul zetten"): het btw-bedrag
@@ -1292,11 +1309,36 @@ export function BoekvoorstelPanel({
             bijgewerkt.btwInKosten = herrekend.inKosten
             bijgewerkt.btwHandmatig = false
           }
-        } else if ((veld === 'netto' || btwVolgtRekening) && !bijgewerkt.btwHandmatig) {
-          // Nog niet handmatig aangeraakt: btw-bedrag blijft live meebewegen met netto/percentage.
+          bijgewerkt.btwHerrekendNetto = false
+          bijgewerkt.btwNietHerrekend = false
+        } else if (veld === 'netto' || btwVolgtRekening) {
+          // FV-09 (25-09, feedbackrun A blok 6): het btw-bedrag volgt het tarief bij ÉLKE nettowijziging — ook op een
+          // geladen regel en ook ná een mens-getypt btw-bedrag (dat wint alleen zolang het netto niet wijzigt; daarna
+          // herrekend mét chip "btw herrekend (netto gewijzigd)" + server-tijdlijnregel). Cent-exact via de
+          // regelsom.ts-spiegel (ROUND_HALF_UP), nooit een float-Math.round. In-kosten: btw blijft 0 (netto = bruto).
+          // Tarief onbekend: het btw-veld blijft staan mét chip "tarief onbekend — btw niet herrekend" (nooit stil).
           const percentage = bijgewerkt.taxrateId ? percentageMap[bijgewerkt.taxrateId] : undefined
           const netto = bedragAlsGetal(bijgewerkt.netto)
-          bijgewerkt.btw = percentage !== undefined && netto !== null ? formatEuro(berekenBtwBedrag(netto, percentage)) : ''
+          if (bijgewerkt.btwInKosten) {
+            bijgewerkt.btw = formatEuro(0)
+            bijgewerkt.btwHandmatig = false
+            bijgewerkt.btwNietHerrekend = false
+          } else if (percentage === undefined) {
+            // Tarief onbekend: het btw-veld blijft onaangeraakt (nooit stil wissen); zodra er een netto staat, zegt de
+            // chip dat er niet herrekend is.
+            bijgewerkt.btwNietHerrekend = veld === 'netto' && netto !== null && bijgewerkt.btw !== ''
+          } else if (netto === null) {
+            if (!bijgewerkt.btwHandmatig) bijgewerkt.btw = ''
+            bijgewerkt.btwNietHerrekend = false
+          } else {
+            const nieuw = formatEuro(btwUitTarief(netto, percentage))
+            const wasMens = r.btwHandmatig && veld === 'netto'
+            bijgewerkt.btw = nieuw
+            bijgewerkt.btwHandmatig = false
+            // De chip blijft staan tot de mens het btw-veld of het tarief opnieuw aanraakt (typen gaat teken voor teken).
+            bijgewerkt.btwHerrekendNetto = wasMens ? nieuw !== r.btw : r.btwHerrekendNetto
+            bijgewerkt.btwNietHerrekend = false
+          }
         }
         return bijgewerkt
       }),
@@ -1344,6 +1386,8 @@ export function BoekvoorstelPanel({
       netto: toeTeVoegenRegel.netto_bedrag.toFixed(2),
       btw: toeTeVoegenRegel.btw_bedrag.toFixed(2),
       btwHandmatig: true,
+      btwHerrekendNetto: false,
+      btwNietHerrekend: false,
       omschrijving: toeTeVoegenRegel.omschrijving,
       handmatigeVelden: { ledgerId: true, taxrateId: nulTarief !== undefined, projectId: false },
     }
@@ -2405,6 +2449,28 @@ export function BoekvoorstelPanel({
                             title="De btw van de factuur is niet aftrekbaar en zit in de kosten: netto = factuurbedrag incl. btw, btw-bedrag 0,00. Kies je een %-tarief, dan wordt het bruto weer gesplitst in netto en btw."
                           >
                             btw in kosten (niet aftrekbaar)
+                          </span>
+                        </div>
+                      )}
+                      {regel.btwHerrekendNetto && (
+                        <div className="regel-herkomst">
+                          <span
+                            className="chip afwijking"
+                            data-testid="regel-btw-herrekend-netto-chip"
+                            title="Je had het btw-bedrag zelf ingevuld; ná de wijziging van het nettobedrag is het opnieuw uit het tarief berekend (netto × percentage, cent-exact). Typ opnieuw een bedrag als de factuur iets anders zegt — de controle ‘Btw-bedrag past bij tarief’ blijft de poort."
+                          >
+                            btw herrekend (netto gewijzigd)
+                          </span>
+                        </div>
+                      )}
+                      {regel.btwNietHerrekend && (
+                        <div className="regel-herkomst">
+                          <span
+                            className="chip afwijking"
+                            data-testid="regel-btw-niet-herrekend-chip"
+                            title="Het nettobedrag is gewijzigd maar er is geen btw-code (of geen percentage bekend) — het btw-bedrag is niet opnieuw berekend. Kies een btw-code of pas het btw-bedrag zelf aan."
+                          >
+                            tarief onbekend — btw niet herrekend
                           </span>
                         </div>
                       )}

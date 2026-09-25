@@ -178,6 +178,39 @@ class TestBtwVolgtHetTarief:
         uit = _put(keten, rituals, uit["boekvoorstel"], regel)
         assert _check(uit["checks"], NAAM_BTW_TARIEF)["ok"] is True
 
+    def test_netto_gewijzigd_btw_herrekend_geeft_tijdlijnregel_met_aanleiding_netto(
+        self, keten: Keten, rituals: uuid.UUID
+    ) -> None:
+        """FV-09 (feedbackrun A 25-09, blok 6): het scherm herrekent de btw uit het tarief ná een nettowijziging en de
+        server legt dat vast als `btw_herrekend` mét aanleiding `netto` (zelfde tarief, netto én btw gewijzigd) — alleen
+        op een échte PUT, nooit op de autosave. De check "Btw-bedrag past bij tarief" blijft de poort (marge
+        ongewijzigd)."""
+        dto = keten.open_controlescherm(rituals)
+        regel = dict(dto["regels"][0])
+        assert (regel["taxrate_id"], regel["netto_bedrag"], regel["btw_bedrag"]) == (
+            str(TAXRATE_HOOG),
+            "96.36",
+            "20.24",
+        )
+        # Het scherm: netto 96,36 → 100,00, btw herrekend 21 % → 21,00 (zelfde tarief).
+        regel.update({"netto_bedrag": "100.00", "btw_bedrag": "21.00"})
+        uit = _put(keten, rituals, {**dto, "totaalbedrag": "121.00"}, regel)
+        assert _check(uit["checks"], NAAM_BTW_TARIEF)["ok"] is True
+        notities = [d["btw_herrekend"] for d in keten.tijdlijn(rituals) if "btw_herrekend" in d]
+        assert notities, "geen btw_herrekend-tijdlijnregel ná de nettowijziging"
+        laatste = notities[-1]
+        assert len(laatste) == 1 and laatste[0]["aanleiding"] == "netto"
+        assert (laatste[0]["netto_van"], laatste[0]["netto_naar"], laatste[0]["btw_van"], laatste[0]["btw_naar"]) == (
+            "96.36",
+            "100.00",
+            "20.24",
+            "21.00",
+        )
+        # Een mens-getypt btw-bedrag zónder nettowijziging is geen notitie (mens wint zolang het netto niet wijzigt).
+        regel.update({"btw_bedrag": "20.99"})
+        _put(keten, rituals, uit["boekvoorstel"], regel)
+        assert len([d for d in keten.tijdlijn(rituals) if "btw_herrekend" in d]) == len(notities)
+
     def test_geen_grijze_hint_meer_in_de_frontend(self) -> None:
         """Guard (regel 3, 18-09): de hint `regel-btw-berekend-hint` ("tarief geeft € … — factuur leidend") is VOLLEDIG
         vervangen door de harde check — hij mag nergens meer in de kantoor-frontend voorkomen."""
