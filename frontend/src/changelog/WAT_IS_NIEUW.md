@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-28 — Overstappen op Odoo vanuit een bestaande leesbron-koppeling
+
+<!-- verkoop-overstap-28-09 -->
+
+- **Een administratie die Odoo al als leesbron gebruikt kan nu in één keer overstappen.** Op Instellingen › Administraties › ‹administratie› › Algemeen staat bij "Leesbron voorraad" naast "Knipdatum wijzigen…" de knop "Overstappen op Odoo…". De wizard opent voorgevuld (adres, company en gebruiker), u kiest alleen de kanteldatum en bevestigt de rekening-mapping. Vanaf de kanteldatum boekt de administratie in Odoo; Reeleezee wordt losgekoppeld en blijft het archief van wat daar al geboekt is.
+- **De API-sleutel hoeft u niet opnieuw in te voeren.** Laat het veld leeg en de bewaarde sleutel van de leesbron wordt hergebruikt (de rechten-probe met schrijfrecht moet wel groen zijn). Vult u een nieuwe sleutel in, dan vervangt die de oude.
+- **De knipdatum van de voorraad-uitstroom blijft staan** en de overstap wordt vastgelegd in het audit-log (oud → nieuw). Een overstap op een andere Odoo-omgeving of company dan de leesbron wordt geweigerd met een duidelijke melding; er verandert dan niets.
+
 ## 2026-09-28 — Planning steigerbouw: ploeg kiezen via het paneel, projecten op één rij, kopiëren naar volgende week
 
 <!-- planning-v4-28-09 -->

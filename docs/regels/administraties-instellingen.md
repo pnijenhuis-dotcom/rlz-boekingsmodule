@@ -144,6 +144,32 @@
   `OdooKoppelWizard.test.tsx`. Werkt in productie: niet gemeten — Peter dearchiveert `8ea9d28b…` ná deploy (`59bf1f7f…` blijft gearchiveerd),
   dispatch-onderdeel `dearchiveren-odoo`.
 
+<!-- toegevoegd 28-09-2026, opdracht "universal-verkoop-leesbron-naar-overstap-odoo-minimaal" -->
+- **Leesbron → overstap op Odoo (Peter 28-09 "nee niet te moeilijk maken nu … RLZ los en Odoo aan … eerst over, daarna evalueren"; casus
+  Universal Verkoop B.V. `0d66ff75…`: RLZ-backend mét alleen-lezen Odoo-koppeling company 3, knip 01-09-2026 — het besluit van 14-09 was
+  alleen als leesbron doorgevoerd; geen migratie; BESLISSINGEN "UNIVERSAL VERKOOP — LEESBRON → OVERSTAP OP ODOO (Peter 28-09)"):** een bestaande ALLEEN-LEZEN koppeling op dezelfde host én
+  company blokkeert de overstap (`POST …/odoo/overstap`, `…/overstap/voorbereiden`) niet meer maar wordt in DEZELFDE transactie
+  gepromoveerd: `alleen_lezen = False`, `overgangsdatum` = de gekozen kanteldatum, `voorraad_knip_datum` blijft staan, dagboeken/plan/
+  probe uit de verse schrijvende probe, RLZ-id → sentinel, oud RLZ-id bewaard, RLZ-credential-rij blijft, mapping + hervertaling van
+  open boekvoorstellen + eerste sync exact als de gewone overstap. Andere host of andere company = 422 mét beide genoemd, niets gewijzigd
+  (een overstap op een andere company is een ander besluit; de eigen leesbron-claim telt in failsafe laag 2 niet als bezet). **Sleutel:**
+  nieuw ingevoerd = vervangen ná groene probe; veld leeg = de bewaarde sleutel wordt hergebruikt (`service.leesbron_sleutel_voor`,
+  uitsluitend op dezelfde host + company — nooit stil een andere sleutel); leeg zónder leesbron = 422 "vul de API-sleutel in". Ook
+  `verbinding-testen` werkt zonder sleutel mét `administratie_id` en markeert de eigen leesbron-company als `eigen_leesbron` ("huidige
+  leesbron — overstappen", kiesbaar; andere claims blijven grijs). **Audit** `odoo_leesbron_gepromoveerd` oud → nieuw (`alleen_lezen`,
+  overgangsdatum, knip, gebruiker, `sleutel: hergebruikt|vervangen` — nooit de sleutel) náást `odoo_overstap` mét
+  `leesbron_gepromoveerd: true`; `odoo_koppeling_aangemaakt` alleen op het nieuwe-rij-pad. **Scherm:** rij "Leesbron voorraad" mét leesbron
+  draagt naast "Knipdatum wijzigen…" de knop "Overstappen op Odoo…" → dezelfde wizard (`OdooKoppelDialog` mét `promotie`): geen
+  koppelvorm-stap (altijd volledige backend, vier stappen), URL/gebruiker voorgevuld, "API-sleutel (optioneel)" mét hint "leeg = bewaarde
+  sleutel", eigen company voorgeselecteerd, mapping-stap en resultaat ongewijzigd; de gewone overstap en ingang A zijn byte-gelijk.
+  **Niet gebouwd (beslispunt D):** de IC-toets leest ná de overstap Verkoop volledig uit Odoo (`intercompany/factuurmatch.open_bron` kiest
+  één bron op `boekhoud_backend`); RLZ-vóór/Odoo-ná de kanteldatum = gesplitste bron in de IC-opdracht. **Nulmeting 28-09 (lees-only):**
+  RLZ Verkoop 0 inkoopfacturen mét factuur- of boekdatum ≥ 01-09 (jongste 31-08; 42 sinds 01-08 van 4.513), module 1 geboekt 11-09
+  (€ 9.801,00, augustus-datum) + 3 open sinds 23-09 → advies kanteldatum 01-09-2026 (= knip). Niets in productie gewijzigd — Peter klikt
+  de overstap zelf ná deploy; meetlat `db-lezen verkoop-overstap` + dispatch-onderdeel `verkoop-overstap` (guard
+  `tests/unit/test_nameting_workflow.py::test_verkoop_overstap_onderdeel_…`), tests `tests/odoo/test_leesbron_promotie.py`, vitest
+  `OdooKoppelWizard.test.tsx`/`InstellingenScreen.test.tsx`. Werkt in productie: niet gemeten (vervolg-opdracht niet vóór 29-09 09:00).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Stack & platform — Instellingen › Administraties v2 (CLAUDE.md `ed6d176` r. 52–62)

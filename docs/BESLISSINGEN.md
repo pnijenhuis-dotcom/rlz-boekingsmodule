@@ -13391,3 +13391,32 @@ harde dubbelensleutel; (2) de kopie gebruikt de vinkjesstand van het paneel (net
 ploeg; (3) "+ ZZP'er" bestaat alleen nog in het paneel (en op Beheer › Veldwerkers), niet meer los in de zijbalk; (4) archiveren vanaf het
 poolkaartje is mee vervallen (Beheer › Veldwerkers); (5) dossier-signaal één rij per persoon, geen kaart-oranje; (6) urenfilter =
 rijfilter in de matrix.
+
+## UNIVERSAL VERKOOP — LEESBRON → OVERSTAP OP ODOO (Peter 28-09) — een alleen-lezen koppeling op dezelfde host + company wordt in de overstap gepromoveerd i.p.v. geweigerd; knop "Overstappen op Odoo…"; niets in productie gewijzigd; geen migratie
+
+**Status: GEBOUWD + GETEST 28-09-2026 (handmatige CC-sessie; opdracht
+`opdrachten/gedaan/2026-09-28-universal-verkoop-leesbron-naar-overstap-odoo-minimaal.md`, rapport
+`docs/rapporten/2026-09-28-universal-verkoop-overstap.md`). Canonieke regeltekst: `docs/regels/administraties-instellingen.md` alinea
+"Leesbron → overstap op Odoo (Peter 28-09)". Werkt in productie: niet gemeten — Peter voert de overstap zelf uit ná deploy (klikpunt);
+dispatch-onderdeel `verkoop-overstap` + vervolg-opdracht `opdrachten/inbox/2026-09-29-nameting-verkoop-overstap-na-deploy.md` (niet vóór
+29-09 09:00).**
+
+**Besluit Peter 28-09 (letterlijk, gespreksverslag):** "nee niet te moeilijk maken nu. Wat er nu moet gebeuren is RLZ los en Odoo aan.
+Er worden straks allemaal facturen geboekt en dat wordt dan probleem alleen maar groter. Eerst over, daarna evalueren." Aanleiding: het
+besluit van 14-09 (Universal Verkoop → Odoo per 01-09) was alleen als LEESBRON doorgevoerd (company 3, `alleen_lezen`, knip 01-09);
+de overstap-wizard weigerde een administratie mét leesbron ("laat de Beheerder de leesbron-koppeling eerst beoordelen") en de knop
+was voor een leesbron verborgen — er bestond geen pad leesbron → volledige backend.
+
+| Onderdeel | Besluit / gebouwd |
+|---|---|
+| Promotie | `toets_overstap_voorwaarden`: alleen-lezen koppeling op dezelfde host én company = geen blokkade maar `leesbron_promotie`; andere host/company = 422 mét beide genoemd; eigen claim telt niet als bezet (laag 2). `koppel_overstap` promoveert de bestaande rij in dezelfde transactie: `alleen_lezen` false, `overgangsdatum` = kanteldatum, `voorraad_knip_datum` blijft, verse schrijvende probe, RLZ-id → sentinel, oud RLZ-id bewaard, credential-rij blijft, mapping/hervertaling/eerste sync als de gewone overstap. |
+| Sleutel | Nieuw ingevoerd = vervangen ná groene probe; veld leeg = bewaarde sleutel (`leesbron_sleutel_voor`, uitsluitend zelfde host + company, anders 422 — nooit stil een andere sleutel); leeg zónder leesbron = 422 "vul de API-sleutel in". Ook `overstap/voorbereiden` en `verbinding-testen` (mét `administratie_id`). |
+| Audit | `odoo_leesbron_gepromoveerd` oud → nieuw (`alleen_lezen`, overgangsdatum, knip, gebruiker, `sleutel: hergebruikt\|vervangen`, nooit de sleutel) náást `odoo_overstap` (`leesbron_gepromoveerd: true`); `odoo_koppeling_aangemaakt` alleen op het nieuwe-rij-pad. |
+| Scherm | Rij "Leesbron voorraad" mét leesbron: "Overstappen op Odoo…" naast "Knipdatum wijzigen…" → dezelfde wizard mét `promotie` (geen koppelvorm-stap, vier stappen, URL/gebruiker voorgevuld, "API-sleutel (optioneel)", eigen company kiesbaar + voorgeselecteerd via `eigen_leesbron` "huidige leesbron — overstappen", andere claims grijs). Gewone overstap/ingang A ongewijzigd. |
+| IC-toets | NIET gebouwd (opdracht: alleen als < 1 uur): `open_bron` kiest per administratie één bron op `boekhoud_backend` → ná de overstap leest de IC-toets Verkoop uit Odoo; RLZ-vóór/Odoo-ná = gesplitste bron (`client_voor_rlz_verleden` + Odoo) = **beslispunt D**, hoort in de IC-opdracht (12 richtingen). |
+| Nulmeting (lees-only 28-09) | RLZ Verkoop `PurchaseInvoices` 4.513 totaal, 42 factuurdatum ≥ 01-08, **0 ≥ 01-09** (ook `BookDate`), jongste 31-08-2026; module 1 geboekt (11-09, € 9.801,00, augustus-datum) + 3 `te_controleren` sinds 23-09. **Advies kanteldatum 01-09-2026** (= knip; vandaag geeft hetzelfde). |
+| Meetlat | `db-lezen verkoop-overstap` (koppeling-stand + audit + Odoo-boekstukken), dispatch-onderdeel `verkoop-overstap` (request-log odoo/overstap + verbinding-testen; JA = promotie-audit + backend odoo + ≥ 1 BILL/…), guard `test_verkoop_overstap_onderdeel_…`. |
+
+**Keuzes zonder Peter:** andere company/host vanuit de knop = 422 (geen tweede koppeling op één administratie); gebruikerslabel leeg =
+label van de leesbron-rij blijft; verbindingstest zonder sleutel alleen mét `administratie_id` op dezelfde host; kanteldatum = verplichte
+keuze in de wizard (advies 01-09-2026). Tests: `tests/odoo/test_leesbron_promotie.py` (8), vitest wizard/instellingen (+3).
