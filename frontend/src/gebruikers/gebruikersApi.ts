@@ -164,7 +164,8 @@ export function haalGebruikersOp(): Promise<GebruikersLijstDto> {
 
 /** Bugfix 04-09: de aanroepende ingang reist mee — de server weigert een rolgroep die er niet bij past (422)
  * en de audit legt vast welke tab/knop het account maakte. */
-export type UitnodigingBron = 'kantoor' | 'veldwerkers' | 'klant_accordeurs' | 'planning'
+/** 28-09 (planning v4): `planning_paneel` = quick-add "+ Veldwerker toevoegen…" in het ploeg-paneel. */
+export type UitnodigingBron = 'kantoor' | 'veldwerkers' | 'klant_accordeurs' | 'planning' | 'planning_paneel'
 
 export function nodigUit(payload: {
   naam: string

@@ -416,6 +416,60 @@ def _stand_in_sessie(
     )
 
 
+def onvolledig_per_veldwerker(
+    session, *, administratie_id: uuid.UUID, gebruiker_ids: list[uuid.UUID], vandaag: date | None = None
+) -> dict[uuid.UUID, bool]:
+    """Planning v4 (Peter 28-09, quick-add in het ploeg-paneel): per veldwerker of het dossier ONVOLLEDIG is — dezelfde
+    definitie als de kolom/filter op Beheer › Veldwerkers (`veldwerkers/dossierStand.ts`): geblokkeerd, óf een verplicht
+    document ontbreekt/afgewezen, óf een document is verlopen/verloopt binnenkort/staat ter controle. SET-BASED: één
+    query voor de typen, één voor álle documenten van de administratie, één voor de dossier-rijen — onafhankelijk van
+    het aantal personen (de pool van de planning leest 'm op élke weekload; `_stand_in_sessie` per persoon zou N × 4
+    statements zijn).
+    Een net aangemaakte veldwerker zonder één document = onvolledig (alle verplichte typen ontbreken)."""
+    if not gebruiker_ids:
+        return {}
+    vandaag = vandaag or _vandaag()
+    typen = _typen_in_sessie(session, administratie_id)
+    verplicht_codes = {t.code for t in typen if t.verplicht}
+    alle_codes = {t.code for t in typen}
+    docs = session.scalars(
+        select(DossierDocument)
+        .where(
+            DossierDocument.administratie_id == administratie_id,
+            DossierDocument.gebruiker_id.in_(gebruiker_ids),
+        )
+        .order_by(DossierDocument.geupload_op.desc(), DossierDocument.id.desc())
+    ).all()
+    jongste: dict[tuple[uuid.UUID, str], DossierDocument] = {}
+    for d in docs:
+        jongste.setdefault((d.gebruiker_id, d.type_code), d)
+    geblokkeerd = set(
+        session.scalars(
+            select(VeldwerkerDossier.gebruiker_id).where(
+                VeldwerkerDossier.administratie_id == administratie_id,
+                VeldwerkerDossier.gebruiker_id.in_(gebruiker_ids),
+                VeldwerkerDossier.geblokkeerd.is_(True),
+            )
+        )
+    )
+    uit: dict[uuid.UUID, bool] = {}
+    for gid in gebruiker_ids:
+        if gid in geblokkeerd:
+            uit[gid] = True
+            continue
+        onvolledig = False
+        for code in alle_codes:
+            status, _ = _status_van(jongste.get((gid, code)), vandaag)
+            if code in verplicht_codes and status in ("ontbreekt", "afgewezen"):
+                onvolledig = True
+                break
+            if status in ("verlopen", "verloopt_binnenkort", "ter_controle"):
+                onvolledig = True
+                break
+        uit[gid] = onvolledig
+    return uit
+
+
 def _herleid_blokkade(
     session, *, administratie_id: uuid.UUID, gebruiker_id: uuid.UUID, actor_id: uuid.UUID
 ) -> DossierStand:

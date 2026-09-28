@@ -116,7 +116,7 @@ def toets_rolgroep_bij_bron(*, bron: str | None, rol: GebruikerRol) -> None:
 
     if bron is None:
         return
-    if bron in ("veldwerkers", "planning"):
+    if bron in ("veldwerkers", "planning", "planning_paneel"):
         if not is_veldrol(rol):
             raise RolgroepPastNietBijIngang(
                 f"Vanuit de veldwerkers-ingang kun je alleen een ZZP'er, uitvoerder of detacheerder aanmaken — "
@@ -259,6 +259,28 @@ def maak_uitnodiging(
                 "activatiecode": activatiecode is not None,  # bestaan, nooit de code zelf
             },
         )
+
+        if bron == "planning_paneel":
+            # Planning v4 (Peter 28-09): quick-add uit het ploeg-paneel — eigen audit-rij op de gebruiker zodat de
+            # nameting/reconciliatie het pad herkent; het dossier is per definitie nog onvolledig (chip in paneel/lijst/
+            # Beheer, bestaande bevinding + WKA-handhaving vóór de eerste weekstaat-goedkeuring).
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="platform",
+                tabel="gebruiker",
+                record_id=gebruiker_id,
+                actie="veldwerker_aangemaakt",
+                correlatie_id=uitnodiging_id,
+                nieuwe_waarde={
+                    "bron": "planning_paneel",
+                    "naam": naam,
+                    "rol": rol.value,
+                    "administratie_ids": [str(a) for a in administratie_ids],
+                    "dossier_onvolledig": True,
+                    "mail_uitgesteld": uitnodiging_later,
+                },
+            )
 
     return UitnodigingResultaat(
         uitnodiging_id=uitnodiging_id,

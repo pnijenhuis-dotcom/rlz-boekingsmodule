@@ -1,4 +1,8 @@
-/** Planning personeel v3 "dag-eerst" (akkoord Peter 18-09, mockup planning-v3-dag-eerst.html): dagkolommen mét
+/** Planning personeel v4 (Peter 28-09): ZZP-pool en persoon-slepen weg, project × dag-matrix, ploeg-paneel voor élke kaart/lege cel,
+ * quick-add in het paneel, "Kopiëren naar ‹weekdag› volgende week" — nieuwe describe onderaan; de v3-tests hieronder zijn
+ * bijgewerkt waar de pool of het kaartfilter vervielen.
+ *
+ * Planning personeel v3 "dag-eerst" (akkoord Peter 18-09, mockup planning-v3-dag-eerst.html): dagkolommen mét
  * projectkaarten (ploeg-initialen, aantal, laagste urenstatus, werkopdracht, conflict-chip, gereserveerd), projectbalk
  * (alle actieve projecten, zoeken, gepland eerst, "+ N", tegel → dag = reservering), conflictenbalk, vulhandvat (kaart +
  * ploeg over de week → één bulk-call + toast + ongedaan maken), ploeg-paneel (vinkjes + beschikbaarheid → één bulk-call,
@@ -9,6 +13,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetMijnToegangCache } from '../auth/useMijnToegang'
 import { PlanningScreen } from './PlanningScreen'
 
 const ADMINISTRATIE_ID = 'dddddddd-0000-0000-0000-00000000000d'
@@ -101,6 +106,10 @@ interface MockOpties {
   planning?: () => Response
   post?: () => Response
   bulk?: (body: Record<string, unknown>) => Response
+  /** v4: quick-add in het paneel → POST /auth/uitnodigingen. */
+  uitnodiging?: () => Response
+  /** v4: rechten-variant voor mijn-toegang (quick-add alleen mét recht). */
+  toegang?: Partial<Record<string, unknown>>
 }
 
 function bulkResultaat(body: Record<string, unknown>, extra: Partial<Record<string, unknown>> = {}) {
@@ -128,10 +137,13 @@ function installMock(opties: MockOpties = {}) {
           heeft_veldwerkerbeheer_recht: true,
           is_beheerder_of_bp: true,
           mag_project_aanmaken: true,
+          ...(opties.toegang ?? {}),
         }),
       )
     if (url.includes('/uren/kantoor/werkopdrachten'))
       return Promise.resolve(jsonResponse([]))
+    if (url.includes('/auth/uitnodigingen') && init?.method === 'POST')
+      return Promise.resolve((opties.uitnodiging ?? (() => jsonResponse({ detail: 'onverwacht: uitnodiging' }, 500)))())
     if (url.includes('/uren/kantoor/planning') && init?.method === 'POST') {
       // Spiegel de echte backend: vereis_administratie_scope leest administratie_id als
       // QUERY-parameter, óók op POST — zonder die parameter is de cloud-response een 422
@@ -175,6 +187,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  resetMijnToegangCache()
 })
 
 function posts(fetchMock: ReturnType<typeof installMock>, pad: string) {
@@ -213,15 +226,12 @@ describe('PlanningScreen — dag-eerst (v3, Peter 18-09)', () => {
     const tegels = screen.getAllByRole('listitem', { name: undefined }).filter((el) => el.className.includes('plan-ptegel'))
     expect(tegels[0]).toHaveTextContent('144 Breda (Moeskops)')
     expect(screen.getByTestId(`projecttegel-${COMPACT_PROJECT_ID}`)).toHaveTextContent('niet gepland')
-    // Besluit C: > 5 geplande dagen kleurt als zacht signaal; vrije persoon toont "vrij".
-    expect(screen.getByTitle('Meer dan 5 geplande dagen deze week (zacht signaal)')).toBeInTheDocument()
-    expect(screen.getByTestId(`pool-${SANNE_ID}`)).toHaveTextContent('0 dg · vrij')
+    // v4: geen pool meer — "wie is vrij" staat in de paneelkop en in "Per project" (eigen tests onderaan).
     // Kantoor-signalen ongewijzigd: buiten planning + dubbele dag + 30-dagen-teller.
     expect(screen.getByText(/uren buiten planning/)).toBeInTheDocument()
     expect(screen.getByText(/dubbele dag/)).toBeInTheDocument()
     expect(screen.getByText('3× / 30 dgn')).toBeInTheDocument()
     expect(screen.getByText('+ Project aanmaken')).toBeInTheDocument()
-    expect(screen.getByText("+ ZZP'er")).toBeInTheDocument()
   })
 
   it('leest de week uit de URL (?week=2026-W41) en vraagt die week op', async () => {
@@ -475,24 +485,21 @@ describe('PlanningScreen — dag-eerst (v3, Peter 18-09)', () => {
     expect(screen.getByTestId('week-stand')).toHaveTextContent('verstreken week')
   })
 
-  it('afwezigheid: pool toont "afwezig t/m", filter "alleen vrij" verbergt geplande en afwezige, paneel schakelt de afwezige uit; gepland op zo\'n dag = conflict', async () => {
+  it('afwezigheid: conflictenpaneel mét handelingen, paneel schakelt de afwezige uit en toont de vrij-tellers; gepland op zo\'n dag = conflict', async () => {
     const week = planningWeek({ afwezigheid: [{ id: 'a-1', gebruiker_id: UITV_ID, van: '2026-08-24', tot: '2026-08-25', reden: 'verlof' }] })
     installMock({ planning: () => jsonResponse(week) })
     renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
     await wachtOpGrid()
-    expect(screen.getByTestId(`pool-${UITV_ID}`)).toHaveTextContent('afwezig t/m 25-8')
     const afwRij = within(screen.getByTestId('conflictenbalk')).getByTestId(`conflict-rij-afwezig-2026-08-24-${UITV_ID}`)
     expect(afwRij).toHaveTextContent('Ben v. Dijk')
     expect(afwRij).toHaveTextContent('afwezig')
     expect(within(afwRij).getByRole('button', { name: 'Van planning halen' })).toBeInTheDocument()
     expect(within(afwRij).getByRole('button', { name: 'Tóch plannen…' })).toBeInTheDocument()
-    fireEvent.click(screen.getByTestId('pool-alleen-vrij'))
-    expect(screen.queryByTestId(`pool-${UITV_ID}`)).not.toBeInTheDocument()
-    expect(screen.queryByTestId(`pool-${ZZP_ID}`)).not.toBeInTheDocument()
-    expect(screen.getByTestId(`pool-${SANNE_ID}`)).toBeInTheDocument()
     fireEvent.click(screen.getByTestId(`kaart-${KAART_MA}`))
     const paneel = await screen.findByTestId('ploeg-paneel')
     expect(within(paneel).getByTestId(`paneel-persoon-${UITV_ID}`)).toHaveTextContent('afwezig t/m 25-8')
+    // v4: de pool is weg — "wie is nog vrij" als regel in de paneelkop (ma: Sanne vrij; Ben afwezig, Milan op Breda).
+    expect(within(paneel).getByTestId('paneel-vrij')).toHaveTextContent('1 vrij op ma 24-8 · 1 vrij hele week')
   })
 
   it('verwijdert een persoon van de kaart (kaart geselecteerd → ✕) mét administratie_id als query-parameter', async () => {
@@ -610,14 +617,182 @@ describe('urenstatus op de kaart (Peter/Haci 15-09, in v3 op kaartniveau)', () =
     expect(within(kaart).getByTestId('achteraf-chip')).toBeInTheDocument()
   })
 
-  it('filter "alleen zonder uren" werkt als kaartfilter: alleen ploegleden zonder uren blijven, en staat in de URL', async () => {
+  it('filter "alleen zonder uren" (v4: RIJfilter in de matrix, geen celfilter): de rij blijft mét complete kaart zolang één ploeglid past; een rij zonder passend lid valt weg', async () => {
     installMock()
     renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35&uren=zonder`)
     await wachtOpGrid()
     await waitFor(() => expect(screen.getByTestId('uren-filter-zonder')).toHaveAttribute('aria-pressed', 'true'))
     const kaart = screen.getByTestId(`kaart-${KAART_MA}`)
-    expect(within(kaart).queryByTestId(`initiaal-${ZZP_ID}`)).not.toBeInTheDocument() // gekeurd → verborgen
-    expect(within(kaart).getByTestId(`initiaal-${UITV_ID}`)).toBeInTheDocument() // geen uren → zichtbaar
-    expect(within(kaart).getByTestId('kaart-aantal')).toHaveTextContent('1')
+    expect(within(kaart).getByTestId(`initiaal-${ZZP_ID}`)).toBeInTheDocument() // gekeurd, maar de cel blijft compleet
+    expect(within(kaart).getByTestId(`initiaal-${UITV_ID}`)).toBeInTheDocument() // geen uren → de rij past
+    expect(within(kaart).getByTestId('kaart-aantal')).toHaveTextContent('2')
+    expect(screen.getByTestId('matrix-rijen-telling')).toHaveTextContent('1 rij')
+  })
+
+  it('filter "alleen ongekeurd" laat een rij weg waarvan alle ploegleden gekeurd zijn', async () => {
+    const week = planningWeek()
+    const rij = (week.projecten as Record<string, unknown>[])[0]
+    ;(rij.per_datum as Record<string, unknown>)['2026-08-24'] = [{ gebruiker_id: ZZP_ID, naam: 'Milan K.', rol: 'zzper', dagdeel: 'heel', uren_status: 'gekeurd', uren: '8' }]
+    installMock({ planning: () => jsonResponse(week) })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35&uren=ongekeurd`)
+    await waitFor(() => expect(screen.getByTestId('matrix-rijen-telling')).toHaveTextContent('0 rijen'))
+    expect(screen.queryByTestId(`kaart-${KAART_MA}`)).not.toBeInTheDocument()
+  })
+})
+
+describe('Planning v4 — pool weg, matrix, paneel als dé werkwijze, quick-add, kopie naar volgende week (Peter 28-09)', () => {
+  it('geen ZZP-pool en geen persoon-drop-targets meer: initialen zijn niet sleepbaar, het lege paneel legt de werkwijze uit', async () => {
+    installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    expect(screen.queryByTestId(`pool-${SANNE_ID}`)).not.toBeInTheDocument()
+    expect(screen.queryByText("+ ZZP'er")).not.toBeInTheDocument()
+    expect(screen.queryByText(/sleep naar een kaart/)).not.toBeInTheDocument()
+    expect(screen.getByTestId(`initiaal-${ZZP_ID}`)).not.toHaveAttribute('draggable')
+    expect(screen.getByTestId('paneel-leeg')).toHaveTextContent('Klik een kaart (ook een gereserveerde) of een lege cel')
+    expect(screen.getByTestId('paneel-leeg')).toHaveTextContent('3 veldwerkers in scope')
+  })
+
+  it('matrix: één rij per project over de week (kaart do in de rij van dat project), rijen geteld, drop-rij voor een nieuw project', async () => {
+    installMock({
+      planning: () => jsonResponse(planningWeek({ reserveringen: [{ id: 'r-1', project_id: COMPACT_PROJECT_ID, projectnaam: '25036 Arnhem', datum: '2026-08-27' }] })),
+    })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    expect(screen.getByTestId('matrix-rijen-telling')).toHaveTextContent('2 rijen')
+    const breda = screen.getByTestId(`matrix-rij-${PROJECT_ID}`)
+    const arnhem = screen.getByTestId(`matrix-rij-${COMPACT_PROJECT_ID}`)
+    // Rijvolgorde: eerste geplande dag — Breda (ma) vóór Arnhem (do).
+    expect(breda.compareDocumentPosition(arnhem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(breda).getByTestId(`kaart-${KAART_MA}`)).toBeInTheDocument()
+    expect(within(arnhem).getByTestId(`kaart-${COMPACT_PROJECT_ID}|2026-08-27`)).toHaveTextContent('gereserveerd')
+    // Lege cellen op dezelfde rij: Breda di–vr, Arnhem ma–wo + vr.
+    expect(within(breda).getAllByRole('button', { name: /144 Breda \(Moeskops\) op .* plannen/ })).toHaveLength(4)
+    expect(within(arnhem).getAllByRole('button', { name: /25036 Arnhem op .* plannen/ })).toHaveLength(4)
+    expect(breda).toHaveTextContent('1 dag')
+    expect(screen.getByTestId('matrix-droprij')).toHaveTextContent('Nieuw project')
+  })
+
+  it('klik op een GERESERVEERDE kaart opent het ploeg-paneel (geen doodlopend infopaneel); Opslaan mét 1 persoon = bulk ploeg → de reservering wordt de ploegkaart', async () => {
+    const fetchMock = installMock({
+      planning: () => jsonResponse(planningWeek({ reserveringen: [{ id: 'r-1', project_id: COMPACT_PROJECT_ID, projectnaam: '25036 Arnhem', datum: '2026-08-26' }] })),
+    })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    fireEvent.click(screen.getByTestId(`kaart-${COMPACT_PROJECT_ID}|2026-08-26`))
+    expect(screen.queryByTestId('reservering-paneel')).not.toBeInTheDocument()
+    const paneel = await screen.findByTestId('ploeg-paneel')
+    expect(paneel).toHaveTextContent('25036 Arnhem')
+    expect(within(paneel).getByTestId('paneel-gereserveerd')).toHaveTextContent('gereserveerd · nog geen ploeg')
+    expect(within(paneel).getByTestId('paneel-vrij')).toHaveTextContent('3 vrij op wo 26-8 · 1 vrij hele week')
+    fireEvent.click(within(paneel).getByRole('checkbox', { name: 'Sanne V.' }))
+    fireEvent.click(within(paneel).getByTestId('ploeg-opslaan'))
+    await waitFor(() => expect(posts(fetchMock, '/planning/bulk')).toHaveLength(1))
+    expect(posts(fetchMock, '/planning/bulk')[0].body).toMatchObject({ bron: 'ploeg', items: [{ gebruiker_id: SANNE_ID, project_id: COMPACT_PROJECT_ID, datum: '2026-08-26' }] })
+  })
+
+  it('lege cel: klik opent het paneel mét de ploeg van de dichtstbijzijnde eerdere dag als VOORSTEL (niets gepost); Opslaan = bulk ploeg op die dag', async () => {
+    const fetchMock = installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    fireEvent.click(screen.getByTestId(`leegcel-${PROJECT_ID}|2026-08-26`))
+    const paneel = await screen.findByTestId('ploeg-paneel')
+    expect(paneel).toHaveTextContent('144 Breda (Moeskops)')
+    expect(within(paneel).getByTestId('paneel-gereserveerd')).toHaveTextContent('voorstel: ploeg van ma 24-8 (nog niet opgeslagen)')
+    expect(paneel).toHaveTextContent('2 gekozen · beschikbaarheid voor wo 26-8')
+    expect(within(paneel).getByRole('checkbox', { name: 'Milan K.' })).toBeChecked()
+    expect(within(paneel).getByRole('checkbox', { name: 'Ben v. Dijk' })).toBeChecked()
+    expect(posts(fetchMock, '/planning/bulk')).toHaveLength(0)
+    expect(posts(fetchMock, '/planning/reservering')).toHaveLength(0)
+    fireEvent.click(within(paneel).getByTestId('ploeg-opslaan'))
+    await waitFor(() => expect(posts(fetchMock, '/planning/bulk')).toHaveLength(1))
+    const items = posts(fetchMock, '/planning/bulk')[0].body.items as { gebruiker_id: string; datum: string }[]
+    expect(items.map((i) => i.datum)).toEqual(['2026-08-26', '2026-08-26'])
+    expect(new Set(items.map((i) => i.gebruiker_id))).toEqual(new Set([ZZP_ID, UITV_ID]))
+  })
+
+  it('"Kopiëren naar ‹weekdag› volgende week": alleen dezelfde weekdag (+7) via de bulkroute (bron kopie_volgende_week); toast mét "Naar week 36" + Ongedaan maken; afwezig overgeslagen zichtbaar', async () => {
+    const fetchMock = installMock({
+      bulk: (body) => {
+        const items = body.items as Record<string, unknown>[]
+        return jsonResponse({
+          correlatie_id: 'corr-k',
+          aangemaakt: items.slice(0, 1),
+          resultaten: [
+            { ...items[0], uitkomst: 'gedaan', reden: null, conflict: null, conflict_projectnaam: null },
+            { ...items[1], uitkomst: 'overgeslagen', reden: 'Ben v. Dijk is afwezig t/m 2026-09-04', conflict: 'afwezig', conflict_projectnaam: null },
+          ],
+        })
+      },
+    })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    fireEvent.click(screen.getByTestId(`kaart-${KAART_MA}`))
+    const paneel = await screen.findByTestId('ploeg-paneel')
+    const knop = within(paneel).getByTestId('kopie-volgende-week')
+    expect(knop).toHaveTextContent('Kopiëren naar ma volgende week')
+    expect(screen.queryByRole('button', { name: /hele projectweek|hele week naar volgende week/i })).not.toBeInTheDocument()
+    fireEvent.click(knop)
+    await waitFor(() => expect(posts(fetchMock, '/planning/bulk')).toHaveLength(1))
+    const [bulk] = posts(fetchMock, '/planning/bulk')
+    expect(bulk.body).toMatchObject({ bron: 'kopie_volgende_week' })
+    const items = bulk.body.items as { gebruiker_id: string; project_id: string; datum: string }[]
+    expect(items).toHaveLength(2)
+    expect(items.every((i) => i.datum === '2026-08-31' && i.project_id === PROJECT_ID)).toBe(true)
+    const toast = await screen.findByTestId('bulk-toast')
+    expect(toast).toHaveTextContent('Gekopieerd naar ma 31-8 (week 36) · 1 persoon-dag · 1 afwezig overgeslagen')
+    expect(within(toast).getByTestId('ongedaan-maken')).toBeInTheDocument()
+    fireEvent.click(within(toast).getByTestId('naar-week'))
+    await waitFor(() => expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('jaar=2026&weeknummer=36'))).toBe(true))
+  })
+
+  it('quick-add: "+ Veldwerker toevoegen…" onderaan het paneel alleen mét recht; aanmaken = POST /auth/uitnodigingen bron planning_paneel → direct aangevinkt mét chip "dossier onvolledig"', async () => {
+    const NIEUW_ID = '77777777-0000-0000-0000-000000000007'
+    let metNieuw = false
+    const fetchMock = installMock({
+      planning: () => jsonResponse(metNieuw ? planningWeek({ pool: [...planningWeek().pool, { gebruiker_id: NIEUW_ID, naam: 'Irfan O.', rol: 'zzper', geplande_dagen: '0', dossier_onvolledig: true }] }) : planningWeek()),
+      uitnodiging: () => {
+        metNieuw = true
+        return jsonResponse({ uitnodiging_id: 'u-1', gebruiker_id: NIEUW_ID, token: 'tok', verloopt_op: '2026-09-01T00:00:00Z', mail_verzonden: false, mail_fout: null, mail_uitgesteld: true, activatiecode: 'ABCD-EFGH' })
+      },
+    })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    fireEvent.click(screen.getByTestId(`kaart-${KAART_MA}`))
+    const paneel = await screen.findByTestId('ploeg-paneel')
+    fireEvent.click(within(paneel).getByTestId('paneel-veldwerker-toevoegen'))
+    const dialoog = await screen.findByRole('dialog')
+    expect(dialoog).toHaveTextContent('Eenzelfde naam is geen bezwaar (broers); hetzelfde e-mailadres wél.')
+    fireEvent.change(within(dialoog).getByPlaceholderText('Bv. Milan Kovács'), { target: { value: 'Irfan O.' } })
+    fireEvent.change(within(dialoog).getByPlaceholderText('naam@voorbeeld.nl'), { target: { value: 'irfan@voorbeeld.nl' } })
+    fireEvent.click(within(dialoog).getByRole('button', { name: 'Toevoegen' }))
+    await waitFor(() => expect(posts(fetchMock, '/auth/uitnodigingen')).toHaveLength(1))
+    expect(posts(fetchMock, '/auth/uitnodigingen')[0].body).toMatchObject({ naam: 'Irfan O.', e_mail: 'irfan@voorbeeld.nl', rol: 'zzper', administratie_ids: [ADMINISTRATIE_ID], uitnodiging_later: true, bron: 'planning_paneel' })
+    expect(await screen.findByTestId('veldwerker-qr')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Klaar' }))
+    // Ná het herladen staat de nieuwe veldwerker in de lijst: aangevinkt, mét chip — nog niets opgeslagen tot "Opslaan".
+    await waitFor(() => expect(within(screen.getByTestId('ploeg-paneel')).getByRole('checkbox', { name: 'Irfan O.' })).toBeChecked())
+    expect(within(screen.getByTestId('ploeg-paneel')).getByTestId(`dossier-onvolledig-${NIEUW_ID}`)).toHaveTextContent('dossier onvolledig')
+    expect(within(screen.getByTestId('ploeg-paneel')).getByTestId('ploeg-opslaan')).toHaveTextContent('Opslaan (3)')
+    expect(posts(fetchMock, '/planning/bulk')).toHaveLength(0)
+  })
+
+  it('quick-add is onzichtbaar zonder veldwerkerbeheer-recht (en zonder Beheerder)', async () => {
+    resetMijnToegangCache() // de hook cachet per sessie (60 s) — anders leest deze test de rechten van de vorige test
+    installMock({ toegang: { is_beheerder: false, heeft_veldwerkerbeheer_recht: false } })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    fireEvent.click(screen.getByTestId(`kaart-${KAART_MA}`))
+    const paneel = await screen.findByTestId('ploeg-paneel')
+    expect(within(paneel).queryByTestId('paneel-veldwerker-toevoegen')).not.toBeInTheDocument()
+  })
+
+  it('per project: regel "N veldwerkers hele week vrij" vervangt de pool als wie-is-nog-vrij-overzicht', async () => {
+    installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    fireEvent.click(screen.getByTestId('weergave-project'))
+    const tabel = await screen.findByTestId('per-project')
+    expect(within(tabel).getByTestId('pp-vrij')).toHaveTextContent('1 veldwerker hele week vrij · Sanne V.')
   })
 })

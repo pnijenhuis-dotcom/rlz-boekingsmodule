@@ -12,7 +12,9 @@ from app.schemas_basis import StrikteInvoer
 # Bugfix 04-09 (casus "+ Veldwerker" maakte een kantoormedewerker aan): de aanroepende INGANG reist mee,
 # zodat de server een rolgroep die niet bij de ingang past weigert (422) én de audit de ingang draagt.
 # None = onbekend (oudere client/scripts) — dan alleen de bestaande poorten.
-UitnodigingBron = Literal["kantoor", "veldwerkers", "klant_accordeurs", "planning"]
+# 28-09 (planning v4): `planning_paneel` = quick-add "+ Veldwerker toevoegen…" in het ploeg-paneel
+# (audit `veldwerker_aangemaakt`).
+UitnodigingBron = Literal["kantoor", "veldwerkers", "klant_accordeurs", "planning", "planning_paneel"]
 
 
 class UitnodigingAanmakenRequest(StrikteInvoer):

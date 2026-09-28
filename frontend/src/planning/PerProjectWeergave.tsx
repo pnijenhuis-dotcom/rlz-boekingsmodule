@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { dagKort, perProjectRijen, type DagKolom } from './dagEerst'
+import { dagKort, perProjectRijen, vrijTellers, type DagKolom } from './dagEerst'
 import { UREN_STATUS_KLEUR, UREN_STATUS_LABEL, weekUrenTekst, type PlanningWeekDto } from './planningApi'
 
 /* Toggle "Per project" (mockup v3 ④): dezelfde weekrespons gedraaid — rij per project, cel = aantal + status-stip +
@@ -9,6 +9,7 @@ import { UREN_STATUS_KLEUR, UREN_STATUS_LABEL, weekUrenTekst, type PlanningWeekD
 export function PerProjectWeergave({
   kolommen,
   data,
+  werkdagen,
   vandaagIso,
   administratieId,
   weekParam,
@@ -17,6 +18,8 @@ export function PerProjectWeergave({
 }: {
   kolommen: DagKolom[]
   data: PlanningWeekDto
+  /** v4: werkdagen (ma–vr) voor de regel "N veldwerkers hele week vrij" (vervangt de pool als wie-is-nog-vrij-overzicht). */
+  werkdagen?: string[]
   vandaagIso: string
   administratieId: string
   weekParam: string
@@ -26,6 +29,7 @@ export function PerProjectWeergave({
   const { rijen, zonder_planning } = perProjectRijen(kolommen, data)
   const [toonZonder, setToonZonder] = useState(false)
   const zonder = data.projecten.filter((p) => p.is_actief && !rijen.some((r) => r.project_id === p.project_id))
+  const vrij = vrijTellers(data, kolommen[0]?.datum ?? '', werkdagen ?? kolommen.map((k) => k.datum))
   return (
     <div className="tabel-scroll sticky-koppen plan-scroll" data-testid="per-project">
       <table className="plan-grid plan-pp" style={{ tableLayout: 'fixed', minWidth: 760 }}>
@@ -107,6 +111,13 @@ export function PerProjectWeergave({
               </th>
             </tr>
           )}
+          {/* v4 (28-09): "wie is nog vrij" als compacte regel (de pool rechts is weg). */}
+          <tr className="plan-scheider">
+            <th colSpan={kolommen.length + 2} data-testid="pp-vrij" title={vrij.namen_week.join(', ')} style={{ textTransform: 'none', letterSpacing: 0 }}>
+              {vrij.week} {vrij.week === 1 ? 'veldwerker' : 'veldwerkers'} hele week vrij
+              {vrij.week > 0 && ` · ${vrij.namen_week.slice(0, 8).join(', ')}${vrij.namen_week.length > 8 ? ` … +${vrij.namen_week.length - 8}` : ''}`}
+            </th>
+          </tr>
           {toonZonder &&
             zonder.map((p) => (
               <tr key={p.project_id} className="plan-compact">

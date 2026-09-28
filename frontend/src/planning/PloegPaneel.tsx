@@ -1,24 +1,22 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { normaliseerTekst } from '../bank/bankZoek'
 import { Button } from '../ui/basis'
-import { beschikbaarheid, beschikbaarheidLabel, dagKort, initialen, type DagKaart } from './dagEerst'
+import { beschikbaarheid, beschikbaarheidLabel, dagKort, dichtstbijzijndeEerderePloeg, initialen, plusDagen, vrijTellers, type DagKaart } from './dagEerst'
 import type { PlanningWeekDto } from './planningApi'
 
-/* Ploeg kiezen (mockup v3 ③): paneel rechts (geen modaal; patroon MateriaalstandPaneel — een .panel in de zijkolom),
- * kop project + dag + werkopdracht/starttijd (wijzigen = bestaande dag-override), zoekveld, volledige lijst veldwerkers in
- * scope mét vinkjes en beschikbaarheid voor DIE dag (vrij groen · al op ‹project› oranje, wél kiesbaar · afwezig grijs,
- * uitgeschakeld), uitvoerder-chip, "Zelfde ploeg als ‹vorige werkdag met planning op dit project›", "Toepassen op hele
- * week". Opslaan (N) = diff → één bulk-call bij de aanroeper; iemand mét uren van de planning halen = bevestiging. */
+/* Ploeg kiezen — sinds v4 (Peter 28-09) DÉ werkwijze: klik op élke kaart (ook een gereserveerde) of lege cel → paneel rechts
+ * (geen modaal; patroon MateriaalstandPaneel), kop project + dag + werkopdracht/starttijd (wijzigen = bestaande dag-override)
+ * + de compacte "wie is nog vrij"-regel ("N vrij op ‹dag› · M vrij hele week" — vervangt de ZZP-pool), zoekveld, volledige
+ * lijst veldwerkers in scope mét vinkjes en beschikbaarheid voor DIE dag (vrij groen · al op ‹project› oranje, wél kiesbaar ·
+ * afwezig grijs, uitgeschakeld), uitvoerder-chip, chip "dossier onvolledig", "Zelfde ploeg als ‹vorige werkdag›",
+ * "Toepassen op hele week", "Kopiëren naar ‹weekdag› volgende week" (alleen dezelfde weekdag — besluit Peter 28-09),
+ * "+ Veldwerker toevoegen…" (quick-add, recht veldwerkerbeheer/Beheerder). Het paneel scrolt zelf (lijst), het hoofdscherm
+ * niet. Opslaan (N) = diff → één bulk-call bij de aanroeper; iemand mét uren van de planning halen = bevestiging. */
 
 export const PANEEL_LIJST_MAX = 60
 
 export function vorigeWerkdagMetPlanning(data: PlanningWeekDto, kaart: DagKaart, werkdagen: string[]): { datum: string; gebruiker_ids: string[] } | null {
-  const rij = data.projecten.find((r) => r.project_id === kaart.project_id)
-  if (!rij) return null
-  const eerder = werkdagen.filter((d) => d < kaart.datum && (rij.per_datum[d] ?? []).length > 0)
-  if (eerder.length === 0) return null
-  const datum = eerder[eerder.length - 1]
-  return { datum, gebruiker_ids: (rij.per_datum[datum] ?? []).map((k) => k.gebruiker_id) }
+  return dichtstbijzijndeEerderePloeg(data, kaart.project_id, kaart.datum, werkdagen)
 }
 
 export function PloegPaneel({
@@ -26,24 +24,41 @@ export function PloegPaneel({
   kaart,
   werkdagen,
   bezig,
+  magVeldwerkerbeheer = false,
+  nieuwVinkje = null,
   onSluiten,
   onOpslaan,
   onToepassenHeleWeek,
+  onKopieVolgendeWeek,
+  onNieuweVeldwerker,
   onWerkopdracht,
 }: {
   data: PlanningWeekDto
   kaart: DagKaart
   werkdagen: string[]
   bezig: boolean
+  /** Recht 'veldwerkerbeheer' of Beheerder — anders geen "+ Veldwerker toevoegen…". */
+  magVeldwerkerbeheer?: boolean
+  /** v4: id van een zojuist via quick-add aangemaakte veldwerker — wordt direct aangevinkt zodra hij in de pool staat. */
+  nieuwVinkje?: string | null
   onSluiten: () => void
   onOpslaan: (toevoegen: string[], verwijderen: string[]) => void
   onToepassenHeleWeek: (gebruikerIds: string[]) => void
+  /** v4: dezelfde kaart op dezelfde weekdag in week+1 (bulkroute, bron kopie_volgende_week). */
+  onKopieVolgendeWeek?: (gebruikerIds: string[]) => void
+  onNieuweVeldwerker?: () => void
   onWerkopdracht: () => void
 }) {
   const huidig = useMemo(() => new Set(kaart.ploeg.map((k) => k.gebruiker_id)), [kaart])
-  const [vinkjes, setVinkjes] = useState<Set<string>>(() => new Set(huidig))
+  const vorige = vorigeWerkdagMetPlanning(data, kaart, werkdagen)
+  // Lege cel (v4): de ploeg van de dichtstbijzijnde eerdere dag als VOORSTEL — voorgevinkt, nooit opgeslagen tot "Opslaan".
+  const voorstel = kaart.leeg && vorige ? vorige : null
+  const [vinkjes, setVinkjes] = useState<Set<string>>(() => new Set(voorstel ? voorstel.gebruiker_ids : huidig))
   const [zoek, setZoek] = useState('')
   const [alles, setAlles] = useState(false)
+  useEffect(() => {
+    if (nieuwVinkje && data.pool.some((p) => p.gebruiker_id === nieuwVinkje)) setVinkjes((v) => new Set(v).add(nieuwVinkje))
+  }, [nieuwVinkje, data.pool])
   const termen = normaliseerTekst(zoek).split(' ').filter(Boolean)
   const lijst = data.pool
     .map((p) => ({ p, b: beschikbaarheid(data, p.gebruiker_id, kaart.datum, kaart.project_id) }))
@@ -56,7 +71,8 @@ export function PloegPaneel({
   const getoond = alles || termen.length > 0 ? lijst : lijst.slice(0, PANEEL_LIJST_MAX)
   const toevoegen = [...vinkjes].filter((id) => !huidig.has(id))
   const verwijderen = [...huidig].filter((id) => !vinkjes.has(id))
-  const vorige = vorigeWerkdagMetPlanning(data, kaart, werkdagen)
+  const vrij = vrijTellers(data, kaart.datum, werkdagen)
+  const weekdagVolgende = dagKort(plusDagen(kaart.datum, 7))
 
   function wissel(id: string) {
     setVinkjes((v) => {
@@ -92,6 +108,15 @@ export function PloegPaneel({
               {kaart.werkopdracht_tekst ? `📋 ${kaart.werkopdracht_tekst.slice(0, 40)}${kaart.werkopdracht_tekst.length > 40 ? '…' : ''} · wijzigen` : 'starttijd/werkopdracht instellen'}
             </button>
           </div>
+          {kaart.gereserveerd && (
+            <div className="hint" style={{ margin: '2px 0 0' }} data-testid="paneel-gereserveerd">
+              <em className="plan-chip grijs">{kaart.leeg ? 'nog niet gepland' : 'gereserveerd · nog geen ploeg'}</em>{' '}
+              {voorstel ? `voorstel: ploeg van ${dagKort(voorstel.datum)} (nog niet opgeslagen)` : 'vink de ploeg aan en sla op'}
+            </div>
+          )}
+          <div className="hint" style={{ margin: '2px 0 0', fontSize: 11.5 }} data-testid="paneel-vrij" title={vrij.namen_week.length ? `Hele week vrij: ${vrij.namen_week.join(', ')}` : undefined}>
+            {vrij.dag} vrij op {dagKort(kaart.datum)} · {vrij.week} vrij hele week
+          </div>
         </div>
         <button type="button" className="linkbtn" aria-label="Paneel sluiten" style={{ marginLeft: 'auto', fontSize: 14 }} onClick={onSluiten}>
           ✕
@@ -116,6 +141,18 @@ export function PloegPaneel({
         >
           Toepassen op hele week
         </Button>
+        {onKopieVolgendeWeek && (
+          <Button
+            variant="secundair"
+            maat="klein"
+            disabled={bezig || vinkjes.size === 0}
+            data-testid="kopie-volgende-week"
+            title={`Deze kaart (project + ploeg, géén uren) op ${weekdagVolgende} — dezelfde weekdag in de volgende week. Afwezig = overgeslagen, al gepland = samengevoegd, elders gepland = oranje. Daarna in die week "Toepassen op hele week".`}
+            onClick={() => onKopieVolgendeWeek([...vinkjes])}
+          >
+            Kopiëren naar {weekdagVolgende.split(' ')[0]} volgende week
+          </Button>
+        )}
       </div>
       <input type="search" aria-label="Zoek veldwerker" placeholder="Zoek veldwerker…" value={zoek} onChange={(e) => setZoek(e.target.value)} style={{ width: '100%', fontSize: 12.5, padding: '7px 10px', margin: '4px 0 6px' }} />
       <div className="hint" style={{ margin: '0 0 4px', fontSize: 11.5 }}>
@@ -128,12 +165,17 @@ export function PloegPaneel({
           return (
             <label key={p.gebruiker_id} className={`plan-pl${afwezig ? ' afw' : ''}`} role="listitem" data-testid={`paneel-persoon-${p.gebruiker_id}`}>
               <input type="checkbox" checked={aan} disabled={afwezig && !aan} onChange={() => wissel(p.gebruiker_id)} aria-label={p.naam} />
-              <span className={`plan-av${p.rol === 'uitvoerder' ? ' u' : ''}${b.soort === 'al_op' && aan ? ' c' : ''}`} aria-hidden>
+              <span className={`plan-av${p.rol === 'uitvoerder' ? ' u' : ''}${b.soort === 'al_op' && aan ? ' c' : ''}${p.dossier_onvolledig ? ' d' : ''}`} aria-hidden>
                 {initialen(p.naam)}
               </span>
               <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {p.naam}
                 {p.rol === 'uitvoerder' && <span className="plan-chip ok" style={{ marginLeft: 6 }}>uitv.</span>}
+                {p.dossier_onvolledig && (
+                  <span className="plan-chip warn" style={{ marginLeft: 6 }} data-testid={`dossier-onvolledig-${p.gebruiker_id}`} title="ZZP-dossier (KvK/IBAN/e-mail/documenten) nog niet compleet — verplicht vóór de goedkeuring van de eerste weekstaat (Beheer › Veldwerkers)">
+                    dossier onvolledig
+                  </span>
+                )}
               </span>
               <span className={`st${b.soort === 'vrij' ? ' g' : b.soort === 'al_op' ? ' w' : ''}`} title={afwezig && b.reden ? b.reden : undefined}>
                 {beschikbaarheidLabel(b)}
@@ -146,7 +188,20 @@ export function PloegPaneel({
             … {lijst.length - getoond.length} meer
           </button>
         )}
-        {lijst.length === 0 && <p className="hint">Geen veldwerker past bij &quot;{zoek.trim()}&quot;.</p>}
+        {lijst.length === 0 && data.pool.length > 0 && <p className="hint">Geen veldwerker past bij &quot;{zoek.trim()}&quot;.</p>}
+        {data.pool.length === 0 && <p className="hint">Nog geen veldwerkers in deze administratie.</p>}
+        {magVeldwerkerbeheer && onNieuweVeldwerker && (
+          <button
+            type="button"
+            className="linkbtn"
+            style={{ fontSize: 12.5, padding: '8px 4px', display: 'block' }}
+            data-testid="paneel-veldwerker-toevoegen"
+            title="Veldwerker aanmaken (naam, rol, e-mail; scope = deze administratie) — direct aanvinkbaar; het dossier volgt via Beheer › Veldwerkers"
+            onClick={onNieuweVeldwerker}
+          >
+            + Veldwerker toevoegen…
+          </button>
+        )}
       </div>
       <p className="hint" style={{ fontSize: 11 }}>Iemand met conflict kiezen mag — de kaart kleurt oranje. Afwezig = niet kiesbaar.</p>
       <div className="plan-paneel-voet">

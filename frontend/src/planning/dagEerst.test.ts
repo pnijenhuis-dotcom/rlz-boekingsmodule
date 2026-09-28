@@ -3,6 +3,13 @@ import {
   beschikbaarheid,
   bouwDagKolommen,
   conflictWeekLabel,
+  dichtstbijzijndeEerderePloeg,
+  kopieVolgendeWeekItems,
+  legeCelKaart,
+  matrixRijen,
+  plusDagen,
+  vergelijkProjectnummer,
+  vrijTellers,
   conflictenUniek,
   conflictenVanaf,
   conflictenVoorPaneel,
@@ -140,10 +147,15 @@ describe('dagEerst — transformatie', () => {
     const soorten = conflictenUniek(conflicten).map((c) => `${c.soort}:${c.datum}:${c.naam}`)
     expect(soorten).toContain(`dubbel:2026-09-16:M. Sanli`)
     expect(soorten).toContain(`afwezig:2026-09-16:R. Yücetaş`)
-    expect(soorten.filter((s) => s.startsWith('geen_dossier')).length).toBe(3) // M. Sanli op ma, wo (2 kaarten)
+    // v4 (28-09): dossier-onvolledig = één rij per PERSOON per week (eerste geplande dag, alle projecten) — nooit per kaart × dag,
+    // anders verdringt het dossier-signaal (Universal: 0 dossiers → iedereen) de échte planningsconflicten; kaarten kleuren er niet van.
+    const dossier = conflicten.filter((c) => c.soort === 'geen_dossier')
+    expect(dossier).toHaveLength(1)
+    expect(dossier[0]).toMatchObject({ gebruiker_id: G2, datum: '2026-09-14', project_ids: [P_A, P_B] })
+    expect(dossier[0].tekst).toContain('gepland op 2 dagen deze week')
     const wo = bouwDagKolommen(data, DAGEN, { conflicten })[2]
-    expect(wo.kaarten[0].conflicten.map((c) => c.soort).sort()).toEqual(['dubbel', 'geen_dossier'])
-    expect(wo.kaarten[1].conflicten.map((c) => c.soort).sort()).toEqual(['afwezig', 'dubbel', 'geen_dossier'])
+    expect(wo.kaarten[0].conflicten.map((c) => c.soort).sort()).toEqual(['dubbel'])
+    expect(wo.kaarten[1].conflicten.map((c) => c.soort).sort()).toEqual(['afwezig', 'dubbel'])
   })
 
   it('21-09: paneel = alleen vanaf vandaag, gegroepeerd per dag, uniek; label "deze week" alleen voor de huidige week', () => {
@@ -230,9 +242,69 @@ describe('dagEerst — transformatie', () => {
     expect(rijen.map((r) => r.project_naam)).toEqual(['144 Breda', '25026 Arnhem-Kronenburg', '26031 Rijssen'])
     const arnhem = rijen[1]
     expect(arnhem.cellen.map((c) => c.aantal)).toEqual([2, 0, 1, 0, 0])
-    expect(arnhem.week_tekst).toBe('3 mandagen · uren 2/3 · 3 conflicten') // ma dossier + wo dubbel + wo dossier
+    expect(arnhem.week_tekst).toBe('3 mandagen · uren 2/3 · 1 conflict') // wo dubbel (v4: dossier is geen kaartconflict)
     expect(rijen[0].week_tekst).toBe('gereserveerd — nog geen ploeg')
     expect(zonder_planning).toBe(0)
+  })
+
+  it('v4 matrix: rijen = projecten mét planning/reservering, dezelfde rij over de week; volgorde eerste dag → aantal dagen → projectnummer; urenfilter filtert rijen, niet cellen', () => {
+    const data = week()
+    // Extra project mét planning ma + do (2 dagen, nummer 25001) — Arnhem heeft ma + wo (2 dagen, nummer 25026).
+    const P_D = 'dddddddd-0000-0000-0000-00000000000d'
+    data.projecten.push({ project_id: P_D, project_naam: '25001 Zwolle', opdrachtgever: null, soort_werk: null, looptijd_tot: null, is_actief: true, week_man: 1, per_datum: { '2026-09-14': [{ gebruiker_id: G1, naam: 'O. Ogur', rol: 'zzper', dagdeel: 'heel' }], '2026-09-17': [{ gebruiker_id: G1, naam: 'O. Ogur', rol: 'zzper', dagdeel: 'heel' }] }, werkopdrachten: [], werkopdracht_overrides: {} })
+    const kolommen = bouwDagKolommen(data, DAGEN)
+    const rijen = matrixRijen(kolommen)
+    // Eerste dag ma: Zwolle en Arnhem (beide 2 dagen) → projectnummer beslist (25001 vóór 25026); daarna Rijssen (wo), Breda (do, reservering).
+    expect(rijen.map((r) => [r.project_naam, r.eerste_datum, r.aantal_dagen])).toEqual([
+      ['25001 Zwolle', '2026-09-14', 2],
+      ['25026 Arnhem-Kronenburg', '2026-09-14', 2],
+      ['26031 Rijssen', '2026-09-16', 1],
+      ['144 Breda', '2026-09-17', 1],
+    ])
+    // Elke rij heeft vijf cellen; een cel zonder kaart = lege plancel (null).
+    const arnhem = rijen[1]
+    expect(arnhem.cellen.map((c) => (c.kaart ? c.kaart.ploeg.length : null))).toEqual([2, null, 1, null, null])
+    expect(arnhem.cellen.every((c) => c.kaart === null || c.kaart.project_id === P_A)).toBe(true)
+    // Urenfilter 'zonder' filtert RIJEN: Arnhem blijft (Sanli wo zonder uren) mét complete kaarten; Breda (alleen reservering) valt weg.
+    const gefilterd = matrixRijen(kolommen, { urenFilter: 'zonder' })
+    expect(gefilterd.map((r) => r.project_naam)).toEqual(['25001 Zwolle', '25026 Arnhem-Kronenburg', '26031 Rijssen'])
+    expect(gefilterd[1].cellen[0].kaart?.ploeg.length).toBe(2) // cel niet gefilterd
+    expect(vergelijkProjectnummer('25001 A', '25026 B')).toBeLessThan(0)
+    expect(vergelijkProjectnummer('144 Breda', '25001 A')).toBeLessThan(0) // numeriek, niet lexicografisch
+  })
+
+  it('v4 lege cel: virtuele kaart voor project × dag + voorstel = ploeg van de dichtstbijzijnde EERDERE dag (niets opgeslagen)', () => {
+    const data = week()
+    const werkdagen = DAGEN.map((d) => d.datum)
+    const leeg = legeCelKaart(data, P_A, '2026-09-15')
+    expect(leeg).toMatchObject({ sleutel: `${P_A}|2026-09-15`, project_id: P_A, datum: '2026-09-15', gereserveerd: true, leeg: true, ploeg: [] })
+    expect(legeCelKaart(data, 'onbekend', '2026-09-15')).toBeNull()
+    // Di: dichtstbijzijnde eerdere dag mét planning op Arnhem = ma (Ogur, Sanli); vr → wo (dichtstbijzijnd, niet ma); ma zelf → null.
+    expect(dichtstbijzijndeEerderePloeg(data, P_A, '2026-09-15', werkdagen)).toEqual({ datum: '2026-09-14', gebruiker_ids: [G1, G2] })
+    expect(dichtstbijzijndeEerderePloeg(data, P_A, '2026-09-18', werkdagen)?.datum).toBe('2026-09-16')
+    expect(dichtstbijzijndeEerderePloeg(data, P_A, '2026-09-14', werkdagen)).toBeNull()
+  })
+
+  it('v4 kopie naar volgende week: dezelfde weekdag (+7), zelfde project, dagdeel heel; toast-tekst; vrij-tellers voor de paneelkop', () => {
+    expect(plusDagen('2026-09-17', 7)).toBe('2026-09-24')
+    expect(plusDagen('2026-12-31', 7)).toBe('2027-01-07')
+    expect(kopieVolgendeWeekItems({ project_id: P_A, datum: '2026-09-17' }, [G1, G2])).toEqual([
+      { gebruiker_id: G1, project_id: P_A, datum: '2026-09-24', dagdeel: 'heel' },
+      { gebruiker_id: G2, project_id: P_A, datum: '2026-09-24', dagdeel: 'heel' },
+    ])
+    const r = (gebruiker_id: string, uitkomst: 'gedaan' | 'overgeslagen' | 'conflict', conflict: 'project' | 'afwezig' | null = null) => ({ gebruiker_id, project_id: P_A, datum: '2026-09-24', dagdeel: 'heel' as const, uitkomst, reden: null, conflict, conflict_projectnaam: null })
+    const toast = bulkToastTekst(
+      { correlatie_id: 'c', aangemaakt: [], resultaten: [r(G1, 'gedaan'), r(G2, 'conflict', 'project'), r(G3, 'overgeslagen', 'afwezig'), r('x', 'overgeslagen')] },
+      { soort: 'kopie', doelDatums: ['2026-09-24'], naarWeek: { jaar: 2026, weeknummer: 39 } },
+    )
+    expect(toast).toBe('Gekopieerd naar do 24-9 (week 39) · 2 persoon-dagen · 1 conflict · 1 afwezig overgeslagen · 1 al gepland')
+    const stand = maakOngedaanStand({ correlatie_id: 'c', aangemaakt: [], resultaten: [r(G2, 'conflict', 'project')] }, { soort: 'kopie', doelDatums: ['2026-09-24'], naarWeek: { jaar: 2026, weeknummer: 39 }, nu: 0 })
+    expect(stand.naar_week).toEqual({ jaar: 2026, weeknummer: 39 })
+    expect(stand.conflict_sleutel).toBeNull() // het conflict ligt in week+1 — "Naar week 39" is de handeling
+    const data = week()
+    // Di 15-9: niemand gepland → Ogur, Sanli, Yücetaş vrij (Yücetaş pas 16–17 afwezig); hele week vrij: niemand (Ogur 1 dg, Sanli 3 dg, Yücetaş afwezig).
+    const v = vrijTellers(data, '2026-09-15', DAGEN.map((d) => d.datum))
+    expect(v).toEqual({ dag: 3, week: 0, namen_week: [] })
   })
 
   it('deeplink ?kaart=<project>|<datum>', () => {

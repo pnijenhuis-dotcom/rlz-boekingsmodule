@@ -49,6 +49,9 @@ export interface DagKaart {
   werkopdracht_afwijkend: boolean
   na_einddatum: boolean
   achteraf: boolean
+  /** v4 (28-09): virtuele kaart voor een LEGE matrixcel (project × dag zonder planning of reservering) — bestaat alleen in de
+   * UI zolang het paneel open is; opslaan mét ≥ 1 persoon maakt er een echte kaart van (bulkroute). */
+  leeg?: boolean
 }
 
 export interface DagKolom {
@@ -91,6 +94,7 @@ export function conflictenVoorWeek(data: PlanningWeekDto): Conflict[] {
 function ruweConflictenVoorWeek(data: PlanningWeekDto): Conflict[] {
   const uit: Conflict[] = []
   const perPersoonDag = new Map<string, { kaart: PlanningKaartDto; project_id: string }[]>()
+  const dossierPersonen = new Map<string, { naam: string | null; datums: string[]; project_ids: string[] }>()
   for (const rij of data.projecten) {
     for (const [datum, kaarten] of Object.entries(rij.per_datum)) {
       if (kaarten.length > MAX_PLOEG_ZONDER_SIGNAAL) {
@@ -123,18 +127,28 @@ function ruweConflictenVoorWeek(data: PlanningWeekDto): Conflict[] {
         }
         const pool = data.pool.find((p) => p.gebruiker_id === k.gebruiker_id)
         if (pool?.dossier_onvolledig) {
-          uit.push({
-            soort: 'geen_dossier',
-            gebruiker_id: k.gebruiker_id,
-            naam: k.naam,
-            datum,
-            project_id: rij.project_id,
-            project_ids: [rij.project_id],
-            tekst: `${dagKort(datum)}: ${k.naam ?? '?'} zonder compleet ZZP-dossier op ${rij.project_naam ?? rij.project_id}`,
-          })
+          const d = dossierPersonen.get(k.gebruiker_id) ?? { naam: k.naam, datums: [] as string[], project_ids: [] as string[] }
+          if (!d.datums.includes(datum)) d.datums.push(datum)
+          if (!d.project_ids.includes(rij.project_id)) d.project_ids.push(rij.project_id)
+          dossierPersonen.set(k.gebruiker_id, d)
         }
       }
     }
+  }
+  // v4 (28-09): de backend levert `dossier_onvolledig` nu écht (Universal: 0 dossiers → élke geplande persoon). Eén rij per
+  // PERSOON per week (eerste geplande dag, alle projecten) i.p.v. per kaart × dag — anders verdringt het dossier-signaal de
+  // échte planningsconflicten (dubbel/afwezig) uit het paneel. Kaarten kleuren er niet oranje van (bouwDagKolommen).
+  for (const [gebruikerId, d] of dossierPersonen) {
+    const datum = [...d.datums].sort()[0]
+    uit.push({
+      soort: 'geen_dossier',
+      gebruiker_id: gebruikerId,
+      naam: d.naam,
+      datum,
+      project_id: d.project_ids[0],
+      project_ids: d.project_ids,
+      tekst: `${d.naam ?? '?'} zonder compleet ZZP-dossier, gepland op ${d.datums.length} ${d.datums.length === 1 ? 'dag' : 'dagen'} deze week`,
+    })
   }
   for (const [sleutel, lijst] of perPersoonDag) {
     if (lijst.length < 2) continue
@@ -266,7 +280,8 @@ export function bouwDagKolommen(
         reservering,
         gereserveerd: alle.length === 0,
         status: laagsteStatus(ploeg),
-        conflicten: conflicten.filter((c) => c.datum === d.datum && c.project_id === rij.project_id),
+        // v4: het dossier-signaal is een persoonskenmerk (chip in het paneel, rij in het conflictenpaneel), geen kaartconflict.
+        conflicten: conflicten.filter((c) => c.datum === d.datum && c.project_id === rij.project_id && c.soort !== 'geen_dossier'),
         werkopdracht_tekst: wo?.tekst ?? null,
         werkopdracht_afwijkend: wo?.afwijkend ?? false,
         na_einddatum: rij.looptijd_tot !== null && d.datum > rij.looptijd_tot,
@@ -411,6 +426,120 @@ export function handvatBereik(werkdagen: string[], vanDatum: string, totDatum: s
   if (i < 0 || j < 0) return []
   const [a, b] = i < j ? [i, j] : [j, i]
   return werkdagen.slice(a, b + 1)
+}
+
+/* --- v4 (Peter 28-09): project × dag-MATRIX, lege cel, vrij-tellers, kopie naar volgende week ------------------------ */
+
+export interface MatrixRij {
+  project_id: string
+  project_naam: string | null
+  opdrachtgever: string | null
+  /** Eerste dag (ISO) mét planning of reservering in de getoonde kolommen. */
+  eerste_datum: string
+  /** Aantal dagen mét een kaart. */
+  aantal_dagen: number
+  /** Eén cel per getoonde kolom; `kaart` null = lege plancel voor dit project op die dag. */
+  cellen: { datum: string; kaart: DagKaart | null }[]
+}
+
+/** Vergelijking op projectnummer: "25017 …" vóór "25036 …" (numeriek), namen zonder nummer alfabetisch erachter. */
+export function vergelijkProjectnummer(a: string | null, b: string | null): number {
+  return (a ?? '').localeCompare(b ?? '', 'nl', { numeric: true, sensitivity: 'base' })
+}
+
+/** Dagkolommen → matrix: rijen = projecten mét planning of reservering in de getoonde kolommen (dezelfde rij over de week —
+ * feedback Peter 28-09 "project 1 staat bovenaan, ook al is het op donderdag als 3e ingepland"). Rijvolgorde: eerste geplande
+ * dag, dan aantal geplande dagen (aflopend), dan projectnummer. `urenFilter` filtert RIJEN, niet cellen: een rij blijft als
+ * één van haar kaarten een ploeglid heeft dat in het filter past; de kaarten zelf blijven compleet. */
+export function matrixRijen(kolommen: DagKolom[], opties: { urenFilter?: UrenFilter } = {}): MatrixRij[] {
+  const filter = opties.urenFilter ?? 'alle'
+  const perProject = new Map<string, MatrixRij>()
+  for (const kol of kolommen) {
+    for (const k of kol.kaarten) {
+      let rij = perProject.get(k.project_id)
+      if (!rij) {
+        rij = { project_id: k.project_id, project_naam: k.project_naam, opdrachtgever: k.opdrachtgever, eerste_datum: kol.datum, aantal_dagen: 0, cellen: [] }
+        perProject.set(k.project_id, rij)
+      }
+    }
+  }
+  const rijen: MatrixRij[] = []
+  for (const rij of perProject.values()) {
+    rij.cellen = kolommen.map((kol) => ({ datum: kol.datum, kaart: kol.kaarten.find((x) => x.project_id === rij.project_id) ?? null }))
+    const gevuld = rij.cellen.filter((c) => c.kaart !== null)
+    rij.eerste_datum = gevuld[0]?.datum ?? rij.eerste_datum
+    rij.aantal_dagen = gevuld.length
+    if (filter !== 'alle' && !gevuld.some((c) => c.kaart!.ploeg.some((p) => kaartPastInFilter(p, filter)))) continue
+    rijen.push(rij)
+  }
+  return rijen.sort(
+    (a, b) =>
+      (a.eerste_datum < b.eerste_datum ? -1 : a.eerste_datum > b.eerste_datum ? 1 : 0) ||
+      b.aantal_dagen - a.aantal_dagen ||
+      vergelijkProjectnummer(a.project_naam, b.project_naam),
+  )
+}
+
+/** Virtuele kaart voor een lege matrixcel (klik = paneel mét voorstel-ploeg, niets opgeslagen). Null als het project niet in
+ * de rijenlijst staat. */
+export function legeCelKaart(data: PlanningWeekDto, projectId: string, datum: string): DagKaart | null {
+  const rij = data.projecten.find((r) => r.project_id === projectId)
+  if (!rij) return null
+  const wo = werkopdrachtOpDag(rij, datum)
+  return {
+    sleutel: `${projectId}|${datum}`,
+    project_id: projectId,
+    project_naam: rij.project_naam,
+    opdrachtgever: rij.opdrachtgever,
+    soort_werk: rij.soort_werk,
+    datum,
+    ploeg: [],
+    reservering: null,
+    gereserveerd: true,
+    status: 'geen',
+    conflicten: [],
+    werkopdracht_tekst: wo?.tekst ?? null,
+    werkopdracht_afwijkend: wo?.afwijkend ?? false,
+    na_einddatum: rij.looptijd_tot !== null && datum > rij.looptijd_tot,
+    achteraf: false,
+    leeg: true,
+  }
+}
+
+/** Ploeg van de dichtstbijzijnde EERDERE werkdag mét planning op dit project (voorstel voor een lege cel / "Zelfde ploeg als"). */
+export function dichtstbijzijndeEerderePloeg(data: PlanningWeekDto, projectId: string, datum: string, werkdagen: string[]): { datum: string; gebruiker_ids: string[] } | null {
+  const rij = data.projecten.find((r) => r.project_id === projectId)
+  if (!rij) return null
+  const eerder = werkdagen.filter((d) => d < datum && (rij.per_datum[d] ?? []).length > 0)
+  if (eerder.length === 0) return null
+  const d = eerder[eerder.length - 1]
+  return { datum: d, gebruiker_ids: (rij.per_datum[d] ?? []).map((k) => k.gebruiker_id) }
+}
+
+/** Kop-regel van het paneel (v4): "N vrij op ‹dag› · M vrij hele week" — vervangt de pool als "wie is nog vrij"-overzicht. */
+export function vrijTellers(data: PlanningWeekDto, datum: string, werkdagen: string[]): { dag: number; week: number; namen_week: string[] } {
+  let dag = 0
+  const namen: string[] = []
+  for (const p of data.pool) {
+    if (beschikbaarheid(data, p.gebruiker_id, datum, null).soort === 'vrij') dag += 1
+    if (poolStand(p, werkdagen, data.afwezigheid) === 'vrij') namen.push(p.naam)
+  }
+  return { dag, week: namen.length, namen_week: namen.sort((a, b) => a.localeCompare(b, 'nl')) }
+}
+
+/** ISO-datum + n dagen (UTC-rekenkundig, geen tijdzone-drift). */
+export function plusDagen(iso: string, n: number): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+/** "Kopiëren naar ‹weekdag› volgende week" (besluit Peter 28-09: alleen dezelfde weekdag, nooit de hele projectweek): dezelfde
+ * kaart (project + ploeg, géén uren) op datum + 7 via de bulkroute (bron `kopie_volgende_week`). De server beslist over
+ * conflict/afwezig/bestaand. */
+export function kopieVolgendeWeekItems(kaart: Pick<DagKaart, 'project_id' | 'datum'>, gebruikerIds: string[]): { gebruiker_id: string; project_id: string; datum: string; dagdeel: 'heel' }[] {
+  const datum = plusDagen(kaart.datum, 7)
+  return gebruikerIds.map((g) => ({ gebruiker_id: g, project_id: kaart.project_id, datum, dagdeel: 'heel' as const }))
 }
 
 /* --- projectbalk --------------------------------------------------------------------------------- */

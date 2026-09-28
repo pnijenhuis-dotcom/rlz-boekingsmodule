@@ -1,46 +1,37 @@
-import { useEffect, useRef, useState } from 'react'
-import { dagKort, handvatBereik, initialen, vulhandvatVoorbeeld, type DagKaart, type DagKolom, type VulhandvatVoorbeeld } from './dagEerst'
-import { UREN_STATUS_KLEUR, UREN_STATUS_LABEL, urenKort, type PlanningKaartDto, type PlanningWeekDto } from './planningApi'
-import { maakSleepPayload, useDagDrop } from './useDagDrop'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { dagKort, handvatBereik, initialen, matrixRijen, vulhandvatVoorbeeld, type DagKaart, type DagKolom, type VulhandvatVoorbeeld } from './dagEerst'
+import { UREN_STATUS_KLEUR, UREN_STATUS_LABEL, urenKort, type PlanningKaartDto, type PlanningWeekDto, type UrenFilter } from './planningApi'
+import { useDagDrop } from './useDagDrop'
 
-/* Weekgrid dag-eerst (mockup planning-v3-dag-eerst.html ①/②, akkoord Peter 18-09): vijf dagkolommen (za/zo alleen als er
- * iets op staat, inklapbaar), sticky dagkop mét datum + dagtotaal (hergebruik .tabel-scroll.sticky-koppen.plan-scroll van
- * 18-09), per dag projectkaarten mét ploeg-initialen (uitvoerder = groene rand, conflict = oranje rand), aantal,
- * urenstatus-stip = laagste status van de ploeg (tooltip per persoon), werkopdracht-tekst, chip "achteraf", kaart zonder
- * ploeg = "gereserveerd" (grijs, dashed). Slepen: projecttegel → dag = reservering; pool → kaart = toevoegen; initiaal →
- * andere kaart = verplaatsen (Alt/Option = kopiëren). Vulhandvat (②): kaart selecteren → bolletje rechts → over dagen
- * slepen (pointer-events; ghost-kaarten mét conflicten oranje; bestaande kaart van hetzelfde project = overgeslagen; stopt bij
- * vrijdag). Teal = actie (handvat, drop-zones), groen = status, oranje = conflict. */
+/* Weekgrid dag-eerst v4 — PROJECT × DAG-MATRIX (feedback Peter 28-09, herziet v3 18-09 "vrije kaartvolgorde per dag"): rijen =
+ * projecten mét planning of reservering deze week (dezelfde rij over de week: "project 1 staat bovenaan, ook al is het op
+ * donderdag als 3e ingepland"), kolommen = dagen mét sticky dagkop + dagtotaal (18-09). Rijvolgorde: eerste geplande dag,
+ * aantal geplande dagen (aflopend), projectnummer (dagEerst.matrixRijen). Een cel zónder kaart = lege plancel "+ plannen" voor
+ * dát project op dié dag (klik = paneel mét de ploeg van de dichtstbijzijnde eerdere dag als voorstel, niets opgeslagen) én
+ * drop-doel voor een projecttegel. Onderaan een drop-rij "sleep een project hierheen" voor een NIEUWE rij (of klik project,
+ * dan dag). Kaartinhoud ongewijzigd (initialen, urenstatus-stip, werkopdracht, chips, handvat); het handvat vult cellen op
+ * dezelfde rij. VERVALLEN in v4: slepen van personen (pool → kaart, initiaal → kaart) — klik op élke kaart (ook een
+ * gereserveerde) opent het ploeg-paneel; dat is dé werkwijze. Teal = actie, groen = status, oranje = conflict. */
 
-export type SleepSoort = 'pool' | 'kaart' | 'project'
+export type SleepSoort = 'project'
 
 export interface KaartDropPayload {
   soort: SleepSoort
-  gebruikerId: string | null
-  projectId: string | null
-  datum: string | null
-  /** Alt/Option ingedrukt bij het loslaten = kopiëren i.p.v. verplaatsen. */
-  kopieer: boolean
+  projectId: string
 }
 
-export function kaartSleepPayload(gebruikerId: string, projectId: string, datum: string): string {
-  return maakSleepPayload('kaart', `${gebruikerId}|${projectId}|${datum}`)
-}
-
-export function ontleedDropPayload(payload: { soort: string; id: string } | null, kopieer: boolean): KaartDropPayload | null {
+/** v4: alleen projecttegels zijn nog sleepbaar; een persoon-payload (oude pool/kaart-vorm) wordt genegeerd. */
+export function ontleedDropPayload(payload: { soort: string; id: string } | null): KaartDropPayload | null {
   if (!payload) return null
-  if (payload.soort === 'pool') return { soort: 'pool', gebruikerId: payload.id, projectId: null, datum: null, kopieer }
-  if (payload.soort === 'project') return { soort: 'project', gebruikerId: null, projectId: payload.id, datum: null, kopieer }
-  if (payload.soort === 'kaart') {
-    const [gebruikerId, projectId, datum] = payload.id.split('|')
-    return { soort: 'kaart', gebruikerId, projectId, datum, kopieer }
-  }
+  if (payload.soort === 'project') return { soort: 'project', projectId: payload.id }
   return null
 }
 
 export interface DagEerstGridProps {
   data: PlanningWeekDto
+  /** Dagkolommen ZONDER urenfilter (de matrix filtert rijen, niet cellen). */
   kolommen: DagKolom[]
+  urenFilter: UrenFilter
   /** Werkdagen (ma–vr) — het handvat stopt bij vrijdag; za/zo-kolommen staan alleen in `kolommen` als ze iets dragen. */
   werkdagen: string[]
   vandaagIso: string
@@ -48,9 +39,10 @@ export interface DagEerstGridProps {
   oplichten: string | null
   projectSelectie: string | null
   onSelecteer: (kaart: DagKaart | null) => void
+  /** Lege cel geklikt: paneel openen voor project × dag (voorstel-ploeg, niets opgeslagen). */
+  onLegeCel: (projectId: string, datum: string) => void
   onDagKlik: (datum: string) => void
   onDropOpDag: (datum: string, payload: KaartDropPayload) => void
-  onDropOpKaart: (kaart: DagKaart, payload: KaartDropPayload) => void
   onVerwijderPersoon: (kaart: DagKaart, persoon: PlanningKaartDto) => void
   onDagdeel: (kaart: DagKaart, persoon: PlanningKaartDto) => void
   onVerwijderReservering: (kaart: DagKaart) => void
@@ -63,15 +55,11 @@ export function DagEerstGrid(p: DagEerstGridProps) {
   const [handvat, setHandvat] = useState<{ kaart: DagKaart; tot: string } | null>(null)
   const [weekend, setWeekend] = useState(false)
   const tabelRef = useRef<HTMLTableElement>(null)
-  const [altKey, setAltKey] = useState(false)
 
-  const { dragOverDag, dagDropProps } = useDagDrop<HTMLTableCellElement>(
-    (datum, payload, e) => {
-      const ontleed = ontleedDropPayload(payload, e.altKey)
-      if (ontleed) p.onDropOpDag(datum, ontleed)
-    },
-    (e) => (e.altKey ? 'copy' : 'move'),
-  )
+  const { dragOverDag, dagDropProps } = useDagDrop<HTMLTableCellElement>((datum, payload) => {
+    const ontleed = ontleedDropPayload(payload)
+    if (ontleed) p.onDropOpDag(datum, ontleed)
+  }, 'copy')
 
   // Vulhandvat: pointerup ergens = loslaten; Escape = afbreken.
   useEffect(() => {
@@ -92,7 +80,7 @@ export function DagEerstGrid(p: DagEerstGridProps) {
     }
   }, [handvat, p])
 
-  // Deeplink/conflictenbalk: de opgelichte kaart in beeld scrollen.
+  // Deeplink/conflictenpaneel: de opgelichte kaart in beeld scrollen.
   useEffect(() => {
     if (!p.oplichten || !tabelRef.current) return
     const el = tabelRef.current.querySelector<HTMLElement>(`[data-kaart="${p.oplichten}"]`)
@@ -106,6 +94,26 @@ export function DagEerstGrid(p: DagEerstGridProps) {
   const weekendKolommen = p.kolommen.filter((k) => !p.werkdagen.includes(k.datum))
   const weekendMetInhoud = weekendKolommen.filter((k) => k.kaarten.length > 0)
   const getoond = p.kolommen.filter((k) => p.werkdagen.includes(k.datum) || (weekend && k.kaarten.length > 0))
+  const rijen = matrixRijen(getoond, { urenFilter: p.urenFilter })
+  const dossierOnvolledig = new Set(p.data.pool.filter((x) => x.dossier_onvolledig).map((x) => x.gebruiker_id))
+
+  function celKlik(e: MouseEvent<HTMLTableCellElement>, datum: string) {
+    // Klik op de lege ruimte van een cel (niet op een kaart): mét een geselecteerd project = reserveren (klik-alternatief).
+    if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('plan-drop')) p.onDagKlik(datum)
+  }
+
+  function celProps(datum: string, extraKlasse = '') {
+    return {
+      'data-datum': datum,
+      className: `plan-dagkolom plan-cel-mx${extraKlasse}${datum === p.vandaagIso ? ' plan-vandaag' : ''}${dragOverDag === datum ? ' plan-dragover' : ''}${p.projectSelectie ? ' plan-kiesbaar' : ''}`,
+      title: p.projectSelectie ? 'Klik om het geselecteerde project hier te reserveren' : undefined,
+      onClick: (e: MouseEvent<HTMLTableCellElement>) => celKlik(e, datum),
+      onPointerEnter: () => {
+        if (handvat && p.werkdagen.includes(datum)) setHandvat({ ...handvat, tot: datum })
+      },
+      ...dagDropProps(datum),
+    }
+  }
 
   return (
     <>
@@ -117,16 +125,21 @@ export function DagEerstGrid(p: DagEerstGridProps) {
         </div>
       )}
       <div className="tabel-scroll sticky-koppen plan-scroll" data-testid="plan-grid-scroll">
-        <table
-          ref={tabelRef}
-          className={`plan-grid plan-dagen${handvat ? ' plan-handvat-actief' : ''}`}
-          style={{ tableLayout: 'fixed', minWidth: 760 }}
-          onKeyDown={(e) => setAltKey(e.altKey)}
-          onKeyUp={(e) => setAltKey(e.altKey)}
-          onDragOver={(e) => setAltKey(e.altKey)}
-        >
+        <table ref={tabelRef} className={`plan-grid plan-dagen plan-matrix${handvat ? ' plan-handvat-actief' : ''}`} style={{ tableLayout: 'fixed', minWidth: 800 }}>
+          <colgroup>
+            <col style={{ width: 124 }} />
+            {getoond.map((k) => (
+              <col key={k.datum} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
+              <th style={{ textAlign: 'left' }} className="plan-rijkop-kop">
+                <span style={{ textTransform: 'uppercase', letterSpacing: '.04em', fontSize: 11, color: 'var(--muted)' }}>Project</span>
+                <span style={{ display: 'block', fontSize: 12, fontWeight: 700, textTransform: 'none', letterSpacing: 0 }} data-testid="matrix-rijen-telling">
+                  {rijen.length} {rijen.length === 1 ? 'rij' : 'rijen'}
+                </span>
+              </th>
               {getoond.map((k) => (
                 <th key={k.datum} className={k.datum === p.vandaagIso ? 'plan-vandaag' : undefined} style={{ textAlign: 'left' }} data-testid={`dagkop-${k.datum}`}>
                   <span style={{ textTransform: 'uppercase', letterSpacing: '.04em', fontSize: 11, color: 'var(--muted)' }}>
@@ -141,66 +154,90 @@ export function DagEerstGrid(p: DagEerstGridProps) {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              {getoond.map((k) => {
-                const ghost = voorbeeld?.doelen.find((d) => d.datum === k.datum)
-                return (
-                  <td
-                    key={k.datum}
-                    data-datum={k.datum}
-                    data-testid={`dag-${k.datum}`}
-                    className={`plan-dagkolom${k.datum === p.vandaagIso ? ' plan-vandaag' : ''}${dragOverDag === k.datum ? ' plan-dragover' : ''}${p.projectSelectie ? ' plan-kiesbaar' : ''}`}
-                    title={p.projectSelectie ? 'Klik om het geselecteerde project hier te reserveren' : undefined}
-                    onClick={(e) => {
-                      if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('plan-drop')) p.onDagKlik(k.datum)
-                    }}
-                    onPointerEnter={() => {
-                      if (handvat && p.werkdagen.includes(k.datum)) setHandvat({ ...handvat, tot: k.datum })
-                    }}
-                    {...dagDropProps(k.datum)}
-                  >
-                    {k.kaarten.map((kaart) => (
-                      <KaartView
-                        key={kaart.sleutel}
-                        kaart={kaart}
-                        geselecteerd={p.geselecteerd === kaart.sleutel}
-                        oplichten={p.oplichten === kaart.sleutel}
-                        handvatActief={handvat?.kaart.sleutel === kaart.sleutel}
-                        altKey={altKey}
-                        onSelecteer={() => p.onSelecteer(p.geselecteerd === kaart.sleutel ? null : kaart)}
-                        onDrop={(payload) => p.onDropOpKaart(kaart, payload)}
-                        onVerwijderPersoon={(persoon) => p.onVerwijderPersoon(kaart, persoon)}
-                        onDagdeel={(persoon) => p.onDagdeel(kaart, persoon)}
-                        onVerwijderReservering={() => p.onVerwijderReservering(kaart)}
-                        onWerkopdracht={() => p.onWerkopdracht(kaart)}
-                        onOpenWeekstaat={p.onOpenWeekstaat}
-                        onHandvatStart={() => setHandvat({ kaart, tot: kaart.datum })}
-                      />
-                    ))}
-                    {ghost && !ghost.overgeslagen && ghost.items.length > 0 && (
-                      <div className="plan-kaart ghost" data-testid={`ghost-${k.datum}`} aria-hidden>
-                        <div className="n">{handvat?.kaart.project_naam}</div>
-                        <div className="s">kopie · {ghost.conflicten > 0 ? `${ghost.conflicten} conflict` : 'zelfde ploeg'}</div>
-                        <div className="ploeg">
-                          {ghost.items.map((i) => (
-                            <span key={i.gebruiker_id} className={`plan-av${i.conflict ? ' c' : ''}`} title={i.conflict ? `${i.naam ?? '?'}: ${i.conflict === 'afwezig' ? 'afwezig' : `al gepland (${i.conflict_projectnaam ?? '?'})`}` : i.naam ?? undefined}>
-                              {initialen(i.naam)}
-                            </span>
-                          ))}
+            {rijen.map((rij) => (
+              <tr key={rij.project_id} data-testid={`matrix-rij-${rij.project_id}`}>
+                <th className="plan-rijkop" scope="row">
+                  <span className="plan-rijkop-naam" title={rij.project_naam ?? rij.project_id}>
+                    {rij.project_naam ?? rij.project_id}
+                  </span>
+                  <span className="plan-rijkop-sub">
+                    {rij.opdrachtgever ? `${rij.opdrachtgever} · ` : ''}
+                    {rij.aantal_dagen} {rij.aantal_dagen === 1 ? 'dag' : 'dagen'}
+                  </span>
+                </th>
+                {rij.cellen.map((cel) => {
+                  const ghost = handvat?.kaart.project_id === rij.project_id ? voorbeeld?.doelen.find((d) => d.datum === cel.datum) : undefined
+                  return (
+                    <td key={cel.datum} data-testid={`cel-${rij.project_id}|${cel.datum}`} {...celProps(cel.datum)}>
+                      {cel.kaart && (
+                        <KaartView
+                          kaart={cel.kaart}
+                          geselecteerd={p.geselecteerd === cel.kaart.sleutel}
+                          oplichten={p.oplichten === cel.kaart.sleutel}
+                          handvatActief={handvat?.kaart.sleutel === cel.kaart.sleutel}
+                          dossierOnvolledig={dossierOnvolledig}
+                          onSelecteer={() => p.onSelecteer(p.geselecteerd === cel.kaart!.sleutel ? null : cel.kaart)}
+                          onVerwijderPersoon={(persoon) => p.onVerwijderPersoon(cel.kaart!, persoon)}
+                          onDagdeel={(persoon) => p.onDagdeel(cel.kaart!, persoon)}
+                          onVerwijderReservering={() => p.onVerwijderReservering(cel.kaart!)}
+                          onWerkopdracht={() => p.onWerkopdracht(cel.kaart!)}
+                          onOpenWeekstaat={p.onOpenWeekstaat}
+                          onHandvatStart={() => setHandvat({ kaart: cel.kaart!, tot: cel.kaart!.datum })}
+                        />
+                      )}
+                      {ghost && !ghost.overgeslagen && ghost.items.length > 0 && (
+                        <div className="plan-kaart ghost" data-testid={`ghost-${cel.datum}`} aria-hidden>
+                          <div className="n">{handvat?.kaart.project_naam}</div>
+                          <div className="s">kopie · {ghost.conflicten > 0 ? `${ghost.conflicten} conflict` : 'zelfde ploeg'}</div>
+                          <div className="ploeg">
+                            {ghost.items.map((i) => (
+                              <span key={i.gebruiker_id} className={`plan-av${i.conflict ? ' c' : ''}`} title={i.conflict ? `${i.naam ?? '?'}: ${i.conflict === 'afwezig' ? 'afwezig' : `al gepland (${i.conflict_projectnaam ?? '?'})`}` : i.naam ?? undefined}>
+                                {initialen(i.naam)}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {ghost?.overgeslagen && (
-                      <div className="plan-kaart ghost overgeslagen" data-testid={`ghost-overgeslagen-${k.datum}`} aria-hidden>
-                        <div className="s">overgeslagen — staat hier al</div>
-                      </div>
-                    )}
-                    <div className="plan-drop" aria-hidden={!p.projectSelectie}>
-                      {k.kaarten.length === 0 ? 'sleep project of persoon hierheen' : 'sleep hierheen'}
-                    </div>
-                  </td>
-                )
-              })}
+                      )}
+                      {ghost?.overgeslagen && (
+                        <div className="plan-kaart ghost overgeslagen" data-testid={`ghost-overgeslagen-${cel.datum}`} aria-hidden>
+                          <div className="s">overgeslagen — staat hier al</div>
+                        </div>
+                      )}
+                      {!cel.kaart && !ghost && (
+                        <button
+                          type="button"
+                          className={`plan-leegcel${p.geselecteerd === `${rij.project_id}|${cel.datum}` ? ' sel' : ''}`}
+                          data-testid={`leegcel-${rij.project_id}|${cel.datum}`}
+                          aria-label={`${rij.project_naam ?? rij.project_id} op ${dagKort(cel.datum)} plannen`}
+                          title={p.projectSelectie ? 'Klik om het geselecteerde project hier te reserveren' : `${rij.project_naam ?? ''} op ${dagKort(cel.datum)} plannen — opent het ploeg-paneel mét de ploeg van de vorige dag als voorstel`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (p.projectSelectie) p.onDagKlik(cel.datum)
+                            else p.onLegeCel(rij.project_id, cel.datum)
+                          }}
+                        >
+                          sleep hierheen / + plannen
+                        </button>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+            {/* Drop-rij voor een NIEUW project (projecttegel → dag, of klik project, dan dag). */}
+            <tr className="plan-droprij" data-testid="matrix-droprij">
+              <th className="plan-rijkop" scope="row">
+                <span className="plan-rijkop-sub" style={{ display: 'block' }}>
+                  {rijen.length === 0 ? 'Nog niets gepland deze week' : 'Nieuw project'}
+                </span>
+              </th>
+              {getoond.map((k) => (
+                <td key={k.datum} data-testid={`dag-${k.datum}`} {...celProps(k.datum, ' plan-cel-drop')}>
+                  <div className="plan-drop" aria-hidden={!p.projectSelectie}>
+                    {p.projectSelectie ? 'klik = hier reserveren' : rijen.length === 0 ? 'sleep een project hierheen (of klik project, dan dag)' : 'sleep project hierheen'}
+                  </div>
+                </td>
+              ))}
             </tr>
           </tbody>
         </table>
@@ -214,9 +251,8 @@ function KaartView({
   geselecteerd,
   oplichten,
   handvatActief,
-  altKey,
+  dossierOnvolledig,
   onSelecteer,
-  onDrop,
   onVerwijderPersoon,
   onDagdeel,
   onVerwijderReservering,
@@ -228,9 +264,8 @@ function KaartView({
   geselecteerd: boolean
   oplichten: boolean
   handvatActief: boolean
-  altKey: boolean
+  dossierOnvolledig: Set<string>
   onSelecteer: () => void
-  onDrop: (payload: KaartDropPayload) => void
   onVerwijderPersoon: (persoon: PlanningKaartDto) => void
   onDagdeel: (persoon: PlanningKaartDto) => void
   onVerwijderReservering: () => void
@@ -238,7 +273,6 @@ function KaartView({
   onOpenWeekstaat: (persoon: PlanningKaartDto) => void
   onHandvatStart: () => void
 }) {
-  const [over, setOver] = useState(false)
   const conflictPersonen = new Set(kaart.conflicten.map((c) => c.gebruiker_id).filter(Boolean))
   const heeftConflict = kaart.conflicten.length > 0
   const klasse = [
@@ -248,7 +282,6 @@ function KaartView({
     oplichten ? 'oplichten' : '',
     heeftConflict ? 'conflict' : '',
     kaart.na_einddatum ? 'na-einddatum' : '',
-    over ? 'over' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -271,29 +304,6 @@ function KaartView({
           e.preventDefault()
           onSelecteer()
         }
-      }}
-      onDragEnter={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        setOver(true)
-      }}
-      onDragOver={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
-        setOver(true)
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false)
-      }}
-      onDrop={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        setOver(false)
-        const raw = e.dataTransfer.getData('text/plain')
-        const i = raw.indexOf(':')
-        const ontleed = ontleedDropPayload(i > 0 ? { soort: raw.slice(0, i), id: raw.slice(i + 1) } : null, e.altKey)
-        if (ontleed) onDrop(ontleed)
       }}
     >
       <div className="n">
@@ -329,27 +339,20 @@ function KaartView({
         <div className="ploeg" role="list" aria-label="Ploeg">
           {kaart.ploeg.map((persoon) => {
             const conflict = conflictPersonen.has(persoon.gebruiker_id)
+            const dossier = dossierOnvolledig.has(persoon.gebruiker_id)
             return (
               <span
                 key={persoon.gebruiker_id}
                 role="listitem"
-                draggable
-                className={`plan-av${persoon.rol === 'uitvoerder' ? ' u' : ''}${conflict ? ' c' : ''}`}
+                className={`plan-av${persoon.rol === 'uitvoerder' ? ' u' : ''}${conflict ? ' c' : ''}${dossier ? ' d' : ''}`}
                 data-testid={`initiaal-${persoon.gebruiker_id}`}
-                title={`${persoon.naam ?? '?'}${persoon.rol === 'uitvoerder' ? ' (uitvoerder)' : ''} · ${persoon.uren_detail ?? UREN_STATUS_LABEL[persoon.uren_status ?? 'geen']}${persoon.dagdeel === 'half' ? ' · ½ dag' : ''}${conflict ? ' · conflict' : ''} — sleep naar een andere kaart = verplaatsen (Alt = kopiëren)`}
-                onDragStart={(e) => {
-                  e.stopPropagation()
-                  e.dataTransfer.effectAllowed = 'copyMove'
-                  e.dataTransfer.setData('text/plain', kaartSleepPayload(persoon.gebruiker_id, kaart.project_id, kaart.datum))
-                }}
-                onClick={(e) => e.stopPropagation()}
+                title={`${persoon.naam ?? '?'}${persoon.rol === 'uitvoerder' ? ' (uitvoerder)' : ''} · ${persoon.uren_detail ?? UREN_STATUS_LABEL[persoon.uren_status ?? 'geen']}${persoon.dagdeel === 'half' ? ' · ½ dag' : ''}${conflict ? ' · conflict' : ''}${dossier ? ' · dossier onvolledig' : ''} — klik de kaart voor de ploeg`}
               >
                 {initialen(persoon.naam)}
                 {persoon.dagdeel === 'half' && <sup>½</sup>}
               </span>
             )
           })}
-          {altKey && <span className="plan-chip grijs">Alt = kopiëren</span>}
         </div>
       )}
       {!kaart.gereserveerd && (
@@ -441,7 +444,7 @@ function KaartView({
           role="button"
           tabIndex={0}
           aria-label="Vulhandvat: sleep over de dagen om kaart en ploeg te kopiëren"
-          title="Sleep over de dagen om kaart + ploeg te kopiëren (Excel-vulhandvat; stopt bij vrijdag)"
+          title="Sleep over de dagen om kaart + ploeg te kopiëren op dezelfde rij (Excel-vulhandvat; stopt bij vrijdag)"
           data-testid="handvat"
           onPointerDown={(e) => {
             e.preventDefault()

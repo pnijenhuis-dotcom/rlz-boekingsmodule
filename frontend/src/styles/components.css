@@ -1751,20 +1751,46 @@ tr.subrij .eerste-sync-rij ul {
 .plan-pl .st.w { color: var(--warn); }
 .plan-paneel-voet { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 
-/* pool */
-.plan-pool-p {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 5px 8px;
-  font-size: 11.5px;
-  margin-bottom: 6px;
-  cursor: grab;
-  user-select: none;
+/* v4 (Peter 28-09): project × dag-MATRIX — de pool is weg (`.plan-pool-p` vervallen), rijen = projecten, cellen = dagen.
+ * Lege cel = plancel (teal = actie), rijkop = project; het handvat vult cellen op dezelfde rij. Dossier-onvolledig = grijze
+ * stippellijn om de initiaal (persoonskenmerk, geen conflict-oranje). */
+.plan-matrix td.plan-cel-mx {
+  vertical-align: top;
+  padding: 6px;
+  min-height: 0;
+  height: auto;
 }
-.plan-pool-p.afw { opacity: 0.55; cursor: default; }
+.plan-matrix td.plan-cel-mx .plan-kaart { margin-bottom: 0; }
+.plan-matrix th.plan-rijkop {
+  text-align: left;
+  vertical-align: top;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.plan-matrix th.plan-rijkop .plan-rijkop-naam { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-matrix th.plan-rijkop .plan-rijkop-sub { display: block; font-weight: 400; font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-scroll.sticky-koppen .plan-matrix thead th.plan-rijkop-kop { background: var(--panel); }
+.plan-leegcel {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  border: 1px dashed var(--faint);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--faint);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 6px;
+}
+.plan-leegcel:hover, .plan-leegcel:focus-visible { border-color: var(--primary); color: var(--primary); background: var(--accent-bg); outline: none; }
+.plan-leegcel.sel { border-color: var(--primary); color: var(--primary); background: var(--accent-bg); outline: 2px solid var(--primary); outline-offset: 1px; }
+.plan-matrix tr.plan-droprij td.plan-cel-drop { padding: 6px; }
+.plan-matrix tr.plan-droprij .plan-drop { margin-top: 0; min-height: 40px; display: flex; align-items: center; justify-content: center; }
+.plan-av.d { box-shadow: 0 0 0 1.5px var(--panel), 0 0 0 3px var(--faint); }
 
 /* toast onderin (bulk-actie + ongedaan maken) */
 .plan-toast {

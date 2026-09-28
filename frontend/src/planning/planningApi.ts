@@ -119,7 +119,8 @@ export interface PlanningPoolPersoonDto {
   /** V3 dag-eerst (18-09, CONTRACT_4): ISO-datum tot wanneer deze persoon afwezig is als een afwezigheid de week
    * overlapt, anders null/afwezig. */
   afwezig_tot?: string | null
-  /** Optioneel (verzoek 4F aan 4B): ZZP'er zonder compleet dossier — voedt de conflictenbalk. Ontbreekt = geen signaal. */
+  /** v4 (28-09, geleverd door de backend — definitie = Beheer › Veldwerkers): dossier onvolledig → chip in het paneel + één rij
+   * per persoon in het conflictenpaneel. Ontbreekt (oudere respons) = geen signaal. */
   dossier_onvolledig?: boolean
 }
 
@@ -145,7 +146,8 @@ export interface AfwezigheidDto {
 }
 
 /** 21-09: `conflict` = "Houd ‹project›" / "Van planning halen" uit het conflictenpaneel (verwijderen via dezelfde bulkroute). */
-export type PlanningBulkBron = 'vulhandvat' | 'ploeg' | 'ongedaan' | 'conflict'
+/** 28-09 (v4): `kopie_volgende_week` = dezelfde kaart op dezelfde weekdag in week+1 (afwezig = overgeslagen, bestaand = samengevoegd). */
+export type PlanningBulkBron = 'vulhandvat' | 'ploeg' | 'ongedaan' | 'conflict' | 'kopie_volgende_week'
 /** Contract-afwijking 4B (18-09): dagdeel = de bestaande enumeratie heel/half (geen ochtend/middag). */
 export type PlanningDagdeelV3 = 'heel' | 'half'
 

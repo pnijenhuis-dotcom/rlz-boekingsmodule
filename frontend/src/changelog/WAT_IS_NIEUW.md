@@ -6,6 +6,17 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-28 — Planning steigerbouw: ploeg kiezen via het paneel, projecten op één rij, kopiëren naar volgende week
+
+<!-- planning-v4-28-09 -->
+
+- **De lijst met ZZP'ers rechts is weg; het ploeg-paneel is nu dé manier van plannen.** Klik op een kaart in de planning — ook op een grijze "gereserveerd"-kaart of op een lege cel — en rechts verschijnt de volledige lijst veldwerkers met vinkjes en beschikbaarheid voor die dag. Die lijst scrolt in het paneel zelf, het hoofdscherm blijft staan. Slepen van personen naar kaarten is vervallen; een project naar een dag slepen (of: project aanklikken, dan de dag) blijft.
+- **Ieder project staat op zijn eigen rij over de hele week.** Staat een project op maandag bovenaan en op donderdag als derde ingepland, dan ziet u het nu op dezelfde hoogte. Rijen zijn gesorteerd op eerste geplande dag, daarna op aantal dagen, daarna op projectnummer. Een lege cel op zo'n rij is een plancel: klik erop en het paneel opent met de ploeg van de vorige dag als voorstel (nog niets opgeslagen tot u op Opslaan klikt).
+- **Kopiëren naar volgende week — alleen dezelfde weekdag.** In het paneel staat nu de knop "Kopiëren naar ‹weekdag› volgende week": dezelfde kaart (project + ploeg, zonder uren) komt op dezelfde weekdag in de week erna. Wie die dag afwezig is wordt overgeslagen (dat ziet u in de melding), wie elders gepland staat kleurt oranje, wie er al stond blijft één keer staan. Via "Naar week …" springt u door en kunt u daar "Toepassen op hele week" gebruiken. Ongedaan maken kan tien seconden lang.
+- **Veldwerker toevoegen vanuit het paneel.** Onderaan de lijst staat "+ Veldwerker toevoegen…" (voor wie veldwerkers mag beheren): naam, rol en e-mailadres, en de nieuwe veldwerker staat direct aangevinkt. Het ZZP-dossier vult u daarna aan onder Beheer › Veldwerkers; tot die tijd draagt de persoon de chip "dossier onvolledig". Dezelfde naam als een collega is geen bezwaar (broers komen voor), hetzelfde e-mailadres wel.
+- **Wie is nog vrij?** Dat leest u in de kop van het paneel ("N vrij op ‹dag› · M vrij hele week") en onderaan het overzicht "Per project".
+- De filters "alleen zonder uren" en "alleen ongekeurd" verbergen nu hele projectrijen in plaats van losse personen op een kaart.
+
 ## 2026-09-25 — Negen verbeteringen uit de gebruikersfeedback op de factuurverwerking (Universal)
 
 <!-- feedbackrun-A-factuurverwerking-25-09 -->

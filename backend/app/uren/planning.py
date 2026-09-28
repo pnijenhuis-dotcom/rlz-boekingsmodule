@@ -32,6 +32,7 @@ from app.db.models import DetacheerderKoppeling, Gebruiker, GebruikerRol, Gebrui
 from app.db.session import scoped_session
 from app.sync.models import ProjectCache
 from app.tijd import kalenderdag_nl, vandaag_nl
+from app.uren import dossier as dossier_service
 from app.uren.models import (
     PlanningConflictAkkoord,
     PlanningDagdeel,
@@ -64,7 +65,12 @@ BULK_MAX_ITEMS = 200
 #: 21-09 (conflictenpaneel mét handeling): bron `conflict` = "Houd ‹project›" / "Van planning halen" uit het paneel —
 #: dezelfde
 #: bulkroute mét `verwijderen=True`, herkenbaar in de audit.
-BULK_BRONNEN = ("vulhandvat", "ploeg", "ongedaan", "conflict")
+#: 28-09 (planning v4, besluit Peter "alleen op die dag van de volgende week"): bron `kopie_volgende_week` = dezelfde
+#: kaart (project + ploeg, géén uren) op dezelfde weekdag in week+1 via deze route; afwezig in week+1 = OVERGESLAGEN mét
+#: reden
+#: (niet gepland), conflict elders = gepland + oranje, bestaande kaart = samengevoegd (idempotent per persoon-dag).
+BULK_BRONNEN = ("vulhandvat", "ploeg", "ongedaan", "conflict", "kopie_volgende_week")
+BRON_KOPIE_VOLGENDE_WEEK = "kopie_volgende_week"
 CONFLICT_AKKOORD_SOORTEN = ("dubbel", "afwezig")
 
 DUBBELE_DAG_VENSTER_DAGEN = 30  # teller-venster (mockup: "3× / 30 dgn")
@@ -144,6 +150,9 @@ class PoolPersoonData:
     geplande_dagen: Decimal
     # v3 (18-09): einddatum van een afwezigheid die de getoonde week overlapt ("afwezig t/m …"), anders None.
     afwezig_tot: date | None = None
+    # v4 (28-09): ZZP-dossier onvolledig (zelfde definitie als Beheer › Veldwerkers) — chip in het ploeg-paneel +
+    # conflictenpaneel.
+    dossier_onvolledig: bool = False
 
 
 @dataclass(frozen=True)
@@ -837,7 +846,7 @@ def plan_bulk(
     Set-based: één query voor de bestaande toewijzingen, één voor afwezigheid, één per uniek project, één per unieke
     persoon, de projectkoppeling één keer per (persoon, project) — onafhankelijk van het aantal items."""
     if bron not in BULK_BRONNEN:
-        raise OngeldigeInvoer(f"Onbekende bron {bron!r} (vulhandvat, ploeg, ongedaan of conflict)")
+        raise OngeldigeInvoer(f"Onbekende bron {bron!r} (vulhandvat, ploeg, ongedaan, conflict of kopie_volgende_week)")
     if not items:
         raise OngeldigeInvoer("Geen items om te plannen")
     if len(items) > BULK_MAX_ITEMS:
@@ -928,6 +937,16 @@ def plan_bulk(
             reden: str | None = None
             afw = _is_afwezig(afwezigheid, gid, datum)
             elders_pids = [x for x in elders.get((gid, datum), []) if x != pid]
+            if afw is not None and bron == BRON_KOPIE_VOLGENDE_WEEK:
+                # v4 (28-09): bij de kopie naar volgende week wordt een afwezige persoon OVERGESLAGEN — zichtbaar in de
+                # uitkomst (reden + conflict 'afwezig'), nooit stil en nooit gepland.
+                reden = f"{gebruikers[gid].naam} is afwezig t/m {afw.tot.isoformat()}"
+                if afw.reden:
+                    reden += f" ({afw.reden})"
+                resultaten.append(
+                    BulkItemResultaat(gid, pid, datum, dagdeel, "overgeslagen", reden=reden, conflict="afwezig")
+                )
+                continue
             if afw is not None:
                 conflict = "afwezig"
                 reden = f"{gebruikers[gid].naam} is afwezig t/m {afw.tot.isoformat()}"
@@ -1422,6 +1441,11 @@ def planning_overzicht(
         for a in afwezig_rijen:
             if a.gebruiker_id not in afwezig_tot or a.tot > afwezig_tot[a.gebruiker_id]:
                 afwezig_tot[a.gebruiker_id] = a.tot
+        # v4 (28-09): dossier-onvolledig per poolpersoon, set-based (drie statements, onafhankelijk van het aantal
+        # personen).
+        dossier_onvolledig = dossier_service.onvolledig_per_veldwerker(
+            session, administratie_id=administratie_id, gebruiker_ids=[g.id for g in pool_gebruikers]
+        )
         pool = [
             PoolPersoonData(
                 gebruiker_id=g.id,
@@ -1429,6 +1453,7 @@ def planning_overzicht(
                 rol=g.rol.value,
                 geplande_dagen=geplande_dagen.get(g.id, Decimal("0")),
                 afwezig_tot=afwezig_tot.get(g.id),
+                dossier_onvolledig=dossier_onvolledig.get(g.id, False),
             )
             for g in pool_gebruikers
         ]

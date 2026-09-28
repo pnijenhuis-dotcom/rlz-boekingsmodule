@@ -8,16 +8,15 @@ import { useMijnToegang } from '../auth/useMijnToegang'
 import { Badge, Button, Dialog, DialogContent, DialogFooter, DialogTitle, FormField, Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { NieuwProjectModal } from '../projecten/NieuwProjectModal'
-import { archiveerGebruiker, haalOpenWerkOp, nodigUit } from '../gebruikers/gebruikersApi'
+import { nodigUit, type UitnodigingBron } from '../gebruikers/gebruikersApi'
 import { TransportTab } from './TransportTab'
 import { ConflictenPaneel } from './ConflictenPaneel'
 import { DagEerstGrid, type KaartDropPayload } from './DagEerstGrid'
 import { PerProjectWeergave } from './PerProjectWeergave'
 import { PloegPaneel } from './PloegPaneel'
 import { ProjectBalk } from './ProjectBalk'
-import { afwezigTot, bouwDagKolommen, conflictWeekLabel, conflictenUniek, conflictenVanaf, conflictenVoorPaneel, conflictenVoorWeek, dagKort, parseKaartParam, poolStand, projectTegels, type Conflict, type DagKaart, type VulhandvatVoorbeeld } from './dagEerst'
-import { isOngedaanToets, maakOngedaanStand, type OngedaanStand } from './planBulkOngedaan'
-import { maakSleepPayload } from './useDagDrop'
+import { bouwDagKolommen, conflictWeekLabel, conflictenUniek, conflictenVanaf, conflictenVoorPaneel, conflictenVoorWeek, dagKort, kopieVolgendeWeekItems, legeCelKaart, parseKaartParam, plusDagen, projectTegels, type Conflict, type DagKaart, type VulhandvatVoorbeeld } from './dagEerst'
+import { isOngedaanToets, maakOngedaanStand, type BulkToastSoort, type OngedaanStand } from './planBulkOngedaan'
 import {
   bevestigConflict,
   haalPlanning,
@@ -27,9 +26,7 @@ import {
   maakWerkopdracht,
   parseWeekParam,
   planBulk,
-  planToewijzing,
   schuifWeek,
-  verplaatsToewijzing,
   verwijderReservering,
   verwijderToewijzing,
   weekDagen,
@@ -37,6 +34,7 @@ import {
   wijzigWerkopdracht,
   zetDagdeel,
   zetWerkopdrachtDagOverride,
+  type PlanningBulkBron,
   type PlanningBulkItemDto,
   type PlanningProjectRijDto,
   type PlanningWeekDto,
@@ -45,11 +43,18 @@ import {
   type UrenFilter,
 } from './planningApi'
 
-/* Planning personeel V3 "DAG-EERST" (Peter 18-09, mockup planning-v3-dag-eerst.html = bouwnorm; vervangt het
- * project-rij-grid van 22/23-08 als BEWERKweergave): dagkolommen mét projectkaarten, projectbalk (alle actieve projecten,
- * slepen → reservering), conflictenbalk, vulhandvat (kaart + ploeg over de week), ploeg-paneel rechts, toggle "Per project"
- * als leesweergave. De pool, de week-URL, de werkopdrachten, de meldingen en de Transport-tab zijn ongewijzigd. De oude
- * beschrijving hieronder blijft als historie van de datalaag (één request levert álle actieve projecten).
+/* Planning personeel V4 (feedback Peter 28-09, herziet drie v3-keuzes van 18-09): de ZZP-pool rechts en het slepen van
+ * PERSONEN zijn vervallen — klik op élke kaart (ook een gereserveerde) of lege cel opent het ploeg-paneel, dat is dé
+ * werkwijze; het grid is een PROJECT × DAG-MATRIX (dezelfde rij over de week; DagEerstGrid + dagEerst.matrixRijen);
+ * "+ Veldwerker toevoegen…" (quick-add) zit in het paneel; "Kopiëren naar ‹weekdag› volgende week" = dezelfde kaart op
+ * dezelfde weekdag in week+1 via de bulkroute (bron kopie_volgende_week; besluit Peter: nooit de hele projectweek).
+ * Ongewijzigd: projectbalk (project → dag slepen én klik project, dan dag), conflictenpaneel, vulhandvat, week-URL,
+ * werkopdrachten, meldingen, Transport-tab, "Per project" als leesweergave.
+ *
+ * V3 "DAG-EERST" (Peter 18-09, mockup planning-v3-dag-eerst.html): dagkolommen mét projectkaarten, projectbalk (alle actieve
+ * projecten, slepen → reservering), conflictenbalk, vulhandvat (kaart + ploeg over de week), ploeg-paneel rechts, toggle
+ * "Per project" als leesweergave. De oude beschrijving hieronder blijft als historie van de datalaag (één request levert
+ * álle actieve projecten).
  *
  * Planning-agenda steigerbouw (mockup planning-steigerbouw.html v3, besluit Peter 23-08 —
  * vervángt het 22-08-grid-filter "alleen projecten mét planning + zoekrij", dat gaf een leeg
@@ -320,16 +325,21 @@ function DagOverrideDialog({
   )
 }
 
-/* "+ ZZP'er" in de planning-zijbalk (31-08): veldwerker aanmaken via het fijnmazige
- * veldwerkerbeheer-recht (of Beheerder) — uitsluitend veldrollen, scope = deze administratie. */
+/* Veldwerker aanmaken — sinds v4 (28-09) de quick-add "+ Veldwerker toevoegen…" ONDERAAN het ploeg-paneel (bron
+ * `planning_paneel`, audit `veldwerker_aangemaakt`; was 31-08 "+ ZZP'er" in de zijbalk-pool): naam + rol + e-mail, scope =
+ * deze administratie, via de bestaande uitnodigingsroute (veldwerkerbeheer-recht of Beheerder; uitsluitend veldrollen).
+ * Het dossier (KvK/IBAN/e-mail/documenten) blijft verplicht vóór de goedkeuring van de eerste weekstaat — chip "dossier
+ * onvolledig" op de persoon. Dubbelencheck alleen op harde sleutels (e-mail = 409 leesbaar; nooit op naam — broers). */
 function NieuweVeldwerkerDialog({
   administratieId,
+  bron,
   onSluiten,
   onKlaar,
 }: {
   administratieId: string
+  bron: UitnodigingBron
   onSluiten: () => void
-  onKlaar: () => void
+  onKlaar: (gebruikerId: string) => void
 }) {
   const [naam, setNaam] = useState('')
   const [eMail, setEMail] = useState('')
@@ -351,9 +361,9 @@ function NieuweVeldwerkerDialog({
         rol,
         administratie_ids: [administratieId],
         uitnodiging_later: uitnodigingLater,
-        bron: 'planning',
+        bron,
       })
-      onKlaar()
+      onKlaar(resultaat.gebruiker_id)
       setQrLink(`${window.location.origin}/activeren?token=${encodeURIComponent(resultaat.token)}`)
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Aanmaken mislukt — probeer het opnieuw.')
@@ -387,7 +397,9 @@ function NieuweVeldwerkerDialog({
         ) : (
           <>
         <p className="hint" style={{ marginTop: 0 }}>
-          Alleen veldwerker-rollen, gekoppeld aan deze administratie (veldwerkerbeheer-recht, geaudit).
+          Alleen veldwerker-rollen, gekoppeld aan deze administratie (veldwerkerbeheer-recht, geaudit). Het ZZP-dossier
+          (KvK, IBAN, documenten) vult u daarna aan onder Beheer › Veldwerkers — verplicht vóór de eerste weekstaat wordt
+          goedgekeurd. Eenzelfde naam is geen bezwaar (broers); hetzelfde e-mailadres wél.
         </p>
         <FormField label="Naam">
           <input value={naam} onChange={(e) => setNaam(e.target.value)} placeholder="Bv. Milan Kovács" />
@@ -423,7 +435,6 @@ function NieuweVeldwerkerDialog({
 }
 
 const WEERGAVE_SLEUTEL = 'planning-weergave'
-const POOL_ZICHTBAAR = 100
 
 function leesWeergave(): 'dag' | 'project' {
   try {
@@ -456,8 +467,8 @@ export function PlanningScreen() {
   const [geselecteerd, setGeselecteerd] = useState<string | null>(null)
   const [oplichten, setOplichten] = useState<string | null>(null)
   const [weergave, setWeergaveState] = useState<'dag' | 'project'>(leesWeergave)
-  const [alleenVrij, setAlleenVrij] = useState(false)
-  const [poolAlles, setPoolAlles] = useState(false)
+  // v4: zojuist via quick-add aangemaakte veldwerker → direct aangevinkt in het open paneel.
+  const [nieuwVinkje, setNieuwVinkje] = useState<string | null>(null)
   // Toast + ongedaan maken ná een bulk-actie (10 s; Cmd/Ctrl-Z).
   const [ongedaan, setOngedaan] = useState<OngedaanStand | null>(null)
   const ongedaanRef = useRef<OngedaanStand | null>(null)
@@ -465,7 +476,7 @@ export function PlanningScreen() {
   // Werkopdrachten (31-08): popup per project + dag-override per (project, datum).
   const [woDialoog, setWoDialoog] = useState<{ projectId: string; projectNaam: string } | null>(null)
   const [overrideDialoog, setOverrideDialoog] = useState<{ rij: PlanningProjectRijDto; datum: string } | null>(null)
-  // Blok C (31-08): "+ Project aanmaken" (B+P) en "+ ZZP'er"/archiveren (veldwerkerbeheer).
+  // Blok C (31-08): "+ Project aanmaken" (B+P); v4 (28-09): "+ Veldwerker toevoegen…" vanuit het ploeg-paneel.
   const [nieuwProjectOpen, setNieuwProjectOpen] = useState(false)
   const [nieuweVeldwerkerOpen, setNieuweVeldwerkerOpen] = useState(false)
   const toegang = useMijnToegang()
@@ -597,13 +608,22 @@ export function PlanningScreen() {
   // "Per project" houden álle conflicten. Label "deze week" alleen als de getoonde week de huidige is.
   const conflictGroepen = conflictenVoorPaneel(conflicten, vandaagIso)
   const verstrekenConflicten = conflictenUniek(conflicten).length - conflictenUniek(conflictenVanaf(conflicten, vandaagIso)).length
-  const kolommen = data ? bouwDagKolommen(data, alleDagen, { urenFilter, conflicten }) : []
+  // v4: de matrix filtert RIJEN, niet cellen — de kolommen voor het grid zijn ongefilterd; "Per project" houdt het kaartfilter.
+  const kolommen = data ? bouwDagKolommen(data, alleDagen, { conflicten }) : []
+  const kolommenGefilterd = urenFilter === 'alle' ? kolommen : data ? bouwDagKolommen(data, alleDagen, { urenFilter, conflicten }) : []
   const tegels = data ? projectTegels(data, dagen, filterTerm) : []
   const alleRijen = data?.projecten ?? []
   const aantalActief = alleRijen.filter((rij) => rij.is_actief).length
   const metPlanning = alleRijen.filter((rij) => Object.keys(rij.per_datum).length > 0).length
   const totaalMan = kolommen.filter((k) => werkdagen.includes(k.datum)).reduce((s, k) => s + k.aantal_man, 0)
-  const geselecteerdeKaart: DagKaart | null = geselecteerd ? (kolommen.flatMap((k) => k.kaarten).find((k) => k.sleutel === geselecteerd) ?? null) : null
+  // Geselecteerde kaart: een echte kaart, of (v4) een lege matrixcel als virtuele kaart (paneel mét voorstel-ploeg).
+  const geselecteerdeKaart: DagKaart | null = (() => {
+    if (!geselecteerd || !data) return null
+    const echt = kolommen.flatMap((k) => k.kaarten).find((k) => k.sleutel === geselecteerd)
+    if (echt) return echt
+    const [projectId, datum] = geselecteerd.split('|')
+    return projectId && datum ? legeCelKaart(data, projectId, datum) : null
+  })()
 
   async function actie(fn: () => Promise<unknown>) {
     setActieFout(null)
@@ -619,17 +639,13 @@ export function PlanningScreen() {
     }
   }
 
-  function plan(gebruikerId: string, projectId: string, datum: string) {
-    void actie(() => planToewijzing({ administratie_id: administratieId!, gebruiker_id: gebruikerId, project_id: projectId, datum }))
-  }
-
   function reserveer(projectId: string, datum: string) {
     setProjectSelectie(null)
     void actie(() => maakReservering({ administratie_id: administratieId!, project_id: projectId, datum }))
   }
 
-  /** Eén bulk-call (vulhandvat / ploeg / hele week) → toast mét ongedaan maken. */
-  async function bulk(items: PlanningBulkItemDto[], bron: 'vulhandvat' | 'ploeg', toast: { soort: 'vulhandvat' | 'ploeg'; doelDatums?: string[]; verwijderen?: PlanningBulkItemDto[] }) {
+  /** Eén bulk-call (vulhandvat / ploeg / hele week / kopie volgende week) → toast mét ongedaan maken. */
+  async function bulk(items: PlanningBulkItemDto[], bron: PlanningBulkBron, toast: { soort: BulkToastSoort; doelDatums?: string[]; verwijderen?: PlanningBulkItemDto[]; naarWeek?: { jaar: number; weeknummer: number } }) {
     if (items.length === 0 && (toast.verwijderen ?? []).length === 0) return
     setActieFout(null)
     setBezig(true)
@@ -641,7 +657,7 @@ export function PlanningScreen() {
       }
       if (items.length > 0) {
         const resultaat = await planBulk({ administratie_id: administratieId!, bron, items })
-        setOngedaan(maakOngedaanStand(resultaat, { soort: toast.soort, doelDatums: toast.doelDatums, verwijderd }))
+        setOngedaan(maakOngedaanStand(resultaat, { soort: toast.soort, doelDatums: toast.doelDatums, verwijderd, naarWeek: toast.naarWeek }))
       } else {
         setOngedaan(null)
       }
@@ -730,35 +746,9 @@ export function PlanningScreen() {
     )
   }
 
+  /** v4: alleen nog een PROJECT op een dag(cel) = reservering (nieuwe rij of lege cel); personen worden niet meer gesleept. */
   function dropOpDag(datum: string, payload: KaartDropPayload) {
-    if (payload.soort === 'project' && payload.projectId) reserveer(payload.projectId, datum)
-    // Een persoon op de lege dagruimte: geen kaart als doel — de gebruiker sleept naar een kaart (hint in het grid).
-  }
-
-  function dropOpKaart(kaart: DagKaart, payload: KaartDropPayload) {
-    if (payload.soort === 'project' && payload.projectId) {
-      reserveer(payload.projectId, kaart.datum)
-      return
-    }
-    if (!payload.gebruikerId) return
-    if (kaart.ploeg.some((k) => k.gebruiker_id === payload.gebruikerId)) return // al op deze kaart — niets doen
-    if (payload.soort === 'pool' || payload.kopieer) {
-      plan(payload.gebruikerId, kaart.project_id, kaart.datum)
-      return
-    }
-    if (payload.soort === 'kaart' && payload.projectId && payload.datum) {
-      const bron = payload
-      void actie(() =>
-        verplaatsToewijzing({
-          administratie_id: administratieId!,
-          gebruiker_id: bron.gebruikerId!,
-          van_project_id: bron.projectId!,
-          van_datum: bron.datum!,
-          naar_project_id: kaart.project_id,
-          naar_datum: kaart.datum,
-        }),
-      )
-    }
+    if (payload.soort === 'project') reserveer(payload.projectId, datum)
   }
 
   function handvatLoslaten(kaart: DagKaart, doelDatums: string[], voorbeeld: VulhandvatVoorbeeld) {
@@ -778,6 +768,13 @@ export function PlanningScreen() {
     void bulk(items, 'ploeg', { soort: 'ploeg', verwijderen: weg })
   }
 
+  /** v4 (besluit Peter 28-09 "alleen op die dag van de volgende week"): dezelfde kaart op dezelfde weekdag in week+1. */
+  function ploegKopieVolgendeWeek(kaart: DagKaart, gebruikerIds: string[]) {
+    const doel = plusDagen(kaart.datum, 7)
+    const naarWeek = isoWeekVan(new Date(`${doel}T12:00:00`))
+    void bulk(kopieVolgendeWeekItems(kaart, gebruikerIds), 'kopie_volgende_week', { soort: 'kopie', doelDatums: [doel], naarWeek })
+  }
+
   function ploegHeleWeek(kaart: DagKaart, gebruikerIds: string[]) {
     const rij = alleRijen.find((r) => r.project_id === kaart.project_id)
     const items: PlanningBulkItemDto[] = []
@@ -794,30 +791,7 @@ export function PlanningScreen() {
     void bulk(items, 'ploeg', { soort: 'vulhandvat', doelDatums: doel })
   }
 
-  // Archiveren vanaf het poolkaartje (31-08): open-werk-waarschuwing mét aantallen (geen
-  // blokkade, feedbackronde 26-08 punt 1), daarna het bestaande archiveer-endpoint.
-  async function archiveerVeldwerker(gebruikerId: string, naam: string) {
-    setActieFout(null)
-    try {
-      const werk = await haalOpenWerkOp(gebruikerId)
-      const totaalOpen = werk.open_accorderingen + werk.weekstaten_ter_keuring + werk.eigen_open_weekstaten
-      const waarschuwing =
-        totaalOpen > 0
-          ? `\n\nLet op: er staat nog open werk (${werk.eigen_open_weekstaten} open weekstaten, ${werk.weekstaten_ter_keuring} ter keuring, ${werk.open_accorderingen} accorderingen) — dat blijft staan.`
-          : ''
-      if (!window.confirm(`${naam} archiveren? Toegang gaat per direct dicht; niets wordt verwijderd.${waarschuwing}`)) {
-        return
-      }
-      await archiveerGebruiker(gebruikerId)
-      laad()
-    } catch (err) {
-      setActieFout(err instanceof ApiError ? err.message : 'Archiveren mislukt — probeer het opnieuw.')
-    }
-  }
-
   const vandaagWeek = isoWeekVan(new Date())
-  const pool = (data?.pool ?? []).filter((p) => !alleenVrij || poolStand(p, werkdagen, data?.afwezigheid) === 'vrij')
-  const poolGetoond = poolAlles ? pool : pool.slice(0, POOL_ZICHTBAAR)
 
   return (
     <div>
@@ -842,7 +816,7 @@ export function PlanningScreen() {
               </>
             )}
             {data && ` · ${totaalMan} mensen gepland · ${metPlanning} ${metPlanning === 1 ? 'project' : 'projecten'} · ${aantalActief} actieve projecten`}
-            {' · '}sleep een project naar een dag, klik een kaart voor de ploeg, trek de kaart met het handvat over de week
+            {' · '}sleep een project naar een dag (of klik project, dan dag), klik een kaart of lege cel voor de ploeg, trek de kaart met het handvat over de week
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -986,18 +960,19 @@ export function PlanningScreen() {
                     <DagEerstGrid
                       data={data}
                       kolommen={kolommen}
+                      urenFilter={urenFilter}
                       werkdagen={werkdagen}
                       vandaagIso={vandaagIso}
                       geselecteerd={geselecteerd}
                       oplichten={oplichten}
                       projectSelectie={projectSelectie}
                       onSelecteer={(k) => setGeselecteerd(k?.sleutel ?? null)}
+                      onLegeCel={(projectId, datum) => setGeselecteerd(`${projectId}|${datum}`)}
                       onDagKlik={(datum) => {
                         if (projectSelectie) reserveer(projectSelectie, datum)
                         else setGeselecteerd(null)
                       }}
                       onDropOpDag={dropOpDag}
-                      onDropOpKaart={dropOpKaart}
                       onVerwijderPersoon={(kaart, persoon) =>
                         void actie(() => verwijderToewijzing({ administratie_id: administratieId!, gebruiker_id: persoon.gebruiker_id, project_id: kaart.project_id, datum: kaart.datum }))
                       }
@@ -1018,7 +993,7 @@ export function PlanningScreen() {
                       }}
                     />
                   ) : (
-                    <PerProjectWeergave kolommen={kolommen.filter((k) => werkdagen.includes(k.datum))} data={data} vandaagIso={vandaagIso} administratieId={administratieId} weekParam={weekNaarParam(week)} onNaarKaart={spring} onNaarPerDag={() => zetWeergave('dag')} />
+                    <PerProjectWeergave kolommen={kolommenGefilterd.filter((k) => werkdagen.includes(k.datum))} data={data} werkdagen={werkdagen} vandaagIso={vandaagIso} administratieId={administratieId} weekParam={weekNaarParam(week)} onNaarKaart={spring} onNaarPerDag={() => zetWeergave('dag')} />
                   )}
                 </div>
               )}
@@ -1027,16 +1002,22 @@ export function PlanningScreen() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
-          {data !== null && geselecteerdeKaart && !geselecteerdeKaart.gereserveerd && weergave === 'dag' && (
+          {/* v4: het ploeg-paneel is dé werkwijze — voor élke kaart (ook gereserveerd) en voor een lege matrixcel (virtuele
+              kaart mét voorstel-ploeg). Het paneel scrolt zelf (lijst); de ZZP-pool en het doodlopende reserverings-paneel zijn weg. */}
+          {data !== null && geselecteerdeKaart && weergave === 'dag' && (
             <PloegPaneel
               key={geselecteerdeKaart.sleutel}
               data={data}
               kaart={geselecteerdeKaart}
               werkdagen={werkdagen}
               bezig={bezig}
+              magVeldwerkerbeheer={magVeldwerkerbeheer}
+              nieuwVinkje={nieuwVinkje}
               onSluiten={() => setGeselecteerd(null)}
               onOpslaan={(toevoegen, verwijderen) => ploegOpslaan(geselecteerdeKaart, toevoegen, verwijderen)}
               onToepassenHeleWeek={(ids) => ploegHeleWeek(geselecteerdeKaart, ids)}
+              onKopieVolgendeWeek={(ids) => ploegKopieVolgendeWeek(geselecteerdeKaart, ids)}
+              onNieuweVeldwerker={() => setNieuweVeldwerkerOpen(true)}
               onWerkopdracht={() => {
                 const rij = alleRijen.find((r) => r.project_id === geselecteerdeKaart.project_id)
                 if (rij && (rij.werkopdrachten ?? []).some((w) => w.van <= geselecteerdeKaart.datum && geselecteerdeKaart.datum <= w.tot_en_met)) setOverrideDialoog({ rij, datum: geselecteerdeKaart.datum })
@@ -1044,97 +1025,16 @@ export function PlanningScreen() {
               }}
             />
           )}
-          {data !== null && geselecteerdeKaart?.gereserveerd && weergave === 'dag' && (
-            <div className="panel plan-paneel" data-testid="reservering-paneel">
-              <h2 style={{ margin: 0, fontSize: 14 }}>{geselecteerdeKaart.project_naam ?? geselecteerdeKaart.project_id}</h2>
-              <p className="hint">
-                {dagKort(geselecteerdeKaart.datum)} · gereserveerd, nog geen ploeg — sleep personen uit de pool op de kaart; de reservering wordt dan de ploegkaart.
+          {data !== null && !geselecteerdeKaart && weergave === 'dag' && (
+            <div className="panel plan-paneel" data-testid="paneel-leeg">
+              <h2 style={{ margin: '0 0 6px', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)' }}>👷 Ploeg kiezen</h2>
+              <p className="hint" style={{ margin: 0 }}>
+                Klik een kaart (ook een gereserveerde) of een lege cel in het grid: de volledige veldwerkerslijst mét beschikbaarheid
+                verschijnt hier. {data.pool.length} {data.pool.length === 1 ? 'veldwerker' : 'veldwerkers'} in scope
+                {data.pool.length === 0 ? ' — nodig ze uit onder Beheer › Veldwerkers.' : '.'}
               </p>
-              <Button variant="secundair" maat="klein" onClick={() => setGeselecteerd(null)}>
-                Sluiten
-              </Button>
             </div>
           )}
-          <div className="panel">
-            <h2 style={{ margin: '0 0 8px', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              👷 ZZP&apos;ers &amp; uitvoerders <span style={{ fontWeight: 400, color: 'var(--faint)' }}>· sleep naar een kaart</span>
-              {magVeldwerkerbeheer && (
-                <Button
-                  maat="klein"
-                  style={{ marginLeft: 'auto' }}
-                  title="Veldwerker toevoegen (veldwerkerbeheer-recht: alleen veldwerkers, eigen scope, geaudit)"
-                  onClick={() => setNieuweVeldwerkerOpen(true)}
-                >
-                  + ZZP&apos;er
-                </Button>
-              )}
-            </h2>
-            {data !== null && data.pool.length > 0 && (
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11.5, marginBottom: 6 }}>
-                <input type="checkbox" checked={alleenVrij} onChange={(e) => setAlleenVrij(e.target.checked)} data-testid="pool-alleen-vrij" />
-                alleen vrij tonen
-              </label>
-            )}
-            {data !== null && data.pool.length === 0 && (
-              <p className="hint">Nog geen veldwerkers — nodig ze uit onder Gebruikers &amp; toegang.</p>
-            )}
-            {poolGetoond.map((p) => {
-              const dagenGepland = Number(p.geplande_dagen)
-              const stand = poolStand(p, werkdagen, data?.afwezigheid)
-              const tot = stand === 'afwezig' ? afwezigTot(p, werkdagen, data?.afwezigheid) : null
-              return (
-                <div
-                  key={p.gebruiker_id}
-                  draggable={stand !== 'afwezig'}
-                  data-testid={`pool-${p.gebruiker_id}`}
-                  onDragStart={(e) => {
-                    e.dataTransfer.effectAllowed = 'copy'
-                    e.dataTransfer.setData('text/plain', maakSleepPayload('pool', p.gebruiker_id))
-                  }}
-                  className={`plan-pool-p${stand === 'afwezig' ? ' afw' : ''}`}
-                  style={{ background: p.rol === 'uitvoerder' ? 'var(--ok-bg)' : 'var(--info-bg)' }}
-                >
-                  <b style={{ fontSize: 12 }}>{p.naam}</b>
-                  {p.rol === 'uitvoerder' && <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700 }}>uitv.</span>}
-                  {/* Besluit C: > 5 geplande dagen per week = zacht signaal (kleurt oranje). V3: + vrij / afwezig t/m … */}
-                  <span
-                    style={{
-                      marginLeft: 'auto',
-                      fontSize: 10.5,
-                      fontWeight: 600,
-                      color: dagenGepland > 5 ? 'var(--warn)' : stand === 'vrij' ? 'var(--ok)' : 'var(--faint)',
-                    }}
-                    title={dagenGepland > 5 ? 'Meer dan 5 geplande dagen deze week (zacht signaal)' : undefined}
-                  >
-                    {stand === 'afwezig' && tot
-                      ? `afwezig t/m ${dagKort(tot).split(' ')[1]}`
-                      : `${dagenGepland.toLocaleString('nl-NL', { maximumFractionDigits: 1 })} dg${stand === 'vrij' ? ' · vrij' : ''}`}
-                  </span>
-                  {magVeldwerkerbeheer && (
-                    <button
-                      className="linkbtn"
-                      title="Archiveren (nooit verwijderen; veldwerkerbeheer-recht, audit oud→nieuw)"
-                      aria-label={`${p.naam} archiveren`}
-                      style={{ fontSize: 10.5 }}
-                      onClick={() => void archiveerVeldwerker(p.gebruiker_id, p.naam)}
-                    >
-                      🗑
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-            {pool.length > poolGetoond.length && (
-              <button type="button" className="linkbtn" style={{ fontSize: 11.5 }} onClick={() => setPoolAlles(true)} data-testid="pool-meer">
-                … {pool.length - poolGetoond.length} meer
-              </button>
-            )}
-            {magVeldwerkerbeheer && (
-              <p className="hint" style={{ fontSize: 10.5, marginTop: 6 }}>
-                🗑 op een kaartje = archiveren (nooit verwijderen) — via het veldwerkerbeheer-recht, geaudit.
-              </p>
-            )}
-          </div>
           {data !== null && (data.wachtrisico ?? []).length > 0 && (
             <div className="panel">
               <h2 style={{ margin: '0 0 8px', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)' }}>
@@ -1242,8 +1142,12 @@ export function PlanningScreen() {
       {nieuweVeldwerkerOpen && administratieId && (
         <NieuweVeldwerkerDialog
           administratieId={administratieId}
+          bron="planning_paneel"
           onSluiten={() => setNieuweVeldwerkerOpen(false)}
-          onKlaar={laad}
+          onKlaar={(gebruikerId) => {
+            setNieuwVinkje(gebruikerId)
+            laad()
+          }}
         />
       )}
 
@@ -1260,6 +1164,11 @@ export function PlanningScreen() {
               Toon conflict
             </button>
           )}
+          {ongedaan.naar_week && (
+            <button type="button" className="linkbtn" data-testid="naar-week" onClick={() => zetWeek(ongedaan.naar_week!)}>
+              Naar week {ongedaan.naar_week.weeknummer}
+            </button>
+          )}
           <button type="button" className="linkbtn" aria-label="Melding sluiten" onClick={() => setOngedaan(null)}>
             ✕
           </button>
@@ -1271,7 +1180,8 @@ export function PlanningScreen() {
         planning = oranje &quot;buiten planning&quot; bij de keuring (geen blokkade — invallen en omplannen blijft
         mogelijk) · twee projecten op één dag zónder planning-dekking = interne melding + teller per ZZP&apos;er,
         alleen zichtbaar voor kantoor. Per dag één kaart per project mét de ploeg als initialen (½ = halve dag); een kaart zonder ploeg is
-        &quot;gereserveerd&quot;. Kopiëren over de week: kaart selecteren en het handvat slepen (stopt bij vrijdag). Vooruit plannen kan onbegrensd (het hele jaar wordt vooruit gevuld); plannen ná
+        &quot;gereserveerd&quot;; élk project staat op zijn eigen rij over de week. Kopiëren over de week: kaart selecteren en het handvat slepen (stopt bij vrijdag); naar
+        de volgende week: in het paneel &quot;Kopiëren naar ‹weekdag› volgende week&quot; (alleen die dag — daar dan &quot;Toepassen op hele week&quot;). Vooruit plannen kan onbegrensd; plannen ná
         de einddatum van een project mag en kleurt oranje.
       </p>
     </div>

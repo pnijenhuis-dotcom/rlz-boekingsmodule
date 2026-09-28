@@ -632,6 +632,9 @@ class PlanningPoolPersoonDto(BaseModel):
     geplande_dagen: Decimal  # heel = 1, half = 0,5 — besluit C: > 5 kleurt als zacht signaal
     # v3 (18-09): "afwezig t/m …" — einddatum van de afwezigheid die de getoonde week overlapt; null = beschikbaar.
     afwezig_tot: date | None = None
+    # v4 (28-09): ZZP-dossier onvolledig (definitie = Beheer › Veldwerkers) — chip "dossier onvolledig" in het
+    # ploeg-paneel.
+    dossier_onvolledig: bool = False
 
 
 class PlanningReserveringDto(BaseModel):
@@ -742,7 +745,8 @@ class PlanningBulkRequest(StrikteInvoer):
     """Vulhandvat / ploeg-paneel / ongedaan maken in ÉÉN transactie (v3 18-09). Limiet 200 items (422 erboven)."""
 
     administratie_id: uuid.UUID
-    bron: str  # 'vulhandvat' | 'ploeg' | 'ongedaan' | 'conflict' (21-09: paneel-acties)
+    # 'vulhandvat' | 'ploeg' | 'ongedaan' | 'conflict' (21-09) | 'kopie_volgende_week' (28-09: zelfde weekdag week+1)
+    bron: str
     verwijderen: bool = False
     correlatie_id: uuid.UUID | None = None
     items: list[PlanningBulkItemRequest] = Field(min_length=1, max_length=200)
