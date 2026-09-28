@@ -628,6 +628,9 @@ export interface OdooCompanyDto {
   rlz_administratie?: string | null
   /** Blok 3 24-09: de claim is van een GEARCHIVEERDE administratie — rij grijs mét "gearchiveerd — dearchiveer ‹naam›". */
   gearchiveerd?: boolean
+  /** Leesbron → overstap (Peter 28-09): de claim is de eigen alleen-lezen koppeling van de overstappende administratie —
+   * wél kiesbaar (label "huidige leesbron — overstappen"); alle andere claims blijven grijs. */
+  eigen_leesbron?: boolean
 }
 
 /** Resultaat van koppelen/overstap: probe-rapport + eerste-sync-run (zelfde subrij-patroon als RLZ). Slotstuk
@@ -674,7 +677,7 @@ export function startOdooSync(administratieId: string): Promise<OdooSyncResultaa
 
 /** Wizard-stap Verbinding: URL + sleutel proberen → companies van die database (nooit een id typen). `odoo_url` in het
  * antwoord = de genormaliseerde URL (scheme + host) die de module gebruikt (punt 4, 14-09). */
-export function testOdooVerbinding(body: { odoo_url: string; api_key: string; api_gebruiker?: string }): Promise<{ companies: OdooCompanyDto[]; odoo_url?: string | null }> {
+export function testOdooVerbinding(body: { odoo_url: string; api_key?: string; api_gebruiker?: string; administratie_id?: string }): Promise<{ companies: OdooCompanyDto[]; odoo_url?: string | null }> {
   return apiJson('/instellingen/odoo/verbinding-testen', { ...POST_JSON, body: JSON.stringify(body) })
 }
 
@@ -873,16 +876,18 @@ export interface OdooMappingStandDto {
  * deterministische mappingvoorstel — niets persistent, de sleutel reist alleen in de body. */
 export function voorbereidOdooOverstap(
   administratieId: string,
-  body: { odoo_url: string; api_key: string; api_gebruiker?: string; company_id: number },
+  body: { odoo_url: string; api_key?: string; api_gebruiker?: string; company_id: number },
 ): Promise<OdooOverstapVoorbereidingDto> {
   return apiJson(`/administraties/${administratieId}/odoo/overstap/voorbereiden`, { ...POST_JSON, body: JSON.stringify(body) })
 }
 
 /** Ingang B, volledige backend: bestaande RLZ-administratie stapt over per `overgangsdatum` — sinds 04-09 mét
- * de door de mens bevestigde rekening-mapping (verplicht; leeg mag alleen zonder in-gebruik-rijen). */
+ * de door de mens bevestigde rekening-mapping (verplicht; leeg mag alleen zonder in-gebruik-rijen). Leesbron → overstap
+ * (Peter 28-09): zonder `api_key` gebruikt de server de bewaarde sleutel van de alleen-lezen koppeling (zelfde host +
+ * company) en promoveert die rij in dezelfde transactie. */
 export function odooOverstap(
   administratieId: string,
-  body: { odoo_url: string; api_key: string; api_gebruiker?: string; company_id: number; overgangsdatum: string; mapping: OdooMappingInvoerDto },
+  body: { odoo_url: string; api_key?: string; api_gebruiker?: string; company_id: number; overgangsdatum: string; mapping: OdooMappingInvoerDto },
 ): Promise<OdooGekoppeldeAdministratieDto> {
   return apiJson(`/administraties/${administratieId}/odoo/overstap`, { ...POST_JSON, body: JSON.stringify(body) })
 }

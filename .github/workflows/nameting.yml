@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie | doorbelasting-btw | xml-documenten | crediteuren-naamclusters | project-bronvolgorde | aangifteperiode | crediteur-paneel | btw-netto | tabwissel | lijst-alles | comfort-controlescherm | planning-v4)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie | doorbelasting-btw | xml-documenten | crediteuren-naamclusters | project-bronvolgorde | aangifteperiode | crediteur-paneel | btw-netto | tabwissel | lijst-alles | comfort-controlescherm | planning-v4 | verkoop-overstap)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" && "$ONDERDEEL" != "doorbelasting-btw" && "$ONDERDEEL" != "xml-documenten" && "$ONDERDEEL" != "crediteuren-naamclusters" && "$ONDERDEEL" != "project-bronvolgorde" && "$ONDERDEEL" != "aangifteperiode" && "$ONDERDEEL" != "crediteur-paneel" && "$ONDERDEEL" != "btw-netto" && "$ONDERDEEL" != "tabwissel" && "$ONDERDEEL" != "lijst-alles" && "$ONDERDEEL" != "comfort-controlescherm" && "$ONDERDEEL" != "planning-v4" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" && "$ONDERDEEL" != "doorbelasting-btw" && "$ONDERDEEL" != "xml-documenten" && "$ONDERDEEL" != "crediteuren-naamclusters" && "$ONDERDEEL" != "project-bronvolgorde" && "$ONDERDEEL" != "aangifteperiode" && "$ONDERDEEL" != "crediteur-paneel" && "$ONDERDEEL" != "btw-netto" && "$ONDERDEEL" != "tabwissel" && "$ONDERDEEL" != "lijst-alles" && "$ONDERDEEL" != "comfort-controlescherm" && "$ONDERDEEL" != "planning-v4" && "$ONDERDEEL" != "verkoop-overstap" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -1001,6 +1001,34 @@ jobs:
             echo "Oordeel: bulk 200 = $B200, 5xx = $B5XX, audit kopie_volgende_week = $KOPIE, planning_bulk = $PLOEG, veldwerker_aangemaakt(paneel) = $QUICK — $ST — exit $rc_pv" >> "$UIT"
             echo "STATUS planning-v4: rapport in $UIT (exit $rc_pv = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "verkoop-overstap" ]]; then
+            # Leesbron → overstap op Odoo 28-09 (BESLISSINGEN "UNIVERSAL VERKOOP — LEESBRON → OVERSTAP OP ODOO (Peter 28-09)"): lees-only
+            # meetrecept — (1) request-log POST …/odoo/overstap(/voorbereiden) + /instellingen/odoo/verbinding-testen (status/latency;
+            # Peters klik), (2) db-lezen verkoop-overstap = koppeling-stand (backend/alleen_lezen/kanteldatum/knip/oud RLZ-id) + audit
+            # odoo_leesbron_gepromoveerd/odoo_overstap + documenten mét Odoo-boekstuk (BILL/…) = de eerste Verkoop-inkoopfactuur in Odoo,
+            # (3) 5xx op de overstap-route = ROOD. Nooit een schrijvend commando: de overstap zelf is Peters klik.
+            UIT="verkenning/nameting-verkoop-overstap-$DATUM.txt"
+            rc_vo=0
+            SINDS_VO="${SINDS_VERKOOP_OVERSTAP:-2026-09-28T15:00:00Z}"
+            {
+              echo "== request-log odoo/overstap (+voorbereiden) en verbinding-testen sinds $SINDS_VO =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="POST" (httpRequest.requestUrl:"/odoo/overstap" OR httpRequest.requestUrl:"/instellingen/odoo/verbinding-testen") timestamp>="'"$SINDS_VO"'"' --project "$PROJECT_ID" --limit 200 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-vo-overstap.txt || rc_vo=$?
+              cat nameting-vo-overstap.txt
+              [[ -s nameting-vo-overstap.txt ]] || echo "(geen overstap-requests sinds de deploy — Peter heeft de knop nog niet gebruikt)"
+              echo
+              echo "== db-lezen verkoop-overstap --administratie Universal Verkoop --param dagen=14 =="
+              scripts/gcp/nameting.sh db-lezen verkoop-overstap --administratie "Universal Verkoop" --param dagen=14 2> nameting-vo.stderr || { rc_vo=$?; echo "(nameting.sh exit $rc_vo — stderr:)"; cat nameting-vo.stderr; }
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_vo)" >> "$UIT"
+            O5XX="$(awk -F'\t' '$5 ~ /odoo\/overstap/ && $3 ~ /^5/' nameting-vo-overstap.txt | wc -l | tr -d ' ')"
+            O201="$(awk -F'\t' '$5 ~ /odoo\/overstap$/ && $3 == "201"' nameting-vo-overstap.txt | wc -l | tr -d ' ')"
+            PROM="$(grep -c "odoo_leesbron_gepromoveerd" "$UIT" || true)"
+            ODOO="$(grep -c "odoo · alleen_lezen=false" "$UIT" || true)"
+            BILLS="$(grep -c "BILL/" "$UIT" || true)"
+            if [[ "$O5XX" -ge 1 ]]; then ST="ROOD (5xx op de overstap-route)"; elif [[ "$PROM" -ge 1 && "$ODOO" -ge 1 && "$BILLS" -ge 1 ]]; then ST="JA (overgestapt + eerste factuur in Odoo)"; elif [[ "$PROM" -ge 1 && "$ODOO" -ge 1 ]]; then ST="DEELS (overgestapt, nog geen factuur in Odoo geboekt)"; elif [[ "$O201" -ge 1 ]]; then ST="ONVERWACHT (201 zonder promotie-audit — nalopen)"; else ST="NIET GEMETEN (Peter heeft de overstap nog niet geklikt)"; fi
+            echo "Oordeel: verkoop-overstap: overstap 201 = $O201, 5xx = $O5XX, audit odoo_leesbron_gepromoveerd = $PROM, backend odoo = $ODOO, Odoo-boekstukken = $BILLS — $ST — exit $rc_vo" >> "$UIT"
+            echo "STATUS verkoop-overstap: rapport in $UIT (exit $rc_vo = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
             # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
@@ -1069,6 +1097,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-doorbelasting-btw-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "activa-conventie" ]]; then
             OORDEEL_BRON="verkenning/nameting-activa-conventie-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "verkoop-overstap" ]]; then
+            OORDEEL_BRON="verkenning/nameting-verkoop-overstap-$DATUM.txt"
           elif [[ "$ONDERDEEL" =~ ^(alles|a|b|c|d|e)$ ]]; then
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           else

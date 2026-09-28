@@ -124,6 +124,7 @@ via_gh_onderdeel() {
     lijst-alles) echo lijst-alles ;;  # 25-09 blok 8: geen CLI-commando — request-log groep=alles + db-lezen documenten-open
     comfort-controlescherm) echo comfort-controlescherm ;;  # 25-09 blok 9: geen CLI-commando — request-log PUT boekvoorstel/GET projectverdeling + db-lezen document-feiten (kop_doorgezet)
     planning-v4) echo planning-v4 ;;  # 28-09 planning v4: geen CLI-commando — request-log planning/bulk + auth/uitnodigingen + db-lezen planning-v4 (audit kopie_volgende_week / ploeg / veldwerker_aangemaakt bron planning_paneel)
+    verkoop-overstap) echo verkoop-overstap ;;  # 28-09 leesbron → overstap (Universal Verkoop): geen CLI-commando — request-log odoo/overstap + verbinding-testen + db-lezen verkoop-overstap (koppeling-stand, audit odoo_leesbron_gepromoveerd, Odoo-boekstukken)
     jobs-start) echo jobs-start ;;
     extern-geboekt) echo extern-geboekt ;;  # 23-09: geen CLI-commando — request-log handelingen extern-geboekt/afwijzen|toch-verschillend + accordeur-409 + job-log HERCONTROLE + db-lezen bevindingen
     activa-kaart) echo activa-kaart ;;  # 24-09: geen CLI-commando — request-log POST activa-voorstel/*/aanmaken (200/422/5xx) + job-log activum_aanmaken_mislukt(_mens) + db-lezen activa-stand/bevindingen BLOw+Pilates + rlz-lezen FixedAssets BLOw

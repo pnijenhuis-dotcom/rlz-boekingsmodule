@@ -697,6 +697,7 @@ class TestFailsafeDubbeleKoppeling:
             "migratie_doel": False,
             "rlz_administratie": "De Visotter",
             "gearchiveerd": False,  # blok 3 24-09: claim van een gearchiveerde administratie → label "gearchiveerd — dearchiveer …"
+            "eigen_leesbron": False,  # 28-09: True = eigen leesbron bij een overstap (promotie)
         }
         assert per[7]["rlz_administratie"] is None and not per[7]["al_gekoppeld"]
 

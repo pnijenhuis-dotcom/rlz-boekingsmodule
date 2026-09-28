@@ -56,6 +56,21 @@ function installMock(posts: { url: string; body: unknown }[]) {
       if (init?.method === 'POST' || init?.method === 'PUT') posts.push({ url, body })
       if (url === '/instellingen/odoo/verbinding-testen') {
         if (body?.api_key === 'fout') return Promise.resolve(jsonResponse({ detail: { bericht: 'Odoo weigert deze sleutel (HTTP 401) — controleer de API-sleutel', rapport: { verbinding: 'HTTP 401' } } }, 422))
+        // Leesbron → overstap (28-09): zonder sleutel mét administratie_id gebruikt de server de bewaarde sleutel; de eigen
+        // leesbron-company (3) komt terug als kiesbaar (eigen_leesbron), de rest zoals altijd.
+        if (!body?.api_key && body?.administratie_id === ADMIN_ID) {
+          return Promise.resolve(
+            jsonResponse({
+              odoo_url: 'https://universal-steigers.odoo.com',
+              companies: [
+                { company_id: 1, naam: 'Universal Steigerbouw', al_gekoppeld: false },
+                { company_id: 3, naam: 'Universal Verkoop', al_gekoppeld: true, gekoppeld_aan: 'huidige leesbron — overstappen', migratie_doel: false, rlz_administratie: null, eigen_leesbron: true },
+                { company_id: 6, naam: 'Vastgoedgroep Nederland B.V.', al_gekoppeld: true, gekoppeld_aan: 'migratiedoel (Vastgoedgroep Nederland)', migratie_doel: true, rlz_administratie: null },
+              ],
+            }),
+          )
+        }
+        if (!body?.api_key) return Promise.resolve(jsonResponse({ detail: { bericht: 'Geen API-sleutel opgegeven', rapport: {} } }, 422))
         if (body?.api_key === 'tien' || body?.api_key === 'traag') {
           // Nazorg 14-09: de stand van universal-steigers.odoo.com — company 3 al gekoppeld, 6 gereserveerd als
           // migratiedoel, 5 matcht een Reeleezee-administratie (signaal), 7 vrij.
@@ -377,6 +392,80 @@ describe('OdooKoppelWizard — nazorg 14-09 (URL-normalisatie, grijs mét reden,
     expect(screen.getByText(/0 van 1 companies gekoppeld/)).toBeInTheDocument()
     expect(screen.queryByTestId('odoo-wizard-resultaat')).not.toBeInTheDocument()
     expect(onAangemaakt).not.toHaveBeenCalled()
+  })
+})
+
+describe('OdooKoppelWizard — leesbron → overstap (Peter 28-09 "RLZ los en Odoo aan", "Overstappen op Odoo…")', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  const administratie = { id: ADMIN_ID, naam: 'Universal Verkoop B.V.' }
+  const promotie = { odoo_url: 'https://universal-steigers.odoo.com', company_id: 3, api_gebruiker: 'N-Module' }
+
+  it('koppelvorm-stap overgeslagen, URL + gebruiker voorgevuld, sleutel optioneel: verbinding-testen zonder sleutel mét administratie_id, eigen leesbron-company voorgeselecteerd en kiesbaar, voorbereiden + overstap zónder api_key (bewaarde sleutel)', async () => {
+    const gebruiker = userEvent.setup()
+    const posts: { url: string; body: unknown }[] = []
+    installMock(posts)
+    const onAfgerond = vi.fn()
+    render(<OdooKoppelDialog administratie={administratie} promotie={promotie} onSluiten={() => {}} onAfgerond={onAfgerond} />)
+
+    // Geen koppelvorm-stap: vier stappen, titel zegt wat er gebeurt.
+    expect(screen.getByText('Overstappen op Odoo — Universal Verkoop B.V. — stap 1 van 4')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Alleen-lezen leesbron')).not.toBeInTheDocument()
+    expect(screen.getByText(/leest Odoo al als leesbron \(company 3\)/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Odoo-URL')).toHaveValue('https://universal-steigers.odoo.com')
+    expect(screen.getByLabelText(/API-gebruiker/)).toHaveValue('N-Module')
+    const sleutel = screen.getByLabelText('API-sleutel (optioneel)')
+    expect(sleutel).toHaveValue('')
+    expect(sleutel).not.toBeRequired()
+    expect(screen.getByText(/Leeg = de bewaarde sleutel van de leesbron-koppeling wordt hergebruikt/)).toBeInTheDocument()
+    const testen = screen.getByRole('button', { name: /Verbinding testen/ })
+    expect(testen).toBeEnabled()
+    fireEvent.click(testen)
+
+    await waitFor(() => expect(screen.getByLabelText('Koppelen Universal Verkoop')).toBeInTheDocument())
+    const verbinding = posts.find((p) => p.url === '/instellingen/odoo/verbinding-testen')
+    expect(verbinding?.body).toEqual({ odoo_url: 'https://universal-steigers.odoo.com', administratie_id: ADMIN_ID, api_gebruiker: 'N-Module' })
+    expect(screen.getByText('Overstappen op Odoo — Universal Verkoop B.V. — stap 2 van 4')).toBeInTheDocument()
+    // De eigen leesbron-company is kiesbaar én voorgeselecteerd; andere claims blijven grijs; de vrije company blijft kiesbaar.
+    const eigen = screen.getByLabelText('Koppelen Universal Verkoop')
+    expect(eigen).toBeEnabled()
+    expect(eigen).toBeChecked()
+    expect(screen.getByText('huidige leesbron — overstappen')).toHaveClass('chip', 'ok')
+    expect(screen.getByLabelText('Koppelen Vastgoedgroep Nederland B.V.')).toBeDisabled()
+    expect(screen.getByLabelText('Koppelen Universal Steigerbouw')).toBeEnabled()
+    const verder = screen.getByRole('button', { name: 'Verder →' })
+    expect(verder).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Overgangsdatum (kanteldatum)'), { target: { value: '2026-09-28' } })
+    expect(verder).toBeEnabled()
+    fireEvent.click(verder)
+
+    await waitFor(() => expect(screen.getByTestId('odoo-wizard-mapping')).toBeInTheDocument())
+    expect(posts.find((p) => p.url === `/administraties/${ADMIN_ID}/odoo/overstap/voorbereiden`)?.body).toEqual({ odoo_url: 'https://universal-steigers.odoo.com', api_gebruiker: 'N-Module', company_id: 3 })
+    expect(screen.getByText(/Rechten-probe groen \(bewaarde sleutel\) · company Universal Steigerbouw · kanteldatum 28-09-2026/)).toBeInTheDocument()
+    await gebruiker.click(within(screen.getByTestId('odoo-mapping-rij-grootboek:gb-7000')).getByRole('combobox'))
+    await gebruiker.click(screen.getByRole('option', { name: /424000.*Inhuur personeel/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Koppeling opslaan/ }))
+
+    await waitFor(() => expect(screen.getByTestId('odoo-wizard-resultaat')).toBeInTheDocument())
+    const overstap = posts.find((p) => p.url === `/administraties/${ADMIN_ID}/odoo/overstap`)
+    expect(overstap?.body).toMatchObject({ odoo_url: 'https://universal-steigers.odoo.com', api_gebruiker: 'N-Module', company_id: 3, overgangsdatum: '2026-09-28' })
+    expect(overstap?.body).not.toHaveProperty('api_key')
+    expect(posts.some((p) => p.url.endsWith('/odoo/leesbron'))).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Sluiten' }))
+    expect(onAfgerond).toHaveBeenCalledTimes(1)
+  })
+
+  it('mét ingevulde sleutel reist de sleutel mee (vervangen ná groene probe) en verbinding-testen draagt geen administratie_id', async () => {
+    const posts: { url: string; body: unknown }[] = []
+    installMock(posts)
+    render(<OdooKoppelDialog administratie={administratie} promotie={promotie} onSluiten={() => {}} onAfgerond={() => {}} />)
+    fireEvent.change(screen.getByLabelText('API-sleutel (optioneel)'), { target: { value: 'geheim' } })
+    fireEvent.click(screen.getByRole('button', { name: /Verbinding testen/ }))
+    await waitFor(() => expect(screen.getByLabelText('Koppelen Universal Steigerbouw')).toBeInTheDocument())
+    expect(posts.find((p) => p.url === '/instellingen/odoo/verbinding-testen')?.body).toEqual({ odoo_url: 'https://universal-steigers.odoo.com', api_key: 'geheim', api_gebruiker: 'N-Module' })
+    // De standaardmock zonder eigen_leesbron: company 3 blijft dan grijs — een overstap op een andere company kan de mens
+    // niet vanuit deze knop kiezen (server weigert 422), company 1 blijft kiesbaar zoals altijd.
+    expect(screen.getByLabelText('Koppelen Universal Verkoop')).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '← Terug' }))
   })
 })
 

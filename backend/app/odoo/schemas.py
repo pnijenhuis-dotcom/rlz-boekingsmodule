@@ -17,6 +17,21 @@ class OdooGegevensDto(StrikteInvoer):
     api_gebruiker: str | None = None
 
 
+class OdooGegevensOptioneleSleutelDto(StrikteInvoer):
+    """Leesbron → overstap (Peter 28-09): URL + OPTIONELE API-key — leeg = de bewaarde sleutel van de alleen-lezen
+    koppeling van de administratie (server-side gepoort op dezelfde host + company). De key komt nooit terug."""
+
+    odoo_url: str = Field(min_length=8)
+    api_key: str | None = Field(default=None, min_length=8)
+    api_gebruiker: str | None = None
+
+
+class OdooVerbindingTestInvoerDto(OdooGegevensOptioneleSleutelDto):
+    """Stap a van de wizard; `administratie_id` alleen bij een leeg sleutelveld (promotie van de eigen leesbron)."""
+
+    administratie_id: uuid.UUID | None = None
+
+
 class GevondenCompanyDto(BaseModel):
     company_id: int
     naam: str
@@ -28,6 +43,8 @@ class GevondenCompanyDto(BaseModel):
     rlz_administratie: str | None = None
     #: Blok 3 24-09: claim van een gearchiveerde administratie — label "gearchiveerd — dearchiveer ‹naam›".
     gearchiveerd: bool = False
+    #: Peter 28-09: de claim is de eigen alleen-lezen koppeling van de overstappende administratie — wél kiesbaar.
+    eigen_leesbron: bool = False
 
 
 class OdooVerbindingTestDto(BaseModel):
@@ -149,18 +166,18 @@ class OdooMappingInvoerDto(StrikteInvoer):
     project: list[OdooProjectMappingRijInvoerDto] = Field(default_factory=list)
 
 
-class OdooOverstapDto(OdooGegevensDto):
+class OdooOverstapDto(OdooGegevensOptioneleSleutelDto):
     """Blok E, ingang B: een bestaande RLZ-administratie stapt over op Odoo (volledige backend) — company uit
     de lijst + verplichte overgangsdatum (KANTELDATUM: vanaf wanneer de administratie Odoo is; géén poort op
     documenten) + de door de mens bevestigde rekening-mapping (blok A 04-09; leeg mag alleen als er niets in
-    gebruik is; projectrijen optioneel)."""
+    gebruik is; projectrijen optioneel). Sleutel leeg = bewaarde leesbron-sleutel (Peter 28-09)."""
 
     company_id: int = Field(gt=0)
     overgangsdatum: date
     mapping: OdooMappingInvoerDto
 
 
-class OdooOverstapVoorbereidenDto(OdooGegevensDto):
+class OdooOverstapVoorbereidenDto(OdooGegevensOptioneleSleutelDto):
     """Stap vóór de overstap: probe + live Odoo-lijsten + in-gebruik-RLZ-rijen + deterministisch voorstel."""
 
     company_id: int = Field(gt=0)

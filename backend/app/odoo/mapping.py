@@ -1206,17 +1206,20 @@ def mapping_stand(administratie_id: uuid.UUID) -> MappingStand:
 
 
 def voorbereid_overstap(
-    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, odoo_url: str, api_key: str, company_id: int
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, odoo_url: str, api_key: str | None, company_id: int
 ) -> OverstapVoorbereiding:
     """Stap vóór de overstap: dezelfde voorvalidaties als `koppel_overstap` (RLZ-administratie, actief, geen
-    koppeling, company vrij) + probe groen (anders `OdooKoppelFout` mét rapport) → LIVE read-only Odoo-
-    grootboek/-btw → RLZ in-gebruik-rijen → deterministisch voorstel. Niets persistent, geen sync."""
+    koppeling óf een te promoveren leesbron op dezelfde host + company, company vrij) + probe groen (anders
+    `OdooKoppelFout` mét rapport) → LIVE read-only Odoo-grootboek/-btw → RLZ in-gebruik-rijen → deterministisch
+    voorstel. Niets persistent, geen sync. `api_key` leeg = de bewaarde leesbron-sleutel (Peter 28-09)."""
     from app.odoo import service  # lokaal: service importeert deze module in koppel_overstap
 
     url = service._normaliseer_url(odoo_url)  # noqa: SLF001 — één normalisatie (punt 4, 14-09)
     service.toets_overstap_voorwaarden(
         administratie_id=administratie_id, url=url, company_id=int(company_id), actor_id=actor_id
     )
+    if not api_key:
+        api_key = service.leesbron_sleutel_voor(administratie_id, url=url, company_id=int(company_id))
     p = service.probe_voor(odoo_url=url, api_key=api_key, company_id=int(company_id))
     if not p.groen:
         raise service.OdooKoppelFout(

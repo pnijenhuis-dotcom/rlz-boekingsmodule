@@ -31,12 +31,14 @@ def _koppel_fout(exc: Exception) -> HTTPException:
 
 @router.post("/instellingen/odoo/verbinding-testen", response_model=schemas.OdooVerbindingTestDto)
 def odoo_verbinding_testen(
-    invoer: schemas.OdooGegevensDto, actor: CurrentGebruiker = Depends(require_beheerder)
+    invoer: schemas.OdooVerbindingTestInvoerDto, actor: CurrentGebruiker = Depends(require_beheerder)
 ) -> schemas.OdooVerbindingTestDto:
     """Stap a: URL normaliseren, sleutel proberen → companies mét grijs-reden (al gekoppeld / migratiedoel) en het
-    Reeleezee-signaal. Niets opgeslagen."""
+    Reeleezee-signaal. Niets opgeslagen. Sleutel leeg + `administratie_id` = de bewaarde leesbron-sleutel (28-09)."""
     try:
-        uitkomst = service.test_verbinding(odoo_url=invoer.odoo_url, api_key=invoer.api_key)
+        uitkomst = service.test_verbinding(
+            odoo_url=invoer.odoo_url, api_key=invoer.api_key, administratie_id=invoer.administratie_id
+        )
     except service.OdooKoppelFout as exc:
         raise _koppel_fout(exc) from exc
     return schemas.OdooVerbindingTestDto(
@@ -50,6 +52,7 @@ def odoo_verbinding_testen(
                 migratie_doel=g.migratie_doel,
                 rlz_administratie=g.rlz_administratie,
                 gearchiveerd=g.gearchiveerd,
+                eigen_leesbron=g.eigen_leesbron,
             )
             for g in uitkomst.companies
         ],

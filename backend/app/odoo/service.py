@@ -35,7 +35,7 @@ from app.odoo.hervertaling import hervertaal_open_boekvoorstellen
 from app.odoo.ids import normaliseer_odoo_url, odoo_admin_sentinel, odoo_host
 from app.odoo.models import OdooKoppeling
 from app.odoo.probe import ProbeUitkomst, is_ok, lees_companies, voer_leesprobe_uit, voer_probe_uit
-from app.security.envelope import wrap_secret
+from app.security.envelope import unwrap_secret, wrap_secret
 
 if TYPE_CHECKING:  # app/odoo/mapping.py importeert deze module (OdooKoppelFout) — runtime lokaal importeren
     from app.odoo.mapping import MappingInvoer
@@ -108,6 +108,9 @@ class GevondenCompany:
     #: Blok 3 24-09: de claim is van een GEARCHIVEERDE administratie — rij grijs mét
     #: "gearchiveerd — dearchiveer ‹naam›".
     gearchiveerd: bool = False
+    #: Leesbron → overstap (Peter 28-09): de claim is de ALLEEN-LEZEN koppeling van de administratie die zelf
+    #: overstapt — de wizard mag die rij kiezen (promotie), alle andere claims blijven grijs.
+    eigen_leesbron: bool = False
 
 
 @dataclass(frozen=True)
@@ -285,10 +288,18 @@ def rlz_administratie_signalen(company_namen: dict[int, str]) -> dict[int, str]:
     return uit
 
 
-def test_verbinding(*, odoo_url: str, api_key: str) -> VerbindingUitkomst:
+def test_verbinding(
+    *, odoo_url: str, api_key: str | None, administratie_id: uuid.UUID | None = None
+) -> VerbindingUitkomst:
     """Stap a: URL normaliseren, de companies die deze sleutel ziet mét de grijs-reden (al gekoppeld / migratiedoel)
-    en het Reeleezee-signaal. Niets opgeslagen. Fouten leesbaar: status + pad + één zin, nooit een exception-naam."""
+    en het Reeleezee-signaal. Niets opgeslagen. Fouten leesbaar: status + pad + één zin, nooit een exception-naam.
+    Leesbron → overstap (Peter 28-09): zonder `api_key` mét `administratie_id` wordt de BEWAARDE sleutel van de
+    alleen-lezen koppeling van die administratie gebruikt (alleen op dezelfde host — anders 422, nooit stil)."""
     url = _normaliseer_url(odoo_url)
+    if not api_key:
+        if administratie_id is None:
+            raise OdooKoppelFout("Geen API-sleutel opgegeven")
+        api_key = leesbron_sleutel_voor(administratie_id, url=url)
     with _client(url, api_key, 1) as client:
         try:
             client.versie()
@@ -304,15 +315,21 @@ def test_verbinding(*, odoo_url: str, api_key: str) -> VerbindingUitkomst:
     gevonden: list[GevondenCompany] = []
     for c in companies:
         claim = claims.get(c["id"])
+        eigen_leesbron = bool(
+            claim and administratie_id is not None and claim.administratie_id == administratie_id and claim.alleen_lezen
+        )
         gevonden.append(
             GevondenCompany(
                 company_id=c["id"],
                 naam=c["naam"],
                 al_gekoppeld=claim is not None,
-                gekoppeld_aan=claim.wizard_label() if claim else None,
+                gekoppeld_aan=("huidige leesbron — overstappen" if eigen_leesbron else claim.wizard_label())
+                if claim
+                else None,
                 migratie_doel=bool(claim and claim.migratie_doel),
                 gearchiveerd=bool(claim and claim.gearchiveerd),
                 rlz_administratie=None if claim else signalen.get(c["id"]),
+                eigen_leesbron=eigen_leesbron,
             )
         )
     return VerbindingUitkomst(odoo_url=url, companies=gevonden)
@@ -709,12 +726,49 @@ def koppelstand(administratie_ids: list[uuid.UUID], *, met_details: bool = True)
 # --- blok E: overstap van een BESTAANDE RLZ-administratie op Odoo (ingang B, volledige backend) -----------
 
 
+@dataclass(frozen=True)
+class OverstapVoorwaarden:
+    """Uitkomst van `toets_overstap_voorwaarden`: naam + oud RLZ-id, en of de overstap een PROMOTIE van een bestaande
+    alleen-lezen koppeling is (Peter 28-09: "RLZ los en Odoo aan" — de leesbron-rij wordt de volledige koppeling)."""
+
+    naam: str
+    oud_rlz_admin_id: str
+    leesbron_promotie: bool = False
+
+
+def _is_zelfde_koppeling(rij: OdooKoppeling, *, url: str, company_id: int) -> bool:
+    return odoo_host(rij.odoo_url) == odoo_host(url) and int(rij.company_id) == int(company_id)
+
+
+def leesbron_sleutel_voor(administratie_id: uuid.UUID, *, url: str, company_id: int | None = None) -> str:
+    """De BEWAARDE API-sleutel van de alleen-lezen koppeling van deze administratie — uitsluitend voor de promotie
+    leesbron → overstap ("sleutel leeg = bestaande sleutel"), en alleen als host (en company, indien opgegeven)
+    gelijk zijn. Geen leesbron / andere host / andere company = 422 mét reden, nooit stil een andere sleutel."""
+    with scoped_session(None) as session:
+        rij = session.get(OdooKoppeling, administratie_id)
+        if rij is None or not rij.alleen_lezen:
+            raise OdooKoppelFout(
+                "Geen API-sleutel opgegeven en deze administratie heeft geen alleen-lezen Odoo-koppeling om de "
+                "sleutel van te hergebruiken — vul de API-sleutel in"
+            )
+        if odoo_host(rij.odoo_url) != odoo_host(url) or (
+            company_id is not None and int(rij.company_id) != int(company_id)
+        ):
+            raise OdooKoppelFout(
+                f"De bewaarde sleutel hoort bij {odoo_host(rij.odoo_url)} company {rij.company_id} — voor een andere "
+                "Odoo-omgeving of company is een nieuwe API-sleutel nodig"
+            )
+        return unwrap_secret(rij.api_key_ciphertext, rij.wrapped_data_key).decode()
+
+
 def toets_overstap_voorwaarden(
     *, administratie_id: uuid.UUID, url: str, company_id: int, actor_id: uuid.UUID | None = None
-) -> tuple[str, str]:
+) -> OverstapVoorwaarden:
     """De voorvalidaties van een overstap (gedeeld door `koppel_overstap` en `mapping.voorbereid_overstap`):
-    bestaande, actieve RLZ-administratie zonder Odoo-koppeling; company nog vrij op deze host (anders 409 mét
-    audit — failsafe laag 2). Retourneert (naam, oud rlz_admin_id)."""
+    bestaande, actieve RLZ-administratie zonder Odoo-koppeling — óf (Peter 28-09) mét een ALLEEN-LEZEN koppeling op
+    dezelfde host én company, die dan in de overstap gepromoveerd wordt; company nog vrij op deze host (anders 409 mét
+    audit — failsafe laag 2; de eigen leesbron-claim telt niet als bezet)."""
+    leesbron_promotie = False
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)
         if administratie is None:
@@ -729,16 +783,28 @@ def toets_overstap_voorwaarden(
         bestaand = session.get(OdooKoppeling, administratie_id)
         if bestaand is not None:
             if bestaand.alleen_lezen:
+                if not _is_zelfde_koppeling(bestaand, url=url, company_id=int(company_id)):
+                    raise OdooKoppelFout(
+                        "Deze administratie heeft al een alleen-lezen Odoo-koppeling op "
+                        f"{odoo_host(bestaand.odoo_url)} company {bestaand.company_id} — overstappen kan alleen op "
+                        f"diezelfde omgeving en company (gevraagd: {odoo_host(url)} company {int(company_id)}); "
+                        "wijzig anders eerst de leesbron-koppeling"
+                    )
+                leesbron_promotie = True
+            else:
                 raise OdooKoppelFout(
-                    "Deze administratie heeft al een alleen-lezen Odoo-koppeling (leesbron voorraad-uitstroom) — "
-                    "een overstap naar Odoo als boekhoud-backend is dan niet mogelijk; laat de Beheerder de "
-                    "leesbron-koppeling eerst beoordelen"
+                    "Deze administratie heeft al een Odoo-koppeling — gebruik 'Odoo-gegevens wijzigen'"
                 )
-            raise OdooKoppelFout("Deze administratie heeft al een Odoo-koppeling — gebruik 'Odoo-gegevens wijzigen'")
         naam = administratie.naam
         oud_rlz_admin_id = administratie.rlz_admin_id
-    toets_company_vrij(url=url, company_id=int(company_id), actor_id=actor_id, bron="overstap")
-    return naam, oud_rlz_admin_id
+    toets_company_vrij(
+        url=url,
+        company_id=int(company_id),
+        actor_id=actor_id,
+        uitgezonderd_administratie_id=administratie_id if leesbron_promotie else None,
+        bron="overstap",
+    )
+    return OverstapVoorwaarden(naam=naam, oud_rlz_admin_id=oud_rlz_admin_id, leesbron_promotie=leesbron_promotie)
 
 
 def koppel_overstap(
@@ -746,7 +812,7 @@ def koppel_overstap(
     actor_id: uuid.UUID,
     administratie_id: uuid.UUID,
     odoo_url: str,
-    api_key: str,
+    api_key: str | None,
     company_id: int,
     overgangsdatum: date,
     api_gebruiker: str | None = None,
@@ -770,13 +836,27 @@ def koppel_overstap(
     Slotstuk 04-09: `mapping.project` = de OPTIONELE projectmapping (RLZ-project → analytic account); een rij
     mét `aanmaken=True` wordt ná de probe en VÓÓR de DB-transactie in Odoo opgezocht/aangemaakt
     (`mapping.maak_odoo_projecten_aan`, lookup-vóór-create, mislukt = zichtbaar overgeslagen, nooit unlink);
-    gevonden/aangemaakte accounts krijgen in de hoofdtransactie een id-koppeling + project-cache-rij."""
+    gevonden/aangemaakte accounts krijgen in de hoofdtransactie een id-koppeling + project-cache-rij.
+
+    Leesbron → overstap (Peter 28-09 "RLZ los en Odoo aan", geen migratie): heeft de administratie al een ALLEEN-LEZEN
+    koppeling op dezelfde host + company (Universal Verkoop, company 3), dan wordt die rij in DEZELFDE transactie
+    gepromoveerd: `alleen_lezen = False`, `overgangsdatum` = de gekozen kanteldatum, `voorraad_knip_datum` blijft
+    staan, dagboeken/plan/probe uit de verse (schrijvende) probe, de sleutel = de nieuw ingevoerde óf — bij een leeg
+    veld — de bewaarde sleutel (`leesbron_sleutel_voor`), audit `odoo_leesbron_gepromoveerd` oud → nieuw (nooit de
+    sleutel). Backend, sentinel, mapping, hervertaling en eerste sync zijn identiek aan de gewone overstap."""
     from app.odoo import mapping as odoo_mapping  # lokaal: mapping importeert OdooKoppelFout uit deze module
 
     url = _normaliseer_url(odoo_url)
-    naam, oud_rlz_admin_id = toets_overstap_voorwaarden(
+    voorwaarden = toets_overstap_voorwaarden(
         administratie_id=administratie_id, url=url, company_id=int(company_id), actor_id=actor_id
     )
+    naam, oud_rlz_admin_id = voorwaarden.naam, voorwaarden.oud_rlz_admin_id
+    sleutel_bron = "nieuw"
+    if not api_key:
+        api_key = leesbron_sleutel_voor(administratie_id, url=url, company_id=int(company_id))
+        sleutel_bron = "hergebruikt"
+    elif voorwaarden.leesbron_promotie:
+        sleutel_bron = "vervangen"
 
     p = probe_voor(odoo_url=url, api_key=api_key, company_id=int(company_id))
     if not p.groen:
@@ -820,6 +900,7 @@ def koppel_overstap(
 
     ciphertext, wrapped = wrap_secret(api_key.encode())
     sentinel = odoo_admin_sentinel(url, int(company_id))
+    promotie_oud: dict[str, object] | None = None
     # Gescoopt op de administratie: de mapping-tabel is RLS-beveiligd en hoort in DEZELFDE transactie als de
     # koppeling (platform-tabellen kennen geen RLS — de scope is daar onschadelijk).
     with scoped_session(administratie_id, actor_id=actor_id) as session:
@@ -827,27 +908,60 @@ def koppel_overstap(
         assert administratie is not None
         administratie.boekhoud_backend = "odoo"
         administratie.rlz_admin_id = sentinel
-        session.add(
-            OdooKoppeling(
-                administratie_id=administratie_id,
-                odoo_url=url,
-                company_id=int(company_id),
-                company_naam=p.company_naam,
-                api_gebruiker=api_gebruiker,
-                api_key_ciphertext=ciphertext,
-                wrapped_data_key=wrapped,
-                api_key_verloopt_op=p.api_key_verloopt_op,
-                journal_purchase_id=p.journal_purchase_id,
-                journal_general_id=p.journal_general_id,
-                journal_sale_id=p.journal_sale_id,
-                analytic_plan_id=p.analytic_plan_id,
-                probe_rapport=p.rapport,
-                probe_op=datetime.now(UTC),
-                overgangsdatum=overgangsdatum,
-                rlz_admin_id_voor_overstap=oud_rlz_admin_id,
-                aangemaakt_door=actor_id,
+        nu = datetime.now(UTC)
+        if voorwaarden.leesbron_promotie:
+            # Promotie (Peter 28-09): de leesbron-rij wordt de volledige koppeling — zelfde PK, knip blijft staan.
+            rij = session.get(OdooKoppeling, administratie_id)
+            assert rij is not None and rij.alleen_lezen
+            if api_gebruiker is None:
+                api_gebruiker = rij.api_gebruiker
+            promotie_oud = {
+                "alleen_lezen": True,
+                "overgangsdatum": rij.overgangsdatum.isoformat() if rij.overgangsdatum else None,
+                "voorraad_knip_datum": rij.voorraad_knip_datum.isoformat() if rij.voorraad_knip_datum else None,
+                "api_gebruiker": rij.api_gebruiker,
+                "rlz_admin_id_voor_overstap": rij.rlz_admin_id_voor_overstap,
+                "journal_purchase_id": rij.journal_purchase_id,
+                "probe_op": rij.probe_op.isoformat() if rij.probe_op else None,
+            }
+            rij.alleen_lezen = False
+            rij.odoo_url = url
+            rij.company_naam = p.company_naam or rij.company_naam
+            rij.api_gebruiker = api_gebruiker
+            if sleutel_bron != "hergebruikt":
+                rij.api_key_ciphertext = ciphertext
+                rij.wrapped_data_key = wrapped
+            rij.api_key_verloopt_op = p.api_key_verloopt_op
+            rij.journal_purchase_id = p.journal_purchase_id
+            rij.journal_general_id = p.journal_general_id
+            rij.journal_sale_id = p.journal_sale_id
+            rij.analytic_plan_id = p.analytic_plan_id
+            rij.probe_rapport = p.rapport
+            rij.probe_op = nu
+            rij.overgangsdatum = overgangsdatum
+            rij.rlz_admin_id_voor_overstap = oud_rlz_admin_id
+        else:
+            session.add(
+                OdooKoppeling(
+                    administratie_id=administratie_id,
+                    odoo_url=url,
+                    company_id=int(company_id),
+                    company_naam=p.company_naam,
+                    api_gebruiker=api_gebruiker,
+                    api_key_ciphertext=ciphertext,
+                    wrapped_data_key=wrapped,
+                    api_key_verloopt_op=p.api_key_verloopt_op,
+                    journal_purchase_id=p.journal_purchase_id,
+                    journal_general_id=p.journal_general_id,
+                    journal_sale_id=p.journal_sale_id,
+                    analytic_plan_id=p.analytic_plan_id,
+                    probe_rapport=p.rapport,
+                    probe_op=nu,
+                    overgangsdatum=overgangsdatum,
+                    rlz_admin_id_voor_overstap=oud_rlz_admin_id,
+                    aangemaakt_door=actor_id,
+                )
             )
-        )
         session.flush()
         correlatie = uuid.uuid4()
         record_audit_event(
@@ -873,29 +987,51 @@ def koppel_overstap(
                 "projecten_aangemaakt": aanmaak.aangemaakt,
                 "projecten_gevonden": aanmaak.gevonden,
                 "projecten_overgeslagen": list(aanmaak.overgeslagen),
+                "leesbron_gepromoveerd": voorwaarden.leesbron_promotie,
+                "sleutel": sleutel_bron,
             },
         )
-        record_audit_event(
-            session,
-            actor_id=actor_id,
-            module="platform",
-            tabel="odoo_koppeling",
-            record_id=administratie_id,
-            actie="odoo_koppeling_aangemaakt",
-            correlatie_id=correlatie,
-            nieuwe_waarde={
-                "odoo_url": url,
-                "company_id": int(company_id),
-                "api_gebruiker": api_gebruiker,
-                "probe_groen": True,
-                "journal_purchase_id": p.journal_purchase_id,
-                "journal_general_id": p.journal_general_id,
-                "analytic_plan_id": p.analytic_plan_id,
-                "versie": p.versie,
-                "overgangsdatum": overgangsdatum.isoformat(),
-                "bron": "overstap",
-            },
-        )
+        koppeling_nieuw = {
+            "odoo_url": url,
+            "company_id": int(company_id),
+            "api_gebruiker": api_gebruiker,
+            "probe_groen": True,
+            "journal_purchase_id": p.journal_purchase_id,
+            "journal_general_id": p.journal_general_id,
+            "analytic_plan_id": p.analytic_plan_id,
+            "versie": p.versie,
+            "overgangsdatum": overgangsdatum.isoformat(),
+            "bron": "overstap",
+        }
+        if promotie_oud is not None:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="platform",
+                tabel="odoo_koppeling",
+                record_id=administratie_id,
+                actie="odoo_leesbron_gepromoveerd",
+                correlatie_id=correlatie,
+                oude_waarde=promotie_oud,
+                nieuwe_waarde={
+                    **koppeling_nieuw,
+                    "alleen_lezen": False,
+                    "voorraad_knip_datum": promotie_oud["voorraad_knip_datum"],
+                    "rlz_admin_id_voor_overstap": oud_rlz_admin_id,
+                    "sleutel": sleutel_bron,
+                },
+            )
+        else:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="platform",
+                tabel="odoo_koppeling",
+                record_id=administratie_id,
+                actie="odoo_koppeling_aangemaakt",
+                correlatie_id=correlatie,
+                nieuwe_waarde=koppeling_nieuw,
+            )
         if aanmaak.accounts:
             odoo_mapping.registreer_odoo_projecten(
                 session,

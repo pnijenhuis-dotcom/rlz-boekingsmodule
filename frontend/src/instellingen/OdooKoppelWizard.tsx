@@ -49,7 +49,13 @@ import { datumNl, normaliseerOdooUrl, odooKoppelFout, odooProbeGroen, OdooProbeR
  * de vink "toch als nieuwe administratie aanmaken" mét reden (mens wint, nooit stil); (c) ingang A draait de rechten-
  * probe PER COMPANY als eigen request (sequentieel, resultaat per rij zichtbaar terwijl de volgende loopt) en koppelt
  * daarna per company — nooit één lange request voor zes companies; een time-out raakt één rij ("probe onderbroken …"),
- * de andere rijen blijven staan. Alles groen = opslaan; één rood = niets opgeslagen (zelfde poort als eerder). */
+ * de andere rijen blijven staan. Alles groen = opslaan; één rood = niets opgeslagen (zelfde poort als eerder).
+ *
+ * Leesbron → overstap (Peter 28-09 "RLZ los en Odoo aan", casus Universal Verkoop): `promotie` = de bestaande
+ * alleen-lezen koppeling (URL · company · gebruikerslabel). De wizard slaat de koppelvorm-stap over (altijd VOLLEDIG),
+ * vult URL/gebruiker voor, maakt de sleutel optioneel ("leeg = de bewaarde sleutel") en laat precies de eigen
+ * leesbron-company kiezen (`eigen_leesbron`); de server promoveert die rij in dezelfde transactie (kanteldatum, knip
+ * blijft, audit `odoo_leesbron_gepromoveerd`). Mapping-stap en resultaat zijn identiek aan de gewone overstap. */
 
 export type OdooKoppelvorm = 'volledig' | 'leesbron'
 
@@ -64,9 +70,19 @@ type StapId = 'koppelvorm' | 'verbinding' | 'company' | 'mapping' | 'knip' | 're
 
 export const ODOO_KNIP_DEFAULT = '2026-09-01'
 
+/** Leesbron → overstap (28-09): de bestaande alleen-lezen koppeling waarmee de wizard voorgevuld opent. */
+export interface LeesbronPromotie {
+  odoo_url: string
+  company_id: number
+  api_gebruiker?: string | null
+}
+
 interface Props {
   ingang: 'nieuw' | 'bestaand'
   administratie?: { id: string; naam: string }
+  /** Ingang B mét bestaande leesbron: "Overstappen op Odoo…" — koppelvorm vast VOLLEDIG, URL/company/gebruiker voorgevuld,
+   * sleutel optioneel (leeg = bewaarde sleutel). */
+  promotie?: LeesbronPromotie
   /** Ingang A: de backend-keuze is stap 1 van de bovenliggende wizard — nummering loopt door. */
   stapOffset?: number
   /** Ingang A: "← Terug" op de eerste stap gaat naar de backend-keuze. */
@@ -92,20 +108,21 @@ function voorstelVoor(v: OdooOverstapVoorbereidingDto | null, rij: MappingTabelR
   return { odoo_id: bron.voorstel_odoo_id, reden: reden && voorstelRedenen.has(reden) ? (reden as MappingTabelRij['bron']) : 'handmatig' }
 }
 
-function stappenVoor(ingang: Props['ingang'], vorm: OdooKoppelvorm): StapId[] {
+function stappenVoor(ingang: Props['ingang'], vorm: OdooKoppelvorm, promotie?: LeesbronPromotie): StapId[] {
   if (ingang === 'nieuw') return ['verbinding', 'company', 'resultaat']
+  if (promotie) return ['verbinding', 'company', 'mapping', 'resultaat']
   return vorm === 'leesbron'
     ? ['koppelvorm', 'verbinding', 'company', 'knip', 'resultaat']
     : ['koppelvorm', 'verbinding', 'company', 'mapping', 'resultaat']
 }
 
-export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTerug, onKlaar, onSluiten }: Props) {
+export function OdooKoppelWizard({ ingang, administratie, promotie, stapOffset = 0, onTerug, onKlaar, onSluiten }: Props) {
   const [vorm, setVorm] = useState<OdooKoppelvorm>('volledig')
-  const stappen = stappenVoor(ingang, vorm)
+  const stappen = stappenVoor(ingang, vorm, promotie)
   const [stap, setStap] = useState<StapId>(stappen[0])
-  const [odooUrl, setOdooUrl] = useState('')
+  const [odooUrl, setOdooUrl] = useState(promotie?.odoo_url ?? '')
   const [apiKey, setApiKey] = useState('')
-  const [apiGebruiker, setApiGebruiker] = useState('')
+  const [apiGebruiker, setApiGebruiker] = useState(promotie?.api_gebruiker ?? '')
   const [companies, setCompanies] = useState<OdooCompanyDto[]>([])
   const [gekozen, setGekozen] = useState<number[]>([])
   const [overgangsdatum, setOvergangsdatum] = useState('')
@@ -130,7 +147,11 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
   const titel =
     ingang === 'nieuw'
       ? `Administratie toevoegen — stap ${index + 1 + stapOffset} van ${stappen.length + stapOffset}`
-      : `Odoo koppelen — ${administratie?.naam ?? ''} — stap ${index + 1} van ${stappen.length}`
+      : promotie
+        ? `Overstappen op Odoo — ${administratie?.naam ?? ''} — stap ${index + 1} van ${stappen.length}`
+        : `Odoo koppelen — ${administratie?.naam ?? ''} — stap ${index + 1} van ${stappen.length}`
+  /** Promotie zonder ingevulde sleutel: de server gebruikt de bewaarde sleutel van de leesbron (zelfde host + company). */
+  const sleutelHergebruik = Boolean(promotie) && !apiKey
 
   const naar = (s: StapId) => {
     setFout(null)
@@ -145,13 +166,19 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
     setBezig(true)
     setFout(null)
     try {
-      const resp = await testOdooVerbinding({ odoo_url: odooUrl.trim(), api_key: apiKey, ...(apiGebruiker.trim() ? { api_gebruiker: apiGebruiker.trim() } : {}) })
+      const resp = await testOdooVerbinding({
+        odoo_url: odooUrl.trim(),
+        ...(apiKey ? { api_key: apiKey } : {}),
+        ...(sleutelHergebruik && administratie ? { administratie_id: administratie.id } : {}),
+        ...(apiGebruiker.trim() ? { api_gebruiker: apiGebruiker.trim() } : {}),
+      })
       setCompanies(resp.companies)
       setServerUrl(resp.odoo_url ?? null)
       setRijStand({})
       setRlzBevestiging({})
+      const eigen = promotie ? resp.companies.find((c) => c.company_id === promotie.company_id && c.eigen_leesbron) : undefined
       const vrij = resp.companies.filter((c) => !c.al_gekoppeld)
-      setGekozen(vrij.length === 1 ? [vrij[0].company_id] : [])
+      setGekozen(eigen ? [eigen.company_id] : vrij.length === 1 ? [vrij[0].company_id] : [])
       naar('company')
     } catch (err) {
       setFout(odooKoppelFout(err))
@@ -161,6 +188,11 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
   }
 
   const verbinding = () => ({ odoo_url: effectieveUrl, api_key: apiKey, ...(apiGebruiker.trim() ? { api_gebruiker: apiGebruiker.trim() } : {}) })
+  /** Overstap-aanroepen (voorbereiden/overstap): bij sleutelhergebruik reist er géén api_key mee — de server pakt de bewaarde. */
+  const verbindingOverstap = () => {
+    const { api_key, ...rest } = verbinding()
+    return sleutelHergebruik ? rest : { ...rest, api_key }
+  }
 
   const zetRij = (companyId: number, stand: RijStand) => setRijStand((h) => ({ ...h, [companyId]: stand }))
   const rijStandVan = (id: number): RijStand => rijStand[id] ?? { fase: 'wacht' }
@@ -230,7 +262,7 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
     setBezig(true)
     setFout(null)
     try {
-      const resp = await voorbereidOdooOverstap(administratie.id, { ...verbinding(), company_id: gekozen[0] })
+      const resp = await voorbereidOdooOverstap(administratie.id, { ...verbindingOverstap(), company_id: gekozen[0] })
       setVoorbereiding(resp)
       setMappingRijen(rijenUitVoorbereiding(resp))
       naar('mapping')
@@ -277,7 +309,7 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
       } else if (!administratie) {
         throw new Error('Geen administratie')
       } else if (vorm === 'volledig') {
-        const resp = await odooOverstap(administratie.id, { ...verbinding(), company_id: gekozen[0], overgangsdatum, mapping: mappingInvoer(mappingRijen) })
+        const resp = await odooOverstap(administratie.id, { ...verbindingOverstap(), company_id: gekozen[0], overgangsdatum, mapping: mappingInvoer(mappingRijen) })
         setGekoppeld([resp])
       } else {
         const resp = await koppelOdooLeesbron(administratie.id, { ...verbinding(), company_id: gekozen[0], voorraad_knip_datum: knip || null })
@@ -314,13 +346,17 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
         {stap === 'koppelvorm' &&
           'Twee verschillende dingen die nooit in elkaar overlopen: de volledige backend zet de administratie vanaf de overgangsdatum (kanteldatum) op Odoo — Reeleezee blijft het archief van wat dáár al geboekt is, nakomers boeken in Odoo; de alleen-lezen leesbron laat de backend Reeleezee en leest uitsluitend de geposte verkoopfacturen uit Odoo voor de voorraad-uitstroom vanaf de knipdatum.'}
         {stap === 'verbinding' &&
-          'Adres van de Odoo-omgeving en een API-sleutel van een gebruiker mét boekhoudrechten. De sleutel wordt server-side versleuteld opgeslagen (credential-store) en is daarna nooit meer uitleesbaar. De URL bindt de database — een apart database-veld is niet nodig.'}
+          (promotie
+            ? `Deze administratie leest Odoo al als leesbron (company ${promotie.company_id}). Overstappen maakt Odoo vanaf de kanteldatum de boekhoud-backend: Reeleezee wordt losgekoppeld (blijft het archief van wat dáár geboekt is), de bestaande koppeling wordt gepromoveerd en de knipdatum blijft staan. De API-sleutel mag leeg blijven — dan wordt de bewaarde sleutel hergebruikt; de rechten-probe moet mét schrijfrecht groen zijn.`
+            : 'Adres van de Odoo-omgeving en een API-sleutel van een gebruiker mét boekhoudrechten. De sleutel wordt server-side versleuteld opgeslagen (credential-store) en is daarna nooit meer uitleesbaar. De URL bindt de database — een apart database-veld is niet nodig.')}
         {stap === 'company' &&
           (ingang === 'nieuw'
             ? 'Deze sleutel ziet de volgende companies in de database. Kies welke je aansluit; vóór het opslaan draait per company de rechten-probe (grootboek · btw · relaties · journals · facturen · boeken) — die moet groen zijn, anders wordt niets opgeslagen.'
-            : vorm === 'volledig'
-              ? 'Kies de company waarin deze administratie vanaf de overgangsdatum (kanteldatum) boekt. Vóór het opslaan draait de rechten-probe inclusief schrijfrecht — die moet groen zijn, anders wordt niets opgeslagen.'
-              : 'Kies de company waarvan de verkoopfacturen als leesbron dienen. De leesprobe (alleen leesrechten) moet groen zijn — er wordt in deze vorm nooit in Odoo geschreven.')}
+            : promotie
+              ? 'De company van de bestaande leesbron is voorgeselecteerd — een overstap kan alleen op diezelfde company. Kies de kanteldatum; vóór het opslaan draait de rechten-probe inclusief schrijfrecht — die moet groen zijn, anders wordt niets gewijzigd.'
+              : vorm === 'volledig'
+                ? 'Kies de company waarin deze administratie vanaf de overgangsdatum (kanteldatum) boekt. Vóór het opslaan draait de rechten-probe inclusief schrijfrecht — die moet groen zijn, anders wordt niets opgeslagen.'
+                : 'Kies de company waarvan de verkoopfacturen als leesbron dienen. De leesprobe (alleen leesrechten) moet groen zijn — er wordt in deze vorm nooit in Odoo geschreven.')}
         {stap === 'mapping' &&
           'Vertaal de Reeleezee-grootboekrekeningen en btw-tarieven die in het boekingsgeheugen en in open boekvoorstellen voorkomen naar hun Odoo-tegenhanger. Het voorstel is deterministisch (zelfde code, of code + "00"); bevestig of kies zelf. Projecten zijn optioneel: koppel aan een bestaand Odoo-project (voorstel op projectnummer, anders op naam), laat ze aanmaken in Odoo, of laat ze leeg — dan vervalt het project in het geheugen. Zo blijven de geleerde boekvoorstellen en de autoboek-instellingen ná de overstap werken. Niets wordt opgeslagen vóór "Koppeling opslaan".'}
         {stap === 'knip' &&
@@ -384,8 +420,8 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
                 : 'Geen geldige Odoo-URL — gebruik alleen het domein, bv. https://naam.odoo.com'}
             </p>
           )}
-          <FormField label="API-sleutel" htmlFor="odoo-api-key">
-            <input id="odoo-api-key" type="password" autoComplete="new-password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} required />
+          <FormField label={promotie ? 'API-sleutel (optioneel)' : 'API-sleutel'} htmlFor="odoo-api-key" hint={promotie ? 'Leeg = de bewaarde sleutel van de leesbron-koppeling wordt hergebruikt; invullen = sleutel vervangen (ná groene probe).' : undefined}>
+            <input id="odoo-api-key" type="password" autoComplete="new-password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} required={!promotie} />
           </FormField>
           <FormField label="API-gebruiker (label, optioneel)" htmlFor="odoo-api-gebruiker" hint="Alleen ter herkenning in het backend-blok — bv. n-module@…">
             <input id="odoo-api-gebruiker" autoComplete="off" value={apiGebruiker} onChange={(e) => setApiGebruiker(e.target.value)} />
@@ -406,7 +442,7 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
                 ← Terug
               </Button>
             )}
-            <Button type="submit" disabled={bezig || !odooUrl.trim() || !apiKey}>
+            <Button type="submit" disabled={bezig || !odooUrl.trim() || (!apiKey && !promotie)}>
               {bezig ? 'Verbinding testen…' : 'Verbinding testen →'}
             </Button>
           </DialogFooter>
@@ -422,7 +458,7 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
           <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 8px' }}>
             {companies.map((c) => (
               <li key={c.company_id} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }} data-testid={`odoo-company-${c.company_id}`}>
-                <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: 0, opacity: c.al_gekoppeld || rijStandVan(c.company_id).fase === 'gekoppeld' ? 0.6 : 1 }}>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: 0, opacity: (c.al_gekoppeld && !c.eigen_leesbron) || rijStandVan(c.company_id).fase === 'gekoppeld' ? 0.6 : 1 }}>
                   {ingang === 'nieuw' ? (
                     <Checkbox
                       aria-label={`Koppelen ${c.naam}`}
@@ -435,7 +471,7 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
                       type="radio"
                       name="odoo-company"
                       aria-label={`Koppelen ${c.naam}`}
-                      disabled={c.al_gekoppeld || bezig}
+                      disabled={(c.al_gekoppeld && !c.eigen_leesbron) || bezig}
                       checked={gekozen[0] === c.company_id}
                       onChange={() => setGekozen([c.company_id])}
                     />
@@ -449,10 +485,16 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
                       <>
                         {' '}
                         <span
-                          className={`chip ${c.migratie_doel ? 'afwijking' : 'stil'}`}
-                          title={c.gearchiveerd ? 'Deze company hoort bij een gearchiveerde administratie — dearchiveer die via Instellingen › Administraties › gearchiveerd; nooit een tweede koppeling' : undefined}
+                          className={`chip ${c.eigen_leesbron ? 'ok' : c.migratie_doel ? 'afwijking' : 'stil'}`}
+                          title={
+                            c.eigen_leesbron
+                              ? 'De bestaande alleen-lezen koppeling van deze administratie — wordt bij de overstap gepromoveerd (knipdatum blijft staan)'
+                              : c.gearchiveerd
+                                ? 'Deze company hoort bij een gearchiveerde administratie — dearchiveer die via Instellingen › Administraties › gearchiveerd; nooit een tweede koppeling'
+                                : undefined
+                          }
                         >
-                          {c.gekoppeld_aan ?? (c.gearchiveerd ? 'gearchiveerd — dearchiveer' : 'al gekoppeld')}
+                          {c.gekoppeld_aan ?? (c.eigen_leesbron ? 'huidige leesbron — overstappen' : c.gearchiveerd ? 'gearchiveerd — dearchiveer' : 'al gekoppeld')}
                         </span>
                       </>
                     )}
@@ -523,7 +565,7 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
       {stap === 'mapping' && voorbereiding && (
         <div data-testid="odoo-wizard-mapping">
           <p className="hint" style={{ marginTop: 0 }}>
-            ✓ Rechten-probe groen · company {voorbereiding.company_naam ?? companyNaam(gekozen[0]) ?? gekozen[0]} · kanteldatum {datumNl(overgangsdatum)} ·{' '}
+            ✓ Rechten-probe groen{sleutelHergebruik ? ' (bewaarde sleutel)' : ''} · company {voorbereiding.company_naam ?? companyNaam(gekozen[0]) ?? gekozen[0]} · kanteldatum {datumNl(overgangsdatum)} ·{' '}
             {voorbereiding.odoo_grootboek.length} Odoo-rekeningen · {voorbereiding.odoo_btw.length} Odoo-taxen
             {voorbereiding.odoo_projecten ? ` · ${voorbereiding.odoo_projecten.length} Odoo-projecten` : ''}
           </p>
@@ -732,13 +774,16 @@ export function ProjectenAanmaakResultaat({ aangemaakt, overgeslagen }: { aangem
   )
 }
 
-/** Ingang B als eigen dialoog (detailpagina "Odoo koppelen…"): ná afronden herlaadt de aanroeper. */
+/** Ingang B als eigen dialoog (detailpagina "Odoo koppelen…" / "Overstappen op Odoo…" mét `promotie`): ná afronden
+ * herlaadt de aanroeper. */
 export function OdooKoppelDialog({
   administratie,
+  promotie,
   onSluiten,
   onAfgerond,
 }: {
   administratie: { id: string; naam: string }
+  promotie?: LeesbronPromotie
   onSluiten: () => void
   onAfgerond: () => void
 }) {
@@ -750,7 +795,7 @@ export function OdooKoppelDialog({
   return (
     <Dialog open onOpenChange={(o) => !o && sluit()}>
       <DialogContent className="administratie-wizard" aria-describedby={undefined} data-testid="odoo-koppel-dialoog">
-        <OdooKoppelWizard ingang="bestaand" administratie={administratie} onKlaar={() => setKlaar(true)} onSluiten={sluit} />
+        <OdooKoppelWizard ingang="bestaand" administratie={administratie} promotie={promotie} onKlaar={() => setKlaar(true)} onSluiten={sluit} />
       </DialogContent>
     </Dialog>
   )

@@ -904,6 +904,8 @@ describe('InstellingenScreen — blok Boekhoud-backend (Odoo-adapter blok E, 03-
     // RLZ-kopacties blijven.
     expect(within(detail).getByRole('button', { name: 'Schrijftest voor Testklant B.V.' })).toBeInTheDocument()
     expect(within(detail).getByRole('button', { name: 'Webservice-gegevens van Testklant B.V.' })).toBeInTheDocument()
+    // 28-09: "Overstappen op Odoo…" bestaat alleen bij een bestaande leesbron-koppeling.
+    expect(within(detail).queryByRole('button', { name: /Overstappen op Odoo/ })).not.toBeInTheDocument()
     fireEvent.click(within(detail).getByRole('button', { name: 'Odoo koppelen aan Testklant B.V.' }))
     expect(await screen.findByText('Odoo koppelen — Testklant B.V. — stap 1 van 5')).toBeInTheDocument()
     expect(screen.getByLabelText('Volledige backend')).toBeChecked()
@@ -1003,6 +1005,43 @@ describe('InstellingenScreen — blok Boekhoud-backend (Odoo-adapter blok E, 03-
     fireEvent.change(within(dialoog).getByLabelText('Knipdatum'), { target: { value: '2026-10-01' } })
     fireEvent.click(within(dialoog).getByRole('button', { name: 'Knipdatum opslaan' }))
     await waitFor(() => expect(putAanroepen).toContainEqual({ url: `/administraties/${ADMINISTRATIE_ID}/odoo/leesbron`, body: { voorraad_knip_datum: '2026-10-01' } }))
+  })
+
+  it('RLZ-administratie mét Odoo-leesbron: "Overstappen op Odoo…" (Peter 28-09) opent de overstap-wizard voorgevuld mét URL/company/gebruiker, zonder koppelvorm-stap en mét optionele sleutel', async () => {
+    installFetchMock({
+      rol: 'beheerder',
+      odooStand: { ...ODOO_STAND, company_id: 3, company_naam: 'Universal Verkoop', api_gebruiker: 'N-Module', alleen_lezen: true, voorraad_knip_datum: '2026-09-01', overgangsdatum: null, rlz_admin_id_voor_overstap: null },
+      administraties: [
+        administratie({
+          naam: 'Universal Verkoop B.V.',
+          webservice_username: 'ws_uv',
+          probe_groen: true,
+          rlz_admin_id: 'rlz-uv',
+          odoo_alleen_lezen: true,
+          odoo_company_id: 3,
+          odoo_company_naam: 'Universal Verkoop',
+          odoo_voorraad_knip_datum: '2026-09-01',
+        }),
+      ],
+    })
+    renderScherm()
+    const detail = await openDetail('Universal Verkoop B.V.')
+    const leesbron = within(detail).getByTestId('leesbron-odoo')
+    await waitFor(() => expect(leesbron).toHaveTextContent('company Universal Verkoop (3)'))
+    // Beide knoppen naast elkaar: knip wijzigen blijft, overstappen erbij; "Odoo koppelen…" (nieuwe koppeling) niet.
+    expect(within(leesbron).getByRole('button', { name: 'Knipdatum wijzigen voor Universal Verkoop B.V.' })).toBeInTheDocument()
+    expect(within(detail).queryByRole('button', { name: 'Odoo koppelen aan Universal Verkoop B.V.' })).not.toBeInTheDocument()
+    const overstappen = within(leesbron).getByRole('button', { name: 'Overstappen op Odoo voor Universal Verkoop B.V.' })
+    expect(overstappen).toBeEnabled()
+    fireEvent.click(overstappen)
+    const wizard = await screen.findByTestId('odoo-koppel-dialoog')
+    expect(within(wizard).getByText('Overstappen op Odoo — Universal Verkoop B.V. — stap 1 van 4')).toBeInTheDocument()
+    expect(within(wizard).queryByLabelText('Alleen-lezen leesbron')).not.toBeInTheDocument()
+    expect(within(wizard).getByLabelText('Odoo-URL')).toHaveValue('https://universal-steigers.odoo.com')
+    expect(within(wizard).getByLabelText(/API-gebruiker/)).toHaveValue('N-Module')
+    expect(within(wizard).getByLabelText('API-sleutel (optioneel)')).toHaveValue('')
+    expect(within(wizard).getByRole('button', { name: /Verbinding testen/ })).toBeEnabled()
+    fireEvent.click(within(wizard).getByRole('button', { name: 'Annuleren' }))
   })
 })
 

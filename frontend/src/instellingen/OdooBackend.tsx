@@ -468,15 +468,20 @@ export function OvergangsdatumDialog({
 }
 
 /** Rij "Leesbron voorraad" op een RLZ-administratie: zónder koppeling "n.v.t." + ingang B "Odoo koppelen…";
- * mét alleen-lezen-koppeling de stand (company · knip) + "Knipdatum wijzigen…". */
+ * mét alleen-lezen-koppeling de stand (company · knip) + "Knipdatum wijzigen…" + (Peter 28-09 "RLZ los en Odoo aan")
+ * "Overstappen op Odoo…" = dezelfde wizard, voorgevuld mét URL/company/gebruiker en optionele sleutel; de server
+ * promoveert de leesbron-rij (kanteldatum, knip blijft). */
 export function OdooLeesbronRij({ administratie: a, onHerlaad }: { administratie: AdministratieInstellingenDto; onHerlaad: () => void }) {
   const alleenLezen = Boolean(a.odoo_alleen_lezen)
   const { stand } = useOdooStand(a.id, alleenLezen)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [overstapOpen, setOverstapOpen] = useState(false)
   const [knipDialoog, setKnipDialoog] = useState(false)
   const knip = stand?.voorraad_knip_datum ?? a.odoo_voorraad_knip_datum ?? null
   const companyNaam = stand?.company_naam ?? a.odoo_company_naam ?? null
   const companyId = stand?.company_id ?? a.odoo_company_id ?? null
+  const leesbronUrl = stand?.odoo_url ?? a.odoo_url ?? null
+  const leesbronGebruiker = stand?.api_gebruiker ?? a.odoo_api_gebruiker ?? null
 
   return (
     <>
@@ -498,6 +503,16 @@ export function OdooLeesbronRij({ administratie: a, onHerlaad }: { administratie
             <Button variant="secundair" maat="klein" disabled={Boolean(a.gearchiveerd_op)} onClick={() => setKnipDialoog(true)} aria-label={`Knipdatum wijzigen voor ${a.naam}`}>
               Knipdatum wijzigen…
             </Button>
+            <Button
+              variant="secundair"
+              maat="klein"
+              disabled={Boolean(a.gearchiveerd_op) || companyId == null || !leesbronUrl}
+              onClick={() => setOverstapOpen(true)}
+              aria-label={`Overstappen op Odoo voor ${a.naam}`}
+              title="Odoo wordt vanaf de kanteldatum de boekhoud-backend; Reeleezee wordt losgekoppeld (blijft archief), de knipdatum blijft staan"
+            >
+              Overstappen op Odoo…
+            </Button>
           </span>
         ) : (
           <>
@@ -509,6 +524,14 @@ export function OdooLeesbronRij({ administratie: a, onHerlaad }: { administratie
         )}
       </InstellingRij>
       {wizardOpen && <OdooKoppelDialog administratie={{ id: a.id, naam: a.naam }} onSluiten={() => setWizardOpen(false)} onAfgerond={onHerlaad} />}
+      {overstapOpen && companyId != null && leesbronUrl && (
+        <OdooKoppelDialog
+          administratie={{ id: a.id, naam: a.naam }}
+          promotie={{ odoo_url: leesbronUrl, company_id: companyId, api_gebruiker: leesbronGebruiker }}
+          onSluiten={() => setOverstapOpen(false)}
+          onAfgerond={onHerlaad}
+        />
+      )}
       {knipDialoog && (
         <KnipdatumDialog
           administratie={a}

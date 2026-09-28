@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -688,3 +688,33 @@ def test_planning_v4_onderdeel_alleen_op_verzoek_lees_only_met_eigen_oordeel(tmp
     sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
     assert re.search(r"^\s*planning-v4\) echo planning-v4 ;;", sh, flags=re.M), "via_gh_onderdeel mist: planning-v4"
     assert (REPO / "backend" / "app" / "lezen" / "queries" / "planning-v4.sql").is_file()
+
+
+# --- leesbron → overstap 28-09: dispatch-onderdeel `verkoop-overstap` (vier plekken; lees-only; eigen oordeelregel) ---
+def test_verkoop_overstap_onderdeel_alleen_op_verzoek_lees_only_met_eigen_oordeel(tmp_path: Path) -> None:
+    """Universal Verkoop leesbron → overstap (Peter 28-09): het meetrecept (request-log odoo/overstap + verbinding-testen,
+    db-lezen verkoop-overstap) is een dispatch-onderdeel mét if-tak + options + via_gh_onderdeel + OORDEEL_BRON-tak + eigen
+    rapport `nameting-verkoop-overstap-<dd-mm>.txt` — niet in 'alles', geen schrijvend commando (de overstap is Peters klik)."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "verkoop-overstap" ]]; then' in meet
+    assert 'nameting.sh db-lezen verkoop-overstap --administratie "Universal Verkoop" --param dagen=14' in meet
+    assert 'httpRequest.requestUrl:"/odoo/overstap"' in meet
+    assert 'httpRequest.requestUrl:"/instellingen/odoo/verbinding-testen"' in meet
+    assert 'UIT="verkenning/nameting-verkoop-overstap-$DATUM.txt"' in meet
+    assert 'OORDEEL_BRON="verkenning/nameting-verkoop-overstap-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "verkoop-overstap"' not in meet, "niet in 'alles'"
+    tak = meet[meet.index('if [[ "$ONDERDEEL" == "verkoop-overstap" ]]; then') :]
+    tak = tak[: tak.index("\n          fi\n")]
+    assert "gcloud run jobs execute" not in tak and "--uitvoeren" not in tak, "lees-only: geen job-executie/schrijfvlag"
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "verkoop-overstap",
+        {
+            "nameting-verkoop-overstap-14-09.txt": "kop\nOordeel: verkoop-overstap: overstap 201 = 1, 5xx = 0\n",
+            "nameting-vgg-replay-14-09.txt": REPLAY,
+        },
+    )
+    assert oordeel.startswith("Oordeel: verkoop-overstap: overstap 201 = 1"), oordeel
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    assert re.search(r"^\s*verkoop-overstap\) echo verkoop-overstap ;;", sh, flags=re.M), "via_gh_onderdeel mist: verkoop-overstap"
+    assert (REPO / "backend" / "app" / "lezen" / "queries" / "verkoop-overstap.sql").is_file()
