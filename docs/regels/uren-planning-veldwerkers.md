@@ -319,6 +319,73 @@
   vanaf vandaag (19 in verstreken weken), dus de handelingen "Houd ‹A›"/"Beide (halve dagen)…" zijn nog ongebruikt en een nameting forceert nooit een
   conflict in de echte planning (write + veldwerker-melding) — tellen, `niet vóór:` +7 dagen, hoogstens drie pogingen.
 
+<!-- toegevoegd 28-09-2026, opdracht "planning-v4-pool-weg-matrix-uitlijning-paneel-plus-zzp-kopie-naar-volgende-week" -->
+- **Planning v4 — pool weg, project × dag-matrix, ploeg-paneel als dé werkwijze, quick-add in het paneel, kopie naar volgende
+  week (feedback Peter 28-09, letterlijk in `docs/feedback/2026-09-28-planning-steigerbouw-feedback-peter.md`; besluit Peter
+  28-09 "voor 4 doe maar kopiëren naar volgende week alleen op die dag van de volgende week, er wordt toch week per week gepland
+  en dan kan Haci makkelijk die dag weer voor die hele week drukken. Ik hoef hier geen mockup van, maak dit maar gewoon zoals
+  besproken"; geen migratie; BESLISSINGEN "PLANNING V4 — POOL WEG, PROJECT × DAG-MATRIX, PLOEG-PANEEL ALS DÉ WERKWIJZE,
+  QUICK-ADD, KOPIE NAAR VOLGENDE WEEK (Peter 28-09)"). Herziet drie v3-keuzes van 18-09: de ZZP-pool + het slepen van personen,
+  de vrije kaartvolgorde per dag en de reserveringskaart mét infopaneel.** (1) **De rechterkolom "ZZP'ers & uitvoerders · sleep
+  naar een kaart" is weg** uit de Personeel-tab (Transport had geen pool); slepen van PERSONEN (pool → kaart, initiaal → kaart,
+  Alt = kopiëren) is vervallen — `DagEerstGrid.ontleedDropPayload` kent alleen nog `project`; project → dag slepen én "klik
+  project, dan dag" blijven (projectbalk). Archiveren vanaf het poolkaartje is daarmee ook weg (Beheer › Veldwerkers heeft het).
+  (2) **Klik op élke kaart — óók een gereserveerde — of op een lege matrixcel opent het ploeg-paneel** (`PloegPaneel.tsx`):
+  zoeken, beschikbaarheid per dag, "al op …", conflict oranje kiesbaar, afwezig niet kiesbaar, "Zelfde ploeg als ‹vorige
+  dag›", "Toepassen op hele week", Opslaan (N); het paneel scrolt zelf (lijst), het hoofdscherm niet. BUG (schermopname
+  28-09) gefixt: een gereserveerde kaart opende een doodlopend infopaneel "sleep personen uit de pool"; nu direct het
+  ploeg-paneel, opslaan mét ≥ 1 persoon maakt de reservering tot planning (bestaande bulkroute, bron `ploeg`). "Wie is nog
+  vrij" = compacte regel in de paneelkop ("N vrij op ‹dag› · M vrij hele week", `dagEerst.vrijTellers`) en een regel in
+  "Per project" ("M veldwerkers hele week vrij · namen"); geen aparte lijst. Zonder geselecteerde kaart staat rechts een
+  lege stand mét de werkwijze + "N veldwerkers in scope". (3) **"+ Veldwerker toevoegen…" onderaan de lijst in het paneel**
+  (recht `veldwerkerbeheer` of Beheerder; anders onzichtbaar): naam + rol (ZZP'er/uitvoerder/detacheerder) + e-mail,
+  scope = huidige administratie, via de bestaande uitnodigingsroute (`POST /auth/uitnodigingen`, bron `planning_paneel`
+  — rolgroep-poort ongewijzigd); de nieuwe veldwerker staat ná herladen direct aangevinkt in het open paneel (nog niets
+  gepland tot "Opslaan"). Audit `veldwerker_aangemaakt` (tabel gebruiker, bron `planning_paneel`, `dossier_onvolledig:
+  true`) náást het bestaande `gebruiker_uitgenodigd`. **Dossier blijft verplicht vóór de goedkeuring van de eerste
+  weekstaat** (bestaande WKA-handhaving/bevinding): de pool draagt nu écht `dossier_onvolledig` (backend
+  `dossier.onvolledig_per_veldwerker`, set-based — drie statements onafhankelijk van het aantal personen; definitie =
+  Beheer › Veldwerkers: geblokkeerd, verplicht document ontbreekt/afgewezen, verlopen/verloopt binnenkort/ter controle)
+  → chip "dossier onvolledig" op de persoon in het paneel, stippellijn om de initiaal op de kaart, Beheer › Veldwerkers
+  ongewijzigd. **Dubbelencheck alleen op harde sleutels** (21-09: nooit op naam — broers): hetzelfde e-mailadres = 409
+  leesbaar, eenzelfde naam = gewoon een tweede account; de dialoog zegt dat letterlijk. (4) **Project × dag-MATRIX**
+  (`dagEerst.matrixRijen`, `DagEerstGrid.tsx`): rijen = projecten mét planning of reservering in de getoonde kolommen —
+  dezelfde rij over de week; rijvolgorde eerste geplande dag → aantal geplande dagen (aflopend) → projectnummer (numeriek,
+  `vergelijkProjectnummer`); rijkop = projectnaam + opdrachtgever + "N dagen"; een cel zonder kaart = lege plancel "sleep
+  hierheen / + plannen" (drop-doel voor een projecttegel; klik = paneel mét de ploeg van de dichtstbijzijnde EERDERE dag als
+  voorstel — `dichtstbijzijndeEerderePloeg`, voorgevinkt, niets opgeslagen tot Opslaan; `legeCelKaart` = virtuele kaart
+  `leeg: true`); onderaan een drop-rij "Nieuw project" (projecttegel → dag = nieuwe rij; klik project, dan dag). Kaartinhoud
+  ongewijzigd (initialen, urenstatus, conflict, achteraf, 📋, handvat); het vulhandvat vult cellen op dezelfde rij (ghosts in
+  de rij). Sticky dagkop + dagtotalen (18-09) blijven; de tabel staat in `.tabel-scroll.sticky-koppen.plan-scroll` (interne
+  scroll bij > 12 rijen én bij een smal scherm — `minWidth` 800, nooit pagina-overflow; sweep 24/24 in beide modi). **De
+  urenfilters "alleen zonder uren"/"alleen ongekeurd" filteren RIJEN, niet cellen** (een rij blijft als één ploeglid past,
+  de kaarten blijven compleet); "Per project" houdt het kaartfilter van 15-09. (5) **"Kopiëren naar ‹weekdag› volgende
+  week"** in het paneel (`kopieVolgendeWeekItems`): de vinkjesstand van deze kaart (project + ploeg, géén uren) op dezelfde
+  weekdag in week+1 via `POST /uren/kantoor/planning/bulk` mét nieuwe bron `kopie_volgende_week` (`BULK_BRONNEN`): conflict
+  elders = gepland + oranje (nooit blokkerend), **afwezig in week+1 = OVERGESLAGEN mét reden** (`uitkomst overgeslagen`,
+  `conflict afwezig`, niet gepland — anders dan vulhandvat/ploeg, die wél plannen en markeren), bestaande kaart = ploeg
+  samengevoegd (overgeslagen, niets dubbel), idempotent, audit per (persoon, dag) mét bron + `planning_bulk`-samenvatting;
+  toast "Gekopieerd naar ‹dag› (week N+1) · N persoon-dagen · K conflicten · M afwezig overgeslagen · L al gepland" mét
+  **"Naar week N+1"** (weekwissel) en "Ongedaan maken" (zelfde set terug, bestaand patroon); "Toon conflict" niet (het
+  conflict ligt in week+1). Daarna kan de planner in week+1 "Toepassen op hele week" gebruiken. **Géén "hele projectweek →
+  volgende week"-knop** (bewust, besluit Peter: week-voor-week plannen). De achteraf-regel raakt week+1 niet (ligt in de
+  toekomst; op een oude week gedraagt de bulkroute zich als altijd). De periode-werkopdracht van het project geldt in week+1
+  vanzelf (periode); een dag-override van de brondag wordt bewust NIET gekopieerd (dagspecifiek). (6) **Dossier-signaal in
+  het conflictenpaneel = één rij per PERSOON per week** (eerste geplande dag, alle projecten; `ruweConflictenVoorWeek`), niet
+  per kaart × dag, en een kaart kleurt er niet oranje van (`bouwDagKolommen` sluit `geen_dossier` uit van de kaartconflicten)
+  — de vlag was sinds 18-09 gebouwd maar nooit geleverd; Universal heeft 0 dossiers (nameting 22-09), dus per kaart zou het
+  signaal de échte planningsconflicten (dubbel/afwezig) uit het paneel verdringen. Handeling blijft "Dossier openen →".
+  (7) Guards: `tests/uren/test_planning_v4_28_09.py` (kopie: samengevoegd/idempotent/ongedaan/audit/achteraf false, conflict
+  gepland + afwezig overgeslagen, route; quick-add: audit + pool + DTO, e-mail 409 + zelfde naam OK, rolgroep-poort; dossier
+  set-based + zonder verplichte typen), `dagEerst.test.ts` (matrix-rijvolgorde + rijfilter, lege cel + voorstel, kopie-items,
+  toast, vrij-tellers, dossier één rij), `PlanningScreen.test.tsx` (geen pool/drop-targets, matrix-rijen, reserveringskaart →
+  paneel, lege cel → voorstel zonder POST, kopie → bulk + "Naar week", quick-add mét/zonder recht, per-project-vrij-regel,
+  rijfilter), overflow-sweep planning 24/24, contrast-test (volledige vitest), `test_nameting_workflow` (dispatch-onderdeel
+  `planning-v4` — onderdeelnaam mét cijfer: de guard-regexen lezen sinds 28-09 `[a-z0-9-]`), querybibliotheek
+  `planning-v4.sql`. Mockups: `planning-steigerbouw.html` = v4-vorm mét ontwerpnotities v4 (ná de bouw bijgewerkt, zoals
+  Peter koos), `planning-v3-dag-eerst.html` = historie mét v4-banner. Veld-app-planningweergave ongewijzigd (leest dezelfde
+  data); geen automatische ploegtoewijzing; geen verwijderen van veldwerkers vanuit het paneel.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-signaal "geplande week zonder weekstaat" (CLAUDE.md `ed6d176` r. 675–682)

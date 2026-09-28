@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie | doorbelasting-btw | xml-documenten | crediteuren-naamclusters | project-bronvolgorde | aangifteperiode | crediteur-paneel | btw-netto | tabwissel | lijst-alles | comfort-controlescherm)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie | doorbelasting-btw | xml-documenten | crediteuren-naamclusters | project-bronvolgorde | aangifteperiode | crediteur-paneel | btw-netto | tabwissel | lijst-alles | comfort-controlescherm | planning-v4)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" && "$ONDERDEEL" != "doorbelasting-btw" && "$ONDERDEEL" != "xml-documenten" && "$ONDERDEEL" != "crediteuren-naamclusters" && "$ONDERDEEL" != "project-bronvolgorde" && "$ONDERDEEL" != "aangifteperiode" && "$ONDERDEEL" != "crediteur-paneel" && "$ONDERDEEL" != "btw-netto" && "$ONDERDEEL" != "tabwissel" && "$ONDERDEEL" != "lijst-alles" && "$ONDERDEEL" != "comfort-controlescherm" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" && "$ONDERDEEL" != "doorbelasting-btw" && "$ONDERDEEL" != "xml-documenten" && "$ONDERDEEL" != "crediteuren-naamclusters" && "$ONDERDEEL" != "project-bronvolgorde" && "$ONDERDEEL" != "aangifteperiode" && "$ONDERDEEL" != "crediteur-paneel" && "$ONDERDEEL" != "btw-netto" && "$ONDERDEEL" != "tabwissel" && "$ONDERDEEL" != "lijst-alles" && "$ONDERDEEL" != "comfort-controlescherm" && "$ONDERDEEL" != "planning-v4" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -968,6 +968,38 @@ jobs:
             K="$(awk -F'\t' '$3 == "200"' nameting-fa-pv.txt | wc -l | tr -d ' ')"
             echo "Oordeel: comfort-controlescherm: PUT boekvoorstel 200 = $N, tijdlijnregels kop_doorgezet = $M, GET projectverdeling 200 = $K ($([[ "$N" -ge 1 && "$M" -ge 1 ]] && echo ja || echo "niet gemeten (ongebruikt)")) — exit $rc_fa" >> "$UIT"
             echo "STATUS comfort-controlescherm: rapport in $UIT (exit $rc_fa = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "planning-v4" ]]; then
+            # Planning v4 28-09 (BESLISSINGEN "PLANNING V4 — POOL WEG, PROJECT × DAG-MATRIX, PLOEG-PANEEL ALS DÉ WERKWIJZE, QUICK-ADD, KOPIE NAAR
+            # VOLGENDE WEEK (Peter 28-09)"): lees-only meetrecept — (1) request-log POST /uren/kantoor/planning/bulk + POST /auth/uitnodigingen
+            # (status/latency; de bron staat niet in het request-log), (2) db-lezen planning-v4 = audit planning_bulk/planning_gepland mét bron
+            # kopie_volgende_week|ploeg + veldwerker_aangemaakt bron planning_paneel (Universal Steigerbouw), (3) 5xx op de bulkroute = ROOD.
+            UIT="verkenning/nameting-planning-v4-$DATUM.txt"
+            rc_pv=0
+            SINDS_PV="${SINDS_PLANNING_V4:-2026-09-28T14:00:00Z}"
+            {
+              echo "== request-log planning/bulk + reservering sinds $SINDS_PV =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="POST" httpRequest.requestUrl:"/uren/kantoor/planning/" timestamp>="'"$SINDS_PV"'"' --project "$PROJECT_ID" --limit 500 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-pv-bulk.txt || rc_pv=$?
+              cat nameting-pv-bulk.txt
+              [[ -s nameting-pv-bulk.txt ]] || echo "(geen planning-POSTs sinds de deploy — ongebruikt)"
+              echo
+              echo "== request-log POST /auth/uitnodigingen sinds $SINDS_PV (quick-add + andere ingangen; de bron staat in de audit) =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" httpRequest.requestMethod="POST" httpRequest.requestUrl:"/auth/uitnodigingen" timestamp>="'"$SINDS_PV"'"' --project "$PROJECT_ID" --limit 200 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' > nameting-pv-uitnodigingen.txt || rc_pv=$?
+              cat nameting-pv-uitnodigingen.txt
+              [[ -s nameting-pv-uitnodigingen.txt ]] || echo "(geen uitnodigingen sinds de deploy — ongebruikt)"
+              echo
+              echo "== db-lezen planning-v4 --administratie Universal Steigerbouw --param dagen=14 =="
+              scripts/gcp/nameting.sh db-lezen planning-v4 --administratie "Universal Steigerbouw" --param dagen=14 2> nameting-pv.stderr || { rc_pv=$?; echo "(nameting.sh exit $rc_pv — stderr:)"; cat nameting-pv.stderr; }
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_pv)" >> "$UIT"
+            B5XX="$(awk -F'\t' '$5 ~ /planning\/bulk/ && $3 ~ /^5/' nameting-pv-bulk.txt | wc -l | tr -d ' ')"
+            B200="$(awk -F'\t' '$5 ~ /planning\/bulk/ && $3 == "200"' nameting-pv-bulk.txt | wc -l | tr -d ' ')"
+            KOPIE="$(grep -c "kopie_volgende_week" "$UIT" || true)"
+            PLOEG="$(grep -c "planning_bulk" "$UIT" || true)"
+            QUICK="$(grep -c "veldwerker_aangemaakt" "$UIT" || true)"
+            if [[ "$B5XX" -ge 1 ]]; then ST="ROOD"; elif [[ "$KOPIE" -ge 1 || "$QUICK" -ge 1 ]]; then ST="JA"; elif [[ "$B200" -ge 1 ]]; then ST="DEELS (paneel gebruikt, kopie/quick-add nog niet)"; else ST="NIET GEMETEN (ongebruikt)"; fi
+            echo "Oordeel: bulk 200 = $B200, 5xx = $B5XX, audit kopie_volgende_week = $KOPIE, planning_bulk = $PLOEG, veldwerker_aangemaakt(paneel) = $QUICK — $ST — exit $rc_pv" >> "$UIT"
+            echo "STATUS planning-v4: rapport in $UIT (exit $rc_pv = uitkomst)"
           fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only

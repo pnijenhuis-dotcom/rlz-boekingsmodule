@@ -13358,3 +13358,36 @@ Werkt in productie: niet gemeten (dispatch-onderdeel `comfort-controlescherm`). 
   `tests/projectverdeling/test_standaard_sleutel.py`, keten-casus c (Spot Services: `omschrijving_ingekort`, `periode.datum_van/_tot`),
   vitest `bedragExpressie`, `BedragModusInput`, `ReviewSplitter`, `ProjectverdelingBlok`, `BoekvoorstelPanel.kopDoorzetten`,
   `BoekvoorstelPanel.periode`, `kopDoorgezetTijdlijn`; keten-baselines detail-casussen ververst (gewilde UI-wijziging).
+
+## PLANNING V4 — POOL WEG, PROJECT × DAG-MATRIX, PLOEG-PANEEL ALS DÉ WERKWIJZE, QUICK-ADD, KOPIE NAAR VOLGENDE WEEK (Peter 28-09) — herziet drie v3-keuzes (18-09): ZZP-pool + slepen van personen, vrije kaartvolgorde per dag, reserveringskaart mét infopaneel; kopie = alleen dezelfde weekdag; geen migratie
+
+**Status: GEBOUWD + GETEST 28-09-2026 (handmatige CC-sessie; opdracht
+`opdrachten/gedaan/2026-09-28-planning-v4-pool-weg-matrix-uitlijning-paneel-plus-zzp-kopie-naar-volgende-week.md`, rapport
+`docs/rapporten/2026-09-28-planning-v4.md`). Canonieke regeltekst: `docs/regels/uren-planning-veldwerkers.md` alinea "Planning v4 —
+pool weg, project × dag-matrix, ploeg-paneel als dé werkwijze, quick-add in het paneel, kopie naar volgende week". Mockup
+`planning-steigerbouw.html` ná de bouw bijgewerkt naar de v4-vorm mét ontwerpnotities v4 (besluit Peter: "Ik hoef hier geen mockup
+van"); `planning-v3-dag-eerst.html` = historie. Werkt in productie: niet gemeten — dispatch-onderdeel `planning-v4` + vervolg-opdracht
+`opdrachten/inbox/2026-09-29-nameting-planning-v4-na-deploy.md` (niet vóór 29-09 09:00); klikpunt Peter/Haci: week 40 plannen via het
+paneel + kopie.**
+
+**Feedback Peter 28-09 (letterlijk, `docs/feedback/2026-09-28-planning-steigerbouw-feedback-peter.md`):** de ZZP-lijst rechts is niet
+werkbaar (scrollen naar onderen = de werken zijn weggescrold, slepen kan dan niet); het paneel van bijlage 2 scrolt zelf en is veel
+handiger — dat moet de werkwijze worden; daar een + voor een ZZP'er; projecten over de dagen op dezelfde hoogte uitlijnen; een knop
+"toepassen op volgende week" in de kop; slepen van werken en ZZP'ers werkt niet fijn. Besluit: **"kopiëren naar volgende week alleen op
+die dag van de volgende week … dan kan Haci makkelijk die dag weer voor die hele week drukken."** Waarneming schermopname: een
+gereserveerde kaart opende een doodlopend infopaneel "sleep personen uit de pool".
+
+| Blok | Besluit / gebouwd |
+|---|---|
+| 1. Pool weg, paneel dé werkwijze | Rechterkolom pool + slepen van personen vervallen (`ontleedDropPayload` kent alleen `project`); klik op élke kaart — óók gereserveerd — of lege cel = `PloegPaneel` (bug infopaneel gefixt; opslaan ≥ 1 persoon = reservering wordt ploegkaart via bron `ploeg`); "wie is nog vrij" = paneelkop-regel `vrijTellers` + regel in "Per project"; lege stand rechts legt de werkwijze uit. |
+| 2. Quick-add in het paneel | "+ Veldwerker toevoegen…" onderaan de lijst (recht veldwerkerbeheer/Beheerder): naam + rol + e-mail, scope = huidige administratie, bestaande route mét bron `planning_paneel` (rolgroep-poort), audit `veldwerker_aangemaakt` + `gebruiker_uitgenodigd`, direct aangevinkt ná herladen; pool draagt nu écht `dossier_onvolledig` (`dossier.onvolledig_per_veldwerker`, set-based) → chip in paneel + stippellijn op de kaart; dossier blijft verplicht vóór de eerste weekstaat-goedkeuring (bestaande handhaving); dubbelencheck = e-mail 409, zelfde naam mag (broers). |
+| 3. Project × dag-matrix | `matrixRijen`: rijen = projecten mét planning/reservering, volgorde eerste dag → aantal dagen ↓ → projectnummer (numeriek); lege cel = plancel (drop + klik = paneel mét voorstel van de dichtstbijzijnde eerdere dag, niets opgeslagen); drop-rij "Nieuw project"; handvat vult de eigen rij; sticky dagkop + interne scroll (`minWidth` 800, geen pagina-overflow, sweep 24/24); urenfilters filteren RIJEN (Per project houdt het kaartfilter). |
+| 4. Kopie naar volgende week | Knop "Kopiëren naar ‹weekdag› volgende week" = vinkjesstand op datum+7 via de bulkroute, nieuwe bron `kopie_volgende_week`: conflict = gepland + oranje, **afwezig = overgeslagen mét reden** (niet gepland), bestaand = samengevoegd, idempotent, audit; toast mét "Naar week N+1" + "Ongedaan maken"; géén hele-projectweek-knop; achteraf raakt week+1 niet; dag-override niet gekopieerd (periode-werkopdracht geldt vanzelf). |
+| 5. Mockup + docs | `planning-steigerbouw.html` → v4-vorm (matrix + paneel, pool weg) mét ontwerpnotities v4 (vijf feedbackpunten + besluit "alleen dezelfde weekdag"); v3-mockup krijgt een v4-banner; regels-alinea; WAT_IS_NIEUW 28-09 (Haci leest mee); dispatch-onderdeel `planning-v4` (request-log bulk/uitnodigingen + `db-lezen planning-v4`). |
+| Bijvangst | Dossier-signaal `geen_dossier` (gebouwd 18-09, nooit geleverd) nu live → één rij per persoon per week in het conflictenpaneel, geen kaart-oranje (Universal 0 dossiers → anders verdringt het de échte conflicten). Guard-regexen van `test_nameting_workflow` lezen `[a-z0-9-]` (onderdeelnaam mét cijfer). |
+
+**Keuzes zonder Peter (rapport "Keuzes"):** (1) quick-add vraagt óók een e-mailadres — het accountmodel eist een uniek adres en dat ís de
+harde dubbelensleutel; (2) de kopie gebruikt de vinkjesstand van het paneel (net als "Toepassen op hele week"), niet alleen de opgeslagen
+ploeg; (3) "+ ZZP'er" bestaat alleen nog in het paneel (en op Beheer › Veldwerkers), niet meer los in de zijbalk; (4) archiveren vanaf het
+poolkaartje is mee vervallen (Beheer › Veldwerkers); (5) dossier-signaal één rij per persoon, geen kaart-oranje; (6) urenfilter =
+rijfilter in de matrix.

@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -81,7 +81,7 @@ def test_elk_dispatch_onderdeel_staat_in_de_keuzelijst() -> None:
     m = re.search(r"options: \[([^\]]+)\]", tekst)
     assert m, "options-lijst ontbreekt"
     opties = {o.strip() for o in m.group(1).split(",")}
-    gebruikt = set(re.findall(r'"\$ONDERDEEL" (?:==|!=) "([a-z-]+)"', tekst))
+    gebruikt = set(re.findall(r'"\$ONDERDEEL" (?:==|!=) "([a-z0-9-]+)"', tekst))
     assert gebruikt, "geen $ONDERDEEL-vergelijkingen gevonden"
     assert gebruikt <= opties, f"onderdelen zonder keuze-optie (dispatch geeft 422): {sorted(gebruikt - opties)}"
 
@@ -308,7 +308,7 @@ def _vgg_uitsluitingen() -> set[str]:
     regel = next(
         r for r in meet.splitlines() if 'vgg_blok7_nameting.sh "$ONDERDEEL"' not in r and '!= "reconciliatie"' in r
     )
-    return set(re.findall(r'"\$ONDERDEEL" != "([a-z-]+)"', regel))
+    return set(re.findall(r'"\$ONDERDEEL" != "([a-z0-9-]+)"', regel))
 
 
 def test_elk_niet_vgg_onderdeel_is_uitgesloten_van_de_vgg_tak() -> None:
@@ -440,7 +440,7 @@ def test_oordeel_jobs_start_neemt_eigen_rapport_niet_de_replay_regel(tmp_path: P
 def _onderdelen_met_eigen_rapport() -> list[str]:
     """Élk dispatch-onderdeel dat zijn uitkomst in `verkenning/nameting-<onderdeel>-$DATUM.txt` schrijft."""
     meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
-    namen = re.findall(r'UIT="verkenning/nameting-([a-z-]+)-\$DATUM\.txt"', meet)
+    namen = re.findall(r'UIT="verkenning/nameting-([a-z0-9-]+)-\$DATUM\.txt"', meet)
     return sorted(set(namen) - {"vgg-replay"})
 
 
@@ -658,3 +658,33 @@ def test_nameting_sh_feedbackrun_25_09_allowlist_en_via_gh() -> None:
     for onderdeel in FEEDBACKRUN_ONDERDELEN_25_09:
         cmd = {"xml-documenten": "xml-documenten-rapport"}.get(onderdeel, onderdeel)
         assert re.search(r"^\s*" + re.escape(f"{cmd}) echo {onderdeel} ;;"), sh, flags=re.M), f"via_gh_onderdeel mist: {onderdeel}"
+
+
+# --- planning v4 28-09: dispatch-onderdeel `planning-v4` (vier plekken; lees-only; eigen oordeelregel, else-tak) ---
+def test_planning_v4_onderdeel_alleen_op_verzoek_lees_only_met_eigen_oordeel(tmp_path: Path) -> None:
+    """Planning v4 (Peter 28-09): het meetrecept (request-log planning/bulk + auth/uitnodigingen, db-lezen planning-v4)
+    is een dispatch-onderdeel mét if-tak + options + via_gh_onderdeel + eigen rapport `nameting-planning-v4-<dd-mm>.txt`
+    — niet in 'alles', geen schrijvend commando. Onderdeelnaam mét cijfer: de guard-regexen lezen sinds 28-09
+    `[a-z0-9-]`."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "planning-v4" ]]; then' in meet
+    assert 'nameting.sh db-lezen planning-v4 --administratie "Universal Steigerbouw" --param dagen=14' in meet
+    assert 'httpRequest.requestUrl:"/uren/kantoor/planning/"' in meet
+    assert 'httpRequest.requestUrl:"/auth/uitnodigingen"' in meet
+    assert 'UIT="verkenning/nameting-planning-v4-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "planning-v4"' not in meet, "niet in 'alles'"
+    tak = meet[meet.index('if [[ "$ONDERDEEL" == "planning-v4" ]]; then') :]
+    tak = tak[: tak.index("\n          fi\n")]
+    assert "gcloud run jobs execute" not in tak and "--uitvoeren" not in tak, "lees-only: geen job-executie/schrijfvlag"
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "planning-v4",
+        {
+            "nameting-planning-v4-14-09.txt": "kop\nOordeel: bulk 200 = 3, 5xx = 0, audit kopie_volgende_week = 1\n",
+            "nameting-vgg-replay-14-09.txt": REPLAY,
+        },
+    )
+    assert oordeel.startswith("Oordeel: bulk 200 = 3"), oordeel
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    assert re.search(r"^\s*planning-v4\) echo planning-v4 ;;", sh, flags=re.M), "via_gh_onderdeel mist: planning-v4"
+    assert (REPO / "backend" / "app" / "lezen" / "queries" / "planning-v4.sql").is_file()

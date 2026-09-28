@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Planning steigerbouw — mockup (kantoor-console) · VERVANGEN door planning-v3-dag-eerst.html (18-09)</title>
+<title>Planning steigerbouw — mockup (kantoor-console) · v4 28-09 (matrix + ploeg-paneel; pool weg)</title>
 <!-- ============================================================
      MOCKUP planningsagenda steigerbouw v2 (ontwerpronde, feedback
      Peter 22-08 verwerkt: PROJECTEN als rijen — alleen actieve —
@@ -141,6 +141,33 @@
   .bm-voet{display:flex;align-items:center;gap:12px;padding:14px 20px;border-top:1px solid var(--border);background:var(--panel-2)}
   .bm-voet .rev{font-size:11.5px;color:var(--faint);flex:1;line-height:1.5}
 
+  /* ---- v4 (28-09): project × dag-matrix + ploeg-paneel ---- */
+  table.matrix th:first-child{width:124px}
+  table.matrix thead th{text-align:left}
+  table.matrix tbody th{padding:8px 10px;font-size:12.5px}
+  table.matrix td.cel{padding:6px;vertical-align:top;min-height:0;height:auto}
+  .pkaart{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:8px 9px;font-size:12px;box-shadow:0 1px 2px rgba(21,32,29,.05);cursor:pointer}
+  .pkaart.sel{outline:2px solid var(--primary);outline-offset:1px}
+  .pkaart.conflict{border-color:color-mix(in srgb,var(--warn) 55%,var(--border))}
+  .pkaart.leeg{border-style:dashed;color:var(--muted);text-align:center;padding:12px 8px;background:var(--panel-2)}
+  .pkaart .n{font-weight:600;font-size:12.5px;display:flex;gap:6px;align-items:baseline}.pkaart .n .aantal{margin-left:auto;font-size:11px;color:var(--muted);font-weight:700}
+  .pkaart .s{font-size:11.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis}
+  .pkaart .ploeg{display:flex;gap:3px;flex-wrap:wrap;margin-top:6px}.pkaart .meta{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:10.5px;color:var(--muted)}
+  .av{width:22px;height:22px;border-radius:50%;background:var(--info-bg);color:var(--info);font-size:9.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+  .av.u{background:var(--ok-bg);color:var(--ok);border:1.5px solid var(--ok)}.av.c{background:var(--warn-bg);color:var(--warn);border:1.5px solid var(--warn)}
+  .av.d{box-shadow:0 0 0 1.5px var(--panel),0 0 0 3px var(--faint)}
+  .handvat{position:absolute;right:-8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;background:var(--primary);border:2px solid var(--panel);box-shadow:0 0 0 1px var(--primary);cursor:ew-resize}
+  .leegcel{display:block;width:100%;min-height:44px;border:1px dashed var(--faint);border-radius:10px;background:transparent;color:var(--faint);font:inherit;font-size:11px;cursor:pointer;padding:6px}
+  .leegcel:hover{border-color:var(--primary);color:var(--primary);background:var(--accent-bg)}
+  tr.droprij .drop{border:2px dashed var(--faint);border-radius:10px;min-height:40px;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:11.5px}
+  .chip{display:inline-block;font-size:10.5px;font-weight:600;font-style:normal;line-height:1.5;padding:0 7px;border-radius:999px;white-space:nowrap;vertical-align:middle}
+  .chip.grijs{background:var(--panel-2);color:var(--muted)}.chip.warn{background:var(--warn-bg);color:var(--warn)}.chip.ok{background:var(--ok-bg);color:var(--ok)}
+  .ptegel{flex:0 0 auto;min-width:150px;max-width:230px;border:1px dashed var(--faint);border-radius:10px;padding:7px 10px;background:var(--panel-2);cursor:grab}
+  .ptegel.act{border-style:solid;border-color:var(--border);background:var(--panel)}.ptegel b{display:block;font-size:12.5px}.ptegel span{display:block;font-size:11.5px;color:var(--muted)}
+  .ploegpaneel .pl-lijst{max-height:min(46vh,520px);overflow:auto;border-top:1px solid var(--border)}
+  .ploegpaneel .pl{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--border);font-size:12.5px}
+  .ploegpaneel .pl .st{margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}.ploegpaneel .pl .st.g{color:var(--ok)}.ploegpaneel .pl .st.w{color:var(--warn)}
+  .btn[disabled]{opacity:.5;cursor:default}
   .desknote{margin-top:16px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;font-size:12.5px;line-height:1.6;max-width:980px}
   .desknote h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:10px 0 6px}
   .desknote h2:first-child{margin-top:0}
@@ -150,12 +177,12 @@
 
 <div class="kop">
   <div>
-    <div style="background:#fdf3e3;border:1px solid #f1d7a8;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12.5px"><b>HISTORIE — VERVANGEN door <code>planning-v3-dag-eerst.html</code> (Peter 18-09, dag-eerst).</b> De Transport-tab en de werkopdracht-popup hieronder blijven de norm; het personeel-grid (project-rijen) is vervangen door dagkolommen mét projectkaarten.</div>
+    <div style="background:var(--accent-bg);border:1px solid var(--primary);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12.5px"><b>V4 (feedback Peter 28-09, GEBOUWD 28-09) — de Personeel-tab is een PROJECT × DAG-MATRIX mét het ploeg-paneel als dé werkwijze; de ZZP-pool en het slepen van personen zijn weg.</b> Bijgewerkt ná de bouw naar de gebouwde vorm (besluit Peter: "Ik hoef hier geen mockup van"); de Transport-tab en de werkopdracht-popup hieronder blijven de norm. Historie: v2 22-08 (project-rijen), v3 18-09 (<code>planning-v3-dag-eerst.html</code>, dagkolommen).</div>
 <h1>Planning — Universal Steigerbouw</h1>
-    <div class="sub">Week 35 · 24 – 28 aug · álle actieve projecten (mét planning bovenaan) · sleep een ZZP'er naar een project-dag, of klik een cel</div>
+    <div class="sub">Week 40 · 28 sep – 2 okt · 43 mensen gepland · 4 projecten · 83 actieve projecten · sleep een project naar een dag (of klik project, dan dag), klik een kaart of lege cel voor de ploeg, trek de kaart met het handvat over de week</div>
   </div>
   <div class="rechts">
-    <div class="weeknav"><button class="icon-btn">‹</button><span style="padding:0 6px">Week 35</span><button class="icon-btn">›</button></div>
+    <div class="weeknav"><button class="icon-btn">‹</button><span style="padding:0 6px">Week 40</span><button class="icon-btn">›</button></div>
     <button class="btn secundair klein">Vandaag</button>
     <button class="icon-btn" onclick="document.documentElement.classList.toggle('dark')">◐</button>
   </div>
@@ -167,110 +194,133 @@
 </div>
 
 <div class="layout" id="view-personeel">
-  <div class="planner">
-    <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">
-      <input type="search" placeholder="Filter projecten… (nummer, plaats of opdrachtgever)" style="flex:0 0 340px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:7px 11px;font-size:12.5px;color:var(--text)">
-      <span style="font-size:11.5px;color:var(--faint)">18 actieve projecten · 4 mét planning deze week</span>
+  <div>
+    <!-- v4 (28-09): projectbalk blijft (project → dag slepen, of klik project, dan dag) -->
+    <div class="paneel" style="margin-bottom:12px;padding:10px 12px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <b style="font-size:12.5px">Projecten</b>
+        <span style="font-size:11.5px;color:var(--faint)">sleep een project naar een dag (of klik project, dan dag) · gepland deze week eerst</span>
+        <input type="search" placeholder="Zoek project… (nummer, plaats, opdrachtgever)" style="margin-left:auto;min-width:240px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12.5px;color:var(--text)">
+        <span style="font-size:11.5px;color:var(--faint)">83 actieve projecten · 4 mét planning deze week</span>
+      </div>
+      <div style="display:flex;gap:8px;overflow-x:auto">
+        <div class="ptegel act"><b>25013 Nieuwegein</b><span>Wessels · ma–vr · 3 man</span></div>
+        <div class="ptegel act"><b>25000 Arnhem-Kronenburg</b><span>Pleijweg · ma–wo · 4 man</span></div>
+        <div class="ptegel act"><b>25026 Rijssen</b><span>Olieman · ma–wo · 2 man</span></div>
+        <div class="ptegel act"><b>25039 Apeldoorn</b><span>De Bazar · do–vr · 3 man</span></div>
+        <div class="ptegel"><b>25052 Breda</b><span>Moeskops · <em class="chip grijs">niet gepland</em></span></div>
+        <div class="ptegel"><b>25011 Zwolle</b><span>Ben Kuijer · <em class="chip grijs">niet gepland</em></span></div>
+        <button class="btn secundair klein" style="flex:0 0 auto;align-self:center">+ 77</button>
+      </div>
     </div>
-    <table id="grid">
-      <thead>
-        <tr>
-          <th>Project (actief)</th>
-          <th class="vandaag">ma 24-8<small>vandaag</small></th>
-          <th>di 25-8</th>
-          <th>wo 26-8<small>Milan vrij (gemeld)</small></th>
-          <th>do 27-8</th>
-          <th>vr 28-8</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <th>144 Breda<span class="pl">Moeskops · montage · t/m wk 40</span><span class="bezet">deze week: 3 man</span></th>
-          <td class="cel">
-            <div class="kaart" draggable="true"><span class="init">MK</span><b>Milan K.</b></div>
-            <div class="kaart" draggable="true"><span class="init">SB</span><b>Stefan B.</b></div>
-            <div class="kaart groen" draggable="true"><span class="init">BD</span><b>Ben v. Dijk</b><span class="half">uitv.</span></div>
-          </td>
-          <td class="cel">
-            <div class="kaart" draggable="true"><span class="init">MK</span><b>Milan K.</b></div>
-            <div class="kaart conflict" draggable="true"><span class="init">SB</span><b>Stefan B.</b><span class="half">⚠</span></div>
-          </td>
-          <td class="cel"><div class="kaart" draggable="true"><span class="init">SB</span><b>Stefan B.</b></div></td>
-          <td class="cel"></td>
-          <td class="cel"><div class="kaart" draggable="true"><span class="init">SB</span><b>Stefan B.</b></div></td>
-        </tr>
-        <tr>
-          <th>25013 Deurne<span class="pl">Bots Bouwgroep · demontage · t/m wk 36</span><span class="bezet">deze week: 1 man</span></th>
-          <td class="cel"></td>
-          <td class="cel"></td>
-          <td class="cel"></td>
-          <td class="cel"><div class="kaart geel" draggable="true"><span class="init">MK</span><b>Milan K.</b><span class="half">½ dag</span></div></td>
-          <td class="cel"></td>
-        </tr>
-        <tr>
-          <th>25016 Groesbeek<span class="pl">Janssen-Groesbeek · montage · t/m wk 38</span><span class="bezet">deze week: 2 man</span></th>
-          <td class="cel"><div class="kaart" draggable="true"><span class="init">AD</span><b>Ali D.</b></div></td>
-          <td class="cel"><div class="kaart" draggable="true"><span class="init">AD</span><b>Ali D.</b></div></td>
-          <td class="cel"><div class="kaart" draggable="true"><span class="init">AD</span><b>Ali D.</b></div></td>
-          <td class="cel"><div class="kaart geel" draggable="true"><span class="init">MK</span><b>Milan K.</b><span class="half">½ dag</span></div></td>
-          <td class="cel"><div class="kaart" draggable="true"><span class="init">MK</span><b>Milan K.</b></div></td>
-        </tr>
-        <tr>
-          <th>25011 Zwolle<span class="pl">Ben Kuijer · doorlopende huur</span><span class="bezet">deze week: 1 man</span></th>
-          <td class="cel"></td>
-          <td class="cel"></td>
-          <td class="cel"><div class="kaart" draggable="true"><span class="init">BD</span><b>Ben v. Dijk</b><span class="half">uitv.</span></div></td>
-          <td class="cel"></td>
-          <td class="cel"></td>
-        </tr>
-        <tr class="scheider"><th colspan="6">Overige actieve projecten — nog niemand gepland deze week</th></tr>
-        <tr class="leeg">
-          <th>25017 Kudo Arnhem-Kronenburg fase 2<span class="pl">Kudo · montage · t/m wk 44</span></th>
-          <td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td>
-        </tr>
-        <tr class="leeg">
-          <th>25036 Arnhem<span class="pl">Confide Bouw · montage</span></th>
-          <td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td>
-        </tr>
-        <tr class="leeg">
-          <th>25047 Ede<span class="pl">Welling bouw · demontage · t/m wk 36 <b style="color:var(--warn)">⚠ einddatum nadert</b></span></th>
-          <td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td>
-        </tr>
-        <tr class="leeg">
-          <th>25058 Haarlem<span class="pl">Slokker · montage</span></th>
-          <td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td>
-        </tr>
-        <tr class="leeg">
-          <th style="color:var(--faint);font-weight:400">… nog 10 projecten (scroll of filter)</th>
-          <td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td>
-        </tr>
-      </tbody>
-    </table>
+
+    <!-- v4 (28-09): PROJECT × DAG-MATRIX — rijen = projecten, dezelfde rij over de week; lege cel = plancel; drop-rij onderaan -->
+    <div class="planner">
+      <table id="grid" class="matrix">
+        <thead>
+          <tr>
+            <th style="width:124px">Project<small>4 rijen</small></th>
+            <th class="vandaag">ma 28-9<small>9 man · 3 projecten</small></th>
+            <th>di 29-9<small>9 man · 3 projecten</small></th>
+            <th>wo 30-9<small>9 man · 3 projecten</small></th>
+            <th>do 1-10<small>6 man · 2 projecten</small></th>
+            <th>vr 2-10<small>6 man · 2 projecten</small></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>25013 Nieuwegein<span class="pl">Wessels · 5 dagen</span></th>
+            <td class="cel"><div class="pkaart"><div class="n">25013 Nieuwegein<span class="aantal">3</span></div><div class="s">Wessels · Blokhoeve · 07:30</div><div class="ploeg"><span class="av u">RD</span><span class="av">VP</span><span class="av">ZP</span></div><div class="meta">● geen uren</div></div></td>
+            <td class="cel"><div class="pkaart"><div class="n">25013 Nieuwegein<span class="aantal">3</span></div><div class="s">Wessels · Blokhoeve · 07:30</div><div class="ploeg"><span class="av u">RD</span><span class="av">VP</span><span class="av">ZP</span></div><div class="meta">● geen uren</div></div></td>
+            <td class="cel"><div class="pkaart"><div class="n">25013 Nieuwegein<span class="aantal">3</span></div><div class="s">Wessels · Blokhoeve · 07:30</div><div class="ploeg"><span class="av u">RD</span><span class="av">VP</span><span class="av">ZP</span></div><div class="meta">● geen uren</div></div></td>
+            <td class="cel"><div class="pkaart conflict"><div class="n">25013 Nieuwegein<span class="aantal">3</span></div><div class="s">Wessels · Blokhoeve · 07:30</div><div class="ploeg"><span class="av u">RD</span><span class="av">VP</span><span class="av c">RY</span></div><div class="meta">● geen uren <em class="chip warn">conflict</em></div></div></td>
+            <td class="cel"><div class="pkaart"><div class="n">25013 Nieuwegein<span class="aantal">3</span></div><div class="s">Wessels · Blokhoeve · 07:30</div><div class="ploeg"><span class="av u">RD</span><span class="av">VP</span><span class="av">ZP</span></div><div class="meta">● geen uren</div></div></td>
+          </tr>
+          <tr>
+            <th>25000 Arnhem-Kronenburg<span class="pl">Pleijweg · 3 dagen</span></th>
+            <td class="cel"><div class="pkaart sel"><div class="n">25000 Arnhem-Kronenburg<span class="aantal">4</span></div><div class="s">Pleijweg · opbouw fase 2 — 08:00 · bus 2</div><div class="ploeg"><span class="av u">OO</span><span class="av">MS</span><span class="av">RY</span><span class="av">SH</span></div><div class="meta">● geen uren</div><span class="handvat" title="vulhandvat: kaart + ploeg over de dagen van deze rij"></span></div></td>
+            <td class="cel"><div class="pkaart"><div class="n">25000 Arnhem-Kronenburg<span class="aantal">4</span></div><div class="s">Pleijweg · opbouw fase 2 — 08:00 · bus 2</div><div class="ploeg"><span class="av u">OO</span><span class="av">MS</span><span class="av">RY</span><span class="av">SH</span></div><div class="meta">● geen uren</div></div></td>
+            <td class="cel"><div class="pkaart"><div class="n">25000 Arnhem-Kronenburg<span class="aantal">4</span></div><div class="s">Pleijweg · opbouw fase 2 — 08:00 · bus 2</div><div class="ploeg"><span class="av u">OO</span><span class="av">MS</span><span class="av">RY</span><span class="av">SH</span></div><div class="meta">● geen uren</div></div></td>
+            <td class="cel"><button class="leegcel" title="25000 Arnhem-Kronenburg op do 1-10 plannen — opent het paneel mét de ploeg van wo als voorstel">sleep hierheen / + plannen</button></td>
+            <td class="cel"><button class="leegcel">sleep hierheen / + plannen</button></td>
+          </tr>
+          <tr>
+            <th>25026 Rijssen<span class="pl">Olieman · 3 dagen</span></th>
+            <td class="cel"><div class="pkaart"><div class="n">25026 Rijssen<span class="aantal">2</span></div><div class="s">Olieman</div><div class="ploeg"><span class="av">HL</span><span class="av">AS</span></div><div class="meta">● geen uren</div></div></td>
+            <td class="cel"><div class="pkaart"><div class="n">25026 Rijssen<span class="aantal">2</span></div><div class="s">Olieman</div><div class="ploeg"><span class="av">HL</span><span class="av">AS</span></div><div class="meta">● geen uren</div></div></td>
+            <td class="cel"><div class="pkaart conflict"><div class="n">25026 Rijssen<span class="aantal">6</span></div><div class="s">Olieman</div><div class="ploeg"><span class="av">HL</span><span class="av">AS</span><span class="av c">MS</span><span class="av d" title="I. Onel · dossier onvolledig">IO</span><span class="av">AA</span><span class="av c">BG</span></div><div class="meta">● geen uren <em class="chip warn">conflict ×3</em></div></div></td>
+            <td class="cel"><button class="leegcel">sleep hierheen / + plannen</button></td>
+            <td class="cel"><button class="leegcel">sleep hierheen / + plannen</button></td>
+          </tr>
+          <tr>
+            <th>25039 Apeldoorn<span class="pl">De Bazar · 2 dagen</span></th>
+            <td class="cel"><button class="leegcel">sleep hierheen / + plannen</button></td>
+            <td class="cel"><button class="leegcel">sleep hierheen / + plannen</button></td>
+            <td class="cel"><button class="leegcel">sleep hierheen / + plannen</button></td>
+            <td class="cel"><div class="pkaart"><div class="n">25039 Apeldoorn<span class="aantal">3</span></div><div class="s">De Bazar</div><div class="ploeg"><span class="av u">OO</span><span class="av">MS</span><span class="av">SH</span></div><div class="meta">● geen uren</div></div></td>
+            <td class="cel"><div class="pkaart"><div class="n">25039 Apeldoorn<span class="aantal">3</span></div><div class="s">De Bazar</div><div class="ploeg"><span class="av u">OO</span><span class="av">MS</span><span class="av">SH</span></div><div class="meta">● geen uren</div></div></td>
+          </tr>
+          <tr>
+            <th>25052 Breda<span class="pl">Moeskops · 1 dag</span></th>
+            <td class="cel"><button class="leegcel">sleep hierheen / + plannen</button></td>
+            <td class="cel"><button class="leegcel">sleep hierheen / + plannen</button></td>
+            <td class="cel"><button class="leegcel">sleep hierheen / + plannen</button></td>
+            <td class="cel"><div class="pkaart leeg"><div class="n">25052 Breda</div><div class="s"><em class="chip grijs">gereserveerd · nog geen ploeg</em> ✕</div></div></td>
+            <td class="cel"><button class="leegcel">sleep hierheen / + plannen</button></td>
+          </tr>
+          <tr class="droprij">
+            <th><span class="pl">Nieuw project</span></th>
+            <td class="cel"><div class="drop">sleep project hierheen</div></td>
+            <td class="cel"><div class="drop">sleep project hierheen</div></td>
+            <td class="cel"><div class="drop">sleep project hierheen</div></td>
+            <td class="cel"><div class="drop">sleep project hierheen</div></td>
+            <td class="cel"><div class="drop">sleep project hierheen</div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
+  <!-- v4 (28-09): het PLOEG-PANEEL is dé werkwijze — voor élke kaart (ook gereserveerd) en élke lege cel; de ZZP-pool is weg -->
   <div class="zij">
-    <div class="paneel pool">
-      <h2>👷 ZZP'ers &amp; uitvoerders <span style="margin-left:auto;font-weight:400;color:var(--faint)">sleep naar het grid</span></h2>
+    <div class="paneel ploegpaneel">
       <div class="body">
-        <div class="kaart" draggable="true"><span class="init">MK</span><b>Milan K.</b><span class="dagen">4,0 dg</span></div>
-        <div class="kaart" draggable="true"><span class="init">SB</span><b>Stefan B.</b><span class="dagen">4 dg</span></div>
-        <div class="kaart" draggable="true"><span class="init">AD</span><b>Ali D.</b><span class="dagen">3 dg</span></div>
-        <div class="kaart geel" draggable="true"><span class="init">JV</span><b>Jan V. (nieuw)</b><span class="dagen">0 dg</span></div>
-        <div class="kaart groen" draggable="true"><span class="init">BD</span><b>Ben v. Dijk</b><span class="dagen">2 dg</span></div>
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <div style="min-width:0"><h3 style="font-size:14px;margin:0">25000 Arnhem-Kronenburg</h3>
+            <div style="font-size:12px;color:var(--muted)">ma 28-9 · Pleijweg · <a style="color:var(--primary);cursor:pointer">📋 opbouw fase 2 — 08:00 · bus 2 · wijzigen</a></div>
+            <div style="font-size:11.5px;color:var(--muted)">2 vrij op ma 28-9 · 0 vrij hele week</div></div>
+          <a style="margin-left:auto;cursor:pointer;color:var(--muted)">✕</a>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 6px">
+          <button class="btn secundair klein" disabled>Zelfde ploeg als vorige werkdag</button>
+          <button class="btn secundair klein">Toepassen op hele week</button>
+          <button class="btn secundair klein" title="Dezelfde kaart (project + ploeg, géén uren) op ma 5-10 — afwezig = overgeslagen, al gepland = samengevoegd, elders gepland = oranje">Kopiëren naar ma volgende week</button>
+        </div>
+        <input type="search" placeholder="Zoek veldwerker…" style="width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12.5px;color:var(--text);margin:4px 0 6px">
+        <div style="font-size:11.5px;color:var(--muted);margin-bottom:4px">4 gekozen · beschikbaarheid voor ma 28-9</div>
+        <div class="pl-lijst">
+          <div class="pl"><input type="checkbox" checked><span class="av">MS</span><span>M. Sanli</span><span class="st g">vrij</span></div>
+          <div class="pl"><input type="checkbox" checked><span class="av u">OO</span><span>Orfan Ogur <em class="chip ok">uitv.</em></span><span class="st g">vrij</span></div>
+          <div class="pl"><input type="checkbox" checked><span class="av">RY</span><span>R. Yücetaş</span><span class="st g">vrij</span></div>
+          <div class="pl"><input type="checkbox" checked><span class="av">SH</span><span>S. Hasturk</span><span class="st g">vrij</span></div>
+          <div class="pl"><input type="checkbox"><span class="av">AA</span><span>A. Alizada</span><span class="st g">vrij</span></div>
+          <div class="pl"><input type="checkbox"><span class="av d">IO</span><span>I. Onel <em class="chip warn">dossier onvolledig</em></span><span class="st g">vrij</span></div>
+          <div class="pl"><input type="checkbox"><span class="av">AS</span><span>Adem Sarac</span><span class="st w">al op 25026 Rijssen</span></div>
+          <div class="pl"><input type="checkbox"><span class="av">HL</span><span>Hakim Lali</span><span class="st w">al op 25026 Rijssen</span></div>
+          <div class="pl"><input type="checkbox"><span class="av u">RD</span><span>Reijer de Vries <em class="chip ok">uitv.</em></span><span class="st w">al op 25013 Nieuwegein</span></div>
+          <div class="pl" style="opacity:.55"><input type="checkbox" disabled><span class="av">BG</span><span>Baki Genc</span><span class="st">afwezig t/m 9-10</span></div>
+          <div style="font-size:11.5px;color:var(--faint);padding:6px 4px">… 36 meer</div>
+          <a class="linkbtn" style="display:block;padding:8px 4px;color:var(--primary);cursor:pointer;font-size:12.5px">+ Veldwerker toevoegen…</a>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin:6px 0">Iemand met conflict kiezen mag — de kaart kleurt oranje. Afwezig = niet kiesbaar.</p>
+        <div style="display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--border);padding-top:8px"><button class="btn secundair klein">Annuleren</button><button class="btn klein" disabled>Opslaan (4)</button></div>
       </div>
     </div>
 
     <div class="paneel">
       <h2>⚠ Controle-meldingen <span class="badge danger" style="margin-left:auto">2</span></h2>
-      <div class="melding"><span>🟥</span><span><b>Stefan B.</b> — dubbele dag di 25-8: uren op <b>144 Breda</b> én <b>25011 Zwolle</b>, planning dekte alleen Breda.<span class="meta">3e keer deze maand · alleen zichtbaar voor kantoor → aanspreken</span></span></div>
-      <div class="melding"><span>🟧</span><span><b>Milan K.</b> — uren buiten planning: wo 26-8 stond vrij, toch 4,0 u op 25013 Deurne ingediend.<span class="meta">kleurt oranje bij de keuring van Ben v. Dijk</span></span></div>
-    </div>
-
-    <div class="paneel">
-      <h2>📊 Dubbele-dag-teller (intern)</h2>
-      <div class="melding"><span>Stefan B.</span><span style="margin-left:auto"><span class="badge danger">3× / 30 dgn</span></span></div>
-      <div class="melding"><span>Milan K.</span><span style="margin-left:auto"><span class="badge warn">1× / 30 dgn</span></span></div>
-      <div class="melding"><span>Ali D.</span><span style="margin-left:auto;color:var(--faint)">0×</span></div>
+      <div class="melding"><span>🟥</span><span><b>Stefan B.</b> — dubbele dag di 29-9: uren op <b>25013 Nieuwegein</b> én <b>25011 Zwolle</b>, planning dekte alleen Nieuwegein.<span class="meta">3e keer deze maand · alleen zichtbaar voor kantoor → aanspreken</span></span></div>
+      <div class="melding"><span>🟧</span><span><b>Milan K.</b> — uren buiten planning: wo 30-9 stond vrij, toch 4,0 u op 25013 Deurne ingediend.<span class="meta">kleurt oranje bij de keuring</span></span></div>
     </div>
   </div>
 </div>
@@ -388,7 +438,18 @@
   </div>
 </div>
 
-<div class="notitie">ℹ️ <b>Zo grijpt de planning op de weekstaten in:</b> uren op een gepland project/dag = groen · uren búíten de planning = oranje "buiten planning" bij de keuring (geen blokkade — invallen en omplannen blijft mogelijk) · twee projecten op één dag zónder planning-dekking = <b>interne melding + teller per ZZP'er</b>, alleen zichtbaar voor kantoor. Meerdere mensen op één project/dag = meerdere kaartjes in één cel; halve dagen dragen een ½-label. Slepen naar een project maakt de projectkoppeling automatisch aan.</div>
+<div class="notitie">ℹ️ <b>Zo grijpt de planning op de weekstaten in:</b> uren op een gepland project/dag = groen · uren búíten de planning = oranje "buiten planning" bij de keuring (geen blokkade — invallen en omplannen blijft mogelijk) · twee projecten op één dag zónder planning-dekking = <b>interne melding + teller per ZZP'er</b>, alleen zichtbaar voor kantoor. Per dag één kaart per project mét de ploeg als initialen (½ = halve dag); élk project staat op zijn eigen rij over de week. Kopiëren over de week: handvat; naar de volgende week: in het paneel "Kopiëren naar ‹weekdag› volgende week" (alleen die dag). Plannen maakt de projectkoppeling automatisch aan.</div>
+
+<div class="desknote" style="border-color:var(--primary)">
+  <h2>PLANNING V4 — ontwerpnotities (feedback Peter 28-09, GEBOUWD 28-09 zonder mockup vooraf; deze mockup is ná de bouw naar de gebouwde vorm gezet)</h2>
+  Bron: <code>docs/feedback/2026-09-28-planning-steigerbouw-feedback-peter.md</code> (letterlijk + waarneming schermopname). Herziet drie v3-keuzes van 18-09 (<code>planning-v3-dag-eerst.html</code>): de ZZP-pool + het slepen van personen, de vrije kaartvolgorde per dag, de reserveringskaart mét infopaneel.<br><br>
+  <b>① De ZZP-lijst rechts is weg; het ploeg-paneel is dé werkwijze.</b> Peter: "de lijst rechts van alle ZZP'ers kan hier eigenlijk weg … het overzicht zoals in bijlage 2 is veel handiger, aangezien je daar door de lijst heen scrollt zonder het hoofdscherm te beïnvloeden." Klik op élke kaart — óók een gereserveerde (bug schermopname: die opende een doodlopend infopaneel) — of op een lege cel opent het paneel; het paneel scrolt zelf. Slepen van personen vervalt; project → dag slepen én "klik project, dan dag" blijven. "Wie is nog vrij" = de regel in de paneelkop ("N vrij op ‹dag› · M vrij hele week") en een regel in "Per project".<br>
+  <b>② "+ Veldwerker toevoegen…" in het paneel.</b> Peter: "als de lijst zzp'ers standaard is zoals in bijlage 2 moet daar alleen nog een + knopje komen." Quick-add = naam + rol + e-mail, scope = deze administratie, direct aangevinkt; dossier (KvK/IBAN/documenten) blijft verplicht vóór de eerste weekstaat-goedkeuring → chip "dossier onvolledig" op de persoon (paneel, kaart, Beheer › Veldwerkers). Dubbelencheck alleen op harde sleutels (e-mail); dezelfde naam mag (broers, 21-09).<br>
+  <b>③ Project × dag-matrix — dezelfde rij over de week.</b> Peter: "als projecten over de week ingepland zijn op verschillende dagen graag die automatisch op dezelfde hoogte uitlijnen." Rijen = projecten mét planning of reservering, volgorde eerste geplande dag → aantal dagen → projectnummer; lege cel = plancel "sleep hierheen / + plannen" (klik = paneel mét de ploeg van de dichtstbijzijnde eerdere dag als voorstel, niets opgeslagen); drop-rij "Nieuw project" onderaan; handvat vult cellen op de eigen rij; sticky dagkop; urenfilters filteren rijen, niet cellen.<br>
+  <b>④ "Kopiëren naar ‹weekdag› volgende week" — alleen dezelfde weekdag.</b> Besluit Peter 28-09: "kopiëren naar volgende week alleen op die dag van de volgende week, er wordt toch week per week gepland en dan kan Haci makkelijk die dag weer voor die hele week drukken." Zelfde kaart (project + ploeg, géén uren) op datum + 7 via de bulkroute: afwezig = overgeslagen mét melding, elders gepland = oranje (nooit blokkerend), al gepland = samengevoegd; toast mét "Naar week N+1" en "Ongedaan maken". Géén "hele projectweek → volgende week"-knop.<br>
+  <b>⑤ Slepen van werken/ZZP'ers "mag sowieso anders".</b> Peter: "het slepen of kopiëren van een werk om vervolgens dat werk open te klikken en die zzp lijst af te vinken … werkt heel prettig, dat moet de werkwijze worden." Werk plaatsen (slepen of klik-klik) → kaart openen → lijst afvinken.<br>
+  <b>Ongewijzigd:</b> conflictenpaneel (21-09; dossier-signaal = één rij per persoon per week, geen kaart-oranje), vulhandvat, week-URL, werkopdrachten, meldingen, Transport-tab hieronder, veld-app-planningweergave. Geen automatische ploegtoewijzing; geen verwijderen van veldwerkers vanuit het paneel.
+</div>
 
 <div class="desknote">
   <h2>TRANSPORT-TAB (uitbreiding Peter 24-08 — ontwerp, ter beoordeling)</h2>
