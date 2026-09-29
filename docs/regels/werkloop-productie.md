@@ -345,3 +345,6 @@
   bewust geen secrets-rechten) — de meetlat is de job-uitvoer + `gcloud secrets versions list` in de owner-sessie; (4) een IAM-grant kan de
   CC-run niet zelf zetten (classifier) → `scripts/gcp/credential_naar_secretmanager_iam.sh` als klikpunt in een terminal-opdracht, executie ná
   deploy. Tests `tests/beheer/test_credential_naar_secretmanager.py` (waarde-lek-guard op uitvoer én audit, idempotentie, dry-run, REST-vorm).
+  **Uitgevoerd 29-09 door Peter** via het alles-in-één owner-script `scripts/gcp/jarvis_logins_alles.sh` (IAM → wacht op de job-image → dry-run
+  `rlz-reconciliatie-868zv` → executie `rlz-reconciliatie-t2ts9` → meetlat): 18 × "versie 1 gezet (n tekens)", 18/18 secrets versie 1 ENABLED —
+  werkt in productie: ja (rapport `docs/rapporten/2026-09-29-credential-naar-secretmanager.md`, sectie "Gemeten").

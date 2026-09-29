@@ -1,3 +1,5 @@
+> **UITGEVOERD 29-09 door Peter** via `scripts/gcp/jarvis_logins_alles.sh` (stap 0–4 in één run). Dry-run `rlz-reconciliatie-868zv`, executie `rlz-reconciliatie-t2ts9`, 18/18 secrets versie 1 ENABLED. Rapport: `docs/rapporten/2026-09-29-credential-naar-secretmanager.md` (Gemeten); log: `docs/rapporten/2026-09-29-credential-naar-secretmanager.terminal.log`.
+
 # Terminal 29-09 — Jarvis-logins: credential-store → Secret Manager (ná deploy van de commit "credential-naar-secretmanager")
 
 Volgorde: stap 0 (IAM, eenmalig) → stap 1 (deploy live?) → stap 2 (dry-run) → stap 3 (echte executie) → stap 4 (versies tellen).
