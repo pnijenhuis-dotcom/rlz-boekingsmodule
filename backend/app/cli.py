@@ -2394,6 +2394,7 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
     from app.projecten import nummer as projecten_nummer
     from app.reconciliatie import rlz_dubbel
     from app.reconciliatie import run as reconciliatie_run
+    from app.verkoop import reconciliatie as vastly_reconciliatie
 
     alle_blokken = (
         ("bank", _bank_reconciliatie),
@@ -2419,6 +2420,9 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
         # Postvak-bewaking (Peter 22-09): per kanaal berichten in het postvak sinds gisteren (INBOX + spam, gelezen én
         # ongelezen) ↔ verwerkt-administratie; verschil = actie-bevinding mét "Nu verwerken"; verbinding stuk = FOUT.
         (intake_bewaking.BLOK, intake_bewaking.cli_blok),
+        # Vastly-verkoop volledig automatisch (Peter 29-09): open Vastly-verkoopdocumenten > 1 dag = bevinding mét handeling
+        # (entiteit koppelen / rekening kiezen / opnieuw aanbieden); schrappen = deze regel + run.BLOKKEN.
+        (vastly_reconciliatie.BLOK, vastly_reconciliatie.cli_blok),
     )
     alleen = set(getattr(args, "alleen", None) or [])
     lees_only = bool(getattr(args, "lees_only", False))
@@ -2465,12 +2469,34 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
             exit_code = max(exit_code, 1 if code else 0)
         if not alleen:
             _ai_heraanbieding_dagelijks(echte_run=False)
+            _vastly_heraanbieding_dagelijks(echte_run=False)
         print("\nLEES-ONLY afgerond — niets vastgelegd.")
         return exit_code
 
+    # Peter 29-09: de heraanbieding van Vastly-verkoopdocumenten draait VÓÓR de blokken (wat nu boekt, is geen bevinding
+    # meer) — deterministisch, geen AI, RLZ-writes via de verkoop-boekmotor mét alle harde checks + volumerem.
+    _vastly_heraanbieding_dagelijks(echte_run=True)
     code = reconciliatie_run.voer_uit(blokken=blokken, args=args)
     _ai_heraanbieding_dagelijks(echte_run=True)
     return code
+
+
+def _vastly_heraanbieding_dagelijks(*, echte_run: bool) -> None:
+    """Dagelijkse stap (Peter 29-09, kernprincipe 7.6): alle niet-gekoppelde en open Vastly-verkoopdocumenten door het
+    automatische pad; lees-only = telling + verwacht oordeel per document. Een fout is een zichtbare regel, nooit een
+    stille no-op (de run-audit voedt de dagteller `vastly_verkoop_heraanbieding`)."""
+    from app.verkoop import heraanbieden as vastly_heraanbieden
+
+    print("\n=== Vastly-verkoop heraanbieding (dagelijkse stap) ===")
+    try:
+        r = vastly_heraanbieden.draai(bron="dagelijks", dry_run=not echte_run)
+        print(f"kandidaten: {r.kandidaten} — " + (", ".join(f"{k} {v}" for k, v in r.per_uitkomst().items()) or "geen"))
+        for naam, per in r.per_administratie().items():
+            print(f"  {naam}: " + ", ".join(f"{k} {v}" for k, v in sorted(per.items())))
+        if not echte_run:
+            print("LEES-ONLY: niets aangeboden.")
+    except Exception as exc:  # noqa: BLE001
+        print(f"FOUT dagelijkse Vastly-heraanbiedingsstap: {exc}", file=sys.stderr)
 
 
 def _ai_heraanbieding_dagelijks(*, echte_run: bool) -> None:
@@ -3482,6 +3508,10 @@ def main(argv: list[str] | None = None) -> int:
     from app.intake.tweelingen_herstel import register as register_tweelingen
 
     register_tweelingen(subparsers)  # dry-run default; --uitvoeren schrijft
+    from app.verkoop.heraanbieden import dispatch as dispatch_vastly_heraanbieden  # 29-09: Vastly-verkoop automatisch
+    from app.verkoop.heraanbieden import register as register_vastly_heraanbieden
+
+    register_vastly_heraanbieden(subparsers)  # dry-run default; --uitvoeren boekt
     from app.beheer.bua_cli import dispatch as dispatch_bua  # 21-09: bua-kandidaten (lees-only) + bua-kenmerk-zetten
     from app.beheer.bua_cli import register as register_bua
     from app.odoo.sync_cli import dispatch as dispatch_odoo_sync  # 24-09 blok 2: hersync NL-namen via de eerste-sync-route
@@ -4333,6 +4363,8 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_pdf_toets
     if (uitkomst_tweelingen := dispatch_tweelingen(args)) is not None:  # 24-09 blok 1: vastly-pdf-tweelingen-herstel
         return uitkomst_tweelingen
+    if (uitkomst_vastly := dispatch_vastly_heraanbieden(args)) is not None:  # 29-09: vastly-verkoop-heraanbieden
+        return uitkomst_vastly
     if (uitkomst_odoo_sync := dispatch_odoo_sync(args)) is not None:  # 24-09 blok 2: odoo-stamgegevens-sync
         return uitkomst_odoo_sync
     if (uitkomst_btw_tarief := dispatch_btw_tarief(args)) is not None:  # 18-09, lees-only

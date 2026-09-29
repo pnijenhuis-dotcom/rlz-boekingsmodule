@@ -81,6 +81,9 @@ BLOKKEN = (
     "activa",
     # Postvak-bewaking (Peter 22-09): ontvangen in het postvak ↔ verwerkt door de module, per kanaal (app/intake/bewaking.py).
     "intake",
+    # Vastly-verkoop volledig automatisch (Peter 29-09): élk open Vastly-verkoopdocument > 1 dag = bevinding mét handeling
+    # (entiteit koppelen / rekening kiezen / opnieuw aanbieden) — app/verkoop/reconciliatie.py.
+    "vastly_verkoop",
 )
 #: Sleutel in `samenvatting` voor de tellers per automatisering (géén blokstand — de bevindingen ervan
 #: staan onder blok `automatisering`, enkelvoud).

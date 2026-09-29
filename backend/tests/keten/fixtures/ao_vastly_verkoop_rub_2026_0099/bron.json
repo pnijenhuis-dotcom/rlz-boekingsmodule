@@ -1,0 +1,7 @@
+{
+ "administratie": "Universal Steigerbouw B.V. (in de keten als vastgoed-administratie mét KvK-identiteit)",
+ "vorm": "Vastly-golden-case factuur-380-golden-standaard.xml (Platform/uitwisseling, 2026-08-10) — twee regels: huur vrijgesteld (E 0 %) + servicekosten 21 % (S), AccountingCost 8000 op documentniveau én per regel",
+ "geanonimiseerd": "factuurnummer RUB-2026-0099, verhuurder = de keten-administratie (KvK 87654321 = fixture-identiteit), huurder Tester Retail B.V. (was al fictief in de golden case), IBAN NL12INGB0680834753 (golden-case-waarde, geen echte rekening)",
+ "productie": "casus voor de opdracht 29-09 'Vastly-verkoop volledig automatisch': 23 UBL's te_controleren + 9 in de verzamelbak (Van Rooijen/Schaalje) — entiteit via het register, omzetrekening per administratie, btw deterministisch, geen mens",
+ "opmerking": "UBL-only casus (geen pdf_tekst.json → buiten alle_casussen()/export-sweep); de Vastly-PDF-tweeling is casus b/TestVastlySuffixStam."
+}

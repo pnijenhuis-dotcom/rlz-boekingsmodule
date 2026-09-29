@@ -34,7 +34,7 @@ from app.documenten.service import (
 from app.documenten.storage import DocumentOpslag
 from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
 from app.intake.models import IntakeBericht, IntakeSplitsing, IntakeSplitsingStatus
-from app.intake.redenen import omschrijf_intake_reden
+from app.intake.redenen import is_vastly_verkoop_reden, omschrijf_intake_reden
 from app.intake.toewijzing import leer_toewijzing
 
 logger = logging.getLogger(__name__)
@@ -203,6 +203,10 @@ def lijst_verzamelbak() -> list[VerzamelbakItem]:
             .order_by(Document.aangemaakt_op.desc())
         ).all()
         redenen = _jongste_intake_redenen(session, [d.id for d in documenten])
+        # Peter 28/29-09: een Vastly-verkoopdocument zonder gekoppelde entiteit is GEEN verzamelbak-werk ("ik wil ze niet
+        # eens zien") — het is één kantoorbrede bevinding per entiteit (blok `vastly_verkoop`, handeling "Koppel aan
+        # administratie…") en wordt ná de koppeling automatisch verwerkt. Terugvindbaar via Zoeken/Archief.
+        documenten = [d for d in documenten if not is_vastly_verkoop_reden(redenen.get(d.id))]
         splitsingen = {
             s.bron_document_id: s
             for s in session.scalars(

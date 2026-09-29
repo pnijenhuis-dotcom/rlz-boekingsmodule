@@ -47,18 +47,33 @@ from app.documenten.boeken import (
     VolumeremBereikt,
 )
 from app.documenten.models import Document, DocumentSoort, DocumentStatus
+from app.verkoop import omzetrekening as omzetrekening_service
 from app.verkoop.boeken import boek_verkoop_document
-from app.verkoop.voorstel import VerkoopVoorstelData, haal_verkoop_voorstel_op
+from app.verkoop.voorstel import (
+    BTW_BRON_ADMINISTRATIE_DEFAULT,
+    BTW_BRON_NIET_PLICHTIG,
+    VerkoopVoorstelData,
+    haal_verkoop_voorstel_op,
+)
 
 logger = logging.getLogger(__name__)
 
-_TOEGESTANE_BTW_BRONNEN = frozenset({"factuur", "onthouden"})
+# Peter 29-09 (opdracht "Vastly-verkoop volledig automatisch"): naast 'factuur' en de mens-'onthouden'-keuze is ook
+# het standaardtarief van de administratie (`administratie_default`, verkoop/voorstel.py) en de niet-btw-plichtige
+# bruto-regel (22-09) een deterministische bron — geen "onthouden keuze"-drempel meer.
+_TOEGESTANE_BTW_BRONNEN = frozenset({"factuur", "onthouden", BTW_BRON_ADMINISTRATIE_DEFAULT, BTW_BRON_NIET_PLICHTIG})
+#: Weigerredenen die het reconciliatieblok `vastly_verkoop` als aparte bevindingssoort/handeling kent.
+REDEN_OMZETREKENING_ONTBREEKT = omzetrekening_service.REDEN_OMZETREKENING_ONTBREEKT
+REDEN_GB_CODE_ONBEKEND = "gb_code_onbekend"
+REDEN_BTW_NIET_BEPAALBAAR = "btw_niet_bepaalbaar"
 
 
 def _regels_geblokkeerd(voorstel: VerkoopVoorstelData) -> str | None:
-    """Weiger-reden wanneer het voorstel niet volledig deterministisch uit de UBL volgt.
-    De harde checks in de motor toetsen de gekózen waarden nogmaals — hier gaat het om de
-    vraag of er überhaupt iets te kiezen overbleef voor een mens."""
+    """Weiger-reden wanneer het voorstel niet volledig deterministisch vaststaat. De harde checks in de motor toetsen
+    de gekózen waarden nogmaals — hier gaat het om de vraag of alles deterministisch bepaald is. Sinds 29-09 bestaat
+    "mens kiest" niet meer: een regel zónder rekening betekent dat de administratie geen Vastly-omzetrekening voor die
+    regelsoort heeft (reden `omzetrekening_ontbreekt` → bevinding "Rekening kiezen"), een onbekende UBL-code blijft
+    blokkerend (koppelcontract §2d), en btw zonder dekkend tarief is een rekeningschema-gat (bevinding)."""
     if not voorstel.regels:
         return "de UBL leverde geen boekbare regels"
     for regel in voorstel.regels:
@@ -67,18 +82,44 @@ def _regels_geblokkeerd(voorstel: VerkoopVoorstelData) -> str | None:
         if regel.gb_code_status != "bekend" or regel.ledger_id is None:
             if regel.gb_code_status == "onbekend":
                 return (
-                    f"regel {regel.volgnummer}: grootboekcode {regel.gb_code} uit de UBL is "
+                    f"{REDEN_GB_CODE_ONBEKEND}: regel {regel.volgnummer}: grootboekcode {regel.gb_code} uit de UBL is "
                     "onbekend in het rekeningschema (blokkerend + automatische vraag)"
                 )
-            return f"regel {regel.volgnummer}: geen grootboekcode in de UBL — mens kiest"
+            return (
+                f"{REDEN_OMZETREKENING_ONTBREEKT}: regel {regel.volgnummer} ({regel.regelsoort or 'overig'}): geen "
+                "grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — "
+                "kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)"
+            )
         if not regel.btw_vergrendeld or regel.taxrate_id is None or regel.btw_bron not in _TOEGESTANE_BTW_BRONNEN:
-            if regel.btw_kandidaten and len(regel.btw_kandidaten) > 1:
-                return (
-                    f"regel {regel.volgnummer}: factuur-btw is ambigu (meerdere dekkende "
-                    "RLZ-tarieven) en er is nog geen onthouden keuze voor deze administratie"
-                )
-            return f"regel {regel.volgnummer}: btw is niet deterministisch uit de UBL bepaald — mens kiest"
+            return (
+                f"{REDEN_BTW_NIET_BEPAALBAAR}: regel {regel.volgnummer}: geen actief RLZ-tarief dekt de factuur-btw "
+                f"(categorie {regel.btw_categorie or '?'}, {regel.btw_percentage_ubl if regel.btw_percentage_ubl is not None else '?'} %) "
+                "— synchroniseer de btw-codes van deze administratie"
+            )
     return None
+
+
+def beoordeel_lees_only(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
+    """Lees-only oordeel voor de dry-run van de heraanbieding en het reconciliatieblok: dezelfde poorten als
+    `probeer_verkoop_autoboeken_na_intake` vóór de boekmotor, zonder te boeken en zonder audit. None = zou boeken
+    (de harde checks in de motor blijven de laatste poort), anders de weigerreden."""
+    with scoped_session(administratie_id) as session:
+        document = session.get(Document, document_id)
+        if document is None or document.soort != DocumentSoort.VERKOOPFACTUUR.value:
+            return "geen verkoopfactuur"
+        if document.status != DocumentStatus.TE_CONTROLEREN:
+            return f"status {document.status.value} is geen autoboek-kandidaat"
+        if document.mogelijk_duplicaat_van_id is not None:
+            return "mogelijk-duplicaat-signaal op het document (zelfde bestandsinhoud) — mens beoordeelt"
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None or not administratie.is_vastgoed:
+            return "administratie is geen vastgoed-administratie (is_vastgoed uit)"
+    voorstel = haal_verkoop_voorstel_op(administratie_id=administratie_id, document_id=document_id)
+    if voorstel.opgeslagen:
+        return "er is al een door een mens opgeslagen voorstel — automatisch boeken doet uitsluitend onaangeraakte documenten"
+    if voorstel.factuurnummer is None or voorstel.factuurdatum is None or voorstel.totaalbedrag_incl is None:
+        return "de UBL leverde geen volledige kopgegevens (factuurnummer/datum/totaal)"
+    return _regels_geblokkeerd(voorstel)
 
 
 def _weiger(*, administratie_id: uuid.UUID, document_id: uuid.UUID, reden: str) -> AutoboekBesluit:

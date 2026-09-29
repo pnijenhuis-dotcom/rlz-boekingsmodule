@@ -314,6 +314,11 @@ INTAKE_POSTVAK = "intake_postvak"
 #: dubbel_voor_ai.py`) — bron audit `ai_dubbel_voor_extractie` (gedaan = één bespaarde AI-call).
 AI_HERAANBIEDING = "ai_heraanbiedingen"
 AI_BESPAARD_DUBBEL = "ai_bespaard_dubbel"
+#: Vastly-verkoop volledig automatisch (Peter 29-09): heraanbieding van niet-gekoppelde + open Vastly-verkoopdocumenten
+#: (dagelijkse stap + nazorg-CLI + koppel-handeling) — bron audit `vastly_verkoop_heraanbieding_run` (één rij per run;
+#: gedaan = geboekt + toegewezen, overgeslagen per uitkomst; alles zacht — de bevindingen in blok `vastly_verkoop`
+#: dragen de handeling).
+VASTLY_HERAANBIEDING = "vastly_verkoop_heraanbieding"
 
 #: Vaste volgorde in mail en scherm (geldpaden eerst).
 VOLGORDE: tuple[str, ...] = (
@@ -339,6 +344,7 @@ VOLGORDE: tuple[str, ...] = (
     INTAKE_POSTVAK,
     AI_HERAANBIEDING,
     AI_BESPAARD_DUBBEL,
+    VASTLY_HERAANBIEDING,
     OMZETBRON_HERKENNING,
     KASSARAPPORT_AUTOTYPE,
     KASSARAPPORT_INKOOPSTROOM,
@@ -350,6 +356,7 @@ VOLGORDE: tuple[str, ...] = (
 LABEL: dict[str, str] = {
     AI_HERAANBIEDING: "AI-heraanbieding ná limiet (verzamelbak + overgeslagen extracties)",
     AI_BESPAARD_DUBBEL: "AI bespaard — byte-identiek dubbel vóór de extractie",
+    VASTLY_HERAANBIEDING: "Vastly-verkoop automatisch (heraanbieding niet-gekoppelde + open UBL's)",
     INTAKE_POSTVAK: "Intake-postvakken (facturen@ak-nijenhuis.nl + facturen@kempengroep.nl — INBOX + Spam, op Message-ID)",
     BOEK_WACHTRIJ: "Boeken in RLZ — achtergrond-schrijver (ingediend → geboekt/mislukt)",
     CHECKS_VOORVERWARMEN: "Externe checks voorverwarmen (volgend document)",
@@ -461,6 +468,8 @@ _ACTIES: tuple[str, ...] = (
     # 24-09: AI-heraanbieding ná limiet (één rij per run) + byte-identiek dubbel vóór de AI-stap (per exemplaar)
     "ai_heraanbieding_run",
     "ai_dubbel_voor_extractie",
+    # 29-09: Vastly-verkoop heraanbieding (één rij per run)
+    "vastly_verkoop_heraanbieding_run",
 )
 
 
@@ -930,6 +939,13 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "ná élke intake-job-run (beide postvakken, elke 10 min) + dagelijkse stap; alleen bij open kostenpoort, oud → nieuw",
         "audit ai_heraanbieding_run (per run: gedaan/overgeslagen per reden)",
     )
+    vastly_heraanbieding = maak(
+        VASTLY_HERAANBIEDING,
+        "altijd",
+        "dagelijkse stap in reconciliatie-alles + ná élke koppeling in de bevinding; entiteit via register, rekening per "
+        "administratie, btw = standaardtarief — geen mens per document",
+        "audit vastly_verkoop_heraanbieding_run (per run: per uitkomst)",
+    )
     ai_bespaard = maak(
         AI_BESPAARD_DUBBEL,
         "altijd",
@@ -1047,6 +1063,17 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         elif f.actie == "ai_dubbel_voor_extractie":
             for v in vensters(ai_bespaard, f.tijdstip):
                 v.tel_gedaan()
+        elif f.actie == "vastly_verkoop_heraanbieding_run":
+            if not nw.get("dry_run"):
+                per_uitkomst = nw.get("per_uitkomst") or {}
+                gedaan = int(per_uitkomst.get("geboekt") or 0) + int(per_uitkomst.get("toegewezen") or 0)
+                for v in vensters(vastly_heraanbieding, f.tijdstip):
+                    v.tel_gedaan(gedaan)
+                for uitkomst, n in per_uitkomst.items():
+                    if uitkomst in ("geboekt", "toegewezen"):
+                        continue
+                    for _ in range(int(n or 0)):
+                        tel_over(vastly_heraanbieding, f.tijdstip, str(uitkomst), None, None, hard_registreren=False)
         elif f.actie == "uren_herinnering_run":
             for v in vensters(uren_herinnering, f.tijdstip):
                 v.tel_gedaan(int(nw.get("gedaan") or 0))

@@ -17,11 +17,13 @@ from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import boeken as documenten_boeken
 from app.documenten import service as documenten_service
 from app.documenten.storage import LokaleBestandsopslag
+from app.db.models import Grootboekrekening
 from app.sync.models import TaxRateCache
 from app.verkoop import autoboeken as verkoop_autoboeken
 from app.verkoop import voorstel as voorstel_service
 from app.verkoop.models import VerkoopBtwVoorkeur
 from tests.verkoop.conftest import (
+    OMZET_LEDGER_ID,
     TAXRATE_21_ID,
     FakeVerkoopClient,
     bouw_vastly_creditnote_ubl,
@@ -212,9 +214,47 @@ class TestVerkoopAutoboeken:
         document_id = _upload(
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag, inhoud=ubl
         )
+        # 29-09 (Peter): geen "mens kiest" meer — de regel zonder AccountingCost krijgt de vaste Vastly-omzetrekening van
+        # de administratie (hier afgeleid uit het rekeningschema: precies één omzetrekening 8000) en boekt automatisch.
+        assert _status(admin_engine, document_id) == "geboekt"
+        assert _weiger_redenen(admin_engine, document_id) == []
+        with admin_engine.connect() as conn:
+            rij = conn.execute(
+                text("SELECT ledger_id::text, bron FROM boekhouding.vastly_omzetrekening WHERE administratie_id = :a AND regelsoort = 'huur'"),
+                {"a": vastgoed_administratie},
+            ).one()
+        assert rij == (str(OMZET_LEDGER_ID), "historie")
+
+    def test_gb_code_ontbreekt_zonder_afleidbare_omzetrekening_weigert_met_reden(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        gescoopte_gebruiker: uuid.UUID,
+        admin_engine: Engine,
+        opslag: LokaleBestandsopslag,
+        rekeningschema: None,
+        boeken_aan: None,
+        vastgoed_administratie: uuid.UUID,
+        optin_aan: None,
+    ) -> None:
+        """Twee omzetrekeningen zonder naam-treffer en zonder eigen historie = niets afleidbaar → weigering mét de
+        reden `omzetrekening_ontbreekt` (bevinding "Rekening kiezen"), nooit "mens kiest" per document."""
+        with scoped_session(vastgoed_administratie) as session:
+            session.add(
+                Grootboekrekening(
+                    ledger_id=uuid.UUID("11111111-1111-1111-1111-111111111177"), administratie_id=vastgoed_administratie,
+                    code="8100", naam="Omzet 2", soort=1, is_totaalrekening=False,
+                )
+            )
+        _patch_client(monkeypatch, FakeVerkoopClient())
+        ubl = bouw_vastly_verkoop_ubl(
+            regels=[{"naam": "Overige opbrengst", "netto": "1000.00", "pct": "21.00", "categorie": "S", "gb_code": None}]
+        )
+        document_id = _upload(
+            administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag, inhoud=ubl
+        )
         assert _status(admin_engine, document_id) == "te_controleren"
         [reden] = _weiger_redenen(admin_engine, document_id)
-        assert "geen grootboekcode" in reden
+        assert reden.startswith("omzetrekening_ontbreekt") and "(overig)" in reden
 
     def test_onbekende_gb_code_weigert_en_autovraag_blijft(
         self,
@@ -275,9 +315,15 @@ class TestVerkoopAutoboeken:
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker,
             opslag=opslag, inhoud=bouw_vastly_verkoop_ubl(),
         )
-        assert _status(admin_engine, document_id) == "te_controleren"
-        [reden] = _weiger_redenen(admin_engine, document_id)
-        assert "ambigu" in reden
+        # 29-09 (Peter, punt 3): geen "onthouden keuze"-drempel — het standaardtarief van de administratie (basistarief
+        # "NL, Hoog Tarief" vóór de vooruit-variant) is deterministisch en de factuur boekt automatisch.
+        assert _status(admin_engine, document_id) == "geboekt"
+        assert _weiger_redenen(admin_engine, document_id) == []
+        voorstel = voorstel_service.haal_verkoop_voorstel_op(
+            administratie_id=vastgoed_administratie, document_id=document_id
+        )
+        assert voorstel.regels[0].btw_bron == "administratie_default"
+        assert voorstel.regels[0].taxrate_id == TAXRATE_21_ID
 
     def test_btw_onthouden_voorkeur_boekt(
         self,

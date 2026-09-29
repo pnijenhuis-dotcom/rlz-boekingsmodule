@@ -61,11 +61,23 @@ def _golden(naam: str) -> bytes:
 @pytest.fixture
 def administratie_heet_rubicon(administratie_id: uuid.UUID, admin_engine: Engine) -> uuid.UUID:
     """VASTLY-VERKOOP wijst toe op de LEVERANCIER (= onze entiteit): de golden-cases dragen
-    'Rubicon Investments B.V.' als AccountingSupplierParty."""
+    'Rubicon Investments B.V.' (KvK 87654321) als AccountingSupplierParty. Sinds 29-09 (Peter: Vastly-verkoop volledig
+    automatisch) loopt de toewijzing UITSLUITEND via het entiteitenregister — hier de KvK-identiteit van de administratie
+    (`administratie_identiteit.kvk`), nooit de naam."""
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+    from app.intercompany.models import AdministratieIdentiteit
+
     with admin_engine.begin() as conn:
         conn.execute(
             text("UPDATE platform.administratie SET naam = 'Rubicon Investments B.V.' WHERE id = :id"),
             {"id": administratie_id},
+        )
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        session.add(
+            AdministratieIdentiteit(
+                administratie_id=administratie_id, kvk="87654321", naam="Rubicon Investments B.V.",
+                naam_norm="rubicon investments", bron="rlz",
+            )
         )
     return administratie_id
 

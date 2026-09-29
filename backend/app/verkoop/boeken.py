@@ -52,7 +52,7 @@ from app.omzet.boeken import _boek_verkoopfactuur, _lokaal_max_invoice_number
 from app.rlz.client import RlzApiError
 from app.rlz.credentials import rlz_admin_id_voor
 from app.verkoop.debiteur import DebiteurAanmakenMislukt, zorg_voor_debiteur
-from app.verkoop.models import VerkoopBoeking, VerkoopBoekingStatus, VerkoopVoorstel
+from app.verkoop.models import VerkoopBoeking, VerkoopBoekingStatus, VerkoopVoorstel, VerkoopVoorstelRegel
 from app.verkoop.voorstel import (
     VerkoopVoorstelData,
     haal_verkoop_voorstel_op,
@@ -281,8 +281,35 @@ def boek_verkoop_document(
         document = session.get(Document, document_id)
         assert document is not None
         kop = session.get(VerkoopVoorstel, document_id)
-        if kop is not None:
-            kop.rlz_boekstuknummer = boekstuknummer
+        if kop is None:
+            # 29-09 (Vastly-verkoop automatisch): een automatische boeking had tot nu geen voorstel-rijen — wat geboekt
+            # is stond alleen in RLZ. Voor herleidbaarheid én als bron van de omzetrekening-historie (app/verkoop/
+            # omzetrekening.py: "meest gebruikte omzetrekening per regelsoort") legt de motor het gebruikte voorstel
+            # nu zelf vast (kop + regels, exact wat naar RLZ ging). Een mens-opgeslagen voorstel blijft ongewijzigd.
+            kop = VerkoopVoorstel(
+                document_id=document_id,
+                debiteur_naam=voorstel.debiteur_naam,
+                factuurnummer=voorstel.factuurnummer,
+                factuurdatum=voorstel.factuurdatum,
+                totaalbedrag_incl=voorstel.totaalbedrag_incl,
+                is_creditnota=voorstel.is_creditnota,
+                gecrediteerd_factuurnummer=voorstel.gecrediteerd_factuurnummer,
+            )
+            session.add(kop)
+            for r in voorstel.regels:
+                session.add(
+                    VerkoopVoorstelRegel(
+                        document_id=document_id,
+                        volgnummer=r.volgnummer,
+                        omschrijving=r.omschrijving,
+                        netto_bedrag=r.netto_bedrag,
+                        btw_bedrag=r.btw_bedrag,
+                        gb_code=r.gb_code,
+                        ledger_id=r.ledger_id,
+                        taxrate_id=r.taxrate_id,
+                    )
+                )
+        kop.rlz_boekstuknummer = boekstuknummer
 
         bestaande_registratie = session.scalars(
             select(VerkoopBoeking).where(VerkoopBoeking.document_id == document_id)

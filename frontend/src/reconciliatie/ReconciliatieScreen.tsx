@@ -36,6 +36,14 @@ import { BundelenActie, isUblPdfOngebundeld } from './BundelenActie'
 import { FactuurPdfHerstellenActie, isDoorbelastingFactuurPdfOntbreekt } from './FactuurPdfHerstellenActie'
 import { isBoekWachtrijGestrand, OpnieuwIndienenActie } from './OpnieuwIndienenActie'
 import { isIntakePostvakVerschil, NuVerwerkenActie } from './NuVerwerkenActie'
+import {
+  isVastlyEntiteitNietGekoppeld,
+  isVastlyOmzetrekeningOntbreekt,
+  isVastlyVerkoopNietGeboekt,
+  KoppelEntiteitActie,
+  OpnieuwAanbiedenActie,
+  RekeningKiezenActie,
+} from './VastlyActies'
 import { isActivumAanmakenMislukt, OpnieuwAanmakenActie } from './OpnieuwAanmakenActie'
 import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
 import {
@@ -274,6 +282,47 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
             herlaad()
           }}
         />
+      )
+    }
+
+    // 29-09 (Peter 28-09 "moet gewoon als omzet geboekt worden, punt"): Vastly-verkoop — drie bevindingen, drie handelingen.
+    if (r.soort === 'afwijking' && isVastlyEntiteitNietGekoppeld(r)) {
+      return (
+        <KoppelEntiteitActie
+          bevinding={r}
+          onGelukt={(melding) => {
+            toast.meld(melding)
+            herlaad()
+          }}
+        />
+      )
+    }
+    if (r.soort === 'afwijking' && isVastlyOmzetrekeningOntbreekt(r)) {
+      return (
+        <>
+          <RekeningKiezenActie
+            bevinding={r}
+            onGelukt={(melding) => {
+              toast.meld(melding)
+              herlaad()
+            }}
+          />{' '}
+          {deeplink}
+        </>
+      )
+    }
+    if (r.soort === 'afwijking' && isVastlyVerkoopNietGeboekt(r)) {
+      return (
+        <>
+          <OpnieuwAanbiedenActie
+            bevinding={r}
+            onGelukt={(melding) => {
+              toast.meld(melding)
+              herlaad()
+            }}
+          />{' '}
+          {deeplink}
+        </>
       )
     }
 

@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -718,3 +718,22 @@ def test_verkoop_overstap_onderdeel_alleen_op_verzoek_lees_only_met_eigen_oordee
     sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
     assert re.search(r"^\s*verkoop-overstap\) echo verkoop-overstap ;;", sh, flags=re.M), "via_gh_onderdeel mist: verkoop-overstap"
     assert (REPO / "backend" / "app" / "lezen" / "queries" / "verkoop-overstap.sql").is_file()
+
+
+def test_onderdeel_vastly_verkoop_alleen_op_verzoek_en_lees_only(tmp_path: Path) -> None:
+    """29-09 (Vastly-verkoop volledig automatisch): het dispatch-onderdeel `vastly-verkoop` = dry-run-telling van de
+    heraanbieding + db-lezen vastly-verkoop(-administratie) + request-log van de twee handelingen; nooit --uitvoeren,
+    eigen OORDEEL_BRON, niet in 'alles', uitgesloten van de VGG-tak; nameting.sh dwingt --dry-run af."""
+    tekst = _tekst()
+    blok = tekst.split('if [[ "$ONDERDEEL" == "vastly-verkoop" ]]; then', 1)[1].split("\n          fi\n", 1)[0]
+    assert "vastly-verkoop-heraanbieden --dry-run" in blok and "--uitvoeren" not in blok
+    assert "db-lezen vastly-verkoop --param dagen=14" in blok
+    assert "db-lezen vastly-verkoop-administratie --administratie" in blok
+    assert "/reconciliatie/vastly/" in blok and "/vastly-omzetrekeningen" in blok
+    assert 'UIT="verkenning/nameting-vastly-verkoop-$DATUM.txt"' in blok
+    assert 'elif [[ "$ONDERDEEL" == "vastly-verkoop" ]]; then\n            OORDEEL_BRON="verkenning/nameting-vastly-verkoop-$DATUM.txt"' in tekst
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "vastly-verkoop"' not in tekst
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    assert "vastly-verkoop-heraanbieden" in sh.split("ALLOWLIST=", 1)[1].split("\n", 1)[0]
+    assert 'vastly-verkoop-heraanbieden) echo vastly-verkoop ;;' in sh
+    assert 'if [[ "$CMD" == "vastly-verkoop-heraanbieden" ]]; then' in sh and "alleen mét --dry-run" in sh

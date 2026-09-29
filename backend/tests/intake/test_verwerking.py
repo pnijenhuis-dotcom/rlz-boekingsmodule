@@ -63,7 +63,16 @@ class TestVastlyEnVgbRouting:
     def test_vastly_verkoop_markering_routeert_naar_omzetkant(
         self, administratie_heet_blow: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
     ) -> None:
-        # Verkoopfactuur: ónze entiteit is de LEVERANCIER — de klant is de huurder.
+        # Verkoopfactuur: ónze entiteit is de LEVERANCIER — de klant is de huurder. Sinds 29-09 uitsluitend via het
+        # entiteitenregister: zonder KvK in de UBL is een mens-koppeling op naam de enige route (nooit tenaamstelling).
+        from app.db.session import scoped_session
+        from app.verkoop import entiteit
+
+        with scoped_session(None, actor_id=gescoopte_gebruiker) as session:
+            entiteit.koppel_entiteit(
+                session, sleutel_soort="naam", sleutel="BLOW B.V.", administratie_id=administratie_heet_blow,
+                actor_id=gescoopte_gebruiker,
+            )
         ubl = bouw_ubl(leverancier="BLOW B.V.", klant="Huurder Jansen", adr_id="VASTLY-VERKOOP")
         eml = bouw_eml(bijlagen=[("verkoop.xml", ubl, "application", "xml")])
         resultaat = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)

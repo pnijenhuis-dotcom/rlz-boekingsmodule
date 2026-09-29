@@ -57,6 +57,8 @@ logger = logging.getLogger(__name__)
 
 _UBL_SUFFIX = ".xml"
 _PDF_SUFFIX = ".pdf"
+#: Overslaan-reden (29-09): verkoopfacturen zijn Vastly-UBL's — deterministisch, nooit door de AI.
+UBL_NOOIT_AI = "ubl_deterministisch_geen_ai"
 
 
 def _standaard_opslag() -> DocumentOpslag:
@@ -844,6 +846,11 @@ def _pdf_extractie_detail(session: Session, *, document: Document, opslag: Docum
     b. het AI-pad exact zoals het was (gates, kostengrens, schema-poort ongewijzigd);
     c. AI niet beschikbaar + geen template → het bestaande handmatige pad (overgeslagen-detail).
     Gevolg: het template bespaart AI-kosten op de bulk én is de terugval bij AI-uitval."""
+    if document.soort == DocumentSoort.VERKOOPFACTUUR.value:
+        # Peter 29-09 (punt 5, bijvangst RUB-2026-0034 24-09: een Vastly-UBL kreeg een AI-herextractie): een
+        # verkoopfactuur is in deze module altijd een Vastly-UBL — deterministisch, nooit door de AI, óók niet als het
+        # hoofdbestand een PDF-suffix draagt. Zichtbaar overgeslagen, geen call, geen kosten.
+        return {"ai_extractie_overgeslagen": UBL_NOOIT_AI, "veldvoorstel_bron": "ubl"}, False
     inhoud = opslag.lezen(pad=document.opslag_pad)
     notitie: str | None = None
     if document.administratie_id is not None and document.soort == DocumentSoort.INKOOPFACTUUR.value:
@@ -2640,7 +2647,8 @@ def herextraheer_document(
         document = session.get(Document, document_id)
         if document is None:
             raise DocumentNietGevonden(f"Onbekend document: {document_id}")
-        if Path(document.bestandsnaam).suffix.lower() != _PDF_SUFFIX:
+        if Path(document.bestandsnaam).suffix.lower() != _PDF_SUFFIX or document.soort == DocumentSoort.VERKOOPFACTUUR.value:
+            # 29-09: een verkoopfactuur (Vastly-UBL) is per definitie deterministisch — ook mét PDF-hoofdbestand nooit AI.
             raise HerextractieNietToegestaan("Opnieuw extraheren kan alleen voor PDF's (UBL is deterministisch).")
         if document.status not in (DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN):
             raise HerextractieNietToegestaan(

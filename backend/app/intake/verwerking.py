@@ -191,6 +191,73 @@ def _wijs_toe_of_verzamelbak(
     )
 
 
+UITKOMST_ENTITEIT_NIET_GEKOPPELD = "entiteit_niet_gekoppeld"
+
+
+def _verwerk_vastly_verkoop(
+    *,
+    bijlage_naam: str,
+    inhoud: bytes,
+    voorstel,  # noqa: ANN001 — UblVeldvoorstel (lokale import houdt de graaf klein)
+    afzender: str | None,
+    actor_id: uuid.UUID,
+    intake_bericht_id: uuid.UUID | None,
+    opslag: DocumentOpslag | None,
+    bron_bestand: BronBestand | None,
+    kanaal: DocumentBron,
+) -> BijlageResultaat:
+    """VASTLY-VERKOOP-UBL → administratie via het entiteitenregister (`app/verkoop/entiteit.py`; Peter 28/29-09,
+    migratie 0172). Gevonden = gewoon `upload_document` (deterministische UBL-extractie + het autoboek-pad in de
+    post-commit-hook). Niet gevonden = het document wordt geregistreerd ZONDER administratie mét de reden
+    `vastly_entiteit_niet_gekoppeld: kvk=…|naam=…` — het staat NIET in de verzamelbak-lijst (Peter: "ik wil ze niet
+    eens zien") maar wordt één kantoorbrede bevinding `vastly_entiteit_niet_gekoppeld` per entiteit in het
+    reconciliatieblok `vastly_verkoop`, mét de handeling "Koppel aan administratie…"; ná de koppeling verwerkt de
+    heraanbieding (`app/verkoop/heraanbieden.py`) het document automatisch. Niets verdwijnt stil, geen AI."""
+    from app.verkoop import entiteit as entiteit_service
+
+    sleutels = entiteit_service.sleutels_uit_voorstel(voorstel)
+    with scoped_session(None, actor_id=actor_id) as session:
+        besluit = entiteit_service.resolve_administratie(session, sleutels)
+    if besluit.administratie_id is not None:
+        resultaat = documenten_service.upload_document(
+            administratie_id=besluit.administratie_id,
+            bestandsnaam=bijlage_naam,
+            inhoud=inhoud,
+            actor_id=actor_id,
+            opslag=opslag,
+            bron=kanaal,
+            soort=DocumentSoort.VERKOOPFACTUUR,
+            soort_door_systeem=True,
+            intake_bericht_id=intake_bericht_id,
+            afzender_hint=afzender,
+            tenaamstelling=voorstel.leverancier_naam,
+            bron_bestand=bron_bestand,
+        )
+        return BijlageResultaat(
+            bestandsnaam=bijlage_naam,
+            uitkomst="toegewezen",
+            document_id=resultaat.document_id,
+            detail=f"entiteitenregister:{besluit.bron} → {besluit.administratie_id}",
+        )
+    reden = sleutels.als_reden()
+    document_id = documenten_service.registreer_niet_toegewezen_document(
+        bestandsnaam=bijlage_naam,
+        inhoud=inhoud,
+        actor_id=actor_id,
+        reden=reden,
+        soort=DocumentSoort.VERKOOPFACTUUR,
+        opslag=opslag,
+        intake_bericht_id=intake_bericht_id,
+        afzender_hint=afzender,
+        tenaamstelling=voorstel.leverancier_naam,
+        bron_bestand=bron_bestand,
+        bron=kanaal,
+    )
+    return BijlageResultaat(
+        bestandsnaam=bijlage_naam, uitkomst=UITKOMST_ENTITEIT_NIET_GEKOPPELD, document_id=document_id, detail=reden
+    )
+
+
 def _verwerk_waarborg(
     bijlage: IntakeBijlage,
     *,
@@ -438,18 +505,17 @@ def _verwerk_xml(
                 document_id=document_id,
                 detail=f"vastly_nlcius_invalide: {', '.join(ontbrekend)}",
             )
-        # Verkoopfactuur: ónze entiteit is de LEVERANCIER op de factuur — dáárop toewijzen.
-        return _wijs_toe_of_verzamelbak(
+        # Verkoopfactuur: ónze entiteit is de LEVERANCIER op de factuur. Sinds 29-09 (Peter 28-09 "moet gewoon als
+        # omzet geboekt worden, punt") UITSLUITEND via het entiteitenregister (KvK → identiteit/koppeling, naam →
+        # mens-koppeling) — nooit op tenaamstelling/afzender, nooit de verzamelbak.
+        return _verwerk_vastly_verkoop(
             bijlage_naam=bijlage.bestandsnaam,
             inhoud=bijlage.inhoud,
-            soort=DocumentSoort.VERKOOPFACTUUR,
-            tenaamstelling=voorstel.leverancier_naam,
+            voorstel=voorstel,
             afzender=afzender,
             actor_id=actor_id,
             intake_bericht_id=intake_bericht_id,
             opslag=opslag,
-            verzamelbak_reden="vastly_verkoop_zonder_eenduidige_entiteit",
-            body_hint=body_hint,
             bron_bestand=bron_bestand,
             kanaal=kanaal,
         )

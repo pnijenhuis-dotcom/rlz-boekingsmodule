@@ -38,7 +38,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie, AuditEvent
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus
+from app.documenten.models import Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
 from app.documenten.storage import DocumentOpslag
 from app.intake import dubbel_voor_ai
 from app.intake.models import IntakeSplitsing, IntakeSplitsingStatus
@@ -259,6 +259,8 @@ def vind_kandidaten_documenten(
                 document = session.get(Document, document_id)
                 if document is None or not document.bestandsnaam.lower().endswith(_PDF):
                     continue
+                if document.soort == DocumentSoort.VERKOOPFACTUUR.value:
+                    continue  # 29-09: Vastly-UBL = deterministisch, nooit een AI-kandidaat (bijvangst RUB-2026-0034)
                 is_limiet, mens = _laatste_uitkomst_is_limiet(session, document_id)
                 if not is_limiet:
                     continue

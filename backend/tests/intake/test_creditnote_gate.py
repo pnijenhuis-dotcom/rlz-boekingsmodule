@@ -48,6 +48,14 @@ class TestCreditnoteGate:
         opslag: LokaleBestandsopslag,
     ) -> None:
         monkeypatch.setattr(settings, "creditnota_381_ingeschakeld", True)
+        # 29-09 (Peter): routering UITSLUITEND via het entiteitenregister — de naam alleen wijst nooit toe.
+        from app.verkoop import entiteit
+
+        with scoped_session(None, actor_id=gescoopte_gebruiker) as session:
+            entiteit.koppel_entiteit(
+                session, sleutel_soort="naam", sleutel="BLOW B.V.", administratie_id=administratie_heet_blow,
+                actor_id=gescoopte_gebruiker,
+            )
         resultaat = _verwerk(
             bouw_vastly_creditnote_ubl(leverancier="BLOW B.V."), gescoopte_gebruiker, opslag
         )

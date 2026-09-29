@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Numeric, func, text
+from sqlalchemy import DateTime, ForeignKey, Index, Numeric, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -134,3 +134,58 @@ class VerkoopBoeking(Base):
     )
     gestorneerd_op: Mapped[datetime | None] = mapped_column(default=None)
     storno_reden: Mapped[str | None] = mapped_column(default=None)
+
+
+VASTLY_SLEUTEL_SOORTEN = ("kvk", "naam")
+VASTLY_KOPPELING_BRONNEN = ("identiteit", "mens")
+VASTLY_REGELSOORTEN = ("huur", "servicekosten", "waarborg", "overig")
+VASTLY_OMZETREKENING_BRONNEN = ("historie", "mens")
+
+
+class VastlyEntiteitKoppeling(Base):
+    """Entiteitenregister verkoopkant (Peter 28/29-09, migratie 0172): de verhuurder-entiteit uit de Vastly-UBL
+    (`AccountingSupplierParty` — KvK uit PartyLegalEntity/CompanyID schemeID 0106, anders de genormaliseerde naam)
+    → platform-administratie. Nooit een fuzzy tenaamstelling-match: een KvK-treffer op `administratie_identiteit`
+    (precies één actieve administratie) wordt hier vastgelegd met bron 'identiteit'; alles anders is een expliciete
+    mens-koppeling via de bevinding `vastly_entiteit_niet_gekoppeld` ("Koppel aan administratie…", bron 'mens').
+    Platformbreed (intake leest zonder scope), sleutel (sleutel_soort, sleutel) uniek. Nooit verwijderen — een
+    foute koppeling wordt overschreven mét audit."""
+
+    __tablename__ = "vastly_entiteit_koppeling"
+    __table_args__ = (
+        Index("ux_vastly_entiteit_koppeling_sleutel", "sleutel_soort", "sleutel", unique=True),
+        Index("ix_vastly_entiteit_koppeling_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sleutel_soort: Mapped[str] = mapped_column(Text)
+    sleutel: Mapped[str] = mapped_column(Text)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    bron: Mapped[str] = mapped_column(Text)
+    #: Leesbare weergave van de entiteit zoals de UBL 'm noemt (voor bevinding/instellingen), niet de sleutel.
+    weergave: Mapped[str | None] = mapped_column(Text, default=None)
+    aangemaakt_op: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    aangemaakt_door: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+
+
+class VastlyOmzetrekening(Base):
+    """Vaste Vastly-omzetrekening per (administratie, regelsoort) (Peter 29-09, migratie 0172): de rekening waarop
+    een UBL-regel ZONDER `cbc:AccountingCost` geboekt wordt. Bron 'historie' = afgeleid uit de eigen geboekte
+    Vastly-verkoopregels van de administratie of het eenduidige rekeningschema (zichtbaar én wijzigbaar op
+    Instellingen › Administratie › Vastgoed-koppeling), 'mens' = gezet door een Beheerder. Een regel MÉT bekende
+    AccountingCost gaat altijd vóór (koppelcontract §2d v1.10)."""
+
+    __tablename__ = "vastly_omzetrekening"
+    __table_args__ = {"schema": "boekhouding"}
+
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    regelsoort: Mapped[str] = mapped_column(Text, primary_key=True)
+    ledger_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    bron: Mapped[str] = mapped_column(Text)
+    gewijzigd_op: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)

@@ -6,6 +6,16 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-29 — Huurfacturen uit Vastly boeken volledig automatisch als omzet
+
+<!-- vastly-verkoop-automatisch-29-09 -->
+
+- **Vastly-verkoopfacturen staan niet meer in de verzamelbak of in de werkvoorraad.** Een huurfactuur die Vastly mailt wordt herkend aan de verhuurder (KvK of een éénmalig gekoppelde naam), landt in de juiste administratie en wordt direct als omzet geboekt in Reeleezee — zonder dat iemand een grootboekrekening of btw-code hoeft te kiezen. Wat u tot nu toe per factuur moest doen ("geen grootboekcode — kies zelf", "btw is ambigu — kies één keer") doet de module nu zelf.
+- **Grootboek en btw komen uit vaste regels per administratie.** Staat er een grootboekcode op de factuurregel, dan wint die. Anders gebruikt de module de vaste omzetrekening van de administratie per soort regel (huur, servicekosten, waarborg, overig). Die rekeningen ziet én wijzigt u op Instellingen › Administraties › ‹administratie› › Algemeen onder "Vastly-omzetrekeningen". De btw-code volgt het percentage op de factuur; bij twee passende codes kiest de module het standaardtarief van de administratie.
+- **Alleen wat écht niet kan, komt bij u terecht — mét een knop.** Op Inzicht › Reconciliatie staat het nieuwe blok "Vastly-verkoop" met hooguit drie soorten regels: een verhuurder die nog aan geen administratie gekoppeld is ("Koppel aan administratie…" — daarna boeken de wachtende facturen direct), een administratie zonder omzetrekening voor een regelsoort ("Rekening kiezen", éénmalig) en een factuur die langer dan een dag niet geboekt is mét de reden ("Opnieuw aanbieden"). Een koppeling of rekening hoeft u maar één keer te zetten.
+- **De facturen die al wachtten worden meegenomen.** De open Vastly-facturen van de afgelopen week (Rubicon, Meyer, Elissen, ARVUM, Shuto, Inpensas) en de negen huurfacturen van Van Rooijen/Schaalje worden ná uw akkoord in één keer door hetzelfde automatische pad gehaald; wat dan nog niet lukt, staat als regel mét reden in het blok "Vastly-verkoop".
+- **XML-facturen gaan nooit meer door de AI.** Een Vastly-factuur is een gestructureerd XML-bestand; de module leest 'm altijd rechtstreeks, ook bij "opnieuw verwerken".
+
 ## 2026-09-28 — Overstappen op Odoo vanuit een bestaande leesbron-koppeling
 
 <!-- verkoop-overstap-28-09 -->

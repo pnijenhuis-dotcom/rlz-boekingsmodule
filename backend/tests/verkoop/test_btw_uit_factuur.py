@@ -201,42 +201,41 @@ class TestVergrendeling:
 
 
 class TestAmbiguiteitOnthouden:
-    def test_ambigue_match_vraagt_keuze_en_onthoudt_per_administratie(
+    def test_ambigue_match_kiest_het_standaardtarief_van_de_administratie_en_mens_keuze_wint(
         self,
         gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
         tweede_21_tarief: None,
     ) -> None:
+        """29-09 (Peter, Vastly-verkoop automatisch): ambiguïteit is geen mens-drempel meer — het standaardtarief van de
+        administratie (basistarief "NL, Hoog Tarief" vóór "(vooruit)") wordt deterministisch en vergrendeld gekozen
+        (bron `administratie_default`); een eerder door een mens onthouden keuze (`verkoop_btw_voorkeur`) wint nog altijd."""
         document_id = _upload(administratie_id, gescoopte_gebruiker, opslag)
         prefill = voorstel_service.haal_verkoop_voorstel_op(
             administratie_id=administratie_id, document_id=document_id
         )
         [regel] = prefill.regels
-        assert regel.taxrate_id is None
-        assert regel.btw_vergrendeld is False
         assert set(regel.btw_kandidaten) == {TAXRATE_21_ID, TAXRATE_21_VOORUIT_ID}
+        assert regel.taxrate_id == TAXRATE_21_ID
+        assert regel.btw_vergrendeld is True
+        assert regel.btw_bron == "administratie_default"
 
-        # De mens kiest één keer — de keuze wordt onthouden.
-        _sla_op(
-            administratie_id, document_id, gescoopte_gebruiker,
-            regels=[_regel_input(regel, taxrate_id=TAXRATE_21_ID)],
-        )
+        # Een eerder onthouden mens-keuze (vooruit-variant) wint van de administratie-default.
         with scoped_session(administratie_id) as session:
-            voorkeur = session.get(
-                VerkoopBtwVoorkeur, (administratie_id, "S", Decimal("0.2100"))
+            session.add(
+                VerkoopBtwVoorkeur(
+                    administratie_id=administratie_id, btw_categorie="S",
+                    percentage_fractie=Decimal("0.2100"), taxrate_id=TAXRATE_21_VOORUIT_ID,
+                )
             )
-            assert voorkeur is not None
-            assert voorkeur.taxrate_id == TAXRATE_21_ID
-
-        # De volgende factuur met dezelfde categorie+percentage vult automatisch én vergrendeld.
         volgend_document = _upload(
             administratie_id, gescoopte_gebruiker, opslag, factuurnummer="VF-2026-0043"
         )
         [volgende_regel] = voorstel_service.haal_verkoop_voorstel_op(
             administratie_id=administratie_id, document_id=volgend_document
         ).regels
-        assert volgende_regel.taxrate_id == TAXRATE_21_ID
+        assert volgende_regel.taxrate_id == TAXRATE_21_VOORUIT_ID
         assert volgende_regel.btw_vergrendeld is True
         assert volgende_regel.btw_bron == "onthouden"
 
@@ -251,7 +250,9 @@ class TestAmbiguiteitOnthouden:
         prefill = voorstel_service.haal_verkoop_voorstel_op(
             administratie_id=administratie_id, document_id=document_id
         )
-        with pytest.raises(voorstel_service.VerkoopVoorstelFout, match="dekt de factuur-btw"):
+        # 29-09: bij ambiguïteit is de regel vergrendeld op het standaardtarief — een andere code is een bypass (of, zonder
+        # default, dekt 'm de factuur-btw niet); beide zijn een VerkoopVoorstelFout.
+        with pytest.raises(voorstel_service.VerkoopVoorstelFout, match="vergrendeld|dekt de factuur-btw"):
             _sla_op(
                 administratie_id, document_id, gescoopte_gebruiker,
                 regels=[_regel_input(prefill.regels[0], taxrate_id=TAXRATE_0_ID)],

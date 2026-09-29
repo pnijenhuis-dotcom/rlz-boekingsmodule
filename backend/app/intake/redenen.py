@@ -40,6 +40,18 @@ def is_verworpen_intake_reden(reden: str | None) -> bool:
     return reden.startswith("splitsingsvoorstel_ter_controle") and "ongeldig" in reden
 
 
+# 29-09 — gelijk aan `app/verkoop/entiteit.VASTLY_REDENEN` (hier letterlijk, geen import: redenen.py blijft
+# afhankelijkheidsvrij voor de bewaking).
+_VASTLY_REDENEN = ("vastly_entiteit_niet_gekoppeld", "vastly_verkoop_zonder_eenduidige_entiteit")
+
+
+def is_vastly_verkoop_reden(reden: str | None) -> bool:
+    """Waar voor de intake-reden van een Vastly-verkoopdocument zonder gekoppelde entiteit (oude én nieuwe vorm)."""
+    if not reden:
+        return False
+    return any(reden.strip() == r or reden.strip().startswith(r + ":") for r in _VASTLY_REDENEN)
+
+
 def omschrijf_intake_reden(reden: str | None, *, tenaamstelling: str | None) -> str | None:
     """Leesbaar label voor de verzamelbak-rij; None = niets extra te melden (bv. een gewoon
     splitsingsvoorstel — dat toont de rij al zelf)."""
@@ -79,8 +91,10 @@ def omschrijf_intake_reden(reden: str | None, *, tenaamstelling: str | None) -> 
         return f"UBL ongeldig: {_kort(reden.split(':', 1)[1]) if ':' in reden else 'niet te lezen'}"
     if reden.startswith("vastly_nlcius_invalide"):
         return "Vastly-UBL mist NLCIUS-kernvelden"
-    if reden == "vastly_verkoop_zonder_eenduidige_entiteit":
-        return "Vastly-verkoopfactuur: eigen entiteit niet eenduidig"
+    if is_vastly_verkoop_reden(reden):
+        # 29-09: deze documenten staan niet meer in de verzamelbak-lijst (blok `vastly_verkoop`); het label blijft voor
+        # tijdlijn/zoeken.
+        return "Vastly-verkoopfactuur: verhuurder-entiteit niet gekoppeld aan een administratie — koppel via Inzicht › Reconciliatie"
     if reden.startswith("creditnote_381_gate_uit"):
         return "creditnota-herkenning staat uit"
     if reden.startswith("afbeelding_onbruikbaar"):

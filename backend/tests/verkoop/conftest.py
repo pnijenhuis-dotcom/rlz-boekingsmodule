@@ -62,6 +62,7 @@ def bouw_vastly_verkoop_ubl(
     regels: list[dict[str, Any]] | None = None,
     markering: str | None = "VASTLY-VERKOOP",
     document_gb_code: str | None = None,
+    leverancier_kvk: str | None = None,
 ) -> bytes:
     """UBL 2.1 Invoice (380) exact conform §2d: markering in AdditionalDocumentReference,
     AccountingCost per regel (BT-133). Default: één huurregel € 1.000 + 21% = € 1.210."""
@@ -82,6 +83,7 @@ def bouw_vastly_verkoop_ubl(
     regel_xml = "".join(
         _regel_xml(element="InvoiceLine", volgnummer=i, **r) for i, r in enumerate(regels, start=1)
     )
+    kvk_xml = f'<cbc:CompanyID schemeID="0106">{leverancier_kvk}</cbc:CompanyID>' if leverancier_kvk else ""
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
          xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
@@ -93,7 +95,7 @@ def bouw_vastly_verkoop_ubl(
   {doc_gb}
   {adr}
   <cac:AccountingSupplierParty><cac:Party><cac:PartyLegalEntity>
-    <cbc:RegistrationName>{leverancier}</cbc:RegistrationName>
+    <cbc:RegistrationName>{leverancier}</cbc:RegistrationName>{kvk_xml}
   </cac:PartyLegalEntity></cac:Party></cac:AccountingSupplierParty>
   <cac:AccountingCustomerParty><cac:Party><cac:PartyLegalEntity>
     <cbc:RegistrationName>{huurder}</cbc:RegistrationName>
@@ -117,6 +119,7 @@ def bouw_vastly_creditnote_ubl(
     datum: str = "2026-08-05",
     regels: list[dict[str, Any]] | None = None,
     markering: str | None = "VASTLY-VERKOOP",
+    leverancier_kvk: str | None = None,
 ) -> bytes:
     """UBL 2.1 CreditNote (documenttype 381, §2d-creditnota's v1.11): apart CreditNote-document
     mét dezelfde VASTLY-VERKOOP-markering + BillingReference zonder IssueDate (BR-NL-24)."""
@@ -144,6 +147,7 @@ def bouw_vastly_creditnote_ubl(
     regel_xml = "".join(
         _regel_xml(element="CreditNoteLine", volgnummer=i, **r) for i, r in enumerate(regels, start=1)
     )
+    kvk_xml = f'<cbc:CompanyID schemeID="0106">{leverancier_kvk}</cbc:CompanyID>' if leverancier_kvk else ""
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <CreditNote xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
             xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
@@ -155,7 +159,7 @@ def bouw_vastly_creditnote_ubl(
   {billing}
   {adr}
   <cac:AccountingSupplierParty><cac:Party><cac:PartyLegalEntity>
-    <cbc:RegistrationName>{leverancier}</cbc:RegistrationName>
+    <cbc:RegistrationName>{leverancier}</cbc:RegistrationName>{kvk_xml}
   </cac:PartyLegalEntity></cac:Party></cac:AccountingSupplierParty>
   <cac:AccountingCustomerParty><cac:Party><cac:PartyLegalEntity>
     <cbc:RegistrationName>{huurder}</cbc:RegistrationName>

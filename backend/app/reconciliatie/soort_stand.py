@@ -180,6 +180,36 @@ REGISTRY: dict[str, SoortDefinitie] = {
         # intake (Peter 22-09): berichten in het postvak sinds gisteren zonder verwerking — het bewijs is de Message-ID
         # in de mailbox zelf, de handeling is deterministisch ("Nu verwerken" = de intake-job opnieuw starten). Besluit
         # Peter in de opdracht: "verschil > 0 = actie-bevinding mét de Message-ID's en knop Nu verwerken".
+        # Vastly-verkoop volledig automatisch (Peter 28-09 "nooit in de verzamelbak of werkvoorraad … moet gewoon als omzet
+        # geboekt worden, punt"; opdracht 29-09): drie soorten in blok `vastly_verkoop`, alle direct in `actie` — het is
+        # het bestaande deterministische verkoop-boekpad dat op één ontbrekende registerrij wacht, elk mét één
+        # handeling (Koppel aan administratie… / Rekening kiezen / Opnieuw aanbieden); explosie-rem blijft.
+        SoortDefinitie(
+            soort="vastly_entiteit_niet_gekoppeld",
+            blok="vastly_verkoop",
+            sinds=date(2026, 9, 29),
+            default=ACTIE,
+            direct_actie_reden="Peter 28/29-09 (opdracht Vastly-verkoop automatisch): de UBL noemt de verhuurder-entiteit, "
+            "alleen de registerrij ontbreekt — één deterministische handeling (Koppel aan administratie…), daarna boekt "
+            "de module zelf; explosie-rem blijft",
+        ),
+        SoortDefinitie(
+            soort="vastly_omzetrekening_ontbreekt",
+            blok="vastly_verkoop",
+            sinds=date(2026, 9, 29),
+            default=ACTIE,
+            direct_actie_reden="Peter 29-09 (opdracht Vastly-verkoop automatisch): per administratie éénmalig de vaste "
+            "omzetrekening kiezen — de documenten wachten deterministisch op die ene rij; explosie-rem blijft",
+        ),
+        SoortDefinitie(
+            soort="vastly_verkoop_niet_geboekt",
+            blok="vastly_verkoop",
+            sinds=date(2026, 9, 29),
+            default=ACTIE,
+            direct_actie_reden="Peter 29-09 (opdracht Vastly-verkoop automatisch, punt 7): élk Vastly-verkoopdocument > 1 "
+            "dag zonder boeking is een actie-bevinding mét reden en Opnieuw aanbieden — geen werkvoorraad; explosie-rem "
+            "blijft",
+        ),
         SoortDefinitie(
             soort="intake_postvak_verschil",
             blok="intake",

@@ -107,6 +107,9 @@ export type BevindingBlok =
   /** Activa fase 1 (21-09): aansluiting module-boekingen ↔ RLZ-activaregister; 24-09: `activum_aanmaken_mislukt_mens` mét
    * handeling "Opnieuw aanmaken" op de rij. */
   | 'activa'
+  /** 29-09 (Peter 28-09): Vastly-verkoop volledig automatisch — élk open Vastly-verkoopdocument > 1 dag is één bevinding mét
+   * handeling (Koppel aan administratie… / Rekening kiezen / Opnieuw aanbieden); nooit verzamelbak of werkvoorraad. */
+  | 'vastly_verkoop'
 
 export interface BevindingDto {
   id: string
@@ -340,6 +343,7 @@ export const BLOK_LABEL: Record<BevindingBlok, string> = {
   projecten: 'Projecten',
   intake: 'Postvak',
   activa: 'Activa',
+  vastly_verkoop: 'Vastly-verkoop',
 }
 
 /** Leesbare labels van de reden-categorieën (spiegel van REDEN_LABEL in automatiseringen.py). */

@@ -632,3 +632,93 @@ def document_extern_geboekt_toch_verschillend(
         bevinding_geaccepteerd=r.bevinding_geaccepteerd,
         checks_cache_ongeldig=r.checks_cache_ongeldig,
     )
+
+
+@router.post(
+    "/reconciliatie/vastly/entiteit-koppelen",
+    response_model=schemas.VastlyEntiteitKoppelenResultaatDto,
+)
+def vastly_entiteit_koppelen(
+    invoer: schemas.VastlyEntiteitKoppelenInvoerDto, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.VastlyEntiteitKoppelenResultaatDto:
+    """"Koppel aan administratie…" (Peter 28/29-09) op de bevinding `vastly_entiteit_niet_gekoppeld`: schrijft de
+    registerrij (bron 'mens', audit `vastly_entiteit_gekoppeld`) en biedt de wachtende documenten van díé entiteit
+    DIRECT aan door het automatische pad (`heraanbieden.heraanbied_voor_sleutel` — administratie zetten, UBL-extractie,
+    autoboek; elke uitkomst geauditeerd). 422 = onbekende sleutelsoort/lege sleutel/inactieve administratie."""
+    from app.db.models import Administratie
+    from app.db.session import scoped_session
+    from app.verkoop import entiteit, heraanbieden
+
+    try:
+        with scoped_session(None, actor_id=actor.id) as session:
+            rij = entiteit.koppel_entiteit(
+                session,
+                sleutel_soort=invoer.sleutel_soort,
+                sleutel=invoer.sleutel,
+                administratie_id=invoer.administratie_id,
+                actor_id=actor.id,
+                weergave=invoer.weergave,
+            )
+            sleutel = rij.sleutel
+            naam = session.get(Administratie, invoer.administratie_id).naam
+    except entiteit.EntiteitFout as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    r = heraanbieden.heraanbied_voor_sleutel(sleutel_soort=invoer.sleutel_soort, sleutel=sleutel, actor_id=actor.id)
+    return schemas.VastlyEntiteitKoppelenResultaatDto(
+        sleutel_soort=invoer.sleutel_soort,
+        sleutel=sleutel,
+        administratie_id=invoer.administratie_id,
+        administratie_naam=naam,
+        documenten=r.kandidaten,
+        per_uitkomst=r.per_uitkomst(),
+        doel_pad=f"/administraties/{invoer.administratie_id}",
+    )
+
+
+@router.post(
+    "/reconciliatie/vastly/documenten/{document_id}/opnieuw-aanbieden",
+    response_model=schemas.VastlyOpnieuwAanbiedenResultaatDto,
+)
+def vastly_opnieuw_aanbieden(
+    document_id: uuid.UUID,
+    invoer: schemas.BundelenInvoerDto,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.VastlyOpnieuwAanbiedenResultaatDto:
+    """"Opnieuw aanbieden" (Peter 29-09) op `vastly_verkoop_niet_geboekt`: hetzelfde autoboek-pad als bij intake voor dít
+    document (systeem-actor boekt; harde checks + volumerem onverkort; elke uitkomst geauditeerd). Een document dat geen
+    kandidaat (meer) is (status/soort) = 409 mét reden; buiten scope = 404 (RLS)."""
+    from app.db.session import scoped_session
+    from app.documenten.models import Document, DocumentStatus
+    from app.verkoop import autoboeken
+
+    with scoped_session(invoer.administratie_id, actor_id=actor.id) as session:
+        document = session.get(Document, document_id)
+        if document is None or document.administratie_id != invoer.administratie_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document niet gevonden in deze administratie")
+        if document.status == DocumentStatus.BOEKEN_MISLUKT:
+            # De motor accepteert boeken_mislukt als startpunt; het autoboek-pad eist te_controleren — zet 'm terug via
+            # de statusmachine (retry-semantiek) zodat het pad 'm neemt.
+            from app.documenten.service import _schrijf_overgang
+
+            _schrijf_overgang(
+                session,
+                document=document,
+                naar=DocumentStatus.TE_CONTROLEREN,
+                actor_id=actor.id,
+                detail={"reden": "opnieuw aangeboden vanuit Inzicht › Reconciliatie (Vastly-verkoop automatisch)"},
+            )
+    besluit = autoboeken.probeer_verkoop_autoboeken_na_intake(
+        administratie_id=invoer.administratie_id, document_id=document_id
+    )
+    if besluit is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dit document is geen autoboek-kandidaat (status, soort of administratie) — open het document.",
+        )
+    return schemas.VastlyOpnieuwAanbiedenResultaatDto(
+        document_id=document_id,
+        administratie_id=invoer.administratie_id,
+        uitkomst="geboekt" if besluit.geboekt else "geweigerd",
+        reden=None if besluit.geboekt else besluit.reden,
+        doel_pad=f"/verkoop/{invoer.administratie_id}/{document_id}",
+    )

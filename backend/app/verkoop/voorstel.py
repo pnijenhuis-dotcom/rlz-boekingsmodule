@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.db.audit import record_audit_event
 from app.db.models import Grootboekrekening
 from app.db.session import scoped_session
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.checks import CheckRapport
 from app.documenten.models import Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
 from app.documenten.service import DocumentNietGevonden
@@ -26,6 +27,7 @@ from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync import btw as btw_eenheid
 from app.sync.models import TaxRateCache
 from app.verkoop import checks as verkoop_checks
+from app.verkoop import omzetrekening as omzetrekening_service
 from app.verkoop.models import (
     VerkoopBoeking,
     VerkoopBoekingStatus,
@@ -72,6 +74,11 @@ class VerkoopRegelData:
     # deterministisch bepaald (mens kiest).
     btw_bron: str | None = None
     btw_kandidaten: tuple[uuid.UUID, ...] = ()
+    # Herkomst van de REKENING (Peter 29-09): 'ubl' (AccountingCost bekend), 'omzetrekening' (vaste Vastly-
+    # omzetrekening van de administratie per regelsoort — app/verkoop/omzetrekening.py), 'mens' (opgeslagen
+    # keuze) of None (niets afleidbaar → bevinding `vastly_omzetrekening_ontbreekt`, nooit "mens kiest").
+    gb_bron: str | None = None
+    regelsoort: str | None = None
 
 
 @dataclass(frozen=True)
@@ -216,12 +223,75 @@ def _resolve_btw(
                 taxrate_id=voorkeur.taxrate_id, vergrendeld=True, bron="onthouden",
                 kandidaten=kandidaten, categorie=code, percentage_ubl=pct,
             )
+        # Peter 29-09 (punt 3): geen "onthouden keuze"-drempel meer — het standaardtarief van de administratie voor
+        # dit UBL-percentage, dezelfde regel als inkoop (administratie-default → meest gebruikt in de eigen historie
+        # → het basistarief). Deterministisch, vergrendeld, bron 'administratie_default'; een mens kan 'm via de
+        # onthouden-keuze nog altijd overrulen (die wint hierboven).
+        standaard = _administratie_standaard_tarief(session, administratie_id=administratie_id, kandidaten=kandidaten, rijen=rijen)
         return BtwResolutie(
-            taxrate_id=None, vergrendeld=False, bron=None,
+            taxrate_id=standaard, vergrendeld=True, bron=BTW_BRON_ADMINISTRATIE_DEFAULT,
             kandidaten=kandidaten, categorie=code, percentage_ubl=pct,
         )
     return BtwResolutie(
         taxrate_id=None, vergrendeld=False, bron=None, kandidaten=(), categorie=code, percentage_ubl=pct
+    )
+
+
+BTW_BRON_ADMINISTRATIE_DEFAULT = "administratie_default"
+
+
+def _administratie_standaard_tarief(
+    session: Session, *, administratie_id: uuid.UUID, kandidaten: tuple[uuid.UUID, ...], rijen: list[TaxRateCache]
+) -> uuid.UUID:
+    """Het standaardtarief van de administratie binnen een set dekkende kandidaten (Peter 29-09, zelfde regel als
+    inkoop): (1) de administratie-default (`platform.administratie.standaard_taxrate_id`) als die in de set zit;
+    (2) het in de eigen geboekte Vastly-verkoopregels meest gebruikte tarief uit de set; (3) het basistarief = de
+    kandidaat met de kortste naam ("NL, Hoog Tarief" vóór "NL, Hoog Tarief (vooruit)"), bij gelijke lengte de
+    alfabetisch eerste. Altijd één uitkomst — nooit een mens per document."""
+    from app.db.models import Administratie as _Administratie
+
+    administratie = session.get(_Administratie, administratie_id)
+    default = getattr(administratie, "standaard_taxrate_id", None) if administratie is not None else None
+    if default in kandidaten:
+        return default
+    historie = session.execute(
+        select(VerkoopVoorstelRegel.taxrate_id, func.count())
+        .join(VerkoopBoeking, VerkoopBoeking.document_id == VerkoopVoorstelRegel.document_id)
+        .where(
+            VerkoopBoeking.administratie_id == administratie_id,
+            VerkoopBoeking.status == VerkoopBoekingStatus.GEBOEKT.value,
+            VerkoopVoorstelRegel.taxrate_id.in_(kandidaten),
+        )
+        .group_by(VerkoopVoorstelRegel.taxrate_id)
+        .order_by(func.count().desc())
+    ).all()
+    if historie:
+        return historie[0][0]
+    namen = {r.id: (r.naam or "") for r in rijen}
+    return sorted(kandidaten, key=lambda k: (len(namen.get(k, "")), namen.get(k, ""), str(k)))[0]
+
+
+def _met_omzetrekening(
+    session: Session, *, administratie_id: uuid.UUID, regel: VerkoopRegelData
+) -> VerkoopRegelData:
+    """Regel zónder (bekende) AccountingCost → de vaste Vastly-omzetrekening per regelsoort (Peter 29-09, punt 2b);
+    niets afleidbaar → regel blijft leeg mét `regelsoort` gezet (bevinding). Een ONBEKENDE code blijft blokkerend."""
+    regelsoort = omzetrekening_service.classificeer_regel(regel.omschrijving)
+    if regel.ledger_id is not None:
+        return replace(regel, gb_bron=regel.gb_bron or ("mens" if regel.herkomst == "opgeslagen" else "ubl"), regelsoort=regelsoort)
+    if regel.gb_code_status == "onbekend":
+        return replace(regel, regelsoort=regelsoort)
+    ledger_id = omzetrekening_service.omzetrekening_voor(
+        session, administratie_id=administratie_id, regelsoort=regelsoort, actor_id=SYSTEEM_ACTOR_ID
+    )
+    if ledger_id is None:
+        return replace(regel, regelsoort=regelsoort)
+    return replace(
+        regel,
+        ledger_id=ledger_id,
+        gb_code_status="bekend",
+        gb_bron=omzetrekening_service.GB_BRON_OMZETREKENING,
+        regelsoort=regelsoort,
     )
 
 
@@ -343,7 +413,11 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
                 totaalbedrag_incl=bestaand.totaalbedrag_incl,
                 is_creditnota=bestaand.is_creditnota,
                 gecrediteerd_factuurnummer=bestaand.gecrediteerd_factuurnummer,
-                regels=_niet_btw_plichtig_toepassen(session, administratie_id=administratie_id, regels=regels),
+                regels=_niet_btw_plichtig_toepassen(
+                    session,
+                    administratie_id=administratie_id,
+                    regels=[_met_omzetrekening(session, administratie_id=administratie_id, regel=r) for r in regels],
+                ),
                 opgeslagen=True,
                 rlz_boekstuknummer=bestaand.rlz_boekstuknummer,
             )
@@ -394,7 +468,11 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
             totaalbedrag_incl=_als_decimal(veldvoorstel.get("totaal_incl")),
             is_creditnota=bool(veldvoorstel.get("is_creditnota")),
             gecrediteerd_factuurnummer=gecrediteerd[0] if gecrediteerd else None,
-            regels=_niet_btw_plichtig_toepassen(session, administratie_id=administratie_id, regels=regels),
+            regels=_niet_btw_plichtig_toepassen(
+                session,
+                administratie_id=administratie_id,
+                regels=[_met_omzetrekening(session, administratie_id=administratie_id, regel=r) for r in regels],
+            ),
             opgeslagen=False,
         )
 

@@ -79,8 +79,12 @@ class TestPrefillUitUbl:
             administratie_id=administratie_id, document_id=document_id
         )
         statussen = [r.gb_code_status for r in data.regels]
-        assert statussen == ["onbekend", "onbekend", "ontbreekt"]
-        assert all(r.ledger_id is None for r in data.regels)
+        # 29-09 (Peter, Vastly-verkoop automatisch): een regel ZONDER code krijgt de vaste Vastly-omzetrekening van de
+        # administratie (hier afgeleid: precies één omzetrekening 8000 in het schema) — 'bekend' mét herkomst
+        # `omzetrekening`; een onbekende code en een totaalrekening blijven 'onbekend' (blokkerend, §2d).
+        assert statussen == ["onbekend", "onbekend", "bekend"]
+        assert [r.ledger_id for r in data.regels[:2]] == [None, None]
+        assert data.regels[2].ledger_id == OMZET_LEDGER_ID and data.regels[2].gb_bron == "omzetrekening"
 
     def test_creditnota_prefill_draagt_herleiding(
         self,

@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie | doorbelasting-btw | xml-documenten | crediteuren-naamclusters | project-bronvolgorde | aangifteperiode | crediteur-paneel | btw-netto | tabwissel | lijst-alles | comfort-controlescherm | planning-v4 | verkoop-overstap)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie | doorbelasting-btw | xml-documenten | crediteuren-naamclusters | project-bronvolgorde | aangifteperiode | crediteur-paneel | btw-netto | tabwissel | lijst-alles | comfort-controlescherm | planning-v4 | verkoop-overstap | vastly-verkoop)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" && "$ONDERDEEL" != "doorbelasting-btw" && "$ONDERDEEL" != "xml-documenten" && "$ONDERDEEL" != "crediteuren-naamclusters" && "$ONDERDEEL" != "project-bronvolgorde" && "$ONDERDEEL" != "aangifteperiode" && "$ONDERDEEL" != "crediteur-paneel" && "$ONDERDEEL" != "btw-netto" && "$ONDERDEEL" != "tabwissel" && "$ONDERDEEL" != "lijst-alles" && "$ONDERDEEL" != "comfort-controlescherm" && "$ONDERDEEL" != "planning-v4" && "$ONDERDEEL" != "verkoop-overstap" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" && "$ONDERDEEL" != "doorbelasting-btw" && "$ONDERDEEL" != "xml-documenten" && "$ONDERDEEL" != "crediteuren-naamclusters" && "$ONDERDEEL" != "project-bronvolgorde" && "$ONDERDEEL" != "aangifteperiode" && "$ONDERDEEL" != "crediteur-paneel" && "$ONDERDEEL" != "btw-netto" && "$ONDERDEEL" != "tabwissel" && "$ONDERDEEL" != "lijst-alles" && "$ONDERDEEL" != "comfort-controlescherm" && "$ONDERDEEL" != "planning-v4" && "$ONDERDEEL" != "verkoop-overstap" && "$ONDERDEEL" != "vastly-verkoop" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -1029,6 +1029,42 @@ jobs:
             echo "Oordeel: verkoop-overstap: overstap 201 = $O201, 5xx = $O5XX, audit odoo_leesbron_gepromoveerd = $PROM, backend odoo = $ODOO, Odoo-boekstukken = $BILLS — $ST — exit $rc_vo" >> "$UIT"
             echo "STATUS verkoop-overstap: rapport in $UIT (exit $rc_vo = uitkomst)"
           fi
+          if [[ "$ONDERDEEL" == "vastly-verkoop" ]]; then
+            # Vastly-verkoop volledig automatisch 29-09 (BESLISSINGEN "VASTLY-VERKOOP VOLLEDIG AUTOMATISCH — ENTITEITENREGISTER, OMZETREKENING PER
+            # ADMINISTRATIE, GEEN VERZAMELBAK (Peter 29-09)"): lees-only meetrecept — (1) `vastly-verkoop-heraanbieden --dry-run` (kandidaten
+            # kantoorbreed + verwacht oordeel per document: verwacht 23 + 9 vóór de echte run, 0 of alleen 'geweigerd' mét reden erná),
+            # (2) db-lezen vastly-verkoop (runs, koppelingen, niet-gekoppelde documenten, kantoorbrede bevindingen), (3) db-lezen
+            # vastly-verkoop-administratie voor de zes vastgoed-administraties (open documenten, omzetrekeningen, autoboek-audits,
+            # bevindingen), (4) request-log van de twee handelingen. Oordeel uit de TOTAAL-regel van (1) + per_uitkomst.
+            UIT="verkenning/nameting-vastly-verkoop-$DATUM.txt"
+            rc_vv=0
+            SINDS_VV="${SINDS_VASTLY_VERKOOP:-2026-09-29T12:00:00Z}"
+            {
+              echo "== vastly-verkoop-heraanbieden --dry-run (lees-only, kantoorbreed) =="
+              scripts/gcp/nameting.sh vastly-verkoop-heraanbieden --dry-run 2> nameting-vv.stderr || rc_vv=$?
+              echo
+              echo "== db-lezen vastly-verkoop --param dagen=14 =="
+              scripts/gcp/nameting.sh db-lezen vastly-verkoop --param dagen=14 2> nameting-vv-db.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-vv-db.stderr; }
+              echo
+              for ADM in "Rubicon" "Elissen" "ARVUM" "Meyer" "Shuto" "Inpensas" "Rooijen"; do
+                echo "== db-lezen vastly-verkoop-administratie --administratie $ADM --param dagen=14 =="
+                scripts/gcp/nameting.sh db-lezen vastly-verkoop-administratie --administratie "$ADM" --param dagen=14 2> nameting-vv-db2.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-vv-db2.stderr; }
+                echo
+              done
+              echo "== request-log POST /reconciliatie/vastly/* + PUT /vastly-omzetrekeningen sinds $SINDS_VV =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" (httpRequest.requestUrl:"/reconciliatie/vastly/" OR httpRequest.requestUrl:"/vastly-omzetrekeningen") timestamp>="'"$SINDS_VV"'"' --project "$PROJECT_ID" --limit 200 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' || echo "(request-log niet leesbaar)"
+            } > "$UIT"
+            cat nameting-vv.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-vv.stderr; then
+              echo "::error::vastly-verkoop kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_vv)" >> "$UIT"
+            TOTAAL="$(grep -m1 -o 'TOTAAL: [0-9]* kandidaten' "$UIT" || true)"
+            PER="$(grep -m1 '^PER UITKOMST:' "$UIT" || true)"
+            echo "Oordeel: vastly-verkoop: ${TOTAAL:-geen totaalregel} — ${PER:-geen uitkomstregel} — job-exit $rc_vv" >> "$UIT"
+            echo "STATUS vastly-verkoop: rapport in $UIT (job-exit $rc_vv = uitkomst)"
+          fi
           if [[ "$ONDERDEEL" == "query" ]]; then
             # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
             # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
@@ -1099,6 +1135,8 @@ jobs:
             OORDEEL_BRON="verkenning/nameting-activa-conventie-$DATUM.txt"
           elif [[ "$ONDERDEEL" == "verkoop-overstap" ]]; then
             OORDEEL_BRON="verkenning/nameting-verkoop-overstap-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "vastly-verkoop" ]]; then
+            OORDEEL_BRON="verkenning/nameting-vastly-verkoop-$DATUM.txt"
           elif [[ "$ONDERDEEL" =~ ^(alles|a|b|c|d|e)$ ]]; then
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           else

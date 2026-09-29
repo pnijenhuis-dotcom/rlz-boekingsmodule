@@ -81,10 +81,15 @@ class TestRegistry:
         # uitgevoerd is een bevestigde handeling — actie, geen meten; besluit Peter in de opdracht).
         # 24-09: `doorbelasting_bedrag_afwijking` (opdracht doorbelasting btw RLZ-vorm, akkoord Peter "3. ja": verschil
         # > € 0,05 module ↔ RLZ of verkoop ≠ spiegel — bestaande cent-exacte toets mét twee RLZ-boekstukken als bewijs).
+        # 29-09: de drie Vastly-verkoop-soorten (Peter 28-09 "nooit in de verzamelbak of werkvoorraad … moet gewoon als
+        # omzet geboekt worden, punt": bestaand deterministisch boekpad dat op één registerrij wacht, elk mét één handeling).
         assert [d.soort for d in soort_stand.REGISTRY.values() if d.direct_actie_reden] == [
             "intussen_extern_geboekt",
             "doorbelasting_bedrag_afwijking",
             "activum_aanmaken_mislukt_mens",
+            "vastly_entiteit_niet_gekoppeld",
+            "vastly_omzetrekening_ontbreekt",
+            "vastly_verkoop_niet_geboekt",
             "intake_postvak_verschil",
         ]
         assert soort_stand.code_default("doorbelasting_bedrag_afwijking") == "actie"

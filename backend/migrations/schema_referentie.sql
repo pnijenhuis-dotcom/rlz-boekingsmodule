@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0171
+-- Migratie-head bij deze dump: 0172
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -3155,6 +3155,44 @@ ALTER TABLE ONLY boekhouding.uren_project_toewijzing FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: vastly_entiteit_koppeling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.vastly_entiteit_koppeling (
+    id uuid NOT NULL,
+    sleutel_soort text NOT NULL,
+    sleutel text NOT NULL,
+    administratie_id uuid NOT NULL,
+    bron text NOT NULL,
+    weergave text,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    aangemaakt_door uuid,
+    CONSTRAINT ck_vastly_entiteit_koppeling_bron CHECK ((bron = ANY (ARRAY['identiteit'::text, 'mens'::text]))),
+    CONSTRAINT ck_vastly_entiteit_koppeling_sleutel_soort CHECK ((sleutel_soort = ANY (ARRAY['kvk'::text, 'naam'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.vastly_entiteit_koppeling FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: vastly_omzetrekening; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.vastly_omzetrekening (
+    administratie_id uuid NOT NULL,
+    regelsoort text NOT NULL,
+    ledger_id uuid NOT NULL,
+    bron text NOT NULL,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    gewijzigd_door uuid,
+    CONSTRAINT ck_vastly_omzetrekening_bron CHECK ((bron = ANY (ARRAY['historie'::text, 'mens'::text]))),
+    CONSTRAINT ck_vastly_omzetrekening_regelsoort CHECK ((regelsoort = ANY (ARRAY['huur'::text, 'servicekosten'::text, 'waarborg'::text, 'overig'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.vastly_omzetrekening FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: veldwerker_afwezigheid; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -5725,6 +5763,22 @@ ALTER TABLE ONLY boekhouding.activum_koppeling
 
 
 --
+-- Name: vastly_entiteit_koppeling vastly_entiteit_koppeling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.vastly_entiteit_koppeling
+    ADD CONSTRAINT vastly_entiteit_koppeling_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: vastly_omzetrekening vastly_omzetrekening_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.vastly_omzetrekening
+    ADD CONSTRAINT vastly_omzetrekening_pkey PRIMARY KEY (administratie_id, regelsoort);
+
+
+--
 -- Name: veldwerker_afwezigheid veldwerker_afwezigheid_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -7305,6 +7359,13 @@ CREATE INDEX ix_uren_project_toewijzing_administratie_id ON boekhouding.uren_pro
 
 
 --
+-- Name: ix_vastly_entiteit_koppeling_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_vastly_entiteit_koppeling_administratie_id ON boekhouding.vastly_entiteit_koppeling USING btree (administratie_id);
+
+
+--
 -- Name: ix_veldwerker_afwezigheid_gebruiker; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -7687,6 +7748,13 @@ CREATE UNIQUE INDEX ux_pand_rlz_project ON boekhouding.pand USING btree (adminis
 --
 
 CREATE UNIQUE INDEX ux_toewijzing_regel_actief ON boekhouding.toewijzing_regel USING btree (soort, sleutel) WHERE actief;
+
+
+--
+-- Name: ux_vastly_entiteit_koppeling_sleutel; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_vastly_entiteit_koppeling_sleutel ON boekhouding.vastly_entiteit_koppeling USING btree (sleutel_soort, sleutel);
 
 
 --
@@ -10431,6 +10499,22 @@ ALTER TABLE ONLY boekhouding.uren_project_toewijzing
 
 
 --
+-- Name: vastly_entiteit_koppeling vastly_entiteit_koppeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.vastly_entiteit_koppeling
+    ADD CONSTRAINT vastly_entiteit_koppeling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: vastly_omzetrekening vastly_omzetrekening_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.vastly_omzetrekening
+    ADD CONSTRAINT vastly_omzetrekening_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
 -- Name: veldwerker_afwezigheid veldwerker_afwezigheid_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -13090,6 +13174,32 @@ ALTER TABLE boekhouding.uren_project_toewijzing ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY uren_project_toewijzing_scope ON boekhouding.uren_project_toewijzing USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: vastly_entiteit_koppeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.vastly_entiteit_koppeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: vastly_entiteit_koppeling vastly_entiteit_koppeling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY vastly_entiteit_koppeling_scope ON boekhouding.vastly_entiteit_koppeling USING (true) WITH CHECK (true);
+
+
+--
+-- Name: vastly_omzetrekening; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.vastly_omzetrekening ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: vastly_omzetrekening vastly_omzetrekening_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY vastly_omzetrekening_scope ON boekhouding.vastly_omzetrekening USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

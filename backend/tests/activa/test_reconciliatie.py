@@ -223,8 +223,11 @@ class TestRegistryEnTeksten:
         assert "€ 7.927,80" in teksten.leesbaar(b).wat
 
     def test_blok_staat_in_run_blokken(self) -> None:
-        # 23-09: ná activa kwam het postvak-blok `intake` (Peter 22-09) — activa blijft vlak vóór intake.
-        assert "activa" in run_service.BLOKKEN and run_service.BLOKKEN[-2:] == ("activa", "intake")
+        # 23-09: ná activa kwam het postvak-blok `intake` (Peter 22-09) — activa blijft vlak vóór intake; 29-09: daarná
+        # `vastly_verkoop` (Peter 28/29-09) — de volgorde activa → intake blijft.
+        b = run_service.BLOKKEN
+        assert "activa" in b and b.index("intake") == b.index("activa") + 1
+        assert b[-2:] == ("intake", "vastly_verkoop")
 
 
 class TestCliBlok:
