@@ -86,6 +86,53 @@
   voor meetrecepten: de audit-rij `kassarapport_autotype_run` wordt alleen geschreven als er ≥ 1 kandidaat was (`if not dry_run and uit.documenten`); een
   administratie zonder treffer laat bewust géén rij achter, "verwacht 0 / gedaan 0" is dus nooit als rij meetbaar, alleen als afwezigheid.**
 
+<!-- toegevoegd 29-09-2026, opdracht "vastly-verkoop-volledig-automatisch-geen-verzamelbak-geen-drempels" -->
+- **Vastly-verkoop volledig automatisch (Peter 28-09 "deze huurfacturen horen daar sowieso niet in te staan (ik wil ze niet eens zien).
+  De koppeling met de boekhouding staat en dan moet het gewoon als omzet geboekt worden, punt"; opdracht 29-09; migratie 0172; HERZIET de
+  opt-in/drempels van 15-08 en 30-08; BESLISSINGEN "VASTLY-VERKOOP VOLLEDIG AUTOMATISCH — ENTITEITENREGISTER, OMZETREKENING PER
+  ADMINISTRATIE, GEEN VERZAMELBAK (Peter 29-09)"):** (1) **Entiteit → administratie uitsluitend via het entiteitenregister**
+  (`app/verkoop/entiteit.py`, tabel `vastly_entiteit_koppeling`): KvK van de `AccountingSupplierParty` → koppelingsrij óf
+  `administratie_identiteit.kvk` (precies één actieve administratie; de treffer wordt als rij bron `identiteit` vastgelegd), anders een
+  door een mens gezette naam-koppeling (`naam_norm`); nooit tenaamstelling, afzender of toewijzings-geheugen. Onbekend = geregistreerd
+  zónder administratie mét reden `vastly_entiteit_niet_gekoppeld: kvk=…|naam=…|weergave=…`, NIET in de verzamelbak-lijst (de oude reden
+  `vastly_verkoop_zonder_eenduidige_entiteit` valt onder dezelfde filter), wél één kantoorbrede bevinding per entiteit mét "Koppel aan
+  administratie…" — daarna verwerkt de heraanbieding de wachtende documenten direct. (2) **Omzetrekening deterministisch per
+  administratie** (`app/verkoop/omzetrekening.py`, tabel `vastly_omzetrekening`): `AccountingCost` bekend wint (onbekende code blijft
+  blokkerend, koppelcontract §2d); anders de vaste rekening per (administratie, regelsoort huur/servicekosten/waarborg/overig — pure tekst
+  op de regelomschrijving), initieel afgeleid uit de eigen geboekte Vastly-verkoopregels → het eenduidige rekeningschema (één omzetrekening
+  8xxx mét de regelsoort in de naam, of één 8xxx in totaal) en vastgelegd (bron `historie`); niets afleidbaar = weigering
+  `omzetrekening_ontbreekt` → bevinding `vastly_omzetrekening_ontbreekt` mét "Rekening kiezen" (éénmalig). Zichtbaar én wijzigbaar op
+  Instellingen › Administratie › Algemeen "Vastly-omzetrekeningen" (Beheerder; bron `mens` wint). "Mens kiest" per document bestaat niet
+  meer. (3) **Btw deterministisch**: bij meerdere dekkende tarieven zonder onthouden keuze het standaardtarief van de administratie
+  (administratie-default → meest gebruikt in eigen geboekte verkoopregels → basistarief = kortste naam), vergrendeld, bron
+  `administratie_default`; een eerdere mens-keuze (`verkoop_btw_voorkeur`) wint; 0 %/vrijgesteld volgt de UBL-categorie zoals altijd.
+  (4) **Autoboek zonder drempels**: `probeer_verkoop_autoboeken_na_intake` boekt zodra 1–3 vaststaan; harde checks (duplicaat lokaal + RLZ,
+  regelsom, btw-uit-factuur, debiteur = échte huurder, geen ankerdebiteur, creditnota-herleiding), volumerem (alleen automatisch),
+  mogelijk-duplicaat en "mens-opgeslagen voorstel wint" blijven; élke uitkomst geauditeerd (`automatisch_geboekt` /
+  `autoboeken_geweigerd` mét reden-sleutel `omzetrekening_ontbreekt` | `gb_code_onbekend` | `btw_niet_bepaalbaar`); de motor legt óók bij
+  een automatische boeking het gebruikte voorstel (kop + regels) vast. Een geweigerd document staat als bevinding in de kantoorbrede
+  reconciliatie; de werkvoorraad-tellers per administratie zijn in deze run bewust NIET aangepast (beslispunt Peter, zie BESLISSINGEN
+  "Keuzes zonder Peter"). (5) **UBL nooit door de AI**: een verkoopfactuur (altijd een Vastly-UBL) krijgt in `_pdf_extractie_detail`
+  `ai_extractie_overgeslagen: ubl_deterministisch_geen_ai` — ook mét een PDF-suffix op het hoofdbestand —, `herextraheer_document`
+  weigert 'm en de AI-heraanbied-motor kent 'm niet als kandidaat (bijvangst RUB-2026-0034 24-09). (6) **Nazorg-CLI**
+  `vastly-verkoop-heraanbieden [--dry-run] [--uitvoeren] [--administratie <uuid|naamdeel>]` (`app/verkoop/heraanbieden.py`, dry-run
+  default, één audit `vastly_verkoop_heraanbieding_run` per run → dagteller `vastly_verkoop_heraanbieding`); dezelfde motor draait als
+  dagelijkse stap in `reconciliatie-alles` (échte run vóór de blokken, lees-only = telling) en ná élke koppeling in de bevinding. De échte
+  run voor de 23 + 9 = `gcloud run jobs execute rlz-reconciliatie --args=-m,app.cli,vastly-verkoop-heraanbieden,--uitvoeren` ná Peters
+  "ja"; de nameting-allowlist kent alleen `--dry-run`. (7) **Reconciliatieblok `vastly_verkoop`** (`app/verkoop/reconciliatie.py`, in
+  `run.BLOKKEN`): `vastly_entiteit_niet_gekoppeld` (platformbreed), `vastly_omzetrekening_ontbreekt` (administratie × regelsoort) en
+  `vastly_verkoop_niet_geboekt` (per open Vastly-verkoopdocument > 1 dag, reden = lees-only oordeel `autoboeken.beoordeel_lees_only`;
+  "Opnieuw aanbieden" = `POST /reconciliatie/vastly/documenten/{id}/opnieuw-aanbieden`, boeken_mislukt → te_controleren → autoboek) —
+  alle drie DIRECT in `actie` (`direct_actie_reden`, guard `test_soort_stand.py`), teksten in `teksten._vastly_verkoop`, frontend
+  `reconciliatie/VastlyActies.tsx` (Koppel aan administratie… / Rekening kiezen / Opnieuw aanbieden), BLOK_LABEL "Vastly-verkoop".
+  (8) **Vraag aan Vastly** over `AccountingCost` per regel in Platform/OPEN_ITEMS (geen blokkade). Meetlat: `db-lezen vastly-verkoop` +
+  `db-lezen vastly-verkoop-administratie`, dispatch-onderdeel `vastly-verkoop`. Tests: `tests/verkoop/test_vastly_automatisch.py`,
+  aangepaste verwachtingen in `test_autoboeken.py` (geen grootboekcode → boekt; btw ambigu → boekt met `administratie_default`; niets
+  afleidbaar → `omzetrekening_ontbreekt`), `tests/intake/test_creditnote_gate.py` (routering via het register), gouden-set-casus **ao**
+  `tests/keten/test_ao_vastly_verkoop_automatisch.py` (fixture `ao_vastly_verkoop_rub_2026_0099` = Vastly-golden-case-vorm), vitest
+  `VastlyActies.test.tsx` + `VastlyOmzetrekeningenRij.test.tsx`. Werkt in productie: niet gemeten (vervolg-opdracht
+  `2026-09-30-nameting-vastly-verkoop-na-deploy-en-echte-run.md`).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Omzetboekingen (omzetmodule, Receipts, omzet-autoboeken) (CLAUDE.md `ed6d176` r. 700–737)

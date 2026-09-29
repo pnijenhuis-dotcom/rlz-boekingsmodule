@@ -138,6 +138,7 @@ rekeningschema (§2) als kapstok voor de toekomstige GL-levering. Voorstel: besl
 
 ## Gelezen regels
 
+- geen domeinregels gelezen — reden: lees-only extract op de leesreplica (alleen SELECT), geen domeinwijziging; werkloop-regels via CLAUDE.md § Werkwijze (bijgevoegd 29-09 voor de guard `test_rapporten_gelezen_regels`).
 - CLAUDE.md (RLZ) kernprincipes; `scripts/gcp/db_lezen.sh`, `nameting.sh` (allowlist), `nameting_env.sh`;
   `app/rlz/lezen_cli.py`, `app/rlz/feiten_cli.py`, `app/rlz/lezen.py`, `app/migratie/rlz_bron.py` (JournalEntryLines-feiten
   STAP-0 13-09), `app/intercompany/rekening_courant.py`, `app/groepen/saldi.py`, `app/odoo/credentials.py`, `app/bank/sync.py`,
