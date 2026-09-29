@@ -44,6 +44,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
    in het kantoorbrede overzicht; alleen harde voorwaarden (credential, API-key, geldpoort) blokkeren, altijd zichtbaar;
    elke opt-in heeft een test op het afwezig-pad (guard-test) en dagtellers verwacht/gedaan/overgeslagen in de
    reconciliatiemail — zie BESLISSINGEN "HERSTELRUN 07-09 — GEEN STILLE NO-OP".
+   **(7) Bestaat-het-al-check (besluit Peter 29-09, WERKWIJZE v1.19):** vóór elke toegang, sleutel, dataset of koppeling
+   eerst kijken of die al in onze omgeving staat (Secret Manager, credential-store, leesreplica, registers, bestaand script);
+   Peter krijgt alleen werk dat een machine niet kan doen (klikpunt draagt "machine kan dit niet omdat: …"); simpelste
+   route in gewone taal vóór techniek.
 
 ## Stack & platform (besloten, koppelcontract v1.1 §2b)
 
@@ -348,6 +352,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   7. CC-inbox rij (j) (19-09): claim per opdracht = atomische `mv` + `.claim` (pid/starttijd), `opdrachten/.lock` atomisch als dé ene runner-lock, ongecommit werk ná een run = WIP op `wip/<slug>` (nooit gedaan/, volgende poging start ermee), exit 0 zonder rapport/commit = herstart, vuile werkboom bij start = stop, Stop-hook via `scripts/git-hooks/stop-push.sh` = fetch + merge --no-ff + retry, blokkade luid in `rlz inbox status` — zie BESLISSINGEN "CC-INBOX — LOCK PER OPDRACHT, POORT VÓÓR EINDE, PUSH-RETRY (19-09)".
   8. CC-inbox rij (k) (19-09 avond): een opdracht mét `niet vóór: JJJJ-MM-DD[ UU:MM]` in de kop wordt pas ná dat moment geclaimd (een nameting "ná de run van 06:30" start niet de avond ervoor); `rlz inbox status` toont "wacht tot …" — zie BESLISSINGEN "CC-INBOX — LOCK PER OPDRACHT, POORT VÓÓR EINDE, PUSH-RETRY (19-09)".
   9. F3-jobs (BUG 21-09): élke `gcloud run jobs deploy` in deploy.yml draagt `--command` (Dockerfile bewust zonder ENTRYPOINT), ná de F3-lus start élke job één keer mét `--smoketest` (niet startbaar = deploy rood), f3_jobs.sh toetst/zet het commando bij "bestaat al" en eindigt luid mét GEPAUZEERD/ZONDER STARTCOMMANDO; boeking > 10 min op wordt_geboekt = regressie-LET-OP + kwartier-probe mét "Opnieuw indienen"; gemeten 22-09: command/smoketest/schedulers/probe/auto-sluiting ja, trigger-pad niet gemeten (poging 2 23-09); nieuw dispatch-onderdeel = if-tak + options + via_gh + OORDEEL_BRON-tak — zie BESLISSINGEN "F3-JOBS — COMMAND PYTHON IN DEPLOY.YML + JOB-SMOKETEST + WORDT_GEBOEKT LET-OP (21-09)".
+  10. Jarvis-logins (Peter 29-09): negen RLZ-webservice-logins store → Secret Manager `RLZ_WS_USER_/RLZ_WS_PASSWORD_<PREFIX>` via de job-CLI `credential-naar-secretmanager` (waarde nooit in uitvoer/audit, alleen naam + tekens; bestaande versie nooit stil overschreven; IAM-script = klikpunt, executie ná deploy; amendement op 23-09 "versies zet Peter zelf": machine-kopie mag) — zie BESLISSINGEN "JARVIS-LOGINS — CREDENTIAL-STORE → SECRET MANAGER ALS JOB-EXECUTIE, NOOIT TONEN (Peter 29-09)".
   **LEESPLICHT: lees `docs/regels/werkloop-productie.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 ## Praktijklessen uit echte documenten (verkenning/12_DOCUMENTANALYSE_UNIVERSAL.md)

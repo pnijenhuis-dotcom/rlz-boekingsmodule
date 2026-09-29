@@ -330,3 +330,18 @@
   `platform.administratie.boekhoud_backend` = `rlz` (de Odoo-overstap leeft alleen op de dev-administratie, memory "VGG Odoo bron-key"). Regel:
   een backend-claim per administratie in een rapport komt uit de leesreplica, niet uit het geheugen van een eerdere sessie. (3) `db_lezen.sh`
   weigert élke `;` — ook in een string-literal (`string_agg(x, '; ')` = "één statement per keer", exit 2); kies een ander scheidingsteken.
+
+<!-- toegevoegd 29-09-2026, opdracht "credential-naar-secretmanager" (Jarvis-logins) -->
+- **Een geheim kopiëren van de credential-store naar Secret Manager = job-executie, nooit een terminal mét de waarde (Peter 29-09; BESLISSINGEN
+  "JARVIS-LOGINS — CREDENTIAL-STORE → SECRET MANAGER ALS JOB-EXECUTIE, NOOIT TONEN (Peter 29-09)"; amendement op de regel van 23-09 "Secret-
+  VERSIES zet Peter zelf"):** de negen Universal-/Bradwolff-logins gaan naar `RLZ_WS_USER_<PREFIX>`/`RLZ_WS_PASSWORD_<PREFIX>` via
+  `python -m app.cli credential-naar-secretmanager` op de job-image (`rlz-reconciliatie`, ADC van `run-jobs@`): store-unwrap (KMS) → Secret
+  Manager REST `:addVersion`, uitvoer uitsluitend "`<naam>`: versie N gezet (n tekens)", bestaande versie nooit stil overschreven
+  (`--overschrijven` = bewuste rotatie), `--dry-run` schrijft niets, één audit per administratie zónder waarde. Regels: (1) besluit 0012
+  onverkort — de waarde staat nergens in log, uitvoer, audit of chat; foutmeldingen dragen alleen naam + HTTP-status; (2) de regel van 23-09
+  blijft voor élke versie die een mens zou intypen; een MACHINE-kopie van een al versleuteld opgeslagen geheim mag als job, mits de kopie-lijst
+  hard in code staat (geen vrije `--administratie`) en de lezende SA alleen `secretAccessor` krijgt (`jarvis-run-jobs@`), de schrijvende job
+  alleen `viewer` + `secretVersionAdder` (kan de waarde niet terug-lezen), secret-scoped; (3) niet in de nameting-allowlist (`nameting@` heeft
+  bewust geen secrets-rechten) — de meetlat is de job-uitvoer + `gcloud secrets versions list` in de owner-sessie; (4) een IAM-grant kan de
+  CC-run niet zelf zetten (classifier) → `scripts/gcp/credential_naar_secretmanager_iam.sh` als klikpunt in een terminal-opdracht, executie ná
+  deploy. Tests `tests/beheer/test_credential_naar_secretmanager.py` (waarde-lek-guard op uitvoer én audit, idempotentie, dry-run, REST-vorm).
