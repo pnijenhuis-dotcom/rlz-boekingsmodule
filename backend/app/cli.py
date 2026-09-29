@@ -3523,6 +3523,10 @@ def main(argv: list[str] | None = None) -> int:
 
     register_naamclusters(subparsers)
     register_odoo_sync(subparsers)
+    from app.beheer.credential_naar_secretmanager import dispatch as dispatch_cred_sm  # 29-09: store → Secret Manager (Jarvis)
+    from app.beheer.credential_naar_secretmanager import register as register_cred_sm
+
+    register_cred_sm(subparsers)
     from app.doorbelasting.factuur_pdf_toets import dispatch as dispatch_factuur_pdf_toets  # 24-09 blok 4 (lees-only)
     from app.doorbelasting.factuur_pdf_toets import register as register_factuur_pdf_toets
 
@@ -4357,6 +4361,8 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_bua
     if (uitkomst_naamclusters := dispatch_naamclusters(args)) is not None:  # 25-09 FV-21: lees-only naamclusters
         return uitkomst_naamclusters
+    if (uitkomst_cred_sm := dispatch_cred_sm(args)) is not None:  # 29-09: credential-naar-secretmanager (alleen job)
+        return uitkomst_cred_sm
     if (uitkomst_gelijktrekken := dispatch_bedragen_gelijktrekken(args)) is not None:  # 24-09 data-stap RLZ-vorm
         return uitkomst_gelijktrekken
     if (uitkomst_pdf_toets := dispatch_factuur_pdf_toets(args)) is not None:  # 24-09 blok 4: lees-only PDF-toets
