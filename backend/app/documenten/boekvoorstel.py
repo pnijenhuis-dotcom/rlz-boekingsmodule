@@ -846,6 +846,15 @@ def _btw_plichtig_en_geen_btw(administratie_id: uuid.UUID) -> tuple[bool, uuid.U
         return False, geen_btw_taxrate_voor(session, administratie_id)
 
 
+def standaard_samenvoegen_zonder_voorkeur(administratie_id: uuid.UUID, *, project_verplicht: bool | None = None) -> bool:
+    """De samenvoeg-default als er GEEN leverancier-voorkeur is — één bron voor het controlescherm én voor de aanmaak van een
+    voorkeur-rij elders (autoboeken 02-10): onder projectplicht gesplitst (punt 3 "Boeken prettig 1": het vinkje mag, de mens vinkt
+    samen), anders de backend-capability (RLZ samengevoegd, Odoo gesplitst)."""
+    if project_verplicht is None:
+        project_verplicht = _project_verplicht(administratie_id)
+    return False if project_verplicht else standaard_regels_samenvoegen(administratie_id)
+
+
 def _voorkeur_samenvoegen(session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None) -> bool | None:
     if vendor_id is None:
         return None

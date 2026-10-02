@@ -41,6 +41,7 @@ from app.documenten.boekvoorstel import (
     _project_verplicht,
     haal_boekvoorstel_op,
     sla_boekvoorstel_op,
+    standaard_samenvoegen_zonder_voorkeur,
 )
 from app.documenten.models import (
     Boekvoorstel,
@@ -187,12 +188,13 @@ def zet_leverancier_autoboeken(
         oud_bron = voorkeur.autoboeken_bron if voorkeur else None
         oud_uitgezonderd = bool(voorkeur and voorkeur.autoboeken_uitgezonderd)
         if voorkeur is None:
-            # regels_samenvoegen default AAN — zelfde default als het boekvoorstel hanteert
-            # zolang er geen voorkeur bestaat (app/documenten/boekvoorstel.py).
+            # regels_samenvoegen = dezelfde default als het boekvoorstel hanteert zolang er geen voorkeur bestaat
+            # (02-10: onder projectplicht gesplitst — een hard True maakte ná punt 3 élke autoboek-leverancier
+            # "samengevoegd", waardoor de factuur-conflict-toets de regelteksten niet meer zag).
             voorkeur = LeverancierVoorkeur(
                 administratie_id=administratie_id,
                 vendor_id=vendor_id,
-                regels_samenvoegen=True,
+                regels_samenvoegen=standaard_samenvoegen_zonder_voorkeur(administratie_id),
                 autoboeken_ingeschakeld=ingeschakeld,
             )
             session.add(voorkeur)
@@ -244,7 +246,7 @@ def zonder_leverancier_uit(
             voorkeur = LeverancierVoorkeur(
                 administratie_id=administratie_id,
                 vendor_id=vendor_id,
-                regels_samenvoegen=True,
+                regels_samenvoegen=standaard_samenvoegen_zonder_voorkeur(administratie_id),
                 autoboeken_ingeschakeld=False,
             )
             session.add(voorkeur)
@@ -355,7 +357,7 @@ def reset_na_correctie_in_sessie(
         voorkeur = LeverancierVoorkeur(
             administratie_id=administratie_id,
             vendor_id=vendor_id,
-            regels_samenvoegen=True,
+            regels_samenvoegen=standaard_samenvoegen_zonder_voorkeur(administratie_id),
             autoboeken_ingeschakeld=False,
         )
         session.add(voorkeur)
