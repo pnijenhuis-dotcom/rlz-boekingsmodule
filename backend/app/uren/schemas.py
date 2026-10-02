@@ -761,6 +761,7 @@ class PlanningBulkRequest(StrikteInvoer):
 
     administratie_id: uuid.UUID
     # 'vulhandvat' | 'ploeg' | 'ongedaan' | 'conflict' (21-09) | 'kopie_volgende_week' (28-09: zelfde weekdag week+1)
+    # | 'kopie_dag' (02-10 run B: dezelfde kaart naar een andere dag — ctrl/cmd-C/V of "Kopiëren naar…")
     bron: str
     verwijderen: bool = False
     correlatie_id: uuid.UUID | None = None

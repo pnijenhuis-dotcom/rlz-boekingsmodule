@@ -5,6 +5,9 @@ import {
   conflictWeekLabel,
   dichtstbijzijndeEerderePloeg,
   kopieVolgendeWeekItems,
+  kopieDagItems,
+  klembordVanKaart,
+  doelDatumVanSelectie,
   legeCelKaart,
   matrixRijen,
   plusDagen,
@@ -28,7 +31,7 @@ import {
   zonderAkkoord,
 } from './dagEerst'
 import type { PlanningKaartDto, PlanningWeekDto } from './planningApi'
-import { bulkToastTekst, isOngedaanToets, maakOngedaanStand } from './planBulkOngedaan'
+import { bulkToastTekst, isKopieerToets, isOngedaanToets, isPlakToets, maakOngedaanStand } from './planBulkOngedaan'
 
 /** Planning v3 dag-eerst (Peter 18-09): rij-grid → dagkolommen, dagtotalen, kaartstatus = laagste van de ploeg,
  * client-side conflict-toets (dubbel/afwezig/> 5/dossier), beschikbaarheid, vulhandvat-overslaan, projectbalk-sortering,
@@ -365,5 +368,50 @@ describe('Run B punt 24 — transporten per cel + tooltip (Peter 02-10)', () => 
     expect(transportTijd(null)).toBeNull()
     expect(transportTooltip([t1])).toBe('transport gepland: 07:30 levering — Levering steiger 600 m² (nog niet bevestigd)')
     expect(transportTooltip([t1, t2])).toBe('transport gepland: 07:30 levering — Levering steiger 600 m² (nog niet bevestigd) · retour — Retour (definitief)')
+  })
+})
+
+describe('dag kopiëren met het toetsenbord (run B punt 20, Peter 02-10)', () => {
+  const kaart = {
+    sleutel: `${P_A}|2026-09-14`,
+    project_id: P_A,
+    project_naam: '26014 Eindhoven (BAM)',
+    datum: '2026-09-14',
+    gereserveerd: false,
+    leeg: false,
+    ploeg: [{ gebruiker_id: G1 }, { gebruiker_id: G2 }],
+  } as unknown as import('./dagEerst').DagKaart
+  it('kopieDagItems: zelfde project + ploeg op de gekozen dag (géén uren); de volgende-week-variant is er een geval van', () => {
+    expect(kopieDagItems(kaart, [G1, G2], '2026-09-18')).toEqual([
+      { gebruiker_id: G1, project_id: P_A, datum: '2026-09-18', dagdeel: 'heel' },
+      { gebruiker_id: G2, project_id: P_A, datum: '2026-09-18', dagdeel: 'heel' },
+    ])
+    expect(kopieVolgendeWeekItems(kaart, [G1])).toEqual(kopieDagItems(kaart, [G1], '2026-09-21'))
+  })
+  it('klembordVanKaart: alleen een kaart mét ploeg; leeg/gereserveerd = niets te kopiëren', () => {
+    expect(klembordVanKaart(kaart)).toEqual({ project_id: P_A, project_naam: '26014 Eindhoven (BAM)', datum: '2026-09-14', gebruiker_ids: [G1, G2] })
+    expect(klembordVanKaart({ ...kaart, gereserveerd: true, ploeg: [] })).toBeNull()
+    expect(klembordVanKaart({ ...kaart, leeg: true })).toBeNull()
+    expect(klembordVanKaart(null)).toBeNull()
+  })
+  it('doelDatumVanSelectie leest de dag uit de kaart-/celsleutel', () => {
+    expect(doelDatumVanSelectie(`${P_A}|2026-09-18`)).toBe('2026-09-18')
+    expect(doelDatumVanSelectie(null)).toBeNull()
+    expect(doelDatumVanSelectie('kapot')).toBeNull()
+  })
+  it('Cmd/Ctrl-C en -V alleen buiten invoervelden/comboboxen en zonder shift', () => {
+    const c = { key: 'c', metaKey: true, ctrlKey: false, shiftKey: false, target: null }
+    expect(isKopieerToets(c)).toBe(true)
+    expect(isKopieerToets({ ...c, metaKey: false, ctrlKey: true })).toBe(true)
+    expect(isKopieerToets({ ...c, shiftKey: true })).toBe(false)
+    expect(isKopieerToets({ ...c, metaKey: false })).toBe(false)
+    expect(isPlakToets({ ...c, key: 'v' })).toBe(true)
+    expect(isPlakToets(c)).toBe(false)
+    const input = document.createElement('input')
+    expect(isKopieerToets({ ...c, target: input })).toBe(false)
+    expect(isPlakToets({ ...c, key: 'v', target: input })).toBe(false)
+    const combo = document.createElement('div')
+    combo.setAttribute('role', 'combobox')
+    expect(isPlakToets({ ...c, key: 'v', target: combo })).toBe(false)
   })
 })

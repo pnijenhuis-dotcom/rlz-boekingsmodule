@@ -147,7 +147,8 @@ export interface AfwezigheidDto {
 
 /** 21-09: `conflict` = "Houd ‹project›" / "Van planning halen" uit het conflictenpaneel (verwijderen via dezelfde bulkroute). */
 /** 28-09 (v4): `kopie_volgende_week` = dezelfde kaart op dezelfde weekdag in week+1 (afwezig = overgeslagen, bestaand = samengevoegd). */
-export type PlanningBulkBron = 'vulhandvat' | 'ploeg' | 'ongedaan' | 'conflict' | 'kopie_volgende_week'
+/** 02-10 (run B punt 20): `kopie_dag` = dezelfde kaart naar een andere dag naar keuze (ctrl/cmd-C → V of "Kopiëren naar…"); zelfde regels als kopie_volgende_week. */
+export type PlanningBulkBron = 'vulhandvat' | 'ploeg' | 'ongedaan' | 'conflict' | 'kopie_volgende_week' | 'kopie_dag'
 /** Contract-afwijking 4B (18-09): dagdeel = de bestaande enumeratie heel/half (geen ochtend/middag). */
 export type PlanningDagdeelV3 = 'heel' | 'half'
 

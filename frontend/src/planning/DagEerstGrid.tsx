@@ -223,6 +223,7 @@ export function DagEerstGrid(p: DagEerstGridProps) {
                           // Run B punt 25: een lege plancel is visueel rustiger dan een geplande kaart — alleen een "+", de tekst pas bij hover/focus.
                           className={`plan-leegcel${p.geselecteerd === `${rij.project_id}|${cel.datum}` ? ' sel' : ''}`}
                           data-testid={`leegcel-${rij.project_id}|${cel.datum}`}
+                          aria-pressed={p.geselecteerd === `${rij.project_id}|${cel.datum}`}
                           aria-label={`${rij.project_naam ?? rij.project_id} op ${dagKort(cel.datum)} plannen`}
                           title={p.projectSelectie ? 'Klik om het geselecteerde project hier te reserveren' : `${rij.project_naam ?? ''} op ${dagKort(cel.datum)} plannen — opent het ploeg-paneel mét de ploeg van de vorige dag als voorstel`}
                           onClick={(e) => {

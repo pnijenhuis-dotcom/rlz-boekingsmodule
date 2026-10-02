@@ -15,8 +15,8 @@ import { DagEerstGrid, type KaartDropPayload } from './DagEerstGrid'
 import { PerProjectWeergave } from './PerProjectWeergave'
 import { PloegPaneel } from './PloegPaneel'
 import { ProjectBalk } from './ProjectBalk'
-import { bouwDagKolommen, conflictWeekLabel, conflictenUniek, conflictenVanaf, conflictenVoorPaneel, conflictenVoorWeek, dagKort, kopieVolgendeWeekItems, legeCelKaart, parseKaartParam, plusDagen, projectTegels, type Conflict, type DagKaart, type VulhandvatVoorbeeld } from './dagEerst'
-import { isOngedaanToets, maakOngedaanStand, type BulkToastSoort, type OngedaanStand } from './planBulkOngedaan'
+import { bouwDagKolommen, conflictWeekLabel, conflictenUniek, conflictenVanaf, conflictenVoorPaneel, conflictenVoorWeek, dagKort, doelDatumVanSelectie, klembordVanKaart, kopieDagItems, kopieVolgendeWeekItems, legeCelKaart, parseKaartParam, plusDagen, projectTegels, type Conflict, type DagKaart, type PlanKlembord, type VulhandvatVoorbeeld } from './dagEerst'
+import { isKopieerToets, isOngedaanToets, isPlakToets, maakOngedaanStand, type BulkToastSoort, type OngedaanStand } from './planBulkOngedaan'
 import {
   bevestigConflict,
   haalPlanning,
@@ -473,6 +473,11 @@ export function PlanningScreen() {
   const [ongedaan, setOngedaan] = useState<OngedaanStand | null>(null)
   const ongedaanRef = useRef<OngedaanStand | null>(null)
   ongedaanRef.current = ongedaan
+  // 02-10 (run B punt 20): client-side klembord voor ctrl/cmd-C → V (kaart = project + ploeg, géén uren).
+  const [klembord, setKlembord] = useState<PlanKlembord | null>(null)
+  const klembordRef = useRef<PlanKlembord | null>(null)
+  const geselecteerdRef = useRef<string | null>(null)
+  const geselecteerdeKaartRef = useRef<DagKaart | null>(null)
   // Werkopdrachten (31-08): popup per project + dag-override per (project, datum).
   const [woDialoog, setWoDialoog] = useState<{ projectId: string; projectNaam: string } | null>(null)
   const [overrideDialoog, setOverrideDialoog] = useState<{ rij: PlanningProjectRijDto; datum: string } | null>(null)
@@ -584,6 +589,31 @@ export function PlanningScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ongedaan])
 
+  // 02-10 (run B punt 20, Peter: "ingepland werk op maandag via ctrl-C / ctrl-V naar vrijdag kopiëren"): Cmd/Ctrl-C onthoudt de
+  // geselecteerde kaart (project + ploeg), Cmd/Ctrl-V plakt 'm op de dag van de geselecteerde kaart/cel via de bulkroute (bron
+  // kopie_dag). Niet in invoervelden/comboboxen; alleen in de dag-weergave.
+  useEffect(() => {
+    const toets = (e: KeyboardEvent) => {
+      if (weergave !== 'dag' || tab !== 'personeel') return
+      if (isKopieerToets(e)) {
+        const kb = klembordVanKaart(geselecteerdeKaartRef.current)
+        if (!kb) return
+        e.preventDefault()
+        setKlembord(kb)
+        setActieFout(null)
+      } else if (isPlakToets(e)) {
+        const kb = klembordRef.current
+        const doel = doelDatumVanSelectie(geselecteerdRef.current)
+        if (!kb || !doel) return
+        e.preventDefault()
+        void kopieerNaarDag(kb, doel)
+      }
+    }
+    window.addEventListener('keydown', toets)
+    return () => window.removeEventListener('keydown', toets)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weergave, tab])
+
   if (!administratieId) {
     return <p className="hint">Geen administratie gekozen — open de planning vanaf de klantpagina.</p>
   }
@@ -627,6 +657,10 @@ export function PlanningScreen() {
     const [projectId, datum] = geselecteerd.split('|')
     return projectId && datum ? legeCelKaart(data, projectId, datum) : null
   })()
+
+  geselecteerdeKaartRef.current = geselecteerdeKaart
+  geselecteerdRef.current = geselecteerd
+  klembordRef.current = klembord
 
   async function actie(fn: () => Promise<unknown>) {
     setActieFout(null)
@@ -778,6 +812,20 @@ export function PlanningScreen() {
     void bulk(kopieVolgendeWeekItems(kaart, gebruikerIds), 'kopie_volgende_week', { soort: 'kopie', doelDatums: [doel], naarWeek })
   }
 
+  /** 02-10 (run B punt 20): dezelfde kaart (project + ploeg, géén uren) naar een andere dag — toetsenbord (ctrl/cmd-V) óf
+   * "Kopiëren naar…" in het paneel. Zelfde bulkroute en regels als de kopie naar volgende week (bron kopie_dag). */
+  async function kopieerNaarDag(bron: { project_id: string; project_naam: string | null; datum: string; gebruiker_ids: string[] }, doel: string) {
+    if (doel === bron.datum) {
+      setActieFout(`Niets gekopieerd: ${bron.project_naam ?? 'dit project'} staat al op ${dagKort(doel)} — kies een andere dag.`)
+      return
+    }
+    if (bron.gebruiker_ids.length === 0) {
+      setActieFout('Niets gekopieerd: de kaart heeft geen ploeg.')
+      return
+    }
+    await bulk(kopieDagItems(bron, bron.gebruiker_ids, doel), 'kopie_dag', { soort: 'kopie', doelDatums: [doel] })
+  }
+
   function ploegHeleWeek(kaart: DagKaart, gebruikerIds: string[]) {
     const rij = alleRijen.find((r) => r.project_id === kaart.project_id)
     const items: PlanningBulkItemDto[] = []
@@ -926,6 +974,16 @@ export function PlanningScreen() {
 
       {tab === 'personeel' && fout && <FoutMelding melding="De planning kon niet geladen worden." detail={fout} onOpnieuw={laad} />}
       {tab === 'personeel' && actieFout && <div className="fout">{actieFout}</div>}
+      {tab === 'personeel' && weergave === 'dag' && klembord && (
+        <div className="hint plan-klembord" role="status" data-testid="klembord-hint" style={{ margin: '0 0 10px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>
+            📋 Gekopieerd: {klembord.project_naam ?? klembord.project_id} · {dagKort(klembord.datum)} · {klembord.gebruiker_ids.length} man — selecteer een dag (kaart of lege cel) en druk Cmd/Ctrl-V om te plakken
+          </span>
+          <button type="button" className="linkbtn" data-testid="klembord-wissen" onClick={() => setKlembord(null)}>
+            Wissen
+          </button>
+        </div>
+      )}
 
       {tab === 'personeel' && (
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: 16, alignItems: 'start' }}>
@@ -1021,6 +1079,7 @@ export function PlanningScreen() {
               onOpslaan={(toevoegen, verwijderen) => ploegOpslaan(geselecteerdeKaart, toevoegen, verwijderen)}
               onToepassenHeleWeek={(ids) => ploegHeleWeek(geselecteerdeKaart, ids)}
               onKopieVolgendeWeek={(ids) => ploegKopieVolgendeWeek(geselecteerdeKaart, ids)}
+              onKopieNaarDag={(ids, datum) => void kopieerNaarDag({ project_id: geselecteerdeKaart.project_id, project_naam: geselecteerdeKaart.project_naam, datum: geselecteerdeKaart.datum, gebruiker_ids: ids }, datum)}
               onNieuweVeldwerker={() => setNieuweVeldwerkerOpen(true)}
               onWerkopdracht={() => {
                 const rij = alleRijen.find((r) => r.project_id === geselecteerdeKaart.project_id)

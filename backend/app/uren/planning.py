@@ -69,8 +69,16 @@ BULK_MAX_ITEMS = 200
 #: kaart (project + ploeg, géén uren) op dezelfde weekdag in week+1 via deze route; afwezig in week+1 = OVERGESLAGEN mét
 #: reden
 #: (niet gepland), conflict elders = gepland + oranje, bestaande kaart = samengevoegd (idempotent per persoon-dag).
-BULK_BRONNEN = ("vulhandvat", "ploeg", "ongedaan", "conflict", "kopie_volgende_week")
+#: 02-10 (run B punt 20, Peter 02-10 "ingepland werk op maandag via ctrl-C / ctrl-V naar vrijdag kopiëren"): bron
+#: `kopie_dag` = dezelfde kaart (project + ploeg, géén uren) naar een ANDERE dag naar keuze (toetsenbord ctrl/cmd-C → V
+#: of "Kopiëren naar…" in het paneel) — exact dezelfde regels als `kopie_volgende_week` (afwezig = overgeslagen mét
+#: reden, conflict = gepland + oranje, bestaand = samengevoegd, ongedaan = zelfde set terug); de server toetst scope
+#: zoals altijd.
+BULK_BRONNEN = ("vulhandvat", "ploeg", "ongedaan", "conflict", "kopie_volgende_week", "kopie_dag")
 BRON_KOPIE_VOLGENDE_WEEK = "kopie_volgende_week"
+BRON_KOPIE_DAG = "kopie_dag"
+#: Kopie-bronnen: afwezig = overgeslagen (niet gepland), anders dan vulhandvat/ploeg (die plannen én markeren).
+KOPIE_BRONNEN = (BRON_KOPIE_VOLGENDE_WEEK, BRON_KOPIE_DAG)
 CONFLICT_AKKOORD_SOORTEN = ("dubbel", "afwezig")
 
 DUBBELE_DAG_VENSTER_DAGEN = 30  # teller-venster (mockup: "3× / 30 dgn")
@@ -849,7 +857,9 @@ def plan_bulk(
     Set-based: één query voor de bestaande toewijzingen, één voor afwezigheid, één per uniek project, één per unieke
     persoon, de projectkoppeling één keer per (persoon, project) — onafhankelijk van het aantal items."""
     if bron not in BULK_BRONNEN:
-        raise OngeldigeInvoer(f"Onbekende bron {bron!r} (vulhandvat, ploeg, ongedaan, conflict of kopie_volgende_week)")
+        raise OngeldigeInvoer(
+            f"Onbekende bron {bron!r} (vulhandvat, ploeg, ongedaan, conflict, kopie_volgende_week of kopie_dag)"
+        )
     if not items:
         raise OngeldigeInvoer("Geen items om te plannen")
     if len(items) > BULK_MAX_ITEMS:
@@ -940,9 +950,9 @@ def plan_bulk(
             reden: str | None = None
             afw = _is_afwezig(afwezigheid, gid, datum)
             elders_pids = [x for x in elders.get((gid, datum), []) if x != pid]
-            if afw is not None and bron == BRON_KOPIE_VOLGENDE_WEEK:
-                # v4 (28-09): bij de kopie naar volgende week wordt een afwezige persoon OVERGESLAGEN — zichtbaar in de
-                # uitkomst (reden + conflict 'afwezig'), nooit stil en nooit gepland.
+            if afw is not None and bron in KOPIE_BRONNEN:
+                # v4 (28-09) + run B 02-10: bij een kopie (volgende week óf andere dag) wordt een afwezige persoon
+                # OVERGESLAGEN — zichtbaar in de uitkomst (reden + conflict 'afwezig'), nooit stil en nooit gepland.
                 reden = f"{gebruikers[gid].naam} is afwezig t/m {afw.tot.isoformat()}"
                 if afw.reden:
                     reden += f" ({afw.reden})"

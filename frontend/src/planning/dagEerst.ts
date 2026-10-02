@@ -539,8 +539,34 @@ export function plusDagen(iso: string, n: number): string {
  * kaart (project + ploeg, géén uren) op datum + 7 via de bulkroute (bron `kopie_volgende_week`). De server beslist over
  * conflict/afwezig/bestaand. */
 export function kopieVolgendeWeekItems(kaart: Pick<DagKaart, 'project_id' | 'datum'>, gebruikerIds: string[]): { gebruiker_id: string; project_id: string; datum: string; dagdeel: 'heel' }[] {
-  const datum = plusDagen(kaart.datum, 7)
-  return gebruikerIds.map((g) => ({ gebruiker_id: g, project_id: kaart.project_id, datum, dagdeel: 'heel' as const }))
+  return kopieDagItems(kaart, gebruikerIds, plusDagen(kaart.datum, 7))
+}
+
+/** 02-10 (run B punt 20, Peter: "ingepland werk op maandag via ctrl-C / ctrl-V naar vrijdag kopiëren"): dezelfde kaart (project +
+ * ploeg, géén uren) naar een ANDERE dag naar keuze via de bulkroute (bron `kopie_dag`). Zelfde regels als de kopie naar volgende
+ * week: de server beslist over conflict (gepland + oranje) / afwezig (overgeslagen mét reden) / bestaand (samengevoegd). */
+export function kopieDagItems(kaart: Pick<DagKaart, 'project_id'>, gebruikerIds: string[], doelDatum: string): { gebruiker_id: string; project_id: string; datum: string; dagdeel: 'heel' }[] {
+  return gebruikerIds.map((g) => ({ gebruiker_id: g, project_id: kaart.project_id, datum: doelDatum, dagdeel: 'heel' as const }))
+}
+
+/** Klembord-stand voor ctrl/cmd-C → V (client-side; geen systeemklembord nodig). */
+export interface PlanKlembord {
+  project_id: string
+  project_naam: string | null
+  datum: string
+  gebruiker_ids: string[]
+}
+
+/** Wat ctrl/cmd-C onthoudt van een geselecteerde kaart: null bij een lege/gereserveerde kaart (niets te kopiëren). */
+export function klembordVanKaart(kaart: DagKaart | null): PlanKlembord | null {
+  if (!kaart || kaart.leeg || kaart.gereserveerd || kaart.ploeg.length === 0) return null
+  return { project_id: kaart.project_id, project_naam: kaart.project_naam, datum: kaart.datum, gebruiker_ids: kaart.ploeg.map((p) => p.gebruiker_id) }
+}
+
+/** Doel-dag van een selectie (`project|datum`-sleutel van een kaart of lege cel) voor ctrl/cmd-V. */
+export function doelDatumVanSelectie(geselecteerd: string | null): string | null {
+  const datum = geselecteerd?.split('|')[1]
+  return datum && /^\d{4}-\d{2}-\d{2}$/.test(datum) ? datum : null
 }
 
 /* --- projectbalk --------------------------------------------------------------------------------- */

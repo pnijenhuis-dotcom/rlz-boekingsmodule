@@ -753,6 +753,90 @@ describe('Planning v4 — pool weg, matrix, paneel als dé werkwijze, quick-add,
     await waitFor(() => expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('jaar=2026&weeknummer=36'))).toBe(true))
   })
 
+  it('run B punt 20 — Cmd/Ctrl-C op een kaart + Cmd/Ctrl-V op een andere dagcel = dezelfde bulkroute (bron kopie_dag) naar die dag; afwezig overgeslagen zichtbaar; Ongedaan maken; niet in een invoerveld', async () => {
+    const fetchMock = installMock({
+      bulk: (body) => {
+        const items = body.items as Record<string, unknown>[]
+        return jsonResponse({
+          correlatie_id: 'corr-kd',
+          aangemaakt: items.slice(0, 1),
+          resultaten: [
+            { ...items[0], uitkomst: 'gedaan', reden: null, conflict: null, conflict_projectnaam: null },
+            { ...items[1], uitkomst: 'overgeslagen', reden: 'Ben v. Dijk is afwezig t/m 2026-08-28', conflict: 'afwezig', conflict_projectnaam: null },
+          ],
+        })
+      },
+    })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    // Zonder selectie doet Cmd-C niets; zonder klembord doet Cmd-V niets.
+    fireEvent.keyDown(window, { key: 'c', metaKey: true })
+    expect(screen.queryByTestId('klembord-hint')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId(`kaart-${KAART_MA}`))
+    expect(screen.getByTestId(`kaart-${KAART_MA}`)).toHaveAttribute('aria-pressed', 'true')
+    // In een invoerveld (zoekveld van het paneel) blijft de browser-kopie van kracht: geen klembord.
+    const paneel = await screen.findByTestId('ploeg-paneel')
+    fireEvent.keyDown(within(paneel).getByLabelText('Zoek veldwerker'), { key: 'c', metaKey: true })
+    expect(screen.queryByTestId('klembord-hint')).not.toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'c', ctrlKey: true })
+    expect(screen.getByTestId('klembord-hint')).toHaveTextContent('Gekopieerd: 144 Breda (Moeskops) · ma 24-8 · 2 man')
+    // Doel = de lege cel van vrijdag (zelfde rij); selecteren = klikken (of toetsenbordfocus + Enter).
+    fireEvent.click(screen.getByTestId(`leegcel-${PROJECT_ID}|2026-08-28`))
+    expect(screen.getByTestId(`leegcel-${PROJECT_ID}|2026-08-28`)).toHaveAttribute('aria-pressed', 'true')
+    expect(posts(fetchMock, '/planning/bulk')).toHaveLength(0)
+    fireEvent.keyDown(window, { key: 'v', metaKey: true })
+    await waitFor(() => expect(posts(fetchMock, '/planning/bulk')).toHaveLength(1))
+    const [bulk] = posts(fetchMock, '/planning/bulk')
+    expect(bulk.body).toMatchObject({ bron: 'kopie_dag', administratie_id: ADMINISTRATIE_ID })
+    const items = bulk.body.items as { gebruiker_id: string; project_id: string; datum: string }[]
+    expect(items).toHaveLength(2)
+    expect(items.every((i) => i.datum === '2026-08-28' && i.project_id === PROJECT_ID)).toBe(true)
+    expect(new Set(items.map((i) => i.gebruiker_id))).toEqual(new Set([ZZP_ID, UITV_ID]))
+    const toast = await screen.findByTestId('bulk-toast')
+    expect(toast).toHaveTextContent('Gekopieerd naar vr 28-8 · 1 persoon-dag · 1 afwezig overgeslagen')
+    expect(within(toast).queryByTestId('naar-week')).not.toBeInTheDocument()
+    // Ongedaan = exact de aangemaakte set terug (bron ongedaan, verwijderen).
+    fireEvent.click(within(toast).getByTestId('ongedaan-maken'))
+    await waitFor(() => expect(posts(fetchMock, '/planning/bulk')).toHaveLength(2))
+    expect(posts(fetchMock, '/planning/bulk')[1].body).toMatchObject({ bron: 'ongedaan', verwijderen: true, correlatie_id: 'corr-kd' })
+    expect((posts(fetchMock, '/planning/bulk')[1].body.items as unknown[]).length).toBe(1)
+    // Het klembord blijft staan (meerdere dagen plakken); "Wissen" haalt het weg.
+    fireEvent.click(screen.getByTestId('klembord-wissen'))
+    expect(screen.queryByTestId('klembord-hint')).not.toBeInTheDocument()
+  })
+
+  it('run B punt 20 — plakken op dezelfde dag als de bron = leesbare melding, geen request', async () => {
+    const fetchMock = installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    fireEvent.click(screen.getByTestId(`kaart-${KAART_MA}`))
+    fireEvent.keyDown(window, { key: 'c', metaKey: true })
+    fireEvent.keyDown(window, { key: 'v', metaKey: true })
+    expect(await screen.findByText(/staat al op ma 24-8 — kies een andere dag/)).toBeInTheDocument()
+    expect(posts(fetchMock, '/planning/bulk')).toHaveLength(0)
+  })
+
+  it('run B punt 20 — "Kopiëren naar…" in het paneel (zonder toetsenbord): één dag kiezen = dezelfde bulkroute (bron kopie_dag) mét de vinkjesstand', async () => {
+    const fetchMock = installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    fireEvent.click(screen.getByTestId(`kaart-${KAART_MA}`))
+    const paneel = await screen.findByTestId('ploeg-paneel')
+    fireEvent.click(within(paneel).getByTestId('kopie-naar-dag'))
+    const keuze = within(paneel).getByTestId('kopie-naar-dag-keuze')
+    // De eigen dag (ma) staat er niet bij; de vier andere werkdagen wél.
+    expect(within(keuze).queryByTestId('kopie-naar-dag-2026-08-24')).not.toBeInTheDocument()
+    expect(within(keuze).getAllByRole('button')).toHaveLength(4)
+    fireEvent.click(within(keuze).getByTestId('kopie-naar-dag-2026-08-26'))
+    await waitFor(() => expect(posts(fetchMock, '/planning/bulk')).toHaveLength(1))
+    const [bulk] = posts(fetchMock, '/planning/bulk')
+    expect(bulk.body).toMatchObject({ bron: 'kopie_dag' })
+    const items = bulk.body.items as { gebruiker_id: string; datum: string }[]
+    expect(items.every((i) => i.datum === '2026-08-26')).toBe(true)
+    expect(new Set(items.map((i) => i.gebruiker_id))).toEqual(new Set([ZZP_ID, UITV_ID]))
+    expect(await screen.findByTestId('bulk-toast')).toHaveTextContent('Gekopieerd naar wo 26-8 · 2 persoon-dagen')
+  })
+
   it('quick-add: "+ Veldwerker toevoegen…" onderaan het paneel alleen mét recht; aanmaken = POST /auth/uitnodigingen bron planning_paneel → direct aangevinkt mét chip "dossier onvolledig"', async () => {
     const NIEUW_ID = '77777777-0000-0000-0000-000000000007'
     let metNieuw = false

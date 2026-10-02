@@ -77,7 +77,22 @@ export function maakOngedaanStand(
 
 /** Is de toetsaanslag Cmd/Ctrl-Z (zonder shift) buiten een invoerveld? */
 export function isOngedaanToets(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'target'>): boolean {
-  if (e.key.toLowerCase() !== 'z' || e.shiftKey || !(e.metaKey || e.ctrlKey)) return false
+  return isSneltoets(e, 'z')
+}
+
+/** 02-10 (run B punt 20): Cmd/Ctrl-C = geselecteerde kaart onthouden (client-side klembord). */
+export function isKopieerToets(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'target'>): boolean {
+  return isSneltoets(e, 'c')
+}
+
+/** 02-10 (run B punt 20): Cmd/Ctrl-V = onthouden kaart op de geselecteerde dag plakken (bulkroute, bron `kopie_dag`). */
+export function isPlakToets(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'target'>): boolean {
+  return isSneltoets(e, 'v')
+}
+
+/** Cmd/Ctrl + letter, zonder shift, en NIET in een invoerveld/combobox (daar houdt de browser zijn eigen kopiëren/plakken). */
+function isSneltoets(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'target'>, letter: string): boolean {
+  if (e.key.toLowerCase() !== letter || e.shiftKey || !(e.metaKey || e.ctrlKey)) return false
   const el = e.target as HTMLElement | null
-  return !(el && typeof el.closest === 'function' && el.closest('input, textarea, select, [contenteditable="true"]'))
+  return !(el && typeof el.closest === 'function' && el.closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"]'))
 }

@@ -30,6 +30,7 @@ export function PloegPaneel({
   onOpslaan,
   onToepassenHeleWeek,
   onKopieVolgendeWeek,
+  onKopieNaarDag,
   onNieuweVeldwerker,
   onWerkopdracht,
 }: {
@@ -46,6 +47,8 @@ export function PloegPaneel({
   onToepassenHeleWeek: (gebruikerIds: string[]) => void
   /** v4: dezelfde kaart op dezelfde weekdag in week+1 (bulkroute, bron kopie_volgende_week). */
   onKopieVolgendeWeek?: (gebruikerIds: string[]) => void
+  /** 02-10 (run B punt 20): "Kopiëren naar…" — dezelfde kaart naar één andere dag van de week (bulkroute, bron kopie_dag). */
+  onKopieNaarDag?: (gebruikerIds: string[], datum: string) => void
   onNieuweVeldwerker?: () => void
   onWerkopdracht: () => void
 }) {
@@ -56,6 +59,7 @@ export function PloegPaneel({
   const [vinkjes, setVinkjes] = useState<Set<string>>(() => new Set(voorstel ? voorstel.gebruiker_ids : huidig))
   const [zoek, setZoek] = useState('')
   const [alles, setAlles] = useState(false)
+  const [kopieNaarOpen, setKopieNaarOpen] = useState(false)
   useEffect(() => {
     if (nieuwVinkje && data.pool.some((p) => p.gebruiker_id === nieuwVinkje)) setVinkjes((v) => new Set(v).add(nieuwVinkje))
   }, [nieuwVinkje, data.pool])
@@ -153,7 +157,41 @@ export function PloegPaneel({
             Kopiëren naar {weekdagVolgende.split(' ')[0]} volgende week
           </Button>
         )}
+        {onKopieNaarDag && (
+          <Button
+            variant="secundair"
+            maat="klein"
+            disabled={bezig || vinkjes.size === 0}
+            data-testid="kopie-naar-dag"
+            aria-expanded={kopieNaarOpen}
+            title="Deze kaart (project + ploeg, géén uren) naar een andere dag van deze week — zelfde regels als het toetsenbord (Cmd/Ctrl-C op de kaart, Cmd/Ctrl-V op de dag): afwezig = overgeslagen, al gepland = samengevoegd, elders gepland = oranje."
+            onClick={() => setKopieNaarOpen((o) => !o)}
+          >
+            Kopiëren naar…
+          </Button>
+        )}
       </div>
+      {onKopieNaarDag && kopieNaarOpen && (
+        <div className="hint" role="group" aria-label="Kopiëren naar dag" data-testid="kopie-naar-dag-keuze" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '0 0 8px' }}>
+          <span>Naar:</span>
+          {werkdagen
+            .filter((d) => d !== kaart.datum)
+            .map((d) => (
+              <button
+                key={d}
+                type="button"
+                className="linkbtn"
+                data-testid={`kopie-naar-dag-${d}`}
+                onClick={() => {
+                  setKopieNaarOpen(false)
+                  onKopieNaarDag([...vinkjes], d)
+                }}
+              >
+                {dagKort(d)}
+              </button>
+            ))}
+        </div>
+      )}
       <input type="search" aria-label="Zoek veldwerker" placeholder="Zoek veldwerker…" value={zoek} onChange={(e) => setZoek(e.target.value)} style={{ width: '100%', fontSize: 12.5, padding: '7px 10px', margin: '4px 0 6px' }} />
       <div className="hint" style={{ margin: '0 0 4px', fontSize: 11.5 }}>
         {vinkjes.size} gekozen · beschikbaarheid voor {dagKort(kaart.datum)}
