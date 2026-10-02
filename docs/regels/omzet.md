@@ -133,6 +133,37 @@
   `VastlyActies.test.tsx` + `VastlyOmzetrekeningenRij.test.tsx`. Werkt in productie: niet gemeten (vervolg-opdracht
   `2026-09-30-nameting-vastly-verkoop-na-deploy-en-echte-run.md`).
 
+<!-- toegevoegd 02-10-2026, opdracht "vastly-verkoop-administratie-id-uit-ubl-terugval-uit" (Peter 01-10) -->
+- **Vastly-verkoop: administratie-id uit de UBL als eerste bron, terugval en historie-afleiding UIT (Peter 01-10 "ik wil gewoon dat de
+  vastly facturen automatisch per BV op de juiste GB geboekt worden" + "100% auto zonder menselijke tussenstap … hou het simpel"; migratie
+  0173; koppelcontract v1.21; HERZIET onderdeel 1 en 2 van 29-09; BESLISSINGEN "VASTLY-VERKOOP — ADMINISTRATIE-ID UIT DE UBL ALS EERSTE BRON, TERUGVAL EN HISTORIE-AFLEIDING UIT (Peter 01-10)"):** (1) **Administratie uit de UBL.** Élke
+  Vastly-UBL draagt sinds 01-10 avond een tweede `cac:AdditionalDocumentReference` met `cbc:ID` = `RLZ-ADMINISTRATIE:<platform
+  administratie-uuid>` (koppelcontract §2d-notitie 01-10; één constante `documenten/ubl.RLZ_ADMINISTRATIE_PREFIX`, lezer
+  `administratie_verwijzing`). `verkoop/entiteit.resolve_administratie` neemt dat id als EERSTE bron: bestaat de administratie, actief en
+  niet gearchiveerd → klaar (bron `ubl`), koppelingsrij op de primaire sleutel (KvK, anders naam) mét bron `ubl` als die er nog niet is;
+  ontbreekt het element → de bestaande KvK-route (koppelingsrij → `administratie_identiteit.kvk`) ongewijzigd; een BESTAANDE mens-rij op
+  naam wordt nog gelezen. Een id dat de module niet kent (onbekend/inactief/gearchiveerd/ongeldig/meerdere) = zichtbare weigering, nooit
+  terugval op de KvK (contract punt 3). De naam-koppeling door een mens is vervallen: geen `POST …/vastly/entiteit-koppelen`, geen knop
+  "Koppel aan administratie…"; de bevinding `vastly_entiteit_niet_gekoppeld` blijft (direct in `actie`) mét tekst "UBL draagt geen
+  administratie-id en geen bekende KvK — melden bij Vastly" (of het onbekende id) en zonder knop; de reden in tijdlijn/intake draagt
+  `administratie_id=<ruwe waarde>`. (2) **Omzetrekening: alleen `AccountingCost`.** `verkoop/omzetrekening.py` kent alleen nog
+  `classificeer_regel` (regelsoort voor de leesbare reden); de afleiding uit eigen historie/rekeningschema, de vaste rij per (administratie,
+  regelsoort) als boekbron en de instelling "Vastly-omzetrekeningen" (`GET …/vastly-instellingen`, `PUT …/vastly-omzetrekeningen`, rij op
+  Instellingen › Administratie › Algemeen) zijn weg; tabel `vastly_omzetrekening` blijft lees-only historie. Een regel zonder code of mét een
+  code buiten het rekeningschema = autoboek weigert `omzetrekening_ontbreekt: regel N (regelsoort): geen grootboekcode (cbc:AccountingCost)
+  in de UBL — melden bij Vastly; ná de herzending 'Opnieuw aanbieden' (nooit een afgeleide rekening)` → bevinding
+  `vastly_omzetrekening_ontbreekt` PER DOCUMENT mét alleen "Opnieuw aanbieden" (`frontend/src/reconciliatie/VastlyActies.tsx`:
+  `MeldBijVastlyHint` + `OpnieuwAanbiedenActie`). De koppelcontract-regel "AccountingCost = winnaar" blijft; §2d v1.10 "ontbrekende code =
+  mens kiest" is in v1.21 herzien naar "zichtbaar weigeren"; de terugval van 29-09 was een tijdelijke afwijking en is per 02-10 afgezet
+  (OPEN_ITEMS-item `AccountingCost` afgevinkt; het seintje voor de her-aanlevering van de 39 nota's blijft onder r.14 bij Cowork/Peter).
+  (3) **Nazorg-CLI** `vastly-verkoop-heraanbieden` ongewijzigd in vorm; de uitvoer noemt per weigering de reden. (4) **Guards op het
+  afwezig-pad:** `tests/verkoop/test_vastly_automatisch.py` (id zonder KvK → geboekt + rij `ubl`; onbekend/ongeldig id → geweigerd zonder
+  KvK-terugval; mens-rij leest nog, geen nieuwe; regel zonder code nooit afgeleid, ook niet uit een bestaande historie-rij; vervallen routes
+  404), gouden set **ao** bijgewerkt, `test_autoboeken.py`/`test_voorstel_en_checks.py`/intake-tests, vitest `VastlyActies.test.tsx`.
+  Werkt in productie: niet gemeten (eerste herzonden UBL mét het element = de meting; dispatch-onderdeel `vastly-verkoop`, vervolg-opdracht
+  `2026-10-03-nameting-vastly-verkoop-administratie-id-na-herzending.md`). Stand 02-10 04:30 (bot `812a43b`): 14 open geweigerd (Rubicon 8,
+  ARVUM 3, Shuto 3), 11 door de module geboekt (Rubicon 2, Elissen 5, Meyer 4).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Omzetboekingen (omzetmodule, Receipts, omzet-autoboeken) (CLAUDE.md `ed6d176` r. 700–737)
