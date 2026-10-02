@@ -56,6 +56,7 @@ import type { MateriaalmatchDto } from '../planning/transportApi'
 import { DatePicker } from '../ui/DatePicker'
 import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
 import { KOLOM_PX, minimaleTabelbreedte } from './boekingsregelsKolommen'
+import { useCompacteRegels } from './compacteRegels'
 import { aantalTariefstaffels, boekbareAiRegels } from './nulregels'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
 import { HerkomstBlokKop, HerkomstBlokProvider, HerkomstChip, useHerkomstTonen } from './HerkomstChip'
@@ -842,6 +843,9 @@ export function BoekvoorstelPanel({
   const { opties: vendorOpties, fout: vendorFout, laden: vendorLaden } = useVendorOpties(administratieId, cacheVersie)
   const { opties: projectOpties, laden: projectLaden, fout: projectFout } = useProjectOpties(administratieId, cacheVersie)
   const projectVerplicht = useProjectVerplicht(administratieId)
+  // Punt 7 run A (02-10): compacte regelweergave zodra de tabel-container smaller is dan de som van de kolomminima.
+  const [regelsScrollEl, setRegelsScrollEl] = useState<HTMLDivElement | null>(null)
+  const regelsCompact = useCompacteRegels(regelsScrollEl, minimaleTabelbreedte(projectVerplicht))
   // Blok A 28-08 (mockup afdelingen.html §2): veld alleen zichtbaar als de toggle aan staat.
   const afdelingen = useAfdelingen(administratieId, cacheVersie)
 
@@ -2532,12 +2536,14 @@ export function BoekvoorstelPanel({
             </div>
           </div>
         )}
-        <div className="tabel-scroll">
+        <div className="tabel-scroll regels-scroll" ref={setRegelsScrollEl} data-testid="boekingsregels-scroll">
         <table
-          className={`lines boekingsregels-tabel${projectVerplicht ? ' met-project' : ''}`}
+          className={`lines boekingsregels-tabel${projectVerplicht ? ' met-project' : ''}${regelsCompact ? ' compact' : ''}`}
           // Addendum 27-08 punt 4: minimumbreedte = som van de kolomminima (boekingsregelsKolommen.ts)
           // — te smal paneel = horizontale scroll bínnen .tabel-scroll, nooit kolom-implosie.
-          style={{ minWidth: minimaleTabelbreedte(projectVerplicht) }}
+          // Punt 7 run A (02-10): is de container smaller dan die som, dan schakelt de tabel om naar de
+          // compacte regelweergave (compacteRegels.ts) — geen inline min-width, geen horizontale scroll.
+          style={regelsCompact ? undefined : { minWidth: minimaleTabelbreedte(projectVerplicht) }}
           data-testid="boekingsregels-tabel"
         >
           <colgroup>
@@ -2558,7 +2564,7 @@ export function BoekvoorstelPanel({
               <th>Grootboek</th>
               <th>Btw-code</th>
               {projectVerplicht && <th>Project</th>}
-              <th className="amount">
+              <th className="amount bedragmodus">
                 <button
                   type="button"
                   className="linkbtn"
@@ -2577,7 +2583,7 @@ export function BoekvoorstelPanel({
             {regels.map((regel) => {
               return (
               <tr key={regel.key}>
-                <td>
+                <td className="regel-cel" data-label="Grootboek">
                   {isReadOnly ? (
                     optieWeergave(grootboekOpties, regel.ledgerId)
                   ) : (
@@ -2623,7 +2629,7 @@ export function BoekvoorstelPanel({
                     </>
                   )}
                 </td>
-                <td>
+                <td className="regel-cel" data-label="Btw-code">
                   {!btwPlichtig ? (
                     // 22-09 (BUG Peter, casus VGG / Lacy Lion): geen keuzelijst in een niet-btw-plichtige administratie —
                     // btw bestaat hier niet; de regel staat bruto in de kosten mét de "geen btw"-code (of leeg).
@@ -2738,7 +2744,7 @@ export function BoekvoorstelPanel({
                 </td>
                 {projectVerplicht && !projectVanToepassing(regel) ? (
                   // Punt 6 (02-10): balansrekening (voorraad/activa/tussenrekening) — geen projectveld, geen verdeling.
-                  <td>
+                  <td className="regel-cel" data-label="Project">
                     <span
                       className="hint"
                       data-testid="regel-project-balans"
@@ -2748,7 +2754,7 @@ export function BoekvoorstelPanel({
                     </span>
                   </td>
                 ) : projectVerplicht && (
-                  <td>
+                  <td className="regel-cel" data-label="Project">
                     {isReadOnly ? (
                       optieWeergave(projectOpties, regel.projectId)
                     ) : (
@@ -2796,7 +2802,7 @@ export function BoekvoorstelPanel({
                     )}
                   </td>
                 )}
-                <td className="amount">
+                <td className="amount regel-cel" data-label={bedragModus === 'netto' ? 'Netto' : 'Bruto'}>
                   {isReadOnly ? (
                     regel.netto || '—'
                   ) : (
@@ -2832,7 +2838,7 @@ export function BoekvoorstelPanel({
                     </>
                   )}
                 </td>
-                <td className="amount">
+                <td className="amount regel-cel" data-label="Btw-bedrag">
                   {isReadOnly ? (
                     regel.btw || '—'
                   ) : (
@@ -2881,7 +2887,7 @@ export function BoekvoorstelPanel({
                     </>
                   )}
                 </td>
-                <td style={{ padding: '8px 4px' }}>
+                <td className="verwijder" style={{ padding: '8px 4px' }}>
                   {!isReadOnly && (
                     <button
                       type="button"

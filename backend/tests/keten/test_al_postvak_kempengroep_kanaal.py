@@ -51,6 +51,10 @@ def test_zelfde_keten_via_kempengroep_en_herkomst_zegt_postvak_en_spam(keten: Ke
     assert herkomst["kanaal"] == "facturen_kempengroep"
     assert herkomst["postvak_adres"] == "facturen@kempengroep.nl"
     assert herkomst["uit_spam"] is True
+    # Punt 7 run A (02-10): de inklapregel "Uit de e-mail" op het controlescherm leest exact deze velden — de summary toont
+    # afzender · onderwerp, de inhoud afzender/onderwerp/ontvangen (+ bron/kanaal) en het begeleidend schrijven.
+    assert {"afzender", "onderwerp", "ontvangen_op", "body_tekst", "bron", "kanaal", "postvak_adres", "uit_spam"} <= set(herkomst)
+    assert herkomst["bron"] == "imap"
     # Dezelfde extractie-uitkomst als casus c via facturen@ (zelfde stub, zelfde prefill-pad).
     dto = keten.open_controlescherm(document_id)
     assert dto["referentie"] == "2026-608"

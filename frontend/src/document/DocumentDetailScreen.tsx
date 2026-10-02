@@ -356,16 +356,20 @@ function laatsteExtractieOvergeslagen(detail: DocumentDetailDto): string | null 
  * zonder tekst) = dat staat er eerlijk bij. */
 function UitDeEmail({ herkomst }: { herkomst: HerkomstMailDto }) {
   const ontvangen = herkomst.ontvangen_op ? new Date(herkomst.ontvangen_op).toLocaleString('nl-NL') : null
+  // Punt 7 run A (02-10, Peter "waarom is controles uit de mail zo groot, maak die hetzelfde als de rest"): een gewone
+  // inklapregel in `.inklap-rijen` — zelfde markup (details > summary + .inklap-inhoud) als Extractie-details, Opmerkingen
+  // en Tijdlijn; geen eigen paneel, geen <h2>-kop.
   return (
-    <details className="panel uit-de-email" data-testid="uit-de-email">
-      <summary style={{ cursor: 'pointer' }}>
-        <h2 style={{ display: 'inline', margin: 0 }}>Uit de e-mail</h2>
-        <span className="hint" style={{ marginLeft: 8 }}>
+    <details data-testid="uit-de-email">
+      <summary>
+        Uit de e-mail
+        <span className="hint">
           {herkomst.afzender ?? 'onbekende afzender'}
           {herkomst.onderwerp ? ` · ${herkomst.onderwerp}` : ''}
         </span>
       </summary>
-      <dl className="grid2" style={{ marginTop: 10 }}>
+      <div className="inklap-inhoud uit-de-email-inhoud">
+      <dl className="grid2" style={{ marginTop: 6 }}>
         <div>
           <dt className="hint">Afzender</dt>
           <dd>{herkomst.afzender ?? '—'}</dd>
@@ -412,6 +416,7 @@ function UitDeEmail({ herkomst }: { herkomst: HerkomstMailDto }) {
           Geen mailtekst beschikbaar (mail zonder tekst, of verwerkt vóór de mail-body bewaard werd).
         </p>
       )}
+      </div>
     </details>
   )
 }

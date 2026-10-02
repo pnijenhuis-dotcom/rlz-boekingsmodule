@@ -346,6 +346,22 @@ function AutoCrediteurPaneelProef() {
   return null
 }
 
+// Punt 7 run A (02-10): breedte-probe voor de boekingsregels-tabel (patroon C9 verzamelbak-rijhoogtes) — schrijft
+// op <body> data-regeltabel="formpane;tabelScrollClient;tabelScrollScroll;tabelOffset;kolommen" zodat "past zonder
+// horizontale scroll op 1280/1385/1455 px" een meetbaar feit is (--dump-dom), geen oogschatting.
+window.setTimeout(() => {
+  const scroll = document.querySelector<HTMLElement>('[data-testid="boekingsregels-tabel"]')?.parentElement ?? null
+  const tabel = document.querySelector<HTMLTableElement>('[data-testid="boekingsregels-tabel"]')
+  const formpane = document.querySelector<HTMLElement>('.formpane')
+  document.body.dataset.regeltabel = [
+    formpane?.clientWidth ?? -1,
+    scroll?.clientWidth ?? -1,
+    scroll?.scrollWidth ?? -1,
+    tabel?.offsetWidth ?? -1,
+    tabel ? tabel.querySelectorAll('colgroup col').length : -1,
+  ].join(';')
+}, 2500)
+
 // ?donker=1 — dark mode voor headless verificatie (thema.ts-klassepatroon).
 if (PARAMS.has('donker')) {
   document.documentElement.classList.add('dark')

@@ -37,6 +37,12 @@ BREEDTES=(1440 1170 1024 768)
 # buiten beeld): het accordering-harnas meet óók op 1385 en 1280 px — de breedtes van Peters scherm en een gangbare laptop.
 EXTRA_BREEDTES_VOOR="/instellingen/accordering"
 EXTRA_BREEDTES=(1385 1280)
+# Punt 7 run A (02-10, Peter op 1455 px: "de regel-tabel scrolt horizontaal zodat OMSCHRIJVING en het ×-knopje buiten beeld
+# vallen"): het controlescherm-harnas (harness.html, mét/zonder projectplicht) meet óók op 1455/1385/1280 px — de breedten
+# van Peters scherm en een gangbare laptop. De boekingsregels-tabel schakelt daar om naar de compacte regelweergave
+# (document/compacteRegels.ts); de pagina mag nooit horizontaal scrollen.
+EXTRA_BREEDTES_CONTROLESCHERM_VOOR="harness.html"
+EXTRA_BREEDTES_CONTROLESCHERM=(1455 1385 1280)
 # HARNASSEN_ALLEEN=<substring> meet alleen de harnassen waarvan de naam die substring bevat (herdraai van één groep).
 if [ -n "${HARNASSEN_ALLEEN:-}" ]; then
   _sel=()
@@ -69,6 +75,7 @@ METINGEN=0
 for harnas in "${HARNASSEN[@]}"; do
   breedtes_voor_harnas=("${BREEDTES[@]}")
   if [[ "$harnas" == *"${EXTRA_BREEDTES_VOOR}"* ]]; then breedtes_voor_harnas+=("${EXTRA_BREEDTES[@]}"); fi
+  if [[ "$harnas" == "${EXTRA_BREEDTES_CONTROLESCHERM_VOOR}"* ]]; then breedtes_voor_harnas+=("${EXTRA_BREEDTES_CONTROLESCHERM[@]}"); fi
   for donker in "" 1; do
     for breedte in "${breedtes_voor_harnas[@]}"; do
       if [[ "$harnas" == *\?* ]]; then url="${BASIS}/${harnas}&"; else url="${BASIS}/${harnas}?"; fi

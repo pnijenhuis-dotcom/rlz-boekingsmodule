@@ -831,6 +831,34 @@ describe('DocumentDetailScreen — blok "Uit de e-mail" (feedbackronde 25-08 dee
     expect(blok).toHaveTextContent('postvak')
   })
 
+  it('punt 7 run A (02-10): "Uit de e-mail" is een gewone inklapregel in dezelfde vorm als Extractie-details/Opmerkingen — geen paneel, geen kapitale kop', async () => {
+    installFetchMock({
+      ...basis,
+      herkomst_mail: {
+        afzender: 'collega@kempengroep.nl',
+        onderwerp: 'Factuur Bouwmaat',
+        ontvangen_op: '2026-08-25T09:00:00+02:00',
+        body_tekst: 'Hoi Peter,\n\nDit is voor Oirschot.',
+        bron: 'imap',
+      },
+    })
+    renderScherm()
+    const blok = await screen.findByTestId('uit-de-email')
+    const rijen = screen.getByTestId('inklap-rijen')
+    const opmerkingen = within(rijen).getByTestId('opmerkingen-inklap')
+    // Zelfde plek en zelfde markup als de andere inklapregels: direct kind van .inklap-rijen, details > summary + .inklap-inhoud.
+    expect(blok.parentElement).toBe(rijen)
+    expect(opmerkingen.parentElement).toBe(rijen)
+    expect(blok.tagName).toBe(opmerkingen.tagName)
+    expect(blok.className).toBe(opmerkingen.className) // geen eigen 'panel'/'uit-de-email'-klasse meer
+    expect(blok.querySelector(':scope > summary')).not.toBeNull()
+    expect(blok.querySelector(':scope > .inklap-inhoud')).not.toBeNull()
+    expect(opmerkingen.querySelector(':scope > .inklap-inhoud')).not.toBeNull()
+    // Geen sectiekop: de summary draagt platte tekst, geen <h2> (de kapitale sectiekop-stijl van vóór 02-10).
+    expect(blok.querySelector('h2')).toBeNull()
+    expect(blok.querySelector(':scope > summary')?.textContent).toMatch(/^Uit de e-mail/)
+  })
+
   it('zonder body staat er eerlijk dat er geen mailtekst is; zonder mail-herkomst géén blok', async () => {
     installFetchMock({
       ...basis,

@@ -870,6 +870,83 @@ tr.subrij .eerste-sync-rij ul {
   text-align: left;
 }
 
+/* Punt 7 run A (02-10, Peter: "de regel-tabel scrolt horizontaal zodat OMSCHRIJVING en het ×-knopje buiten beeld
+ * vallen op 1455 px"; overflow-les 18-09). Gemeten: formulier-pane 530/591/632 px op 1280/1385/1455 px tegenover een
+ * kolomminima-som van 738 px (906 mét project). De minima blijven (anders de implosie van 27-08 terug); is de container
+ * smaller dan de som, dan zet compacteRegels.ts `.compact`: élke regel wordt één blok — omschrijving bovenaan over de
+ * volle breedte, ×-knop rechtsboven, velden eronder in een wrap-raster mét label uit `data-label`. De kopregel toont
+ * alleen nog de Netto/Bruto-schakelaar ("Bedragen: Netto"). Geen horizontale scroll, niets buiten beeld. */
+.boekingsregels-tabel.compact {
+  display: block;
+  width: 100%;
+}
+.boekingsregels-tabel.compact colgroup {
+  display: none;
+}
+.boekingsregels-tabel.compact tbody {
+  display: block;
+}
+.boekingsregels-tabel.compact tr {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px 10px;
+  position: relative;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+.boekingsregels-tabel.compact tr:hover > td {
+  background: transparent;
+}
+.boekingsregels-tabel.compact th,
+.boekingsregels-tabel.compact td {
+  display: block;
+  padding: 0;
+  min-width: 0;
+}
+.boekingsregels-tabel.compact tr:has(> th) {
+  /* Nazorg 02-10: links uitgelijnd en binnen de containerbreedte — rechts uitgelijnd hing de toggle aan de paneelrand
+   * (baseline c_spot_services 1440: "Netto" tegen de rand, "Bruto" niet te onderscheiden). */
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  padding: 4px 0;
+  max-width: 100%;
+}
+.boekingsregels-tabel.compact th {
+  display: none;
+}
+.boekingsregels-tabel.compact th.bedragmodus {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: left;
+  white-space: nowrap;
+}
+.boekingsregels-tabel.compact th.bedragmodus::before {
+  content: 'Bedragen: ';
+}
+.boekingsregels-tabel.compact td.regel-cel::before {
+  content: attr(data-label);
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.boekingsregels-tabel.compact td.omschrijving {
+  grid-column: 1 / -1;
+  order: -1;
+  padding-right: 36px;
+}
+.boekingsregels-tabel.compact td.verwijder {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  width: auto;
+}
+.boekingsregels-tabel.compact td.amount {
+  text-align: left;
+}
+
 /* Zoekbare combobox — portal-listbox (SearchableCombobox.tsx). Zelfde panel-taal als .panel
  * (achtergrond/border/radius/schaduw), maar met een iets kleinere radius/duidelijkere schaduw
  * (elevatie boven de pagina, geen statisch paneel) en optie-rijen met code (vet) + omschrijving,
@@ -1815,10 +1892,11 @@ tr.subrij .eerste-sync-rij ul {
 /* per project (lezen) */
 .plan-pp td .linkbtn { font-size: 12.5px; }
 
-/* Blok "Uit de e-mail" op het controlescherm (feedbackronde 25-08 deel 3 punt 1b). */
-.uit-de-email > summary { list-style: revert; }
-.uit-de-email dl { margin: 0; }
-.uit-de-email dd { margin: 2px 0 0; }
+/* Blok "Uit de e-mail" op het controlescherm (feedbackronde 25-08 deel 3 punt 1b). Punt 7 run A (02-10, Peter "waarom is
+ * controles uit de mail zo groot, maak die hetzelfde als de rest"): geen eigen paneel/kop meer — een gewone inklapregel in
+ * `.inklap-rijen` (zelfde summary-stijl als Extractie-details / Opmerkingen / Tijdlijn); alleen de inhoud draagt nog eigen regels. */
+.uit-de-email-inhoud dl { margin: 0; }
+.uit-de-email-inhoud dd { margin: 2px 0 0; }
 .mail-body {
   margin: 4px 0 0;
   padding: 10px 12px;
