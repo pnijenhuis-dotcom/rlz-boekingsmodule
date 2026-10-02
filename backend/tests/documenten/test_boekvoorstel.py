@@ -683,29 +683,33 @@ class TestRegelsSamenvoegen:
         opnieuw = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=doc2)
         assert opnieuw.regels_samenvoegen is True
 
-    def test_projectplicht_blokkeert_samenvoegen_hard(
+    def test_projectplicht_sluit_samenvoegen_niet_meer_uit(
         self,
         gescoopte_gebruiker: uuid.UUID,
         beheerder_id: uuid.UUID,
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
     ) -> None:
+        """Peter 02-10 (punt 3 "Boeken prettig", casus Universal Steigerbouw f00117f4): tot 02-10 was projectplicht
+        een harde uitsluiting (`samenvoegen_toegestaan` False, geen vinkje). Sinds 02-10 gedraagt een
+        projectplicht-administratie: toegestaan + één-regel-variant (vinkje), default zonder voorkeur gesplitst."""
         beheer_service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=True)
         document_id = self._upload_ubl(administratie_id, gescoopte_gebruiker, opslag, "projectplicht.xml")
         data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
-        assert data.samenvoegen_toegestaan is False
+        assert data.samenvoegen_toegestaan is True
         assert data.regels_samenvoegen is False
-        assert data.samengevoegde_regel is None
+        assert data.samengevoegde_regel is not None
+        assert data.samengevoegde_regel.netto_bedrag == Decimal("1526.20")
 
-    def test_projectplicht_negeert_de_meegegeven_keuze_bij_opslaan(
+    def test_projectplicht_onthoudt_de_meegegeven_keuze_bij_opslaan(
         self,
         gescoopte_gebruiker: uuid.UUID,
         beheerder_id: uuid.UUID,
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
     ) -> None:
-        """Bij projectplicht wordt géén voorkeur-rij gezet — gaat de plicht later uit, dan geldt
-        gewoon de default (samenvoegen aan), niet een stiekem opgeslagen keuze."""
+        """Sinds 02-10 wordt de keuze óók onder projectplicht als leverancier-voorkeur onthouden (vóór 02-10
+        werd ze genegeerd — "per regel hard")."""
         beheer_service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=True)
         vendor_id = uuid.uuid4()
         document_id = self._upload_ubl(administratie_id, gescoopte_gebruiker, opslag, "plicht-keuze.xml")
@@ -718,11 +722,14 @@ class TestRegelsSamenvoegen:
             factuurdatum=date(2026, 7, 1),
             totaalbedrag=Decimal("121.00"),
             regels=[_regel()],
-            regels_samenvoegen=False,
+            regels_samenvoegen=True,
         )
+        data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+        assert data.samenvoegen_toegestaan is True
+        assert data.regels_samenvoegen is True  # de voorkeur-rij is onder projectplicht gewoon gezet
         beheer_service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=False)
         data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
-        assert data.regels_samenvoegen is True  # geen voorkeur-rij ontstaan tijdens de projectplicht
+        assert data.regels_samenvoegen is True  # en blijft gelden als de plicht uitgaat
 
     def test_alleen_een_echte_voorkeurwijziging_krijgt_een_audit_event(
         self,

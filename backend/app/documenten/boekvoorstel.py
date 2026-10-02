@@ -166,9 +166,12 @@ class BoekvoorstelData:
     opgeslagen: bool
     regels: list[BoekvoorstelRegelData]
     # Fix 3 (2026-07-10): regels standaard samengevoegd tot één boekingsregel, keuze per
-    # leverancier onthouden (LeverancierVoorkeur). `samenvoegen_toegestaan` is False bij
-    # projectplicht (hard: project per regel, samenvoegen kan daar niet); `regels_samenvoegen`
-    # is de effectieve stand voor dit document (voorkeur van deze crediteur, default AAN);
+    # leverancier onthouden (LeverancierVoorkeur). `samenvoegen_toegestaan` was tot 02-10 False bij
+    # projectplicht ("project per regel, samenvoegen kan daar niet") — sinds Peter 02-10 ("Waar is mijn vinkje
+    # splitsen?", casus f00117f4) geldt projectplicht niet meer als uitsluiting (toegestaan, voorkeur onthouden;
+    # default zonder voorkeur blijft daar gesplitst): de samengevoegde regel draagt het project als álle regels
+    # hetzelfde project dragen, anders geen project (de projectverdeling vangt dat op);
+    # `regels_samenvoegen` is de effectieve stand voor dit document (voorkeur van deze crediteur, default AAN);
     # `samengevoegde_regel` is de deterministisch berekende één-regel-variant (None als er
     # geen veldvoorstel met bruikbare totalen is).
     regels_samenvoegen: bool = True
@@ -660,6 +663,9 @@ def _samengevoegde_regel_uit_opgeslagen(
     if len(taxrate_ids) != 1:
         return None, REDEN_SAMENVOEGEN_BTW_CODES
     ledger_ids = {r.ledger_id for r in regels}
+    # 02-10 (punt 3 "Boeken prettig", projectplicht sluit samenvoegen niet meer uit): het project alleen als álle
+    # regels hetzelfde project dragen; anders None — regels zonder project vallen onder de projectverdeling.
+    project_ids = {r.project_id for r in regels}
     omschrijving = (
         f"Factuur {factuurnummer} — samengevoegd ({len(regels)} regels)"
         if factuurnummer
@@ -669,7 +675,7 @@ def _samengevoegde_regel_uit_opgeslagen(
         BoekvoorstelRegelData(
             ledger_id=next(iter(ledger_ids)) if len(ledger_ids) == 1 else None,
             taxrate_id=next(iter(taxrate_ids)),
-            project_id=None,
+            project_id=next(iter(project_ids)) if len(project_ids) == 1 else None,
             netto_bedrag=netto_totaal,
             btw_bedrag=btw_totaal,
             omschrijving=omschrijving,
@@ -875,15 +881,12 @@ def _samenvoeg_velden(
     project_verplicht: bool,
     standaard_samenvoegen: bool,
 ) -> dict:
-    """Fix 3: effectieve samenvoeg-stand (projectplicht = hard gesplitst; anders de onthouden
-    leverancier-voorkeur, default = backend-capability) + de berekende één-regel-variant."""
-    if project_verplicht:
-        return {
-            "regels_samenvoegen": False,
-            "samenvoegen_toegestaan": False,
-            "samengevoegde_regel": None,
-            "samenvoegen_niet_mogelijk_reden": None,
-        }
+    """Fix 3: effectieve samenvoeg-stand + de berekende één-regel-variant. Tot 02-10 was projectplicht hier een
+    harde uitsluiting (`samenvoegen_toegestaan` False, geen vinkje); sinds Peter 02-10 (punt 3 "Boeken prettig": "Waar
+    is mijn vinkje splitsen?", casus Universal Steigerbouw f00117f4) is samenvoegen óók onder projectplicht TOEGESTAAN
+    (vinkje + één-regel-variant + reden-chip) en wordt de leverancier-voorkeur er gewoon onthouden. De DEFAULT zonder
+    voorkeur blijft onder projectplicht gesplitst (project per regel is daar de werkvorm; de mens vinkt samen) — zonder
+    projectplicht de backend-capability (RLZ aan, Odoo uit)."""
     voorkeur = _voorkeur_samenvoegen(session, administratie_id=administratie_id, vendor_id=vendor_id)
     samengevoegd = _samengevoegde_regel(veldvoorstel) if veldvoorstel else None
     # BUG 23-09: ≥ 2 gelezen regels zonder berekenbare één-regel-variant = zichtbare reden (chip), nooit stil weg.
@@ -895,7 +898,9 @@ def _samenvoeg_velden(
     return {
         # Default zonder leverancier-voorkeur = backend-capability (RLZ AAN; Odoo UIT — regelniveau-
         # data moet in Odoo landen, eis Peter 03-09); de leverancier-voorkeur wint altijd.
-        "regels_samenvoegen": voorkeur if voorkeur is not None else standaard_samenvoegen,
+        "regels_samenvoegen": (
+            voorkeur if voorkeur is not None else (False if project_verplicht else standaard_samenvoegen)
+        ),
         "samenvoegen_toegestaan": True,
         "samengevoegde_regel": samengevoegd,
         "samenvoegen_niet_mogelijk_reden": reden,
@@ -2004,8 +2009,8 @@ def sla_boekvoorstel_op(
 
     `regels_samenvoegen` (fix 3) is de weergavekeuze van de controleur op het moment van
     opslaan — die wordt als voorkeur per (administratie, crediteur) onthouden. None = niet
-    meegegeven (bv. oude client of geen crediteur gekozen): voorkeur blijft ongemoeid. Bij
-    projectplicht wordt de keuze genegeerd — daar is per-regel hard.
+    meegegeven (bv. oude client of geen crediteur gekozen): voorkeur blijft ongemoeid. Sinds 02-10 geldt
+    de keuze óók onder projectplicht (vóór 02-10 werd ze daar genegeerd — "per-regel hard").
 
     `afdeling_id` (blok A 28-08): de handmatige afdelingskeuze; moet een afdeling van déze
     administratie zijn (gearchiveerd mag opgeslagen worden — de check blokkeert dan zichtbaar).
@@ -2152,7 +2157,7 @@ def sla_boekvoorstel_op(
             regels_samenvoegen is not None
             and vendor_id is not None
             and not autosave
-            and not _project_verplicht(administratie_id)
+            # 02-10: ook onder projectplicht wordt de keuze als voorkeur onthouden (punt 3 "Boeken prettig").
         ):
             _onthoud_voorkeur_samenvoegen(
                 session,

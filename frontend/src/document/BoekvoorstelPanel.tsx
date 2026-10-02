@@ -876,8 +876,10 @@ export function BoekvoorstelPanel({
 
   // Fix 3: standaard één samengevoegde boekingsregel, vinkje "splitsen per regel" — keuze wordt
   // per (administratie, crediteur) onthouden (backend LeverancierVoorkeur). De inactieve modus
-  // bewaart zijn eigen regels zodat heen-en-weer schakelen geen invoer weggooit. Bij projectplicht
-  // is samenvoegen hard uitgesloten (samenvoegen_toegestaan=false van de backend).
+  // bewaart zijn eigen regels zodat heen-en-weer schakelen geen invoer weggooit. Tot 02-10 was samenvoegen bij
+  // projectplicht hard uitgesloten (samenvoegen_toegestaan=false); sinds Peter 02-10 ("Waar is mijn vinkje
+  // splitsen?") staat het vinkje óók daar — de server zet `samenvoegen_toegestaan` alleen nog op false als hij er
+  // echt geen variant voor kent (het scherm blijft die vlag honoreren).
   const [regelsSamenvoegen, setRegelsSamenvoegen] = useState(true)
   // BUG 18-09 (Zilver Horeca): de server liet de modus de data volgen (voorkeur "samenvoegen", > 1 regel opgeslagen) —
   // chip "weergave hersteld" naast het vinkje; de tijdlijnregel schrijft de server.

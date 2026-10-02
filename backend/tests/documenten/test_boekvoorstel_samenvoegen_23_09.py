@@ -10,6 +10,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
+from app.beheer import service as beheer_service
 from app.db.session import scoped_session
 from app.documenten import boekvoorstel, service
 from app.documenten.storage import LokaleBestandsopslag
@@ -67,6 +68,23 @@ class TestSamengevoegdeRegelUitOpgeslagenPuur:
         regels = [_regel(), _regel(ledger_id=uuid.uuid4())]
         regel, reden = boekvoorstel._samengevoegde_regel_uit_opgeslagen(regels, percentages=PCT, factuurnummer=None)
         assert reden is None and regel is not None and regel.ledger_id is None and regel.taxrate_id == HOOG
+
+    def test_project_alleen_als_alle_regels_hetzelfde_project_dragen(self) -> None:
+        """02-10 (punt 3): onder projectplicht is samenvoegen weer mogelijk — het project van de samengevoegde regel
+        is het gemeenschappelijke project, anders None (de projectverdeling vangt dat op)."""
+        project = uuid.uuid4()
+        regel, reden = boekvoorstel._samengevoegde_regel_uit_opgeslagen(
+            [_regel(project_id=project), _regel(project_id=project)], percentages=PCT, factuurnummer=None
+        )
+        assert reden is None and regel is not None and regel.project_id == project
+        regel, reden = boekvoorstel._samengevoegde_regel_uit_opgeslagen(
+            [_regel(project_id=project), _regel(project_id=uuid.uuid4())], percentages=PCT, factuurnummer=None
+        )
+        assert reden is None and regel is not None and regel.project_id is None
+        regel, reden = boekvoorstel._samengevoegde_regel_uit_opgeslagen(
+            [_regel(project_id=project), _regel(project_id=None)], percentages=PCT, factuurnummer=None
+        )
+        assert reden is None and regel is not None and regel.project_id is None
 
     def test_een_regel_geeft_niets_en_geen_reden(self) -> None:
         assert boekvoorstel._samengevoegde_regel_uit_opgeslagen([_regel()], percentages=PCT, factuurnummer=None) == (
@@ -175,3 +193,92 @@ class TestScanZonderTotalenGeeftReden:
         """Puur op `_samenvoeg_velden` is niet te testen zonder sessie; de reden-constante is de bron van de chip-tekst."""
         assert boekvoorstel._samengevoegde_regel({"regels": [{"netto_bedrag": None}, {"netto_bedrag": None}]}) is None
         assert "onvolledig" in boekvoorstel.REDEN_SAMENVOEGEN_SCAN_ONVOLLEDIG
+
+
+class TestProjectplichtSluitSamenvoegenNietMeerUit:
+    """Peter 02-10 ("Waar is mijn vinkje splitsen?", casus Universal Steigerbouw f00117f4 — RLZ-2080142625, brandstof
+    diesel, twee regels 21 %). Universal heeft projectplicht; tot 02-10 was dat een harde uitsluiting van samenvoegen."""
+
+    def _upload(
+        self, administratie_id: uuid.UUID, actor_id: uuid.UUID, opslag: LokaleBestandsopslag, naam: str
+    ) -> uuid.UUID:
+        return service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam=naam,
+            inhoud=_VOORBEELD_UBL + f"<!-- {naam} -->".encode(),
+            actor_id=actor_id,
+            opslag=opslag,
+        ).document_id
+
+    def _tarieven(self, administratie_id: uuid.UUID) -> None:
+        with scoped_session(administratie_id) as session:
+            session.add(
+                TaxRateCache(
+                    id=HOOG,
+                    administratie_id=administratie_id,
+                    naam="NL, Hoog tarief",
+                    percentage=Decimal("0.21"),
+                    brondata={},
+                )
+            )
+
+    def _sla_op(self, administratie_id, document_id, actor_id, regels) -> None:
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor_id,
+            vendor_id=None,
+            referentie="RLZ-2080142625",
+            factuurdatum=date(2026, 6, 30),
+            totaalbedrag=Decimal("908.89"),
+            regels=regels,
+            regels_samenvoegen=False,
+        )
+
+    def test_twee_regels_onder_projectplicht_geven_vinkje_en_een_regel_751_15(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+    ) -> None:
+        beheer_service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=True)
+        self._tarieven(administratie_id)
+        document_id = self._upload(administratie_id, gescoopte_gebruiker, opslag, "f00117f4.xml")
+        regels = [
+            _regel(netto_bedrag=Decimal("375.58"), btw_bedrag=Decimal("78.87"), omschrijving="Brandstof diesel Floor"),
+            _regel(netto_bedrag=Decimal("375.57"), btw_bedrag=Decimal("78.87"), omschrijving="Brandstof diesel Ogur"),
+        ]
+        self._sla_op(administratie_id, document_id, gescoopte_gebruiker, regels)
+        data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+        assert data.samenvoegen_toegestaan is True
+        assert data.samenvoegen_niet_mogelijk_reden is None
+        assert data.regels_samenvoegen is False and len(data.regels) == 2  # de mens sloeg losse regels op
+        assert data.samengevoegde_regel is not None
+        assert data.samengevoegde_regel.netto_bedrag == Decimal("751.15")
+        assert data.samengevoegde_regel.btw_bedrag == Decimal("157.74")
+        assert data.samengevoegde_regel.taxrate_id == HOOG
+        assert data.samengevoegde_regel.project_id is None  # geen project op de regels → geen project (verdeling)
+
+    def test_zelfde_project_op_alle_regels_reist_mee_verschillend_niet(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+    ) -> None:
+        beheer_service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=True)
+        self._tarieven(administratie_id)
+        project = uuid.uuid4()
+        document_id = self._upload(administratie_id, gescoopte_gebruiker, opslag, "zelfde-project.xml")
+        zelfde = [_regel(project_id=project), _regel(project_id=project)]
+        self._sla_op(administratie_id, document_id, gescoopte_gebruiker, zelfde)
+        data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+        assert data.samengevoegde_regel is not None and data.samengevoegde_regel.project_id == project
+
+        document_id = self._upload(administratie_id, gescoopte_gebruiker, opslag, "ander-project.xml")
+        anders = [_regel(project_id=project), _regel(project_id=uuid.uuid4())]
+        self._sla_op(administratie_id, document_id, gescoopte_gebruiker, anders)
+        data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+        assert data.samenvoegen_toegestaan is True
+        assert data.samengevoegde_regel is not None and data.samengevoegde_regel.project_id is None

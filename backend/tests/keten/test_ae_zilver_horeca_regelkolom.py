@@ -19,6 +19,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.documenten import boekvoorstel
 from app.documenten.boekvoorstel import BTW_BRON_FACTUUR_REGEL
 from tests.keten import casussen
 from tests.keten.casussen import Casus
@@ -83,12 +84,14 @@ class TestRegelkolomEnPinbon:
         )
         balisto = per_o[("Balisto Yobbery 20 x 37 Gr", None)]
         assert balisto.bedrag_niet_gelezen is True and balisto.taxrate_id == TAXRATE_LAAG and balisto.btw_bedrag is None
-        # Keten-administratie = projectplicht → hard gesplitst (geen vinkje); geen totaal → ook geen één-regel-variant.
+        # 02-10 (punt 3 "Boeken prettig"): projectplicht sluit samenvoegen niet meer uit (toegestaan True, default
+        # zonder voorkeur gesplitst); geen totaal en niet alle regelbedragen gelezen → geen variant, wél de reden.
         assert (voorstel.regels_samenvoegen, voorstel.samenvoegen_toegestaan, voorstel.samengevoegde_regel) == (
             False,
-            False,
+            True,
             None,
         )
+        assert voorstel.samenvoegen_niet_mogelijk_reden == boekvoorstel.REDEN_SAMENVOEGEN_SCAN_ONVOLLEDIG
         assert voorstel.regels_modus_hersteld is False  # niets opgeslagen: niets te herstellen
 
         dto = keten.open_controlescherm(document_id)
@@ -108,11 +111,11 @@ class TestOpslaanHoudtDeKolomtarievenVast:
         self, keten: Keten, document_id: uuid.UUID
     ) -> None:
         """De modus-herstel-casus zelf (voorkeur "samenvoegen" + losse regels opgeslagen) staat in
-        tests/documenten/test_regel_prefill_factuur_regel_18_09.py — de keten-administratie heeft projectplicht en kent
-        geen
-        samenvoegen. Hier: ná opslaan blijven vinkje/hint/tabel één stand (gesplitst, geen herstel nodig) en houdt
-        Emballage
-        het 0 %-kolomtarief — niet het geheugen-tarief."""
+        tests/documenten/test_regel_prefill_factuur_regel_18_09.py. Hier: ná opslaan blijven vinkje/hint/tabel één stand
+        en houdt Emballage het 0 %-kolomtarief — niet het geheugen-tarief. Sinds 02-10 (punt 3 "Boeken prettig") sluit
+        de projectplicht van de keten-administratie samenvoegen niet meer uit: de keuze `regels_samenvoegen: True` wordt
+        onthouden, maar één opgeslagen regel heeft geen (afgedekt) nettobedrag → geen één-regel-variant mét reden
+        "… onbekend", en de modus volgt de data (weergave hersteld)."""
         dto = keten.open_controlescherm(document_id)
         vendor_id = VENDORS["telecom"][0]
         body = {
@@ -127,7 +130,7 @@ class TestOpslaanHoudtDeKolomtarievenVast:
                 }
                 for r in dto["regels"]
             ],
-            "regels_samenvoegen": True,  # wordt onder projectplicht bewust genegeerd (hard gesplitst)
+            "regels_samenvoegen": True,  # 02-10: wordt óók onder projectplicht als voorkeur onthouden
         }
         resp = keten.api.put(
             f"/administraties/{keten.administratie_id}/documenten/{document_id}/boekvoorstel",
@@ -140,13 +143,12 @@ class TestOpslaanHoudtDeKolomtarievenVast:
         assert len(opnieuw["regels"]) == 6
         assert (opnieuw["regels_samenvoegen"], opnieuw["samenvoegen_toegestaan"], opnieuw["regels_modus_hersteld"]) == (
             False,
-            False,
-            False,
+            True,
+            True,
         )
         # BUG 23-09 (Van Rumpt 2025135): bij ≥ 2 opgeslagen regels berekent de server de één-regel-variant uit díe
-        # regels of geeft een reden. Onder projectplicht is samenvoegen hard uitgesloten → géén variant en géén
-        # reden-chip (er valt niets te kiezen), het veld reist wél mee op de DTO.
-        assert "samenvoegen_niet_mogelijk_reden" in opnieuw and opnieuw["samenvoegen_niet_mogelijk_reden"] is None
+        # regels of geeft een reden — hier is het Balisto-bedrag niet gelezen (afgedekt) → reden-chip, nooit stil weg.
+        assert "onbekend" in (opnieuw["samenvoegen_niet_mogelijk_reden"] or "")
         assert opnieuw["samengevoegde_regel"] is None
         emballage = next(
             r
@@ -154,6 +156,8 @@ class TestOpslaanHoudtDeKolomtarievenVast:
             if r["omschrijving"] == "Emballage ( 24 Stuks )" and r["netto_bedrag"] == "10.80"
         )
         assert emballage["taxrate_id"] == str(TAXRATE_NUL)
-        assert not [g for g in keten.tijdlijn(document_id) if "weergave_hersteld" in g], (
-            "niets te herstellen = geen regel"
-        )
+        # 02-10: de keuze "samenvoegen" is nu wél als voorkeur onthouden; bij het heropenen volgt de modus de data
+        # (6 losse regels opgeslagen) mét precies één tijdlijnregel "weergave hersteld" (regel 18-09).
+        hersteld = [g for g in keten.tijdlijn(document_id) if "weergave_hersteld" in g]
+        assert len(hersteld) == 1
+        assert hersteld[0]["weergave_hersteld"] == {"regels": 6, "modus_stond_op": "samengevoegd"}

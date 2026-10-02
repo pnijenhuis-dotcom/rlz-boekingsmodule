@@ -55,7 +55,7 @@ const ZEVEN_MET_VARIANT = {
   },
 }
 
-function installFetchMock(boekvoorstel: unknown) {
+function installFetchMock(boekvoorstel: unknown, projectVerplicht = false) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
@@ -65,7 +65,7 @@ function installFetchMock(boekvoorstel: unknown) {
       }
       if (url.endsWith('/crediteuren')) return Promise.resolve(jsonResponse({ crediteuren: [{ id: VENDOR_ID, naam: 'Van Rumpt' }] }))
       if (url.endsWith('/projecten')) return Promise.resolve(jsonResponse({ projecten: [] }))
-      if (url.endsWith('/project-instelling')) return Promise.resolve(jsonResponse({ verplicht: false }))
+      if (url.endsWith('/project-instelling')) return Promise.resolve(jsonResponse({ verplicht: projectVerplicht }))
       if (url.endsWith('/boekvoorstel') && (!init || init.method === undefined)) return Promise.resolve(jsonResponse(boekvoorstel))
       if (url.endsWith('/boekvoorstel') && init?.method === 'PUT') {
         return Promise.resolve(jsonResponse({ boekvoorstel, checks: { geblokkeerd: false, resultaten: [] } }))
@@ -115,6 +115,31 @@ describe('BoekvoorstelPanel — samenvoegen uit opgeslagen regels (BUG 23-09, Va
     renderPanel()
     await waitFor(() => expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(2))
     expect(screen.getByTestId('samenvoegen-niet-mogelijk-chip')).toHaveTextContent('samenvoegen niet mogelijk: geen samengevoegde regel te berekenen')
+  })
+
+  it('02-10 (Peter: "Waar is mijn vinkje splitsen?"): projectplicht + 2 regels mét variant → het vinkje staat boven de tabel', async () => {
+    // Casus Universal Steigerbouw f00117f4 (RLZ-2080142625, brandstof diesel, 2 regels 21 %): 751,15 / 157,74.
+    installFetchMock(
+      {
+        ...BASIS,
+        regels: [
+          regel(1, { netto_bedrag: '375.58', btw_bedrag: '78.87', omschrijving: 'Brandstof diesel Floor' }),
+          regel(2, { netto_bedrag: '375.57', btw_bedrag: '78.87', omschrijving: 'Brandstof diesel Ogur' }),
+        ],
+        samengevoegde_regel: {
+          id: null, ledger_id: LEDGER_ID, taxrate_id: HOOG, project_id: null,
+          netto_bedrag: '751.15', btw_bedrag: '157.74', omschrijving: 'Factuur RLZ-2080142625 — samengevoegd (2 regels)', btw_bron: null,
+        },
+      },
+      true,
+    )
+    renderPanel()
+    await waitFor(() => expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(2))
+    expect(screen.getByLabelText('Splitsen per regel')).toBeInTheDocument()
+    expect(screen.getByLabelText('Splitsen per regel')).toBeChecked()
+    expect(screen.queryByTestId('samenvoegen-niet-mogelijk-chip')).not.toBeInTheDocument()
+    // Projectplicht: de projectkolom staat er gewoon naast het vinkje.
+    expect(screen.getByRole('columnheader', { name: 'Project' })).toBeInTheDocument()
   })
 
   it('één opgeslagen regel → geen vinkje en geen chip (er is niets te splitsen)', async () => {
