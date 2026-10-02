@@ -2,7 +2,7 @@
 MELDINGEN, KLEINE BUGS (Peter 02-10)"): élke outbox-rij die op de ontvanger wacht is één bevinding mét handeling.
 
 Aanleiding: Vastly antwoordt sinds 24-09 `409 niet_koppelbaar` als een event (nog) niet te koppelen is (koppelcontract
-§3c, voorstel-3c-409); tot 02-10 viel dat onder de gewone retry en stond het event ná ≈ 2 uur stil als dead-letter
+§3c, voorstel-3c-409 → v1.22 op 02-10 avond); tot 02-10 viel dat onder de gewone retry en stond het event ná ≈ 2 uur stil als dead-letter
 `mislukt`. Er is geen outbox-scherm in de kantoor-UI; de zichtbaarheid is dit blok (Inzicht › Reconciliatie) plus de
 querybibliotheek `db-lezen webhook-outbox`.
 

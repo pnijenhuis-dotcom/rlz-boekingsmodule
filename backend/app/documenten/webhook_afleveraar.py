@@ -39,7 +39,7 @@ Failsafes ("niets verdwijnt stil", maar ook: nooit per ongeluk pushen):
   `kostenintake_uit` (Vastly-tier-vlag `entiteit_config.rlz_kostenintake` staat uit) is een aflevering zónder
   verwerking: rij `afgeleverd`, maar zichtbaar in het rapport (LET-OP) en het audit — de klant zet de kostenintake
   aan Vastly-kant aan.
-- 409 `niet_koppelbaar` (koppelcontract §3c, voorstel-3c-409; run A 02-10 punt 17, Peter 02-10; migratie 0175): de
+- 409 `niet_koppelbaar` (koppelcontract §3c — voorstel-3c-409, sinds 02-10 avond v1.22; run A 02-10 punt 17, Peter 02-10; migratie 0175): de
   ontvanger zegt "nog niet koppelbaar" (onbekende_administratie / onbekend_document / referentie_conflict) — dat is
   geen fout van ons en nooit een dead-letter ná 8 pogingen. De rij gaat naar status `wacht_op_ontvanger` mét oplopende
   cadans vanaf de EERSTE 409 (`WACHT_CADANS`: 1 u → 6 u → 24 u, daarna dagelijks), zichtbaar in het reconciliatieblok
