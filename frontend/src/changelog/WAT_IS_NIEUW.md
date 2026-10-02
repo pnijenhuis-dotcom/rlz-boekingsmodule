@@ -10,6 +10,10 @@
 
 <!-- run-d-02-10 -->
 
+- Onderlinge facturen tussen eigen BV's: de dagelijkse controle toetst nu álle richtingen tussen groepsmaatschappijen (Universal: 12), ook als een BV haar zuster nog niet als klant of leverancier kent; een BV die bij een zuster inkoopt krijgt automatisch "intercompany — accordering overslaan".
+- Inzicht › Reconciliatie: bij "Onderlinge factuur ontbreekt bij ontvanger" staat de knop "Factuur opvragen bij ‹BV›" — die maakt een mailconcept (onderwerp + tekst + openen in je mailprogramma) om de PDF/UBL naar de boekhoudmail te laten sturen; er wordt niets automatisch verzonden.
+- Facturen die via de Reeleezee-export met "RLZ-" voor het nummer binnenkomen tellen nu gewoon als "onderweg in de module"; de verkoopkant van een administratie die ná de knipdatum in Odoo factureert wordt uit Odoo gelezen.
+
 - **Afwijzen vanuit het verkoop- en kassarapport-scherm.** Het ⋯-menu op een verkoopfactuur of kassarapport heeft nu "Afwijzen…" — dezelfde dialoog met verplichte reden als bij een inkoopfactuur; ook op een document dat je net via "Corrigeren…" hebt teruggezet. Ná afwijzen ga je direct door naar het volgende document.
 
 - Projectvoorstel leest nu de hele factuur: staan een plaats én een opdrachtgever uit een projectnaam allebei op de factuur (kop, betreft-regel of regels), dan stelt de module dat project voor met de oranje chip "op plaats + opdrachtgever" — u controleert en boekt; nooit meer "lijkt op".

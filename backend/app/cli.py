@@ -3601,6 +3601,9 @@ def main(argv: list[str] | None = None) -> int:
 
     register_werkvoorraad_tellers(subparsers)  # werkvoorraad-tellers-herrekenen
     register_doorbelasting_aansluiting(subparsers)  # doorbelasting-aansluiting (lees-only)
+    from app.intercompany.aansluiting_cli import register as register_ic_aansluiting  # run D 02-10 blok D
+
+    register_ic_aansluiting(subparsers)  # ic-aansluiting-rapport (lees-only)
     register_appupdate(subparsers)  # app-bundel-registreren / app-bundels
     subparsers.add_parser(
         "autoboek-kandidaten-herbereken",
@@ -4429,6 +4432,10 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_appupdate
     if (uitkomst_doorbelasting_aansluiting := dispatch_doorbelasting_aansluiting(args)) is not None:  # 16-09 nacht
         return uitkomst_doorbelasting_aansluiting
+    from app.intercompany.aansluiting_cli import dispatch as dispatch_ic_aansluiting  # run D 02-10 blok D
+
+    if (uitkomst_ic_aansluiting := dispatch_ic_aansluiting(args)) is not None:
+        return uitkomst_ic_aansluiting
     if (uitkomst_werkvoorraad_tellers := dispatch_werkvoorraad_tellers(args)) is not None:  # blok 6 11-09
         return uitkomst_werkvoorraad_tellers
     if args.commando == "bootstrap-beheerder":

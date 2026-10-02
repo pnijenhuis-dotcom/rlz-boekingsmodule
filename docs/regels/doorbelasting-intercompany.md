@@ -118,6 +118,65 @@
   bruikbaar. Guards `tests/doorbelasting/test_preview_aangifte_letop.py` (IC-paar: één kant ingediend = LET-OP; beide open = niets;
   geen credential doel = zichtbaar), vitest `DoorbelastingReviewScreen.test.tsx`. Werkt in productie: niet gemeten.
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "run-D-alles-in-een" blok D -->
+- **IC-controle Universal — alle 12 richtingen, Verkoop uit Odoo ná de knip, lees-only + reconciliatieblok (run D 02-10 blok D;
+  Peter 02-10 "gooi alles maar in 1 run" + 28-09 "de verkoop lijkt mij de waarheid"; geen migratie; BESLISSINGEN "RUN D 02-10 — BTW
+  < € 0,10, PROJECTMATCH, AFWIJZEN, IC 12 RICHTINGEN, PO STAP-0, NATIVE 1.3 (Peter 02-10)" blok D):** (1) **Relaties automatisch
+  actief** — een naam-match (crediteur-/debiteurrecord in A ↔ identiteit van B) tussen twee eigen administraties die BEIDE een
+  KvK-identiteit UIT DE BRON dragen (RLZ `AdministrationSettings` / Odoo `res.company`; een `mens`-identiteit telt niet) wordt door
+  `relaties.leid_relaties_af` automatisch `bevestigd` (bron blijft `afgeleid`, `reden` = `AUTO_BEVESTIGD_REDEN`, één audit
+  `intercompany_relatie_gewijzigd` mét `auto_bevestigd: true` per rij, ook voor een eerder als "vermoedelijk" afgeleide rij); een
+  door een Beheerder uitgesloten rij (bron `mens`) wordt nooit aangeraakt. De regel 16-09 "naam-only pas actief ná bevestiging" blijft
+  gelden zodra één kant géén bron-KvK heeft (teller `zonder_kvk_identiteit` in de sync-alles-regel). Universal: de 10 naam-relaties van
+  28-09 worden zo zonder klik actief; identiteiten van alle vier zijn op 28-09 uit RLZ gelezen. (2) **IC-tegenpartijen automatisch**
+  (`app/intercompany/tegenpartijen.py::leid_tegenpartijen_af`, derde stap in `cli_stap.rapporteer_afleiding` én in `POST
+  /intercompany/afleiden`): élke ACTIEVE crediteur-relatie (A, entity, B) krijgt in de scope van A een rij `intercompany_tegenpartij`
+  mét bron `intercompany_relatie` → "intercompany slaat klant-accordering over" (08-09) geldt zonder klik; idempotent; een inactieve
+  rij mét bron `handmatig`/`doorbelasting_mapping` (mens/mapping zette 'm uit) wordt NOOIT heractiveerd (teller
+  `mens_uit_overgeslagen`, zichtbare regel); sluit een Beheerder de relatie uit, dan gaat de rij die wij zetten op `actief=False`
+  (nooit delete); audit `intercompany_leverancier_gewijzigd` per mutatie (zichtbaar in de tijdlijn op Instellingen ›
+  Klant-accordering, chip "intercompany-relatie"; verwijderen via die instelling = 409 "sluit de relatie uit"). Afwezig-pad: geen
+  actieve crediteur-relaties = "0 kandidaten", geen rij, geen fout. Generiek voor élke groep eigen administraties, niet alleen
+  Universal. (3) **Richtingen i.p.v. handelsrelaties** (`factuurmatch.bouw_richtingen`): de handelsrelaties uit de paren worden
+  aangevuld tot ÁLLE geordende paren binnen een handelsgroep (= samenhangende component van administraties via actieve relaties):
+  vier BV's = 12 richtingen. Een richting zonder debiteur- én crediteurrecord is `zonder_records` (regel `ZONDER RECORDS A → B`,
+  0/0, géén call); een richting mét maar één bekende kant wordt sinds 02-10 WEL getoetst mét een lege andere kant (notitie in de
+  regel "geen crediteurrecord … — inkoopkant leeg") — vóór 02-10 was dat een LET-OP "paar niet getoetst". Slotregel: `N/M
+  richting(en) getoetst (K zonder records), …, H concept-huls(en), …`. (4) **Soorten per richting** — `ic_inkoop_ontbreekt`
+  (verkoop zonder inkoop; bij de ontvanger; **direct `actie`**, `direct_actie_reden`: bewijs = het eigen verkoopboekstuk, handeling
+  deterministisch; explosie-rem blijft — de 98 Nederland → Steigerbouw van 28-09 lopen daar bewust tegenaan tot de aanlevering
+  geregeld is), `ic_verkoop_ontbreekt` (inkoop zonder verkoop; bij de verkoper; `meten`), `ic_bedrag_afwijking` (zelfde nummer,
+  ander bedrag; `meten`) VERVANGEN `ic_ontbreekt_bij_ontvanger`/`ic_ontbreekt_bij_verkoper`/`ic_bedrag_verschilt` (zelfde feit,
+  één naam; oude namen blijven geregistreerd voor open bevindingen — die sluit de eerstvolgende run via
+  `reconciliatie_auto_gesloten` — en acceptaties; `ic_status_verschilt` ongewijzigd; `doorbelasting/aansluiting.py` vertaalt de
+  nieuwe namen naar de `da_*`-soorten). (5) **Sleutel mét én zonder `RLZ-`-prefix** (gat B 28-09): `factuurmatch.nummer_varianten`
+  vergelijkt `rlz2080142200` ↔ `2080142200` in de nummer-match én in de onderweg-set; `module_onderweg` telt óók de referentie van
+  een `afgevoerd_duplicaat`-kopie waarvan het origineel nog open staat (14 gevallen 28-09). Bewust lokaal, niet in
+  `documenten/referentie.py` (dat raakt duplicaten/rlz_dubbel kantoorbreed). Concept-hulzen bij de verkoper (Status 1, € 0,00,
+  geen nummer) zijn geen factuur: geteld (`hulzen`), nooit een bevinding. (6) **Verkoop uit Odoo ná de knip** —
+  `factuurmatch.GesplitsteBron` (één administratie, twee systemen, gesplitst op de KANTELDATUM: `voor` vóór, `na` vanaf; beide
+  lezen hetzelfde venster en filteren client-side op datum, niets dubbel of nergens): `open_bron` bouwt 'm voor (a) een
+  RLZ-administratie mét alleen-lezen Odoo-leesbron + `voorraad_knip_datum` (Universal Verkoop vóór Peters overstap-klik: RLZ vóór
+  01-09, Odoo company 3 erna) en (b) een overgestapte Odoo-administratie mét `overgangsdatum` + bewaarde RLZ-credential
+  (`client_voor_rlz_verleden`); leesbron zonder knipdatum of overstap zonder RLZ-verleden-credential = één bron (logregel). De
+  kant die de entity-id's van de relatie niet kent zoekt de partij op de IDENTITEIT van de tegenpartij (`Bron.verkoop/inkoop(…,
+  tegenpartij_id=)`): Odoo `res.partner` op `company_registry` = KvK, anders exact gelijke `naam_norm` (vierde route in
+  `OdooBron._partner_ids`); RLZ-verleden via `Customers`/`Vendors` op KvK/naam (`RlzBron(op_identiteit=True)`); niets gevonden =
+  `EntityNietVertaalbaar` → zichtbare LET-OP, nooit een filterloze read. Verwachting Universal: F/2026/00066 (Odoo-verkoop van
+  Verkoop ↔ RLZ-inkoop Steigerbouw) is géén `ic_verkoop_ontbreekt` meer. (7) **Handeling "Factuur opvragen bij ‹BV›"**
+  (`app/intercompany/opvragen.py`, `POST /reconciliatie/intercompany/{bevinding_id}/factuur-opvragen`, élke kantoorrol; frontend
+  `reconciliatie/IcActies.tsx`): bouwt een MAILCONCEPT aan de boekhouding van de verkopende BV (onderwerp, tekst mét nummer/datum/
+  bedrag en het verzoek de PDF/UBL naar onze boekhoudmail `settings.intake_postvak_adres` te sturen, `mailto:`), toont 'm in een
+  dialoog mét "Openen in mailprogramma"/"Tekst kopiëren"; de module kent geen adres per administratie → plaatshouder "aan"; NOOIT
+  automatisch verzonden; audit `ic_factuur_opgevraagd_concept` (`verzonden: false`); 404 buiten scope, 409 op een andere soort.
+  (8) **Geen automatische boekingen** in dit blok; de IC-spiegel (Nederland → Steigerbouw automatisch inboeken) staat als apart
+  voorstel in het rapport. **Meetlat:** querybibliotheek `db-lezen ic-aansluiting --administratie … [--param richting=A>B]
+  [--param afwijking_soort=…]`, lees-only CLI `ic-aansluiting-rapport [--richting "A>B"] [--administratie …] [--venster-dagen N]`
+  (zelfde motor zonder verzamelaar, nameting-allowlist), dispatch-onderdeel `ic-aansluiting` (`reconciliatie-alles --alleen
+  intercompany --lees-only` + `ic-aansluiting-rapport --administratie "Universal Steigerbouw"` + request-log factuur-opvragen).
+  Tests `tests/intercompany/test_run_d_blok_d.py` (+ aangepast `test_relaties.py`/`test_factuurmatch.py`), vitest `IcActies.test.tsx`.
+  Werkt in productie: niet gemeten (vervolg-nameting `2026-10-03-nameting-run-d.md`).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kempen-doorbelasting (motor, spiegel, storno-blokkade, tegenboek-pad, factuur-PDF, projecten) (CLAUDE.md `ed6d176` r. 829–936)

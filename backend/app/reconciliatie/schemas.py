@@ -325,3 +325,29 @@ class WebhookNuOpnieuwResultaatDto(BaseModel):
     status_na: str
     #: Uitkomst van de directe afleverronde, letterlijk ("afgeleverd — resultaat verwerkt" | "wacht op de ontvanger (…)").
     uitkomst: str
+
+
+class IcFactuurOpvragenInvoerDto(BaseModel):
+    """Run D 02-10 blok D: "Factuur opvragen bij ‹BV›" op een `ic_inkoop_ontbreekt`-bevinding — alleen de administratie
+    (scope-toets); de bevinding wordt server-side gelezen."""
+
+    administratie_id: uuid.UUID
+
+
+class IcMailConceptDto(BaseModel):
+    """Mailconcept aan de boekhouding van de verkopende BV (nooit automatisch verzonden; de mens opent/kopieert 'm)."""
+
+    bevinding_id: uuid.UUID
+    administratie_id: uuid.UUID
+    verkoper_naam: str
+    ontvanger_naam: str
+    nummer: str | None
+    datum: str | None
+    bedrag: str | None
+    #: None = geen adres bekend in de module; `aan_tekst` draagt dan de plaatshouder.
+    aan: str | None
+    aan_tekst: str
+    onderwerp: str
+    tekst: str
+    mailto: str
+    intake_adres: str | None

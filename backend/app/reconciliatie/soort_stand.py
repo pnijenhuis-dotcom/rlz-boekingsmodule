@@ -143,6 +143,25 @@ REGISTRY: dict[str, SoortDefinitie] = {
         _oud("da_doel_niet_in_module", "doorbelasting_aansluiting"),
         _oud("da_inkoop_zonder_verkoop", "doorbelasting_aansluiting"),
         # intercompany + RC
+        # Run D 02-10 blok D (Peter 02-10; casus Universal: 12 richtingen, verkoop = de waarheid): drie soorten per
+        # richting VERVANGEN de 16-09-namen hieronder (zelfde feit, één naam). `ic_inkoop_ontbreekt` start direct in
+        # `actie` — besluit Peter in de opdracht ("verkoop zonder inkoop … direct `actie`"): het bewijs is de
+        # verkoopfactuur van onze eigen BV (nummer/datum/bedrag), de handeling is deterministisch ("Factuur opvragen bij
+        # ‹BV›" = mail-concept); explosie-rem blijft (de 98 Nederland → Steigerbouw van 28-09 lopen daar bewust tegenaan
+        # zolang de aanlevering niet geregeld is). `ic_verkoop_ontbreekt` en `ic_bedrag_afwijking` starten in `meten`.
+        SoortDefinitie(
+            soort="ic_inkoop_ontbreekt",
+            blok="intercompany",
+            sinds=date(2026, 10, 2),
+            default=ACTIE,
+            direct_actie_reden="Peter 02-10 (run D blok D, IC Universal 12 richtingen): verkoopfactuur van een eigen "
+            "BV zonder inkoop bij de ontvanger — bewijs = het eigen verkoopboekstuk (nummer/datum/bedrag), handeling = "
+            "'Factuur opvragen bij ‹BV›' (mail-concept, nooit automatisch verzonden); explosie-rem blijft",
+        ),
+        SoortDefinitie(soort="ic_verkoop_ontbreekt", blok="intercompany", sinds=date(2026, 10, 2), default=METEN),
+        SoortDefinitie(soort="ic_bedrag_afwijking", blok="intercompany", sinds=date(2026, 10, 2), default=METEN),
+        # Oude namen 16-09 t/m 02-10: de motor produceert ze niet meer; registry-entry blijft voor open bevindingen
+        # (auto-sluiting bij de eerstvolgende run), acceptaties en de tekst-guard.
         _oud("ic_ontbreekt_bij_ontvanger", "intercompany"),
         _oud("ic_ontbreekt_bij_verkoper", "intercompany"),
         _oud("ic_bedrag_verschilt", "intercompany"),

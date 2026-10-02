@@ -303,6 +303,26 @@
   regel 15-09, lees-only markeert), `test_soort_stand.py` (registry), `test_auto_acceptatie_afronding.py` ongewijzigd groen. Werkt
   in productie: niet gemeten (eerste échte run 03-10 06:30; onderdeel `btw-afronding`).
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "run-D-alles-in-een" blok D — DOEL: docs/regels/reconciliatie.md -->
+- **Blok `intercompany` — richtingen, drie soorten, Verkoop uit Odoo ná de knip, handeling "Factuur opvragen" (run D 02-10 blok D,
+  Peter 02-10; geen migratie; BESLISSINGEN "RUN D 02-10 — BTW < € 0,10, PROJECTMATCH, AFWIJZEN, IC 12 RICHTINGEN, PO STAP-0, NATIVE
+  1.3 (Peter 02-10)" blok D):** het blok toetst sinds 02-10 ÁLLE geordende paren binnen een handelsgroep (`factuurmatch.
+  bouw_richtingen`; Universal: 4 BV's = 12 richtingen; richting zonder debiteur-/crediteurrecord = `ZONDER RECORDS`-regel, 0/0, geen
+  call; één bekende kant = getoetst mét lege andere kant — géén LET-OP "niet getoetst" meer), produceert per richting
+  `ic_inkoop_ontbreekt` (**direct `actie`**, `direct_actie_reden`; handeling "Factuur opvragen bij ‹BV›" = mailconcept via `POST
+  /reconciliatie/intercompany/{bevinding_id}/factuur-opvragen`, audit `ic_factuur_opgevraagd_concept`, nooit automatisch verzonden;
+  frontend `IcActies.tsx`), `ic_verkoop_ontbreekt` (`meten`) en `ic_bedrag_afwijking` (`meten`) — ze vervangen
+  `ic_ontbreekt_bij_ontvanger`/`_verkoper`/`ic_bedrag_verschilt` (oude namen blijven geregistreerd; open oude bevindingen sluiten via
+  `reconciliatie_auto_gesloten` bij de eerstvolgende run; `ic_status_verschilt` en `ic_spiegel_rood` ongewijzigd). Sleutel mét én
+  zonder `RLZ-`-prefix in de match en de onderweg-set (+ origineel achter een `afgevoerd_duplicaat`), concept-hulzen geteld. Een
+  administratie mét twee systemen rond een kanteldatum (leesbron + knip, of overstap + RLZ-verleden) wordt als `GesplitsteBron`
+  gelezen (RLZ vóór, Odoo ná; partij op identiteit KvK/naam waar de entity-id's niet gelden). De explosie-rem (> 50/run → `meten` +
+  systeemfout-LET-OP) geldt onverkort — verwacht voor Nederland → Steigerbouw zolang de 36 nooit aangeleverde facturen niet via de
+  intake komen. Slotregel `N/M richting(en) getoetst (K zonder records), …`. Meetlat: dispatch-onderdeel `ic-aansluiting`
+  (`reconciliatie-alles --alleen intercompany --lees-only` + lees-only CLI `ic-aansluiting-rapport` + request-log factuur-opvragen),
+  querybibliotheek `db-lezen ic-aansluiting --administratie …`. Volledige regel: `docs/regels/doorbelasting-intercompany.md` alinea
+  "IC-controle Universal — alle 12 richtingen". Werkt in productie: niet gemeten.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Synthetische bewaking + alerting (CLAUDE.md `ed6d176` r. 632–644)

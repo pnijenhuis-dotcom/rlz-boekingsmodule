@@ -62,17 +62,32 @@ PER_PAGINA = 200
 MAX_PAGINAS = 10
 _MIN_STAM_LENGTE = 4
 
-SOORT_ONTBREEKT_BIJ_ONTVANGER = "ic_ontbreekt_bij_ontvanger"
-SOORT_ONTBREEKT_BIJ_VERKOPER = "ic_ontbreekt_bij_verkoper"
-SOORT_BEDRAG_VERSCHILT = "ic_bedrag_verschilt"
+#: Run D 02-10 blok D (Peter 02-10): de drie uitkomsten per richting heten sinds 02-10 naar wat er ontbreekt/afwijkt:
+#: `ic_inkoop_ontbreekt` (verkoop zonder inkoop; handeling bij de ontvanger "Factuur opvragen bij ‹BV›"; direct
+#: `actie`), `ic_verkoop_ontbreekt` (inkoop zonder verkoop; `meten`) en `ic_bedrag_afwijking` (zelfde nummer, ander
+#: bedrag; `meten`). Ze VERVANGEN `ic_ontbreekt_bij_ontvanger` / `ic_ontbreekt_bij_verkoper` / `ic_bedrag_verschilt`
+#: (16-09): zelfde feit, één naam. De oude soorten blijven in de registry/teksten voor open bevindingen van vóór de
+#: deploy (die sluit de eerstvolgende run via `reconciliatie_auto_gesloten`) en voor bestaande acceptaties.
+SOORT_INKOOP_ONTBREEKT = "ic_inkoop_ontbreekt"
+SOORT_VERKOOP_ONTBREEKT = "ic_verkoop_ontbreekt"
+SOORT_BEDRAG_AFWIJKING = "ic_bedrag_afwijking"
 SOORT_STATUS_VERSCHILT = "ic_status_verschilt"
 SOORT_SPIEGEL_ROOD = "ic_spiegel_rood"
+#: Oude namen (16-09 t/m 02-10) — alleen nog voor registry, teksten en acceptatie-historie; de motor produceert ze
+#: niet meer.
+SOORT_ONTBREEKT_BIJ_ONTVANGER_OUD = "ic_ontbreekt_bij_ontvanger"
+SOORT_ONTBREEKT_BIJ_VERKOPER_OUD = "ic_ontbreekt_bij_verkoper"
+SOORT_BEDRAG_VERSCHILT_OUD = "ic_bedrag_verschilt"
 SOORTEN = (
-    SOORT_ONTBREEKT_BIJ_ONTVANGER,
-    SOORT_ONTBREEKT_BIJ_VERKOPER,
-    SOORT_BEDRAG_VERSCHILT,
+    SOORT_INKOOP_ONTBREEKT,
+    SOORT_VERKOOP_ONTBREEKT,
+    SOORT_BEDRAG_AFWIJKING,
     SOORT_STATUS_VERSCHILT,
 )
+#: Voorvoegsel dat de RLZ-export-UBL op het factuurnummer zet ("RLZ-2080142200" ↔ verkoopnummer 2080142200; gat B
+#: rapport 28-09): de sleutel wordt mét én zonder dit voorvoegsel vergeleken — lokaal in deze match en in de
+#: "onderweg"-set, bewust NIET in `documenten/referentie.py` (dat raakt duplicaten/rlz_dubbel kantoorbreed).
+RLZ_VOORVOEGSEL = "rlz"
 
 REGEL_NUMMER = "nummer"
 REGEL_BEDRAG_DATUM = "bedrag_datum"
@@ -222,6 +237,14 @@ class MatchUitkomst:
     verrekend_zonder_tegenkant: tuple[Groep, ...]  # netto-0-paren zonder tegenkant: geen bevinding, wél teller
     aantal_verkoop: int
     aantal_inkoop: int
+    #: Run D 02-10: RLZ-concept-hulzen bij de verkoper (Status 1, € 0,00, geen nummer — rapport 28-09: 5 stuks bij
+    #: Universal Nederland) zijn geen factuur en dus geen bevinding; wél geteld, nooit stil.
+    hulzen: int = 0
+
+
+def is_huls(f: IcFactuur) -> bool:
+    """Concept zonder nummer én zonder bedrag = lege huls (geen factuur)."""
+    return f.status == 1 and f.bedrag == 0 and not f.nummer_norm
 
 
 # ---- puur: verrekenparen ------------------------------------------------------------------------------
@@ -272,10 +295,22 @@ def vouw_verrekenparen(facturen: Sequence[IcFactuur]) -> list[Groep]:
 # ---- puur: match -----------------------------------------------------------------------------------
 
 
+def nummer_varianten(norm: str | None) -> frozenset[str]:
+    """Genormaliseerd nummer mét én zonder het `RLZ-`-voorvoegsel van de RLZ-export-UBL (gat B 28-09): `rlz2080142200`
+    ↔ `2080142200`. Leeg = lege set. Alleen een voorvoegsel dat door minstens drie tekens gevolgd wordt telt (anders is
+    "rlz" zelf het nummer)."""
+    if not norm:
+        return frozenset()
+    uit = {norm}
+    if norm.startswith(RLZ_VOORVOEGSEL) and len(norm) > len(RLZ_VOORVOEGSEL) + 2:
+        uit.add(norm[len(RLZ_VOORVOEGSEL) :])
+    return frozenset(uit)
+
+
 def _nummer_match(v: Groep, i: Groep) -> bool:
     if v.nummer_norm is None or i.nummer_norm is None:
         return False
-    if v.nummer_norm == i.nummer_norm:
+    if nummer_varianten(v.nummer_norm) & nummer_varianten(i.nummer_norm):
         return True
     return referentie_als_token(v.nummer, i.nummer)
 
@@ -398,10 +433,14 @@ def match_facturen(
     ontvanger_naam: str | None = None,
 ) -> MatchUitkomst:
     """De pure kern. Zie module-docstring voor de regels."""
+    hulzen = [f for f in verkoop if is_huls(f)] + [f for f in inkoop if is_huls(f)]
+    verkoop = [f for f in verkoop if not is_huls(f)]
+    inkoop = [f for f in inkoop if not is_huls(f)]
     groepen_v = vouw_verrekenparen(verkoop)
     groepen_i = vouw_verrekenparen(inkoop)
     matches, rest_v, rest_i = match_groepen(groepen_v, groepen_i)
     paar_sleutel = f"paar={verkoper_id}>{ontvanger_id}"
+    onderweg_varianten = {var for norm in module_onderweg for var in nummer_varianten(norm)}
 
     def extra(v: Groep | None, i: Groep | None, regel: str | None) -> dict[str, Any]:
         return _basis_extra(
@@ -422,7 +461,7 @@ def match_facturen(
         if m.regel == REGEL_NUMMER and m.delta != 0:
             bevindingen.append(
                 IcBevinding(
-                    soort=SOORT_BEDRAG_VERSCHILT,
+                    soort=SOORT_BEDRAG_AFWIJKING,
                     administratie_id=ontvanger_id,
                     record_id=_record_uuid(m.inkoop.leidend.id, f"{paar_sleutel}|{nummer}|bedrag"),
                     detail=(
@@ -459,13 +498,13 @@ def match_facturen(
         if v.is_verrekend and v.bedrag == 0:
             verrekend_leeg.append(v)
             continue
-        if v.nummer_norm and v.nummer_norm in module_onderweg:
+        if v.nummer_norm and (nummer_varianten(v.nummer_norm) & onderweg_varianten):
             onderweg.append(v)
             continue
         nummer = v.nummer or v.leidend.id
         bevindingen.append(
             IcBevinding(
-                soort=SOORT_ONTBREEKT_BIJ_ONTVANGER,
+                soort=SOORT_INKOOP_ONTBREEKT,
                 administratie_id=ontvanger_id,
                 record_id=uuid.uuid5(_NAMESPACE, f"{paar_sleutel}|{v.nummer_norm or v.leidend.id}|ontvanger"),
                 detail=f"{paar_sleutel} nummer={nummer} bedrag={_euro(v.bedrag)} datum={v.datum.isoformat()}",
@@ -479,7 +518,7 @@ def match_facturen(
         nummer = i.nummer or i.leidend.id
         bevindingen.append(
             IcBevinding(
-                soort=SOORT_ONTBREEKT_BIJ_VERKOPER,
+                soort=SOORT_VERKOOP_ONTBREEKT,
                 administratie_id=verkoper_id,
                 record_id=uuid.uuid5(_NAMESPACE, f"{paar_sleutel}|{i.nummer_norm or i.leidend.id}|verkoper"),
                 detail=f"{paar_sleutel} nummer={nummer} bedrag={_euro(i.bedrag)} datum={i.datum.isoformat()}",
@@ -493,6 +532,7 @@ def match_facturen(
         verrekend_zonder_tegenkant=tuple(verrekend_leeg),
         aantal_verkoop=len(verkoop),
         aantal_inkoop=len(inkoop),
+        hulzen=len(hulzen),
     )
 
 
@@ -512,6 +552,49 @@ class Handelsrelatie:
     @property
     def sleutel(self) -> tuple[uuid.UUID, uuid.UUID]:
         return (self.verkoper_id, self.ontvanger_id)
+
+    @property
+    def zonder_records(self) -> bool:
+        """Run D 02-10: een richting binnen een handelsgroep zonder debiteur- én crediteurrecord — niets te lezen, de
+        uitkomst is per definitie 0 verkoop / 0 inkoop; telt als richting, kost geen call."""
+        return not self.verkoop_entity_ids and not self.inkoop_entity_ids
+
+
+def bouw_richtingen(paren: Iterable[Any]) -> list[Handelsrelatie]:
+    """Run D 02-10 blok D (Peter: "alle 12 richtingen"): de handelsrelaties uit de paren, AANGEVULD tot álle geordende
+    paren binnen elke HANDELSGROEP (= de administraties die via actieve IC-relaties met elkaar verbonden zijn, als
+    samenhangende component). Vier BV's die elkaars debiteur/crediteur zijn geven zo altijd 4 × 3 = 12 richtingen, ook
+    de richtingen waar geen enkel entity-record voor bestaat (die zijn `zonder_records`: niets te lezen, zichtbaar
+    geteld). Een richting mét alleen een verkoop- óf alleen een inkoopkant wordt sinds 02-10 WEL getoetst (de andere
+    kant is dan leeg) — vóór 02-10 was dat een LET-OP "niet getoetst"."""
+    relaties = bouw_handelsrelaties(paren)
+    per_sleutel = {r.sleutel: r for r in relaties}
+    # Samenhangende componenten over de (ongerichte) verbindingen.
+    buren: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for r in relaties:
+        buren.setdefault(r.verkoper_id, set()).add(r.ontvanger_id)
+        buren.setdefault(r.ontvanger_id, set()).add(r.verkoper_id)
+    gezien: set[uuid.UUID] = set()
+    for start in sorted(buren, key=str):
+        if start in gezien:
+            continue
+        component: set[uuid.UUID] = set()
+        stapel = [start]
+        while stapel:
+            knoop = stapel.pop()
+            if knoop in component:
+                continue
+            component.add(knoop)
+            stapel.extend(buren.get(knoop, ()) - component)
+        gezien |= component
+        for a in component:
+            for b in component:
+                if a == b or (a, b) in per_sleutel:
+                    continue
+                per_sleutel[(a, b)] = Handelsrelatie(
+                    verkoper_id=a, ontvanger_id=b, verkoop_entity_ids=frozenset(), inkoop_entity_ids=frozenset()
+                )
+    return sorted(per_sleutel.values(), key=lambda r: (str(r.verkoper_id), str(r.ontvanger_id)))
 
 
 def handelsrelatie_van(paar: Any) -> Handelsrelatie:
@@ -812,35 +895,104 @@ class EntityNietVertaalbaar(Exception):
 
 
 class Bron:
-    """Leesbron van één administratie. `verkoop`/`inkoop` geven IcFactuur-lijsten; `sluit()` sluit de verbinding."""
+    """Leesbron van één administratie. `verkoop`/`inkoop` geven IcFactuur-lijsten; `sluit()` sluit de verbinding.
+    `tegenpartij_id` (run D 02-10) = de administratie die de entity-set voorstelt — een bron die de entity-id's niet
+    kent (Odoo-kant van een gesplitste bron, RLZ-verleden) zoekt de partij dan op KvK/naam van haar identiteit."""
 
     backend = "rlz"
 
     def __init__(self, administratie_id: uuid.UUID) -> None:
         self.administratie_id = administratie_id
 
-    def verkoop(self, entity_ids: Iterable[uuid.UUID], van: date, tot: date) -> list[IcFactuur]:  # pragma: no cover
+    def verkoop(
+        self, entity_ids: Iterable[uuid.UUID], van: date, tot: date, *, tegenpartij_id: uuid.UUID | None = None
+    ) -> list[IcFactuur]:  # pragma: no cover
         raise NotImplementedError
 
-    def inkoop(self, entity_ids: Iterable[uuid.UUID], van: date, tot: date) -> list[IcFactuur]:  # pragma: no cover
+    def inkoop(
+        self, entity_ids: Iterable[uuid.UUID], van: date, tot: date, *, tegenpartij_id: uuid.UUID | None = None
+    ) -> list[IcFactuur]:  # pragma: no cover
         raise NotImplementedError
 
     def sluit(self) -> None:
         return None
 
 
+def identiteit_van(administratie_id: uuid.UUID | None) -> Any | None:
+    """Gedetacheerde `AdministratieIdentiteit` van een administratie (kvk, naam_norm) of None."""
+    if administratie_id is None:
+        return None
+    from app.intercompany.identiteit import alle_identiteiten
+
+    return alle_identiteiten().get(administratie_id)
+
+
+def _rlz_partijen_op_identiteit(client: Any, route: str, identiteit: Any) -> list[uuid.UUID]:
+    """RLZ `Customers`/`Vendors` gepagineerd lezen en de records kiezen die de identiteit voorstellen: KvK gelijk,
+    anders `naam_norm` exact gelijk. Alleen voor een bron die de entity-id's van de relatie niet kent (RLZ-verleden
+    van een overgestapte administratie)."""
+    from app.extractie.btw_nummer import normaliseer_kvk_nummer
+    from app.intercompany.identiteit import naam_norm
+
+    kvk = getattr(identiteit, "kvk", None)
+    norm = getattr(identiteit, "naam_norm", None)
+    op_kvk: list[uuid.UUID] = []
+    op_naam: list[uuid.UUID] = []
+    for pagina in range(MAX_PAGINAS):
+        params = {"$top": str(PER_PAGINA), "$skip": str(pagina * PER_PAGINA), "$orderby": "id asc"}
+        antwoord = client.get(route, params=params)
+        deel = antwoord.get("value", []) if isinstance(antwoord, dict) else list(antwoord or [])
+        for rij in deel:
+            try:
+                rid = uuid.UUID(str(rij.get("id")))
+            except (ValueError, TypeError, AttributeError):
+                continue
+            if kvk and normaliseer_kvk_nummer(str(rij.get("ChamberOfCommerceNumber") or "")) == kvk:
+                op_kvk.append(rid)
+            elif norm and naam_norm(rij.get("Name") or rij.get("SearchName")) == norm:
+                op_naam.append(rid)
+        if len(deel) < PER_PAGINA:
+            break
+    return op_kvk or op_naam
+
+
 class RlzBron(Bron):
     backend = "rlz"
 
-    def __init__(self, administratie_id: uuid.UUID, client: RlzClient) -> None:
+    def __init__(self, administratie_id: uuid.UUID, client: RlzClient, *, op_identiteit: bool = False) -> None:
         super().__init__(administratie_id)
         self.client = client
+        #: True = de entity-id's van de relatie horen bij een ánder systeem (RLZ-verleden van een Odoo-administratie):
+        #: de partij wordt per kant één keer op identiteit opgezocht (`Customers`/`Vendors`) en gecachet.
+        self.op_identiteit = op_identiteit
+        self._identiteit_cache: dict[tuple[str, uuid.UUID], list[uuid.UUID]] = {}
 
-    def verkoop(self, entity_ids: Iterable[uuid.UUID], van: date, tot: date) -> list[IcFactuur]:
-        return lees_verkoop_rlz(self.client, entity_ids, van, tot, administratie_id=self.administratie_id)
+    def _ids(self, kant: str, entity_ids: Iterable[uuid.UUID], tegenpartij_id: uuid.UUID | None) -> list[uuid.UUID]:
+        ids = [e for e in entity_ids if e]
+        if not self.op_identiteit:
+            return ids
+        if tegenpartij_id is None:
+            raise EntityNietVertaalbaar(f"{ODOO_PARTNER_ONBEKEND}: RLZ-verleden zonder tegenpartij-identiteit")
+        sleutel = (kant, tegenpartij_id)
+        if sleutel not in self._identiteit_cache:
+            identiteit = identiteit_van(tegenpartij_id)
+            if identiteit is None:
+                raise EntityNietVertaalbaar(f"{ODOO_PARTNER_ONBEKEND}: geen identiteit voor {tegenpartij_id}")
+            route = "Customers" if kant == "verkoop" else "Vendors"
+            self._identiteit_cache[sleutel] = _rlz_partijen_op_identiteit(self.client, route, identiteit)
+        return self._identiteit_cache[sleutel]
 
-    def inkoop(self, entity_ids: Iterable[uuid.UUID], van: date, tot: date) -> list[IcFactuur]:
-        return lees_inkoop_rlz(self.client, entity_ids, van, tot, administratie_id=self.administratie_id)
+    def verkoop(
+        self, entity_ids: Iterable[uuid.UUID], van: date, tot: date, *, tegenpartij_id: uuid.UUID | None = None
+    ) -> list[IcFactuur]:
+        ids = self._ids("verkoop", entity_ids, tegenpartij_id)
+        return lees_verkoop_rlz(self.client, ids, van, tot, administratie_id=self.administratie_id)
+
+    def inkoop(
+        self, entity_ids: Iterable[uuid.UUID], van: date, tot: date, *, tegenpartij_id: uuid.UUID | None = None
+    ) -> list[IcFactuur]:
+        ids = self._ids("inkoop", entity_ids, tegenpartij_id)
+        return lees_inkoop_rlz(self.client, ids, van, tot, administratie_id=self.administratie_id)
 
     def sluit(self) -> None:
         try:
@@ -873,14 +1025,46 @@ class OdooBron(Bron):
             }
         return self._partner_uuid_map
 
-    def _partner_ids(self, entity_ids: Iterable[uuid.UUID]) -> list[int]:
+    def _partners_op_identiteit(self, tegenpartij_id: uuid.UUID | None) -> list[int]:
+        """Run D 02-10 (vierde route, Verkoop uit Odoo): de `res.partner`(s) die de tegenpartij-administratie
+        voorstellen — op KvK (`company_registry`), anders op exact gelijke `naam_norm`. Eén call per tegenpartij,
+        gecachet. Niets gevonden = lege lijst (de aanroeper maakt er een zichtbare LET-OP van)."""
+        from app.intercompany.identiteit import naam_norm
+
+        if tegenpartij_id is None:
+            return []
+        cache = getattr(self, "_identiteit_partners", None)
+        if cache is None:
+            cache = self._identiteit_partners = {}
+        if tegenpartij_id in cache:
+            return cache[tegenpartij_id]
+        identiteit = identiteit_van(tegenpartij_id)
+        uit: list[int] = []
+        if identiteit is not None:
+            client = self.port.client
+            kvk = getattr(identiteit, "kvk", None)
+            if kvk:
+                rijen = client.search_read("res.partner", [["company_registry", "=", kvk]], ["id", "name"])
+                uit = [int(r["id"]) for r in rijen]
+            norm = getattr(identiteit, "naam_norm", None)
+            if not uit and norm:
+                rijen = client.search_read(
+                    "res.partner", [["name", "ilike", getattr(identiteit, "naam", None) or norm]], ["id", "name"]
+                )
+                uit = [int(r["id"]) for r in rijen if naam_norm(r.get("name")) == norm]
+        cache[tegenpartij_id] = uit
+        return uit
+
+    def _partner_ids(self, entity_ids: Iterable[uuid.UUID], tegenpartij_id: uuid.UUID | None = None) -> list[int]:
         """IC-entity → Odoo-partner-int: (1) vendor_cache-id via de bestaande id-koppeling (`partner_id_voor`),
-        (2) directe `res.partner`-koppeling, (3) partner-uuid5 terugrekenen (debiteuren, blok A). Niet vertaalbaar =
-        `EntityNietVertaalbaar` (zichtbare LET-OP, nooit een filterloze read)."""
+        (2) directe `res.partner`-koppeling, (3) partner-uuid5 terugrekenen (debiteuren, blok A), (4) run D 02-10: de
+        identiteit van de tegenpartij (KvK/naam) — voor een Odoo-kant die de RLZ-entity's van de relatie niet kent.
+        Niet vertaalbaar = `EntityNietVertaalbaar` (zichtbare LET-OP, nooit een filterloze read)."""
         from app.db.session import scoped_session
         from app.odoo import sync as odoo_sync
 
         uit: list[int] = []
+        onvertaald: list[uuid.UUID] = []
         for e in entity_ids:
             e_uuid = uuid.UUID(str(e))
             try:
@@ -902,18 +1086,36 @@ class OdooBron(Bron):
                 pass
             try:
                 uit.append(self._partner_uuids()[e_uuid])
-            except (KeyError, Exception) as exc:  # noqa: BLE001
-                raise EntityNietVertaalbaar(f"{ODOO_PARTNER_ONBEKEND}: {e}") from exc
+            except (KeyError, Exception):  # noqa: BLE001 — vierde route: identiteit van de tegenpartij
+                onvertaald.append(e_uuid)
+        if onvertaald or not uit:
+            op_identiteit = self._partners_op_identiteit(tegenpartij_id)
+            if op_identiteit:
+                uit = sorted(set(uit) | set(op_identiteit))
+            elif onvertaald:
+                raise EntityNietVertaalbaar(f"{ODOO_PARTNER_ONBEKEND}: {onvertaald[0]}")
         return uit
 
-    def verkoop(self, entity_ids: Iterable[uuid.UUID], van: date, tot: date) -> list[IcFactuur]:
+    def verkoop(
+        self, entity_ids: Iterable[uuid.UUID], van: date, tot: date, *, tegenpartij_id: uuid.UUID | None = None
+    ) -> list[IcFactuur]:
         return lees_verkoop_odoo(
-            self.port.client, self._partner_ids(entity_ids), van, tot, administratie_id=self.administratie_id
+            self.port.client,
+            self._partner_ids(entity_ids, tegenpartij_id),
+            van,
+            tot,
+            administratie_id=self.administratie_id,
         )
 
-    def inkoop(self, entity_ids: Iterable[uuid.UUID], van: date, tot: date) -> list[IcFactuur]:
+    def inkoop(
+        self, entity_ids: Iterable[uuid.UUID], van: date, tot: date, *, tegenpartij_id: uuid.UUID | None = None
+    ) -> list[IcFactuur]:
         return lees_inkoop_odoo(
-            self.port.client, self._partner_ids(entity_ids), van, tot, administratie_id=self.administratie_id
+            self.port.client,
+            self._partner_ids(entity_ids, tegenpartij_id),
+            van,
+            tot,
+            administratie_id=self.administratie_id,
         )
 
     def sluit(self) -> None:
@@ -923,26 +1125,122 @@ class OdooBron(Bron):
             logger.debug("Odoo-client sluiten mislukt", exc_info=True)
 
 
+class _LeesPort:
+    """Minimale port rond een alleen-lezen Odoo-client (leesbron-koppeling): geen vendor-cache-vertaling — de
+    partijen komen via de identiteit (route 4)."""
+
+    def __init__(self, client: Any) -> None:
+        self.client = client
+
+    def partner_id_voor(self, vendor_id: uuid.UUID) -> int:
+        raise LookupError(f"leesbron kent geen partner-koppeling voor {vendor_id}")
+
+
+class GesplitsteBron(Bron):
+    """Run D 02-10 (Peter 28-09 "de verkoop lijkt mij de waarheid"; Universal Verkoop: RLZ tot de knip, Odoo erna):
+    één administratie, twee systemen, gesplitst op de KANTELDATUM — facturen mét datum vóór de kanteldatum komen uit
+    `voor`, vanaf de kanteldatum uit `na`. Beide kanten lezen hetzelfde venster en filteren client-side op datum, zodat
+    een factuur nooit dubbel of nergens telt. De kant die de entity-id's van de relatie niet kent zoekt de partij op
+    identiteit (`tegenpartij_id`). Geldt voor (a) een RLZ-administratie mét alleen-lezen Odoo-leesbron + knipdatum en
+    (b) een overgestapte Odoo-administratie mét overgangsdatum + bewaarde RLZ-credential."""
+
+    backend = "gesplitst"
+
+    def __init__(self, administratie_id: uuid.UUID, *, voor: Bron, na: Bron, kanteldatum: date) -> None:
+        super().__init__(administratie_id)
+        self.voor, self.na, self.kanteldatum = voor, na, kanteldatum
+
+    def _lees(
+        self, kant: str, entity_ids: Iterable[uuid.UUID], van: date, tot: date, tegenpartij_id: uuid.UUID | None
+    ) -> list[IcFactuur]:
+        ids = list(entity_ids)
+        uit: list[IcFactuur] = []
+        if van < self.kanteldatum:
+            lezer = self.voor.verkoop if kant == "verkoop" else self.voor.inkoop
+            tot_voor = min(tot, self.kanteldatum - timedelta(days=1))
+            uit.extend(
+                f for f in lezer(ids, van, tot_voor, tegenpartij_id=tegenpartij_id) if f.datum < self.kanteldatum
+            )
+        if tot >= self.kanteldatum:
+            lezer = self.na.verkoop if kant == "verkoop" else self.na.inkoop
+            uit.extend(
+                f for f in lezer(ids, max(van, self.kanteldatum), tot, tegenpartij_id=tegenpartij_id)
+                if f.datum >= self.kanteldatum
+            )
+        return uit
+
+    def verkoop(
+        self, entity_ids: Iterable[uuid.UUID], van: date, tot: date, *, tegenpartij_id: uuid.UUID | None = None
+    ) -> list[IcFactuur]:
+        return self._lees("verkoop", entity_ids, van, tot, tegenpartij_id)
+
+    def inkoop(
+        self, entity_ids: Iterable[uuid.UUID], van: date, tot: date, *, tegenpartij_id: uuid.UUID | None = None
+    ) -> list[IcFactuur]:
+        return self._lees("inkoop", entity_ids, van, tot, tegenpartij_id)
+
+    def sluit(self) -> None:
+        self.voor.sluit()
+        self.na.sluit()
+
+
 def open_bron(administratie_id: uuid.UUID) -> Bron:
     """RLZ- of Odoo-bron voor één administratie (`Administratie.boekhoud_backend`). Geen credential/koppeling =
-    `BronOvergeslagen`."""
+    `BronOvergeslagen`. Run D 02-10: een administratie mét twee systemen rond een kanteldatum krijgt een
+    `GesplitsteBron` — RLZ-backend mét alleen-lezen Odoo-leesbron + `voorraad_knip_datum` (Universal Verkoop vóór de
+    overstap), of Odoo-backend mét `overgangsdatum` + bewaarde RLZ-credential (ná de overstap). Een leesbron zonder
+    knipdatum of een overstap zonder RLZ-verleden-credential = gewoon één bron (zichtbaar in de logregel)."""
     from app.backends.registry import Backend, backend_voor
     from app.rlz.credentials import GeenRlzCredentials, client_voor_rlz_admin_id, rlz_admin_id_voor
 
     if backend_voor(administratie_id) == Backend.ODOO:
-        from app.odoo.credentials import GeenOdooKoppeling
+        from app.odoo.credentials import GeenOdooKoppeling, koppeling_voor
         from app.odoo.inkoop import OdooInkoopPort
 
         try:
-            return OdooBron(administratie_id, OdooInkoopPort.voor(administratie_id))
+            odoo = OdooBron(administratie_id, OdooInkoopPort.voor(administratie_id))
         except GeenOdooKoppeling as exc:
             raise BronOvergeslagen(GEEN_ODOO_KOPPELING) from exc
+        try:
+            kantel = koppeling_voor(administratie_id).overgangsdatum
+        except GeenOdooKoppeling:
+            kantel = None
+        if kantel is None:
+            return odoo
+        from app.rlz.credentials import client_voor_rlz_verleden
+
+        try:
+            verleden = client_voor_rlz_verleden(administratie_id)
+        except GeenRlzCredentials:
+            logger.info(
+                "intercompany: %s overgestapt zonder RLZ-verleden-credential — alleen Odoo gelezen", administratie_id
+            )
+            return odoo
+        return GesplitsteBron(
+            administratie_id, voor=RlzBron(administratie_id, verleden, op_identiteit=True), na=odoo, kanteldatum=kantel
+        )
     try:
         rlz_admin_id = rlz_admin_id_voor(administratie_id)
         client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
     except GeenRlzCredentials as exc:
         raise BronOvergeslagen(GEEN_CREDENTIAL) from exc
-    return RlzBron(administratie_id, client)
+    rlz = RlzBron(administratie_id, client)
+    from app.odoo.credentials import leeskoppeling_voor, odoo_client_voor
+
+    leesbron = leeskoppeling_voor(administratie_id)
+    if leesbron is None or leesbron.voorraad_knip_datum is None:
+        return rlz
+    try:
+        odoo_client = odoo_client_voor(administratie_id, read_only=True)
+    except Exception:  # noqa: BLE001 — leesbron niet bruikbaar = RLZ alleen, zichtbaar in het log
+        logger.exception("intercompany: Odoo-leesbron van %s niet te openen — alleen RLZ gelezen", administratie_id)
+        return rlz
+    return GesplitsteBron(
+        administratie_id,
+        voor=rlz,
+        na=OdooBron(administratie_id, _LeesPort(odoo_client)),
+        kanteldatum=leesbron.voorraad_knip_datum,
+    )
 
 
 # ---- "onderweg in de module" -----------------------------------------------------------------------------
@@ -951,8 +1249,10 @@ def open_bron(administratie_id: uuid.UUID) -> Bron:
 def module_onderweg(administratie_b: uuid.UUID) -> set[str]:
     """Genormaliseerde referenties van documenten in B die nog niet geboekt/afgehandeld zijn — één query in
     `scoped_session(B)`. Een verkoop zonder inkoop met zo'n nummer is "onderweg in de module": geen bevinding."""
+    from sqlalchemy.orm import aliased
+
     from app.db.session import scoped_session
-    from app.documenten.models import Boekvoorstel, Document, DocumentStatus
+    from app.documenten.models import Afwijzing, Boekvoorstel, Document, DocumentStatus
     from app.documenten.service import AFGEHANDELDE_STATUSSEN
 
     uitgesloten = {s.value for s in (*AFGEHANDELDE_STATUSSEN, DocumentStatus.GEBOEKT)}
@@ -966,7 +1266,25 @@ def module_onderweg(administratie_b: uuid.UUID) -> set[str]:
                 Boekvoorstel.referentie_norm.isnot(None),
             )
         ).all()
-    return {str(r[0]) for r in rijen if r[0]}
+        # Run D 02-10 (gat B 28-09, 14 gevallen): de referentie staat soms alleen op de als duplicaat afgevoerde kopie,
+        # terwijl het ORIGINEEL (zonder referentie) nog open staat — dat origineel is dan wél onderweg.
+        origineel = aliased(Document)
+        kopie_rijen = session.execute(
+            select(Boekvoorstel.referentie_norm)
+            .join(Document, Document.id == Boekvoorstel.document_id)
+            .join(Afwijzing, Afwijzing.document_id == Document.id)
+            .join(origineel, origineel.id == Afwijzing.duplicaat_van_document_id)
+            .where(
+                Document.administratie_id == administratie_b,
+                Document.status == DocumentStatus.AFGEVOERD_DUPLICAAT.value,
+                Afwijzing.duplicaat_van_document_id.isnot(None),
+                origineel.status.notin_(sorted(uitgesloten)),
+                Boekvoorstel.referentie_norm.isnot(None),
+            )
+        ).all()
+    uit = {str(r[0]) for r in rijen if r[0]} | {str(r[0]) for r in kopie_rijen if r[0]}
+    # Mét én zonder het RLZ-voorvoegsel (zelfde sleutel als de match zelf).
+    return {var for norm in uit for var in nummer_varianten(norm)}
 
 
 # ---- doorbelasting-spiegelparen ----------------------------------------------------------------------------
@@ -1082,10 +1400,30 @@ class RelatieRapport:
     uitkomst: MatchUitkomst | None = None
     spiegels: list[SpiegelUitkomst] = field(default_factory=list)
     let_op: list[str] = field(default_factory=list)
+    #: Run D 02-10: zichtbare kanttekeningen bij een getoetste richting (lege kant, hulzen) — geen bevinding.
+    notities: list[str] = field(default_factory=list)
 
 
 def _venster(nu: date, dagen: int) -> tuple[date, date]:
     return (nu - timedelta(days=dagen), nu)
+
+
+def _richting_past(rel: Handelsrelatie, filter_: str, naam_van: Callable[[uuid.UUID], str | None]) -> bool:
+    """`--richting "<verkoper>><ontvanger>"`: beide delen als uuid óf als hoofdletterongevoelig naamdeel; één deel
+    (zonder '>') = de administratie aan één van beide kanten."""
+    delen = [d.strip() for d in filter_.split(">")]
+
+    def past(deel: str, aid: uuid.UUID) -> bool:
+        if not deel:
+            return True
+        if deel.lower() == str(aid).lower():
+            return True
+        naam = naam_van(aid) or ""
+        return deel.lower() in naam.lower()
+
+    if len(delen) == 1:
+        return past(delen[0], rel.verkoper_id) or past(delen[0], rel.ontvanger_id)
+    return past(delen[0], rel.verkoper_id) and past(delen[1], rel.ontvanger_id)
 
 
 def cli_blok(  # noqa: C901, PLR0912, PLR0915 — één blokfunctie, zelfde contract als de andere reconciliatie-blokken
@@ -1135,14 +1473,23 @@ def cli_blok(  # noqa: C901, PLR0912, PLR0915 — één blokfunctie, zelfde cont
             stderr(tekst)
             meld(soort="fout", administratie_id=None, tekst=tekst)
             return 1
-    relaties = bouw_handelsrelaties(paren)
+    relaties = bouw_richtingen(paren)
     if administratie_filter is not None:
         keuze = {uuid.UUID(str(a)) for a in administratie_filter}
         relaties = [r for r in relaties if r.verkoper_id in keuze or r.ontvanger_id in keuze]
+    richting_filter = getattr(args, "ic_richting", None)
+    if richting_filter:
+        # Lees-only CLI `ic-aansluiting-rapport --richting "<verkoper>><ontvanger>"` (uuid's of naamdelen).
+        relaties = [r for r in relaties if _richting_past(r, str(richting_filter), naam_van)]
+    zonder_records = [r for r in relaties if r.zonder_records]
     stdout(
         f"Venster {van.isoformat()} t/m {tot.isoformat()} ({dagen} dagen); {len(paren)} actieve IC-paren → "
-        f"{len(relaties)} handelsrelatie(s)."
+        f"{len(relaties)} richting(en) ({len(zonder_records)} zonder debiteur-/crediteurrecord: niets te lezen, 0/0)."
     )
+    for r in zonder_records:
+        naam_v0 = naam_van(r.verkoper_id) or r.verkoper_id
+        naam_o0 = naam_van(r.ontvanger_id) or r.ontvanger_id
+        stdout(f"ZONDER RECORDS {naam_v0} → {naam_o0}")
     if not relaties:
         stdout(
             "OK         geen actieve intercompany-relaties — niets te toetsen "
@@ -1175,18 +1522,24 @@ def cli_blok(  # noqa: C901, PLR0912, PLR0915 — één blokfunctie, zelfde cont
 
     # Cache per (administratie, kant, entity-set): beide richtingen van een relatie delen niets, maar twee relaties
     # met dezelfde verkoper lezen wél elk hun eigen entity-set — calls per administratie = #relaties × pagina's.
-    gelezen: dict[tuple[uuid.UUID, str, frozenset[uuid.UUID]], list[IcFactuur]] = {}
+    gelezen: dict[tuple[uuid.UUID, str, frozenset[uuid.UUID], uuid.UUID], list[IcFactuur]] = {}
     onderweg_cache: dict[uuid.UUID, set[str]] = {}
 
-    def lees(aid: uuid.UUID, kant: str, entity_ids: frozenset[uuid.UUID]) -> list[IcFactuur] | None:
-        sleutel = (aid, kant, entity_ids)
+    def lees(
+        aid: uuid.UUID, kant: str, entity_ids: frozenset[uuid.UUID], tegenpartij_id: uuid.UUID
+    ) -> list[IcFactuur] | None:
+        sleutel = (aid, kant, entity_ids, tegenpartij_id)
         if sleutel in gelezen:
             return gelezen[sleutel]
         bron = bron_voor(aid)
         if bron is None:
             return None
         try:
-            rijen = bron.verkoop(entity_ids, van, tot) if kant == "verkoop" else bron.inkoop(entity_ids, van, tot)
+            rijen = (
+                bron.verkoop(entity_ids, van, tot, tegenpartij_id=tegenpartij_id)
+                if kant == "verkoop"
+                else bron.inkoop(entity_ids, van, tot, tegenpartij_id=tegenpartij_id)
+            )
         except RlzWebfilterError as exc:
             ongeldig[aid] = f"{WEBFILTER_ONGELDIG}: {str(exc)[:200]}"
             return None
@@ -1205,13 +1558,29 @@ def cli_blok(  # noqa: C901, PLR0912, PLR0915 — één blokfunctie, zelfde cont
         for rel in relaties:
             rapport = RelatieRapport(relatie=rel)
             rapporten.append(rapport)
-            if not rel.inkoop_entity_ids or not rel.verkoop_entity_ids:
-                kant = "ontvangende" if not rel.inkoop_entity_ids else "verkopende"
-                rapport.let_op.append(f"IC-tegenrelatie in de {kant} administratie onbekend — paar niet getoetst")
-                continue
+            if rel.zonder_records:
+                continue  # 0/0 — al als ZONDER RECORDS gemeld, geen call
+            # Run D 02-10: een richting mét maar één bekende kant wordt WEL getoetst — de onbekende kant is leeg
+            # (geen debiteur-/crediteurrecord = er kan dáár niets geboekt zijn op die partij); zichtbaar in de regel.
+            if not rel.inkoop_entity_ids:
+                rapport.notities.append(
+                    "geen crediteurrecord van de verkoper bij de ontvanger — inkoopkant leeg"
+                )
+            if not rel.verkoop_entity_ids:
+                rapport.notities.append(
+                    "geen debiteurrecord van de ontvanger bij de verkoper — verkoopkant leeg"
+                )
             try:
-                verkoop = lees(rel.verkoper_id, "verkoop", rel.verkoop_entity_ids)
-                inkoop = lees(rel.ontvanger_id, "inkoop", rel.inkoop_entity_ids)
+                verkoop = (
+                    lees(rel.verkoper_id, "verkoop", rel.verkoop_entity_ids, rel.ontvanger_id)
+                    if rel.verkoop_entity_ids
+                    else []
+                )
+                inkoop = (
+                    lees(rel.ontvanger_id, "inkoop", rel.inkoop_entity_ids, rel.verkoper_id)
+                    if rel.inkoop_entity_ids
+                    else []
+                )
             except EntityNietVertaalbaar as exc:
                 rapport.let_op.append(str(exc))
                 continue
@@ -1275,6 +1644,7 @@ def cli_blok(  # noqa: C901, PLR0912, PLR0915 — één blokfunctie, zelfde cont
     geaccepteerd_totaal = 0
     paren_getoetst = 0
     onderweg_totaal = 0
+    hulzen_totaal = 0
     spiegels_groen = 0
     spiegels_rood = 0
     for rapport in rapporten:
@@ -1298,6 +1668,8 @@ def cli_blok(  # noqa: C901, PLR0912, PLR0915 — één blokfunctie, zelfde cont
                 },
             )
         if rapport.uitkomst is None:
+            if rel.zonder_records:
+                continue  # al gemeld als ZONDER RECORDS
             if not rapport.let_op and (rel.verkoper_id in overgeslagen or rel.ontvanger_id in overgeslagen):
                 stdout(f"OVERGESLAGEN {kop_rel}: één kant overgeslagen (zie regel hierboven)")
             elif not rapport.let_op:
@@ -1306,6 +1678,7 @@ def cli_blok(  # noqa: C901, PLR0912, PLR0915 — één blokfunctie, zelfde cont
         u = rapport.uitkomst
         paren_getoetst += 1
         onderweg_totaal += len(u.onderweg)
+        hulzen_totaal += u.hulzen
         if verzamelaar is not None:
             verzamelaar.gecontroleerd(u.aantal_verkoop + u.aantal_inkoop)
 
@@ -1366,8 +1739,9 @@ def cli_blok(  # noqa: C901, PLR0912, PLR0915 — één blokfunctie, zelfde cont
             f"({sum(1 for m in u.matches if m.regel == REGEL_NUMMER)} op nummer, "
             f"{sum(1 for m in u.matches if m.regel == REGEL_BEDRAG_DATUM)} op bedrag+datum, "
             f"{sum(1 for m in u.matches if m.regel == REGEL_BEDRAG)} alleen bedrag), {len(u.onderweg)} onderweg in de "
-            f"module, {len(u.verrekend_zonder_tegenkant)} verrekend zonder tegenkant, "
+            f"module, {len(u.verrekend_zonder_tegenkant)} verrekend zonder tegenkant, {u.hulzen} concept-huls(en), "
             f"spiegelparen {sum(1 for s in rapport.spiegels if s.groen)}/{len(rapport.spiegels)} groen"
+            + "".join(f"; {n}" for n in rapport.notities)
         )
         if not bevindingen:
             stdout(f"OK         {kop_rel}: {samenvatting}, geen afwijkingen")
@@ -1412,9 +1786,9 @@ def cli_blok(  # noqa: C901, PLR0912, PLR0915 — één blokfunctie, zelfde cont
                 )
 
     stdout(
-        f"\n{paren_getoetst}/{len(relaties)} handelsrelatie(s) getoetst, {open_totaal} afwijking(en) totaal "
-        f"({geaccepteerd_totaal} geaccepteerd), {onderweg_totaal} onderweg in de module, spiegelparen "
-        f"{spiegels_groen} groen / {spiegels_rood} rood, {len(overgeslagen)} administratie(s) overgeslagen, "
-        f"{fouten} fout(en)."
+        f"\n{paren_getoetst}/{len(relaties)} richting(en) getoetst ({len(zonder_records)} zonder records), "
+        f"{open_totaal} afwijking(en) totaal ({geaccepteerd_totaal} geaccepteerd), {onderweg_totaal} onderweg in de "
+        f"module, {hulzen_totaal} concept-huls(en), spiegelparen {spiegels_groen} groen / {spiegels_rood} rood, "
+        f"{len(overgeslagen)} administratie(s) overgeslagen, {fouten} fout(en)."
     )
     return 1 if (open_totaal or fouten) else 0

@@ -194,6 +194,12 @@ def verwijder_intercompany_leverancier(
         ).one_or_none()
         if rij is None:
             raise CrediteurOnbekend("Deze leverancier is in deze administratie niet als intercompany gemarkeerd")
+        if rij.bron == "intercompany_relatie":
+            # Run D 02-10 blok D: automatisch gezet uit een actieve IC-relatie — uitzetten = de relatie uitsluiten.
+            raise RijUitDoorbelasting(
+                "Deze leverancier volgt een intercompany-relatie — sluit die relatie uit op Instellingen › Boeken › "
+                "Intercompany (mét reden); de vlag gaat dan bij de volgende afleiding uit"
+            )
         if rij.bron != BRON_HANDMATIG:
             raise RijUitDoorbelasting(
                 "Deze leverancier komt uit de doorbelasting-mapping — de vlag volgt die mapping (tab Doorbelasting)"

@@ -116,6 +116,12 @@ export function IntercompanyLeveranciers({ administratieId, naam }: { administra
                 <span className="chip" title="Volgt de doorbelasting-mapping (tab Doorbelasting) — hier alleen-lezen">
                   doorbelasting
                 </span>
+              ) : l.bron === 'intercompany_relatie' ? (
+                // Run D 02-10 blok D: automatisch uit een actieve IC-relatie (Instellingen › Boeken › Intercompany);
+                // uitzetten = die relatie uitsluiten mét reden — hier alleen-lezen.
+                <span className="chip" title="Volgt de intercompany-relatie (Instellingen › Boeken › Intercompany) — hier alleen-lezen">
+                  intercompany-relatie
+                </span>
               ) : (
                 <span className="chip geheugen">handmatig</span>
               )}

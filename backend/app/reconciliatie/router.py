@@ -668,6 +668,46 @@ def webhook_nu_opnieuw(
 
 
 @router.post(
+    "/reconciliatie/intercompany/{bevinding_id}/factuur-opvragen",
+    response_model=schemas.IcMailConceptDto,
+)
+def ic_factuur_opvragen(
+    bevinding_id: uuid.UUID,
+    invoer: schemas.IcFactuurOpvragenInvoerDto,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.IcMailConceptDto:
+    """"Factuur opvragen bij ‹BV›" (run D 02-10 blok D) op een `ic_inkoop_ontbreekt`-bevinding: geeft het MAILCONCEPT
+    aan de boekhouding van de verkopende BV terug (onderwerp, tekst, mailto) en legt audit `ic_factuur_opgevraagd_concept`
+    vast. Niets wordt verzonden — de mens opent/kopieert het concept. 404 = bevinding niet in deze administratie (RLS),
+    409 = geen ic_inkoop_ontbreekt-bevinding."""
+    from app.intercompany import opvragen
+
+    try:
+        c = opvragen.factuur_opvragen_concept(
+            actor_id=actor.id, administratie_id=invoer.administratie_id, bevinding_id=bevinding_id
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except opvragen.OpvragenNietMogelijk as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.IcMailConceptDto(
+        bevinding_id=c.bevinding_id,
+        administratie_id=c.administratie_id,
+        verkoper_naam=c.verkoper_naam,
+        ontvanger_naam=c.ontvanger_naam,
+        nummer=c.nummer,
+        datum=c.datum,
+        bedrag=c.bedrag,
+        aan=c.aan,
+        aan_tekst=c.aan_tekst,
+        onderwerp=c.onderwerp,
+        tekst=c.tekst,
+        mailto=c.mailto,
+        intake_adres=c.intake_adres,
+    )
+
+
+@router.post(
     "/reconciliatie/vastly/documenten/{document_id}/opnieuw-aanbieden",
     response_model=schemas.VastlyOpnieuwAanbiedenResultaatDto,
 )

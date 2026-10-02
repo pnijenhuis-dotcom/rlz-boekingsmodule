@@ -995,15 +995,24 @@ def _intercompany(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
     factuurdatum = datum(_s(d, "datum"))
     op = f" van {factuurdatum}" if factuurdatum else ""
     verrekend = " (factuur mét creditnota als één geheel)" if d.get("verrekend") else ""
-    if soort == "ic_ontbreekt_bij_ontvanger":
+    # Run D 02-10 blok D: `ic_inkoop_ontbreekt` / `ic_verkoop_ontbreekt` / `ic_bedrag_afwijking` vervangen de
+    # 16-09-namen; de oude namen houden dezelfde tekst voor open bevindingen van vóór de deploy.
+    if soort in ("ic_inkoop_ontbreekt", "ic_ontbreekt_bij_ontvanger"):
         bedrag = f" {bedrag_v}" if bedrag_v else ""
+        doe = (
+            f"Vraag de factuur op bij {verkoper} (knop 'Factuur opvragen bij {verkoper}' maakt het mailconcept — de "
+            f"PDF/UBL hoort via de boekhoudmail binnen te komen) en boek 'm bij {ontvanger}; staat 'm al, accepteer met "
+            "reden."
+            if soort == "ic_inkoop_ontbreekt"
+            else f"Controleer bij {ontvanger} of de factuur is ontvangen en boek 'm, of accepteer met reden."
+        )
         return (
             _titel("Onderlinge factuur ontbreekt bij ontvanger", onderwerp, " · "),
             f"{verkoper} factureerde {nummer}{bedrag}{op} aan {ontvanger}; bij {ontvanger} staat die inkoop niet"
             f"{verrekend}.",
-            f"Controleer bij {ontvanger} of de factuur is ontvangen en boek 'm, of accepteer met reden.",
+            doe,
         )
-    if soort == "ic_ontbreekt_bij_verkoper":
+    if soort in ("ic_verkoop_ontbreekt", "ic_ontbreekt_bij_verkoper"):
         bedrag = f" {bedrag_i}" if bedrag_i else ""
         return (
             _titel("Onderlinge inkoop zonder verkoopfactuur", onderwerp, " · "),
@@ -1011,7 +1020,7 @@ def _intercompany(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             f"verkoopfactuur met dat nummer{verrekend}.",
             f"Controleer bij {verkoper} of de factuur wél is aangemaakt (of het nummer klopt), of accepteer met reden.",
         )
-    if soort == "ic_bedrag_verschilt":
+    if soort in ("ic_bedrag_afwijking", "ic_bedrag_verschilt"):
         verschil = f" (verschil {delta})" if delta else ""
         wat = (
             f"Factuur {nummer}: {verkoper} boekte {bedrag_v}, {ontvanger} {bedrag_i}{verschil}."

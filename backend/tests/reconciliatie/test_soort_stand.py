@@ -83,9 +83,12 @@ class TestRegistry:
         # > € 0,05 module ↔ RLZ of verkoop ≠ spiegel — bestaande cent-exacte toets mét twee RLZ-boekstukken als bewijs).
         # 29-09: de drie Vastly-verkoop-soorten (Peter 28-09 "nooit in de verzamelbak of werkvoorraad … moet gewoon als
         # omzet geboekt worden, punt": bestaand deterministisch boekpad dat op één registerrij wacht, elk mét één handeling).
+        # 02-10 run D blok D (Peter 02-10, IC Universal 12 richtingen): verkoopfactuur van een eigen BV zonder inkoop bij de
+        # ontvanger — bewijs = het eigen verkoopboekstuk, handeling = "Factuur opvragen bij ‹BV›" (mailconcept).
         assert [d.soort for d in soort_stand.REGISTRY.values() if d.direct_actie_reden] == [
             "intussen_extern_geboekt",
             "doorbelasting_bedrag_afwijking",
+            "ic_inkoop_ontbreekt",
             "activum_aanmaken_mislukt_mens",
             "vastly_entiteit_niet_gekoppeld",
             "vastly_omzetrekening_ontbreekt",

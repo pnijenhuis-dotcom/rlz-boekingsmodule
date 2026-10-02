@@ -20,10 +20,10 @@ from app.db.models import AuditEvent
 from app.db.session import scoped_session
 from app.intercompany import factuurmatch as fm
 from app.intercompany.factuurmatch import (
-    SOORT_BEDRAG_VERSCHILT,
-    SOORT_ONTBREEKT_BIJ_ONTVANGER,
-    SOORT_ONTBREEKT_BIJ_VERKOPER,
+    SOORT_BEDRAG_AFWIJKING,
+    SOORT_INKOOP_ONTBREEKT,
     SOORT_STATUS_VERSCHILT,
+    SOORT_VERKOOP_ONTBREEKT,
     IcFactuur,
     bouw_handelsrelaties,
     maak_factuur,
@@ -106,7 +106,7 @@ class TestMatchVolgorde:
         u = _match([v], [i_nummer, i_bedrag])
         assert [(m.regel, m.inkoop.leidend.id) for m in u.matches] == [(fm.REGEL_NUMMER, i_nummer.id)]
         # i_bedrag blijft over → inkoop zonder verkoop
-        assert [b.soort for b in u.bevindingen] == [SOORT_ONTBREEKT_BIJ_VERKOPER]
+        assert [b.soort for b in u.bevindingen] == [SOORT_VERKOOP_ONTBREEKT]
 
     def test_zelfde_nummer_na_normalisatie(self) -> None:
         v = _f("verkoop", "24594001722", "100.00")
@@ -161,7 +161,7 @@ class TestVerrekenparen:
         vc = _f("verkoop", "2026-0123-C", "-4500.00", "2026-08-20", fid="vc")
         i = _f("inkoop", "2026-0123", "4500.00")
         u = _match([vf, vc], [i])
-        assert [b.soort for b in u.bevindingen] == [SOORT_BEDRAG_VERSCHILT]
+        assert [b.soort for b in u.bevindingen] == [SOORT_BEDRAG_AFWIJKING]
         assert u.bevindingen[0].extra["bedrag_verkoop"] == "0.00" and u.bevindingen[0].extra["verrekend"] is True
 
     def test_verrekend_paar_zonder_tegenkant_is_teller_geen_bevinding(self) -> None:
@@ -179,7 +179,7 @@ class TestBevindingen:
         v = _f("verkoop", "2026-0123", "4500.00", "2026-08-14")
         u = _match([v], [])
         (b,) = u.bevindingen
-        assert b.soort == SOORT_ONTBREEKT_BIJ_ONTVANGER and b.administratie_id == B
+        assert b.soort == SOORT_INKOOP_ONTBREEKT and b.administratie_id == B
         assert b.extra["nummer"] == "2026-0123" and b.extra["bedrag_verkoop"] == "4500.00"
         assert b.extra["verkoper_naam"] == "Universal Verkoop" and b.extra["ontvanger_naam"] == "Universal Nederland"
         assert b.detail == f"paar={A}>{B} nummer=2026-0123 bedrag=4500.00 datum=2026-08-14"
@@ -188,14 +188,14 @@ class TestBevindingen:
         i = _f("inkoop", "2026-0123", "4500.00")
         u = _match([], [i])
         (b,) = u.bevindingen
-        assert b.soort == SOORT_ONTBREEKT_BIJ_VERKOPER and b.administratie_id == A
+        assert b.soort == SOORT_VERKOOP_ONTBREEKT and b.administratie_id == A
 
     def test_bedrag_verschilt_met_beide_bedragen_en_delta(self) -> None:
         v = _f("verkoop", "2026-0124", "4500.00")
         i = _f("inkoop", "2026-0124", "4050.00", fid="i-guid-onleesbaar")
         u = _match([v], [i])
         (b,) = u.bevindingen
-        assert b.soort == SOORT_BEDRAG_VERSCHILT and b.administratie_id == B
+        assert b.soort == SOORT_BEDRAG_AFWIJKING and b.administratie_id == B
         assert (b.extra["bedrag_verkoop"], b.extra["bedrag_inkoop"], b.extra["delta"]) == (
             "4500.00",
             "4050.00",
@@ -245,7 +245,7 @@ class TestBevindingen:
     def test_match_paar_contractvorm(self) -> None:
         v = _f("verkoop", "2026-0123", "4500.00")
         uit = match_paar(_paar(), verkoop=[v], inkoop=[], module_onderweg=set(), nu=NU)
-        assert [b.soort for b in uit] == [SOORT_ONTBREEKT_BIJ_ONTVANGER] and uit[0].administratie_id == B
+        assert [b.soort for b in uit] == [SOORT_INKOOP_ONTBREEKT] and uit[0].administratie_id == B
         # Omgekeerde richting (B ziet A als crediteur): dezelfde handelsrelatie A → B.
         omgekeerd = _paar(
             administratie_a_id=B,
@@ -648,7 +648,7 @@ class TestBlokfunctie:
         afwijkingen = [x for x in verzamelaar.bevindingen if x.soort == "afwijking"]
         assert len(afwijkingen) == 1 and afwijkingen[0].administratie_id == b
         d = afwijkingen[0].detail
-        assert d["bron"] == "intercompany" and d["afwijking_soort"] == SOORT_ONTBREEKT_BIJ_ONTVANGER
+        assert d["bron"] == "intercompany" and d["afwijking_soort"] == SOORT_INKOOP_ONTBREEKT
         assert d["nummer"] == "20260124" and d["verkoper_naam"] == "Universal Verkoop (test)"
         assert d["ontvanger_naam"] == "Universal Nederland (test)" and "verkoop_ids" not in d
         assert verzamelaar.blokken[fm.BLOK].gecontroleerd == 3  # 2 verkoop + 1 inkoop
@@ -725,7 +725,9 @@ class TestBlokfunctie:
         assert code == 0 and err == [] and verzamelaar.bevindingen == []
         assert any(x.startswith(f"OVERGESLAGEN {a}: {fm.GEEN_CREDENTIAL}") for x in uit), uit
 
-    def test_tegenrelatie_onbekend_is_let_op_en_leest_niets_zonder_filter(self, twee_administraties) -> None:
+    def test_tegenrelatie_onbekend_toetst_de_bekende_kant_en_leest_de_andere_niet(self, twee_administraties) -> None:
+        """Run D 02-10 (herziet 16-09 "paar niet getoetst"): geen crediteurrecord van A bij B = de inkoopkant is leeg, de
+        verkoopkant wordt wél gelezen — élke verkoop is dan `ic_inkoop_ontbreekt`; B krijgt géén filterloze read."""
         a, b = twee_administraties
         rlz_a, rlz_b = FakeRlzClient([_sales_rij(1, 1.0)], []), FakeRlzClient([], [])
         verzamelaar = run_service.Verzamelaar()
@@ -740,9 +742,10 @@ class TestBlokfunctie:
             entity_in_b=None,
         )
         code, uit, _ = _run({a: fm.RlzBron(a, rlz_a), b: fm.RlzBron(b, rlz_b)}, [paar], verzamelaar=verzamelaar)
-        assert code == 0 and rlz_a.calls == [] and rlz_b.calls == []
-        assert [x.soort for x in verzamelaar.bevindingen] == ["let_op"]
-        assert verzamelaar.bevindingen[0].detail["reden"] == "ic_tegenrelatie_onbekend"
+        assert code == 1 and rlz_a.calls != [] and rlz_b.calls == []
+        assert [x.soort for x in verzamelaar.bevindingen] == ["afwijking"]
+        assert verzamelaar.bevindingen[0].detail["afwijking_soort"] == SOORT_INKOOP_ONTBREEKT
+        assert any("inkoopkant leeg" in x for x in uit), uit
 
     def test_geen_paren_is_ok(self, twee_administraties) -> None:
         code, uit, _ = _run({}, [])
@@ -843,7 +846,7 @@ class TestTeksten:
         d = {
             "bron": "intercompany",
             "record_id": str(uuid.uuid4()),
-            "afwijking_soort": SOORT_ONTBREEKT_BIJ_ONTVANGER,
+            "afwijking_soort": SOORT_INKOOP_ONTBREEKT,
             "detail": f"paar={A}>{B} nummer=2026-0123 bedrag=4500.00 datum=2026-08-14",
             "geaccepteerd": False,
             "uitsluiting": None,
@@ -860,13 +863,12 @@ class TestTeksten:
             "Universal Verkoop factureerde 2026-0123 € 4.500,00 van 14-08-2026 aan Universal Nederland; "
             "bij Universal Nederland staat die inkoop niet."
         )
-        assert (
-            lb.doe
-            == "Controleer bij Universal Nederland of de factuur is ontvangen en boek 'm, of accepteer met reden."
-        )
+        # Run D 02-10: de handeling heet "Factuur opvragen bij ‹verkoper›" (mailconcept) — de doe-zin wijst ernaar.
+        assert lb.doe.startswith("Vraag de factuur op bij Universal Verkoop (knop 'Factuur opvragen bij Universal Verkoop'")
+        assert lb.doe.endswith("staat 'm al, accepteer met reden.")
         for soort, extra in (
-            (SOORT_ONTBREEKT_BIJ_VERKOPER, {"bedrag_inkoop": "4500.00"}),
-            (SOORT_BEDRAG_VERSCHILT, {"bedrag_inkoop": "4050.00", "delta": "450.00"}),
+            (SOORT_VERKOOP_ONTBREEKT, {"bedrag_inkoop": "4500.00"}),
+            (SOORT_BEDRAG_AFWIJKING, {"bedrag_inkoop": "4050.00", "delta": "450.00"}),
             (
                 SOORT_STATUS_VERSCHILT,
                 {"bedrag_inkoop": "4500.00", "status_a": "2", "status_b": "1", "concept_kant": "inkoop"},
@@ -891,7 +893,7 @@ class TestTeksten:
                     tekst="x",
                     detail={
                         **d,
-                        "afwijking_soort": SOORT_BEDRAG_VERSCHILT,
+                        "afwijking_soort": SOORT_BEDRAG_AFWIJKING,
                         "bedrag_inkoop": "4050.00",
                         "delta": "450.00",
                     },

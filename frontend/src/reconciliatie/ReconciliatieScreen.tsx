@@ -45,6 +45,7 @@ import {
 } from './VastlyActies'
 import { isActivumAanmakenMislukt, OpnieuwAanmakenActie } from './OpnieuwAanmakenActie'
 import { isWebhookBevindingMetNuOpnieuw, NuOpnieuwActie } from './WebhookActies'
+import { FactuurOpvragenActie, isIcInkoopOntbreekt } from './IcActies'
 import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
 import {
   accepteerBevinding,
@@ -412,6 +413,21 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
             onGelukt={(melding) => {
               toast.meld(melding)
               herlaad()
+            }}
+          />{' '}
+          {deeplink}
+        </>
+      )
+    }
+    // Run D 02-10 blok D: onderlinge factuur ontbreekt bij de ontvanger (ic_inkoop_ontbreekt) → "Factuur opvragen bij ‹BV›"
+    // (mailconcept aan de boekhouding van de verkopende BV; nooit automatisch verzonden) + accepteren blijft via ⋯.
+    if (isIcInkoopOntbreekt(r)) {
+      return (
+        <>
+          <FactuurOpvragenActie
+            bevinding={r}
+            onGelukt={(melding) => {
+              toast.meld(melding)
             }}
           />{' '}
           {deeplink}

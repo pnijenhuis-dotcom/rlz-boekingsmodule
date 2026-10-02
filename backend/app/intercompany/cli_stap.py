@@ -6,7 +6,7 @@ from __future__ import annotations
 import sys
 from collections import Counter
 
-from app.intercompany import identiteit, rc_koppelingen, relaties
+from app.intercompany import identiteit, rc_koppelingen, relaties, tegenpartijen
 
 
 def rapporteer_afleiding() -> int:
@@ -35,6 +35,11 @@ def rapporteer_afleiding() -> int:
             f"doorbelasting={rel.doorbelasting_overgenomen} per_basis={dict(rel.per_basis)} "
             f"(crediteuren {rel.crediteuren_bekeken}, debiteuren {rel.debiteuren_bekeken})"
         )
+        if rel.auto_bevestigd or rel.zonder_kvk_identiteit:
+            print(
+                f"    auto-bevestigd (naam-match tussen administraties mét bron-KvK-identiteit, run D 02-10): "
+                f"{rel.auto_bevestigd}; administraties zonder bron-KvK-identiteit: {rel.zonder_kvk_identiteit}"
+            )
         for aid, m in rel.overgeslagen:
             print(f"    OVERGESLAGEN {aid}: {m}")
         for aid, m in rel.fouten:
@@ -42,6 +47,21 @@ def rapporteer_afleiding() -> int:
     except Exception as exc:  # noqa: BLE001
         fouten += 1
         print(f"  FOUT relaties-afleiding: {type(exc).__name__}: {exc}", file=sys.stderr)
+    try:
+        # Run D 02-10 blok D: IC-tegenpartijen (accordering overslaan) volgen de actieve crediteur-relaties — geen klik.
+        tp = tegenpartijen.leid_tegenpartijen_af()
+        print(
+            f"  ic-tegenpartijen: kandidaten={tp.kandidaten} nieuw={tp.nieuw} geheractiveerd={tp.geheractiveerd} "
+            f"gedeactiveerd={tp.gedeactiveerd} ongewijzigd={tp.ongewijzigd} "
+            f"mens-uit-overgeslagen={tp.mens_uit_overgeslagen}"
+        )
+        for regel in tp.regels:
+            print(f"    {regel}")
+        for aid, m in tp.fouten:
+            print(f"    FOUT {aid}: {m}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001
+        fouten += 1
+        print(f"  FOUT ic-tegenpartijen-afleiding: {type(exc).__name__}: {exc}", file=sys.stderr)
     try:
         rc = rc_koppelingen.leid_rc_koppelingen_af()
         print(

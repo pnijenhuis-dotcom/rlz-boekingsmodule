@@ -83,3 +83,5 @@ class AfleidenResultaatDto(BaseModel):
     identiteit_meldingen: list[str]
     relaties: dict
     rc_koppelingen: dict
+    #: Run D 02-10 blok D: IC-tegenpartijen (accordering overslaan) afgeleid uit de actieve crediteur-relaties.
+    tegenpartijen: dict = {}

@@ -10,7 +10,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth.deps import CurrentGebruiker, require_beheerder
-from app.intercompany import identiteit, rc_koppelingen, relaties, schemas
+from app.intercompany import identiteit, rc_koppelingen, relaties, schemas, tegenpartijen
 
 router = APIRouter(prefix="/intercompany", tags=["intercompany"], dependencies=[Depends(require_beheerder)])
 
@@ -95,6 +95,12 @@ def afleiden_nu(actor: CurrentGebruiker = Depends(require_beheerder)) -> schemas
     meldingen = [f"{u.administratie_naam}: {u.stand} — {u.melding}" for u in uitkomsten if u.melding]
     rel = relaties.leid_relaties_af()
     rc = rc_koppelingen.leid_rc_koppelingen_af()
+    # Run D 02-10 blok D: IC-tegenpartijen (accordering overslaan) volgen de actieve crediteur-relaties — geen klik.
+    tp = tegenpartijen.leid_tegenpartijen_af()
     return schemas.AfleidenResultaatDto(
-        identiteiten=dict(tellers), identiteit_meldingen=meldingen, relaties=rel.as_dict(), rc_koppelingen=rc.as_dict()
+        identiteiten=dict(tellers),
+        identiteit_meldingen=meldingen,
+        relaties=rel.as_dict(),
+        rc_koppelingen=rc.as_dict(),
+        tegenpartijen=tp.as_dict(),
     )

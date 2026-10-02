@@ -31,6 +31,7 @@ from app.backends.registry import Backend, backend_voor
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Gebruiker, GebruikerRol
 from app.db.session import scoped_session
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import crediteur_kenmerk
 from app.doorbelasting.models import DoorbelastingMapping, IntercompanyTegenpartij
 from app.extractie.btw_nummer import normaliseer_kvk_nummer
@@ -43,6 +44,17 @@ AUDIT_ACTIE = "intercompany_relatie_gewijzigd"
 _MODULE = "boekhouding"
 # Rangorde van de basis: een sterkere basis wint bij herafleiding, nooit een zwakkere over een sterkere.
 _BASIS_RANG = {"doorbelasting": 0, "kvk": 1, "btw": 2, "naam": 3}
+#: Run D 02-10 blok D (Peter 02-10, casus Universal: 10 van de 12 richtingen stonden op `naam`/afgeleid en werden
+#: nooit getoetst): een naam-match tussen twee EIGEN administraties die BEIDE een KvK-identiteit uit de bron (RLZ
+#: `AdministrationSettings` / Odoo `res.company`) dragen is geen vermoeden meer — de module weet van beide kanten wie
+#: het is. Zo'n rij wordt automatisch `bevestigd` (bron blijft `afgeleid`: de volgende afleiding beheert 'm, een
+#: Beheerder kan 'm nog steeds uitsluiten), mét deze reden en één audit per rij. De regel 16-09 ("naam-only pas actief
+#: ná bevestiging") blijft gelden zodra één kant géén bron-KvK-identiteit heeft (identiteit onbekend, zonder KvK of door
+#: een mens gezet).
+AUTO_BEVESTIGD_REDEN = (
+    "automatisch bevestigd: beide administraties dragen een KvK-identiteit uit de bron (run D 02-10 — naam-match "
+    "tussen eigen administraties)"
+)
 
 
 class IntercompanyFout(Exception):
@@ -142,6 +154,10 @@ class AfleidUitkomst:
     relaties_ongewijzigd: int = 0
     mens_rijen_overgeslagen: int = 0
     doorbelasting_overgenomen: int = 0
+    #: Run D 02-10: naam-matches tussen twee administraties mét bron-KvK-identiteit die automatisch `bevestigd` werden.
+    auto_bevestigd: int = 0
+    #: Administraties waarvan de identiteit géén bron-KvK draagt (zichtbaar: voor hen geldt de 16-09-regel nog).
+    zonder_kvk_identiteit: int = 0
     per_basis: dict[str, int] = field(default_factory=dict)
     overgeslagen: list[tuple[uuid.UUID, str]] = field(default_factory=list)
     fouten: list[tuple[uuid.UUID, str]] = field(default_factory=list)
@@ -156,6 +172,8 @@ class AfleidUitkomst:
             "relaties_ongewijzigd": self.relaties_ongewijzigd,
             "mens_rijen_overgeslagen": self.mens_rijen_overgeslagen,
             "doorbelasting_overgenomen": self.doorbelasting_overgenomen,
+            "auto_bevestigd": self.auto_bevestigd,
+            "zonder_kvk_identiteit": self.zonder_kvk_identiteit,
             "per_basis": dict(self.per_basis),
             "overgeslagen": [f"{aid}: {m}" for aid, m in self.overgeslagen],
             "fouten": [f"{aid}: {m}" for aid, m in self.fouten],
@@ -357,7 +375,11 @@ def leid_relaties_af(administratie_ids: Iterable[uuid.UUID] | None = None) -> Af
     uitkomst = AfleidUitkomst()
     administraties = identiteit_module.actieve_administraties(administratie_ids)
     uitkomst.administraties = len(administraties)
-    index = _Index(identiteit_module.alle_identiteiten().values())
+    identiteiten = identiteit_module.alle_identiteiten()
+    index = _Index(identiteiten.values())
+    # Run D 02-10: administraties mét een KvK-identiteit UIT DE BRON — tussen twee daarvan is een naam-match zeker.
+    kvk_bron_ids = kvk_identiteit_administraties(identiteiten.values())
+    uitkomst.zonder_kvk_identiteit = sum(1 for aid, _ in administraties if aid not in kvk_bron_ids)
     kandidaten: list[_Kandidaat] = []
 
     for aid, _naam in administraties:
@@ -401,7 +423,7 @@ def leid_relaties_af(administratie_ids: Iterable[uuid.UUID] | None = None) -> Af
         if huidig is None or _BASIS_RANG[k.basis] < _BASIS_RANG[huidig.basis]:
             beste[sleutel] = k
 
-    with scoped_session(None) as session:
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
         for sleutel, k in beste.items():
             rij = session.scalars(
                 select(IntercompanyRelatie).where(
@@ -410,22 +432,27 @@ def leid_relaties_af(administratie_ids: Iterable[uuid.UUID] | None = None) -> Af
                     IntercompanyRelatie.administratie_b_id == sleutel[2],
                 )
             ).one_or_none()
-            status = "bevestigd" if k.basis == "doorbelasting" else "afgeleid"
+            auto = _auto_bevestigbaar(k, kvk_bron_ids)
+            status = "bevestigd" if (k.basis == "doorbelasting" or auto) else "afgeleid"
             uitkomst.per_basis[k.basis] = uitkomst.per_basis.get(k.basis, 0) + 1
             if rij is None:
-                session.add(
-                    IntercompanyRelatie(
-                        administratie_a_id=k.administratie_a_id,
-                        entity_in_a=k.entity_in_a,
-                        entity_naam=k.entity_naam,
-                        administratie_b_id=k.administratie_b_id,
-                        richting=k.richting,
-                        basis=k.basis,
-                        status=status,
-                        bron="afgeleid",
-                    )
+                rij = IntercompanyRelatie(
+                    administratie_a_id=k.administratie_a_id,
+                    entity_in_a=k.entity_in_a,
+                    entity_naam=k.entity_naam,
+                    administratie_b_id=k.administratie_b_id,
+                    richting=k.richting,
+                    basis=k.basis,
+                    status=status,
+                    bron="afgeleid",
+                    reden=AUTO_BEVESTIGD_REDEN if auto else None,
                 )
+                session.add(rij)
                 uitkomst.relaties_nieuw += 1
+                if auto:
+                    session.flush()
+                    uitkomst.auto_bevestigd += 1
+                    _audit_auto_bevestigd(session, rij, oud=None)
                 continue
             if rij.bron == "mens":
                 uitkomst.mens_rijen_overgeslagen += 1
@@ -433,20 +460,69 @@ def leid_relaties_af(administratie_ids: Iterable[uuid.UUID] | None = None) -> Af
             # Afgeleide rij: nooit een zwakkere basis over een sterkere; naam volgt de bron.
             nieuwe_basis = k.basis if _BASIS_RANG[k.basis] <= _BASIS_RANG[rij.basis] else rij.basis
             nieuwe_status = "bevestigd" if nieuwe_basis == "doorbelasting" else rij.status
-            if (rij.basis, rij.status, rij.richting, rij.entity_naam) == (
+            # Run D 02-10: een eerder als "vermoedelijk" afgeleide naam-rij wordt alsnog automatisch bevestigd zodra
+            # beide identiteiten een bron-KvK dragen (nooit andersom: een bevestiging wordt niet teruggedraaid).
+            auto_nu = auto and nieuwe_basis == "naam" and rij.status == "afgeleid"
+            if auto_nu:
+                nieuwe_status = "bevestigd"
+            nieuwe_reden = AUTO_BEVESTIGD_REDEN if auto_nu else rij.reden
+            if (rij.basis, rij.status, rij.richting, rij.entity_naam, rij.reden) == (
                 nieuwe_basis,
                 nieuwe_status,
                 k.richting,
                 k.entity_naam,
+                nieuwe_reden,
             ):
                 uitkomst.relaties_ongewijzigd += 1
                 continue
+            oud = {"status": rij.status, "bron": rij.bron, "reden": rij.reden, "basis": rij.basis}
             rij.basis = nieuwe_basis
             rij.status = nieuwe_status
             rij.richting = k.richting
             rij.entity_naam = k.entity_naam
+            rij.reden = nieuwe_reden
             uitkomst.relaties_bijgewerkt += 1
+            if auto_nu:
+                uitkomst.auto_bevestigd += 1
+                _audit_auto_bevestigd(session, rij, oud=oud)
     return uitkomst
+
+
+def kvk_identiteit_administraties(identiteiten: Iterable[AdministratieIdentiteit]) -> set[uuid.UUID]:
+    """Administraties mét een KvK-identiteit UIT DE BRON (rlz/odoo). Een door een mens gezette identiteit telt
+    bewust niet: de auto-bevestiging steunt op wat het bronsysteem zelf over de administratie zegt."""
+    return {i.administratie_id for i in identiteiten if i.kvk and i.bron in ("rlz", "odoo")}
+
+
+def _auto_bevestigbaar(k: _Kandidaat, kvk_bron_ids: set[uuid.UUID]) -> bool:
+    return k.basis == "naam" and k.administratie_a_id in kvk_bron_ids and k.administratie_b_id in kvk_bron_ids
+
+
+def _audit_auto_bevestigd(session: Session, rij: IntercompanyRelatie, *, oud: dict | None) -> None:
+    """Eén audit per automatisch bevestigde rij. Geschreven in `scoped_session(None)` → zonder `administratie_id`
+    op het event (memory: audit mét administratie_id vereist een administratie-scope); beide administraties staan in
+    `nieuwe_waarde`."""
+    record_audit_event(
+        session,
+        actor_id=SYSTEEM_ACTOR_ID,
+        module=_MODULE,
+        tabel="intercompany_relatie",
+        record_id=rij.id,
+        actie=AUDIT_ACTIE,
+        correlatie_id=uuid.uuid4(),
+        oude_waarde=oud,
+        nieuwe_waarde={
+            "status": rij.status,
+            "bron": rij.bron,
+            "reden": rij.reden,
+            "basis": rij.basis,
+            "auto_bevestigd": True,
+            "administratie_a_id": str(rij.administratie_a_id),
+            "administratie_b_id": str(rij.administratie_b_id),
+            "richting": rij.richting,
+            "entity_naam": rij.entity_naam,
+        },
+    )
 
 
 # --- lezen ---------------------------------------------------------------------------------------------------------

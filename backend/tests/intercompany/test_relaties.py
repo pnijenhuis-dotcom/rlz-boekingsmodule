@@ -220,13 +220,18 @@ def test_afleiding_kvk_boven_btw_boven_naam_en_naam_only_niet_actief(adm_a, adm_
     per_entity = {r.entity_in_a: r for r in _relaties(adm_a)}
     assert per_entity[v_kvk].basis == "kvk" and per_entity[v_kvk].richting == "crediteur"
     assert per_entity[v_btw].basis == "btw"
-    assert per_entity[v_naam].basis == "naam" and per_entity[v_naam].status == "afgeleid"
+    # Run D 02-10 blok D: A én B dragen een KvK-identiteit uit RLZ → de naam-match is automatisch bevestigd (bron blijft
+    # afgeleid, reden + audit). De 16-09-regel "naam-only pas actief ná bevestiging" geldt nog zodra één kant geen
+    # bron-KvK heeft — zie test_naam_match_zonder_bron_kvk_blijft_vermoedelijk in test_run_d_blok_d.py.
+    assert per_entity[v_naam].basis == "naam" and per_entity[v_naam].status == "bevestigd"
+    assert per_entity[v_naam].reden == relaties.AUTO_BEVESTIGD_REDEN
+    assert uitkomst.auto_bevestigd == 1 and uitkomst.zonder_kvk_identiteit == 0
     assert all(r.administratie_b_id == adm_b and r.bron == "afgeleid" for r in per_entity.values())
     actief = {p.entity_in_a for p in relaties.actieve_paren()}
-    assert actief == {v_kvk, v_btw}, "naam-only telt pas mee ná bevestiging"
-    # Herafleiding = idempotent.
+    assert actief == {v_kvk, v_btw, v_naam}, "naam-match tussen twee KvK-identiteiten is automatisch actief (run D)"
+    # Herafleiding = idempotent (ook de auto-bevestiging schrijft niets opnieuw).
     opnieuw = relaties.leid_relaties_af()
-    assert (opnieuw.relaties_nieuw, opnieuw.relaties_ongewijzigd) == (0, 3)
+    assert (opnieuw.relaties_nieuw, opnieuw.relaties_ongewijzigd, opnieuw.auto_bevestigd) == (0, 3, 0)
 
 
 def test_zelfde_kvk_bij_twee_administraties_geeft_beide_richtingen(adm_a, adm_b, rlz) -> None:

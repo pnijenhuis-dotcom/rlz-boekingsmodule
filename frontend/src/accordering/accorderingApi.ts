@@ -408,7 +408,8 @@ export function trekApparaatIn(apparaatId: string): Promise<void> {
 export interface IntercompanyLeverancierDto {
   vendor_id: string
   naam: string
-  bron: 'handmatig' | 'doorbelasting_mapping'
+  /** Run D 02-10 blok D: `intercompany_relatie` = automatisch uit een actieve IC-relatie (hier alleen-lezen). */
+  bron: 'handmatig' | 'doorbelasting_mapping' | 'intercompany_relatie'
   actief: boolean
   gewijzigd_op: string | null
   verwijderbaar: boolean
