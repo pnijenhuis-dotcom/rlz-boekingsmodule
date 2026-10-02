@@ -2107,3 +2107,72 @@
   text-align: left;
   color: var(--acc-text);
 }
+
+/* Run B 02-10 punt 26 — planningstab UITVOERDER (dagplanning, vervangt "Mijn uren"): dagkop mét pijlknoppen ≥ 48 px,
+ * swipe-lijst (verticaal scrollen blijft van de browser), projectkaart ≥ 48 px, vrachtwagen-icoon = transport gepland
+ * (teal = actie/informatie uit de Transport-tab, groen blijft status). Alleen-lezen. */
+.acc-dagplan-kop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.acc-dagplan-kop .acc-dagplan-nav {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  font-size: 22px;
+}
+.acc-dagplan-datum {
+  flex: 1;
+  text-align: center;
+  font-size: 15px;
+}
+.acc-dagplan-datum small {
+  color: var(--acc-muted);
+  font-size: 14px;
+}
+.acc-dagplan-datum .acc-tekstlink {
+  margin-left: 6px;
+  font-size: 14px;
+  min-height: 48px;
+}
+.acc-dagplan-lijst {
+  touch-action: pan-y;
+  min-height: 120px;
+}
+.acc-dagplan-kaart {
+  width: 100%;
+  min-height: 48px;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+}
+.acc-dagplan-inhoud {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.acc-dagplan-rechts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.acc-transport-icoon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--acc-accent);
+  background: color-mix(in srgb, var(--acc-accent) 12%, transparent);
+}
+.acc-dagplan-mijnuren {
+  display: block;
+  margin-top: 10px;
+  min-height: 48px;
+  color: var(--acc-accent);
+}

@@ -550,6 +550,45 @@ def zzp_planning(
     ]
 
 
+@router.get("/uitvoerder/dagplanning", response_model=list[schemas.DagPlanningProjectDto])
+def uitvoerder_dagplanning(
+    datum: date,
+    actor: CurrentGebruiker = Depends(vereis_veldrol),
+) -> list[schemas.DagPlanningProjectDto]:
+    """Planningstab van de uitvoerder (run B 02-10, punt 26): álle geplande projecten van één dag binnen zijn scope
+    — project, opdrachtgever, plaats, ploeg, transport, werkopdracht. ALLEEN-LEZEN; plannen doet het kantoor."""
+    try:
+        rijen = planning.dagplanning_uitvoerder(uitvoerder_id=actor.id, datum=datum)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [
+        schemas.DagPlanningProjectDto(
+            datum=r.datum,
+            administratie_id=r.administratie_id,
+            administratie_naam=r.administratie_naam,
+            project_id=r.project_id,
+            project_naam=r.project_naam,
+            opdrachtgever=r.opdrachtgever,
+            werknummer_opdrachtgever=r.werknummer_opdrachtgever,
+            plaats=r.plaats,
+            ploeg=[schemas.DagPlanningPloeglidDto(**p.__dict__) for p in r.ploeg],
+            gereserveerd=r.gereserveerd,
+            transport=(
+                schemas.DagPlanningTransportDto(
+                    soort=r.transport.soort, tijdstip=r.transport.tijdstip, status=r.transport.status
+                )
+                if r.transport
+                else None
+            ),
+            werkopdrachten=[
+                schemas.WerkopdrachtDagTekstDto(groep_id=w.groep_id, tekst=w.tekst, afwijkend=w.afwijkend)
+                for w in r.werkopdrachten
+            ],
+        )
+        for r in rijen
+    ]
+
+
 # --- ZZP-dossier: veldkant (A1/A2 — upload in de app, blokkade-melding) --------------------------
 
 

@@ -458,6 +458,53 @@ export function haalMijnPlanning(
   return apiJson(namens ? `${basis}&namens=${namens}` : basis)
 }
 
+/** Dagplanning van de uitvoerder (run B 02-10, punt 26 — herziet "geen planningstab" 18-09 blok D uitsluitend voor deze
+ * rol): álle geplande projecten van één dag binnen zijn scope, ALLEEN-LEZEN; `transport` = er staat die dag een transport
+ * (Transport-tab, status ≠ geannuleerd) → vrachtwagen-icoon. Plannen doet uitsluitend het kantoor. */
+export interface DagPlanningPloeglidDto {
+  gebruiker_id: string
+  naam: string | null
+  dagdeel: 'heel' | 'half'
+  is_uitvoerder: boolean
+}
+
+export interface DagPlanningTransportDto {
+  soort: 'levering' | 'retour' | string
+  tijdstip: string | null
+  status: string
+}
+
+export interface DagPlanningProjectDto {
+  datum: string
+  administratie_id: string
+  administratie_naam: string | null
+  project_id: string
+  project_naam: string | null
+  opdrachtgever: string | null
+  werknummer_opdrachtgever: string | null
+  plaats: string | null
+  ploeg: DagPlanningPloeglidDto[]
+  gereserveerd: boolean
+  transport: DagPlanningTransportDto | null
+  werkopdrachten: { groep_id: string; tekst: string; afwijkend: boolean }[]
+}
+
+export function haalDagplanning(datum: string): Promise<DagPlanningProjectDto[]> {
+  return apiJson(`/uren/uitvoerder/dagplanning?datum=${encodeURIComponent(datum)}`)
+}
+
+/** ISO-datum (lokale kalenderdag) van een Date. */
+export function isoDatumVan(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** ISO-datum `delta` dagen verder (negatief = terug), zonder tijdzone-verrassingen (middag-anker). */
+export function schuifDag(iso: string, delta: number): string {
+  const d = new Date(`${iso}T12:00:00`)
+  d.setDate(d.getDate() + delta)
+  return isoDatumVan(d)
+}
+
 /* --- detacheerder ------------------------------------------------------------------------------ */
 
 export function haalMijnZzpers(): Promise<ZzperKaartDto[]> {

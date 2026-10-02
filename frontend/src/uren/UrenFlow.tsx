@@ -21,7 +21,8 @@ import { haalMijnAdministraties, isVoorwaardenVereist } from '../accordeur/accor
 import { PdfWeergave } from '../accordeur/PdfWeergave'
 import { VoorwaardenScherm } from '../accordeur/VoorwaardenScherm'
 import { useAuth } from '../auth/AuthContext'
-import { toontPlanningTab } from '../auth/rollen'
+import { toontDagplanningTab, toontPlanningTab } from '../auth/rollen'
+import { DagPlanningView } from './DagPlanningView'
 import { ACC_TERUG_EVENT } from '../accordeur/androidTerug'
 import { UitlogIcoon } from '../accordeur/UitlogIcoon'
 import {
@@ -140,10 +141,13 @@ type Scherm =
     }
   | { s: 'ingediend' }
   | { s: 'planning' }
+  /** Run B 02-10 punt 26: dagplanning van de uitvoerder (vervangt tab "Mijn uren"); `datum` = startdag (deep-link). */
+  | { s: 'dagplanning'; datum?: string | null }
   | { s: 'dossier'; terug: Scherm }
   | { s: 'detaZzpers' }
   | { s: 'uitvProjecten' }
-  | { s: 'projectdetail'; kaart: UitvoerderProjectKaartDto }
+  /** `terug` (02-10): geopend vanuit de dagplanning → terug naar die dag i.p.v. de projectenlijst. */
+  | { s: 'projectdetail'; kaart: UitvoerderProjectKaartDto; terug?: Scherm }
   | { s: 'contract'; kaart: UitvoerderProjectKaartDto; doc: ProjectDocumentKaartDto }
   | { s: 'meerwerkMelden'; kaart: UitvoerderProjectKaartDto; terug?: undefined }
   /** Meerwerk melden vanaf een projectkaart in de week (project-eerst): project al ingevuld, terug naar die week. */
@@ -184,9 +188,11 @@ export function terugVan(scherm: Scherm, veldrol: Veldrol): Scherm | null {
     case 'planning':
       return { s: 'zzpWeken' }
     case 'keurlijst':
+    case 'dagplanning':
       return { s: 'uitvProjecten' }
     case 'zzpWeken':
-      return veldrol === 'uitvoerder' ? { s: 'uitvProjecten' } : veldrol === 'detacheerder' ? { s: 'detaZzpers' } : null
+      // Uitvoerder (02-10): "Mijn uren" hangt onder de dagplanning (tekstlink), dus terug = die tab.
+      return veldrol === 'uitvoerder' ? { s: 'dagplanning' } : veldrol === 'detacheerder' ? { s: 'detaZzpers' } : null
     case 'uitvProjecten':
     case 'detaZzpers':
       return null
@@ -421,8 +427,14 @@ export function UrenFlow({
     }
     // 15-09: deep-link uit de bundelmelding "planning week N aangepast" (/accordeur?planning=JJJJ-Wnn) → de
     // planningweergave van die week.
-    // 18-09 blok D: de uitvoerder heeft geen planningstab meer — de melding blijft, de deep-link landt op zijn uren.
-    if (planningWeekUitZoekdeel(location.search)) setScherm(toontPlanningTab(veldrol) ? { s: 'planning' } : { s: 'zzpWeken' })
+    // 18-09 blok D: de uitvoerder heeft geen WEEK-planningstab; sinds 02-10 (run B punt 26) landt de deep-link voor hem op de
+    // dagplanning van de maandag van die week (zijn eigen planningstab), voor de rest op de weekweergave.
+    const deeplinkWeek = planningWeekUitZoekdeel(location.search)
+    if (deeplinkWeek) {
+      if (toontPlanningTab(veldrol)) setScherm({ s: 'planning' })
+      else if (toontDagplanningTab(veldrol)) setScherm({ s: 'dagplanning', datum: weekDagen(deeplinkWeek.jaar, deeplinkWeek.weeknummer)[0].datum })
+      else setScherm({ s: 'zzpWeken' })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search])
 
@@ -489,22 +501,27 @@ export function UrenFlow({
       </button>
     </div>
   )
-  // Uitvoerder (18-09): Projecten · Mijn uren · Te keuren — géén planningstab (blok D, allowlist toontPlanningTab).
+  // Uitvoerder: Projecten · Planning · Te keuren. 18-09 blok D gaf hem géén WEEK-planningstab (eigen planning); run B 02-10
+  // punt 26 (Peter: "het tabje mijn uren moeten we vervangen door tabje planning") vervangt "Mijn uren" door de DAG-planning
+  // van álle geplande projecten in zijn scope (allowlist toontDagplanningTab). Uren schrijven = projectkaart (+ Uren) of de
+  // tekstlink "Mijn uren" onder de dagplanning; de uren-schermen tellen onder de Planning-tab als actief.
   const uitvTabs = (
     <div className="acc-functabs">
       <button
-        className={`acc-functab${!KEUR_SCHERMEN.has(scherm.s) && !UREN_SCHERMEN.has(scherm.s) ? ' actief' : ''}`}
+        className={`acc-functab${!KEUR_SCHERMEN.has(scherm.s) && !UREN_SCHERMEN.has(scherm.s) && scherm.s !== 'dagplanning' ? ' actief' : ''}`}
         onClick={() => setScherm({ s: 'uitvProjecten' })}
       >
         🏗 Projecten
       </button>
-      <button
-        className={`acc-functab${UREN_SCHERMEN.has(scherm.s) ? ' actief' : ''}`}
-        onClick={() => setScherm({ s: 'zzpWeken' })}
-        data-testid="tab-mijn-uren"
-      >
-        ⏱ Mijn uren
-      </button>
+      {toontDagplanningTab(veldrol) && (
+        <button
+          className={`acc-functab${UREN_SCHERMEN.has(scherm.s) || scherm.s === 'dagplanning' ? ' actief' : ''}`}
+          onClick={() => setScherm({ s: 'dagplanning' })}
+          data-testid="tab-planning"
+        >
+          📅 Planning
+        </button>
+      )}
       <button
         className={`acc-functab${KEUR_SCHERMEN.has(scherm.s) ? ' actief' : ''}`}
         onClick={() => setScherm({ s: 'keurlijst' })}
@@ -743,14 +760,61 @@ export function UrenFlow({
             <UitvProjectenView vangFout={vangFout} openProject={(kaart) => setScherm({ s: 'projectdetail', kaart })} />
           </>
         )}
+        {scherm.s === 'dagplanning' && (
+          <DagPlanningView
+            startDatum={scherm.datum ?? null}
+            vangFout={vangFout}
+            openMijnUren={() => setScherm({ s: 'zzpWeken' })}
+            openProject={(doel, datum) =>
+              setScherm({
+                s: 'projectdetail',
+                // Minimale kaart: het detail laadt zichzelf op (administratie, project); de lijstvelden zijn hier niet nodig.
+                kaart: {
+                  administratie_id: doel.administratie_id,
+                  administratie_naam: null,
+                  project_id: doel.project_id,
+                  project_naam: doel.project_naam,
+                  soort_werk: null,
+                  contract_m2: null,
+                  gebouwd_m2: '0',
+                  looptijd_tot: null,
+                  huurtijd_omschrijving: null,
+                  meerwerk_gemeld: 0,
+                  te_keuren: 0,
+                  gekoppeld: true,
+                },
+                terug: { s: 'dagplanning', datum },
+              })
+            }
+          />
+        )}
         {scherm.s === 'projectdetail' && (
           <ProjectDetailView
             kaart={scherm.kaart}
             vangFout={vangFout}
-            terug={() => setScherm({ s: 'uitvProjecten' })}
+            terugLabel={scherm.terug?.s === 'dagplanning' ? 'Planning' : 'Projecten'}
+            terug={() => setScherm(scherm.terug ?? { s: 'uitvProjecten' })}
             openDocument={(doc) => setScherm({ s: 'contract', kaart: scherm.kaart, doc })}
             meldMeerwerk={() => setScherm({ s: 'meerwerkMelden', kaart: scherm.kaart })}
             beantwoordVraag={(melding) => setScherm({ s: 'meerwerkVraag', kaart: scherm.kaart, melding })}
+            // Project-eerst (18-09) óók vanaf de kaart: "+ Uren" opent de weekstaat van dit project in de week van de
+            // gekozen dag (dagplanning) of van vandaag; terug = deze kaart.
+            plusUren={() => {
+              const dag = scherm.terug?.s === 'dagplanning' && scherm.terug.datum ? new Date(`${scherm.terug.datum}T12:00:00`) : new Date()
+              const week = isoWeekVan(dag)
+              setScherm({
+                s: 'weekstaat',
+                ctx: {
+                  administratieId: scherm.kaart.administratie_id,
+                  projectId: scherm.kaart.project_id,
+                  projectNaam: scherm.kaart.project_naam,
+                  jaar: week.jaar,
+                  weeknummer: week.weeknummer,
+                  terugLabel: scherm.kaart.project_naam ?? 'Project',
+                },
+                terug: scherm,
+              })
+            }}
           />
         )}
         {scherm.s === 'contract' && (
@@ -2546,16 +2610,21 @@ function ProjectDetailView({
   kaart,
   vangFout,
   terug,
+  terugLabel = 'Projecten',
   openDocument,
   meldMeerwerk: naarMelden,
   beantwoordVraag,
+  plusUren,
 }: {
   kaart: UitvoerderProjectKaartDto
   vangFout: (err: unknown) => string
   terug: () => void
+  terugLabel?: string
   openDocument: (doc: ProjectDocumentKaartDto) => void
   meldMeerwerk: () => void
   beantwoordVraag: (melding: MeerwerkDto) => void
+  /** Run B 02-10 punt 26: uren schrijven vanaf de projectkaart (project-eerst) — de "Mijn uren"-tab is vervangen. */
+  plusUren?: () => void
 }) {
   const [detail, setDetail] = useState<ProjectDetailDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
@@ -2576,7 +2645,7 @@ function ProjectDetailView({
 
   return (
     <div>
-      <Terug label="Projecten" onClick={terug} />
+      <Terug label={terugLabel} onClick={terug} />
       <div className="acc-seclabel">{kaart.project_naam ?? 'Project'}</div>
       {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
       {detail === null && !fout && <Leeg tekst="Laden…" />}
@@ -2669,6 +2738,11 @@ function ProjectDetailView({
           )}
 
           <div className="acc-actionbar">
+            {plusUren && (
+              <button className="acc-btn" data-testid="projectkaart-plus-uren" onClick={plusUren}>
+                + Uren
+              </button>
+            )}
             <button className="acc-btn groen" onClick={naarMelden}>
               + Meerwerk melden
             </button>

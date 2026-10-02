@@ -13,10 +13,14 @@ describe('terugVan', () => {
     expect(terugVan({ s: 'projectdetail', kaart: KAART }, 'uitvoerder')).toEqual({ s: 'uitvProjecten' })
     expect(terugVan({ s: 'keurafwijs', item: {} as never, staat: {} as never }, 'uitvoerder')).toEqual({ s: 'keurdetail', item: {} })
   })
-  it('een beginscherm blijft staan (null) — de uitvoerder landt vanuit Mijn uren op Projecten, de ZZP\'er blijft op weken', () => {
+  it('een beginscherm blijft staan (null) — de uitvoerder landt vanuit Mijn uren op zijn Planning-tab (02-10), de ZZP\'er blijft op weken', () => {
     expect(terugVan({ s: 'uitvProjecten' }, 'uitvoerder')).toBeNull()
     expect(terugVan({ s: 'zzpWeken' }, 'zzper')).toBeNull()
-    expect(terugVan({ s: 'zzpWeken' }, 'uitvoerder')).toEqual({ s: 'uitvProjecten' })
+    // Run B 02-10 punt 26: "Mijn uren" hangt als tekstlink onder de dagplanning → terug = die tab.
+    expect(terugVan({ s: 'zzpWeken' }, 'uitvoerder')).toEqual({ s: 'dagplanning' })
+    expect(terugVan({ s: 'dagplanning' }, 'uitvoerder')).toEqual({ s: 'uitvProjecten' })
+    // Projectkaart geopend vanuit de dagplanning: terug naar die dag.
+    expect(terugVan({ s: 'projectdetail', kaart: KAART, terug: { s: 'dagplanning', datum: '2026-10-05' } }, 'uitvoerder')).toEqual({ s: 'dagplanning', datum: '2026-10-05' })
     expect(terugVan({ s: 'zzpWeken' }, 'detacheerder')).toEqual({ s: 'detaZzpers' })
   })
 })

@@ -47,13 +47,24 @@ export function toontVeldwerkersNav(
   return toegang?.heeft_veldwerkerbeheer_recht === true
 }
 
-/** Planning-tab in de veld-app (feedback uitvoerder via Peter 18-09, blok D): de uitvoerder heeft geen planningstab
- * meer — hij schrijft uren op élk project (gepland bovenaan) en de meldingen "planning gewijzigd" blijven. ZZP'er en
- * detacheerder (namens) houden de alleen-lezen planningweergave (besluit B 22-08). Allowlist, nooit een complement:
- * een onbekende rol krijgt de tab niet. De backend-leesroute `/uren/zzp/planning` blijft voor iedere veldrol bestaan
+/** WEEK-planningstab in de veld-app (eigen planning, alleen-lezen, besluit B 22-08): ZZP'er en detacheerder (namens).
+ * De uitvoerder krijgt deze weekweergave van zijn eigen planning niet (18-09 blok D); sinds run B 02-10 (punt 26)
+ * heeft hij wél een eigen DAG-planningstab — zie `toontDagplanningTab`. Allowlist, nooit een complement: een
+ * onbekende rol krijgt de tab niet. De backend-leesroute `/uren/zzp/planning` blijft voor iedere veldrol bestaan
  * (bron voor "gepland bovenaan"); dit stuurt alleen de UI. */
 export const PLANNING_TAB_ROLLEN = ['zzper', 'detacheerder'] as const
 
 export function toontPlanningTab(rol: string | null): boolean {
   return rol !== null && (PLANNING_TAB_ROLLEN as readonly string[]).includes(rol)
+}
+
+/** DAG-planningstab in de veld-app (Peter 02-10, run B punt 26 — herziet "geen planningstab" van 18-09 blok D
+ * UITSLUITEND voor de rol uitvoerder): tab "Planning" vervangt tab "Mijn uren" en toont álle geplande projecten van
+ * de dag binnen zijn scope (`GET /uren/uitvoerder/dagplanning`), swipe = dag terug/vooruit. Uren schrijven blijft
+ * bereikbaar vanaf de projectkaart (project-eerst 18-09). ZZP'er/detacheerder ongewijzigd (zij houden de weektab
+ * hierboven). Allowlist, nooit een complement; de backend blijft de waarheid (403 voor niet-uitvoerders). */
+export const DAGPLANNING_TAB_ROLLEN = ['uitvoerder'] as const
+
+export function toontDagplanningTab(rol: string | null): boolean {
+  return rol !== null && (DAGPLANNING_TAB_ROLLEN as readonly string[]).includes(rol)
 }

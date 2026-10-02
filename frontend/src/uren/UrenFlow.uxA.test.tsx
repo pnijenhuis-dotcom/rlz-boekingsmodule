@@ -73,6 +73,7 @@ function installMock(opties: { kaarten: unknown[]; puts?: unknown[]; posts?: str
       if (pad === '/auth/administraties') return Promise.resolve(jsonResponse({ administraties: [{ id: ADM, naam: 'Universal Steigerbouw' }] }))
       if (pad === '/uren/uitvoerder/te-keuren') return Promise.resolve(jsonResponse([]))
       if (pad === '/uren/uitvoerder/projecten') return Promise.resolve(jsonResponse([]))
+      if (pad === '/uren/uitvoerder/dagplanning') return Promise.resolve(jsonResponse([]))
       if (pad === '/uren/dossier') return Promise.resolve(jsonResponse({ documenten: [], aantal_ontbrekend: 0, aantal_verlopen: 0, aantal_ter_controle: 0, aantal_verloopt_binnenkort: 0, aantal_aanwezig: 0, aantal_verplicht: 0, geblokkeerd: false, herinneringen_teller: 0, herinneringen_max: 3 }))
       if (pad === '/uren/zzp/weken-overzicht') return Promise.resolve(jsonResponse([WEEK]))
       if (pad === '/uren/zzp/week-projecten') return Promise.resolve(jsonResponse(opties.kaarten))
@@ -103,10 +104,14 @@ function renderFlow() {
   )
 }
 
+// Run B 02-10 punt 26: de tab "Mijn uren" is voor de uitvoerder vervangen door "Planning"; het weekoverzicht hangt eronder
+// als tekstlink "Mijn uren (weekoverzicht)".
 async function naarWeek() {
   renderFlow()
-  await waitFor(() => expect(screen.getByTestId('tab-mijn-uren')).toBeInTheDocument())
-  await userEvent.click(screen.getByTestId('tab-mijn-uren'))
+  await waitFor(() => expect(screen.getByTestId('tab-planning')).toBeInTheDocument())
+  await userEvent.click(screen.getByTestId('tab-planning'))
+  await waitFor(() => expect(screen.getByTestId('link-mijn-uren')).toBeInTheDocument())
+  await userEvent.click(screen.getByTestId('link-mijn-uren'))
   await waitFor(() => expect(screen.getByText(new RegExp(`Week ${weeknummer}`))).toBeInTheDocument())
   await userEvent.click(screen.getByText(new RegExp(`Week ${weeknummer}`)))
   await waitFor(() => expect(screen.getAllByTestId('projectkaart').length).toBeGreaterThan(0))

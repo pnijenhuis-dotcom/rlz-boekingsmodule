@@ -856,6 +856,38 @@ class MijnPlanningDagDto(BaseModel):
     werkopdrachten: list[WerkopdrachtDagTekstDto] = []
 
 
+class DagPlanningPloeglidDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    naam: str | None = None
+    dagdeel: str
+    is_uitvoerder: bool = False
+
+
+class DagPlanningTransportDto(BaseModel):
+    """Transport op dit project × dag (Transport-tab, status ≠ geannuleerd) — bron voor het vrachtwagen-icoon."""
+
+    soort: str
+    tijdstip: time | None = None
+    status: str
+
+
+class DagPlanningProjectDto(BaseModel):
+    """Planningstab uitvoerder (run B 02-10, punt 26): één gepland project op één dag binnen de scope — alleen-lezen."""
+
+    datum: date
+    administratie_id: uuid.UUID
+    administratie_naam: str | None = None
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    opdrachtgever: str | None = None
+    werknummer_opdrachtgever: str | None = None
+    plaats: str | None = None
+    ploeg: list[DagPlanningPloeglidDto] = []
+    gereserveerd: bool = False
+    transport: DagPlanningTransportDto | None = None
+    werkopdrachten: list[WerkopdrachtDagTekstDto] = []
+
+
 # --- werkopdrachten per project × periode (akkoord Peter 31-08, migratie 0091) ------------------
 
 

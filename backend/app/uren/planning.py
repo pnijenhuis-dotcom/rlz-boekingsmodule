@@ -287,6 +287,43 @@ class MijnPlanningDag:
     werkopdrachten: list = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class DagPlanningPloeglid:
+    gebruiker_id: uuid.UUID
+    naam: str | None
+    dagdeel: str
+    is_uitvoerder: bool
+
+
+@dataclass(frozen=True)
+class DagPlanningTransport:
+    """Transport (levering/retour) op dit project × dag uit de Transport-tab, status ≠ geannuleerd — alleen lezen."""
+
+    soort: str
+    tijdstip: object  # time | None
+    status: str
+
+
+@dataclass(frozen=True)
+class DagPlanningProject:
+    """Eén gepland project op één dag voor de planningstab van de uitvoerder (run B 02-10, punt 26): wat het kantoor
+    die dag gepland heeft binnen de scope — project, opdrachtgever, plaats, ploeg, transport-icoon, werkopdracht."""
+
+    datum: date
+    administratie_id: uuid.UUID
+    administratie_naam: str | None
+    project_id: uuid.UUID
+    project_naam: str | None
+    opdrachtgever: str | None
+    werknummer_opdrachtgever: str | None
+    plaats: str | None
+    ploeg: list = field(default_factory=list)
+    # True = alleen een reservering (kaart zonder ploeg, planning v3): "hier werken we die dag".
+    gereserveerd: bool = False
+    transport: DagPlanningTransport | None = None
+    werkopdrachten: list = field(default_factory=list)
+
+
 # --- helpers ---------------------------------------------------------------------------------
 
 
@@ -1737,3 +1774,118 @@ def mijn_planning(
                 )
     dagen.sort(key=lambda d: (d.datum, d.project_naam or ""))
     return dagen
+
+
+# --- veld: dagplanning uitvoerder (run B 02-10, punt 26) ----------------------------------------
+
+
+def dagplanning_uitvoerder(*, uitvoerder_id: uuid.UUID, datum: date) -> list[DagPlanningProject]:
+    """Álle geplande projecten van één dag binnen de scope van de uitvoerder (administraties mét opt-in) —
+    alleen-lezen (plannen doet het kantoor, besluit B 22-08). Leest de planning live: toewijzingen + reserveringen
+    (planning v3) per project, de ploeg mét naam/dagdeel, de geldende werkopdracht en een transport uit de
+    Transport-tab (status ≠ geannuleerd) als icoon-bron. Set-based per administratie: vier statements onafhankelijk
+    van het aantal projecten. Herziet "geen planningstab" (18-09 blok D) uitsluitend voor de rol uitvoerder:
+    de uitvoerder ziet niet zijn eigen planning maar het werk van de dag."""
+    from app.materiaal.models import MateriaalTransport, TransportStatus
+    from app.uren.overzichten import _administraties_met_opt_in
+    from app.uren.werkopdracht import teksten_voor_dag
+
+    with scoped_session(None, actor_id=uitvoerder_id) as session:
+        actor = _gebruiker(session, uitvoerder_id)
+        if actor.rol != GebruikerRol.UITVOERDER:
+            raise GeenToegang("Alleen voor de rol uitvoerder")
+
+    uit: list[DagPlanningProject] = []
+    for administratie in _administraties_met_opt_in(uitvoerder_id, GebruikerRol.UITVOERDER):
+        with scoped_session(administratie.id) as session:
+            toewijzingen = list(
+                session.scalars(
+                    select(PlanningToewijzing).where(
+                        PlanningToewijzing.administratie_id == administratie.id,
+                        PlanningToewijzing.datum == datum,
+                    )
+                )
+            )
+            reserveringen = list(
+                session.scalars(
+                    select(PlanningReservering).where(
+                        PlanningReservering.administratie_id == administratie.id,
+                        PlanningReservering.datum == datum,
+                    )
+                )
+            )
+            project_ids = sorted({t.project_id for t in toewijzingen} | {r.project_id for r in reserveringen})
+            if not project_ids:
+                continue
+            gebruiker_ids = sorted({t.gebruiker_id for t in toewijzingen})
+            personen = (
+                {g.id: g for g in session.scalars(select(Gebruiker).where(Gebruiker.id.in_(gebruiker_ids))).all()}
+                if gebruiker_ids
+                else {}
+            )
+            projecten = {
+                r[0]: (r[1], r[2])
+                for r in session.execute(
+                    select(ProjectCache.id, ProjectCache.naam, ProjectSpecificatie)
+                    .outerjoin(
+                        ProjectSpecificatie,
+                        (ProjectSpecificatie.project_id == ProjectCache.id)
+                        & (ProjectSpecificatie.administratie_id == ProjectCache.administratie_id),
+                    )
+                    .where(ProjectCache.administratie_id == administratie.id, ProjectCache.id.in_(project_ids))
+                ).all()
+            }
+            # Transport per project × dag (Transport-tab, 31-08): alleen niet-geannuleerd; het vroegste per project.
+            transporten: dict[uuid.UUID, MateriaalTransport] = {}
+            for t in session.scalars(
+                select(MateriaalTransport)
+                .where(
+                    MateriaalTransport.administratie_id == administratie.id,
+                    MateriaalTransport.datum == datum,
+                    MateriaalTransport.project_id.in_(project_ids),
+                    MateriaalTransport.status != TransportStatus.GEANNULEERD.value,
+                )
+                .order_by(MateriaalTransport.tijdstip.nulls_last(), MateriaalTransport.aangemaakt_op)
+            ).all():
+                transporten.setdefault(t.project_id, t)
+            ploeg_per_project: dict[uuid.UUID, list[DagPlanningPloeglid]] = {pid: [] for pid in project_ids}
+            for t in toewijzingen:
+                g = personen.get(t.gebruiker_id)
+                ploeg_per_project[t.project_id].append(
+                    DagPlanningPloeglid(
+                        gebruiker_id=t.gebruiker_id,
+                        naam=g.naam if g else None,
+                        dagdeel=t.dagdeel,
+                        is_uitvoerder=bool(g and g.rol == GebruikerRol.UITVOERDER),
+                    )
+                )
+            for pid in project_ids:
+                naam, spec = projecten.get(pid, (None, None))
+                ploeg = sorted(ploeg_per_project[pid], key=lambda p: (not p.is_uitvoerder, p.naam or ""))
+                transport = transporten.get(pid)
+                uit.append(
+                    DagPlanningProject(
+                        datum=datum,
+                        administratie_id=administratie.id,
+                        administratie_naam=administratie.naam,
+                        project_id=pid,
+                        project_naam=naam,
+                        opdrachtgever=spec.opdrachtgever if spec else None,
+                        werknummer_opdrachtgever=spec.werknummer_opdrachtgever if spec else None,
+                        plaats=spec.locatie_adres if spec else None,
+                        ploeg=ploeg,
+                        gereserveerd=not ploeg,
+                        transport=(
+                            DagPlanningTransport(
+                                soort=transport.soort, tijdstip=transport.tijdstip, status=transport.status
+                            )
+                            if transport
+                            else None
+                        ),
+                        werkopdrachten=teksten_voor_dag(
+                            session, administratie_id=administratie.id, project_id=pid, datum=datum
+                        ),
+                    )
+                )
+    uit.sort(key=lambda p: (p.project_naam or "", str(p.project_id)))
+    return uit
