@@ -129,12 +129,12 @@ describe('regelVoorstelChips — overstap-vertaling van een open voorstel (Odoo-
 })
 
 describe('regelVoorstelChips — project-bronvolgorde (blok 3 feedbackrun A 25-09, FV-02)', () => {
-  it('geheugen = oranje "voorstel uit historie" zolang het voorstel in het veld staat', () => {
-    const chip = bepaalProjectFactuurChip('geheugen', 'Voorstel uit de historie van deze leverancier', 'p-1', false)
-    expect(chip).toMatchObject({ klasse: 'afwijking', tekst: 'voorstel uit historie' })
+  it('geheugen = uitleg-chip "niet ingevuld" zolang het veld LEEG is — nooit een gevuld project uit de historie (punt 4 02-10)', () => {
+    const chip = bepaalProjectFactuurChip('geheugen', 'De historie van deze leverancier wijst naar een project', null, false)
+    expect(chip).toMatchObject({ klasse: 'afwijking', tekst: 'historie noemt een project — niet ingevuld' })
     expect(chip?.titel).toContain('historie')
-    expect(bepaalProjectFactuurChip('geheugen', null, null, false)).toBeNull()
-    expect(bepaalProjectFactuurChip('geheugen', null, 'p-1', true)).toBeNull()
+    expect(bepaalProjectFactuurChip('geheugen', null, 'p-1', false)).toBeNull()
+    expect(bepaalProjectFactuurChip('geheugen', null, null, true)).toBeNull()
   })
 
   it('factuur_conflict = uitleg-chip "kies zelf" zolang het veld leeg is, weg zodra er gekozen is', () => {

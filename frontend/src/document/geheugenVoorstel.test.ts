@@ -29,10 +29,16 @@ describe('omschrijvingSleutel', () => {
   })
 })
 
+const voosteldMetProject = () => voostel_met_project()
+function voostel_met_project() {
+  return voorstel({ project: veld(PROJECT) })
+}
+
 describe('bepaalPrefill', () => {
-  it('vult alleen lege, niet-handmatige velden (project alleen bij projectplicht)', () => {
-    expect(bepaalPrefill(regel(), voorstel(), true)).toEqual({ ledgerId: GB, taxrateId: BTW, projectId: PROJECT })
+  it('vult alleen lege, niet-handmatige velden — het project NOOIT uit het geheugen (punt 4 02-10), ook niet bij projectplicht', () => {
+    expect(bepaalPrefill(regel(), voorstel(), true)).toEqual({ ledgerId: GB, taxrateId: BTW })
     expect(bepaalPrefill(regel(), voorstel(), false)).toEqual({ ledgerId: GB, taxrateId: BTW })
+    expect(bepaalPrefill(regel(), voosteldMetProject(), true).projectId).toBeUndefined()
   })
 
   it('overschrijft nooit een al gevuld veld', () => {

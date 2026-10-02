@@ -344,11 +344,13 @@ def _met_leverancier_geheugen(
     """Server-side spiegel van `frontend/src/document/geheugenVoorstel.ts::bepaalPrefill`: uitsluitend lege
     velden, project alleen bij projectplicht, élke engine-waarde (ook oranje — de chip blijft oranje).
 
-    Blok 3 feedbackrun A 25-09 (FV-02, bronvolgorde project): het geheugen is voor het PROJECT de LAATSTE bron en
-    nooit stil — (a) noemt de factuur (regeltekst/kop) een nummer in het administratie-formaat dat niet de code van
-    het geheugen-project is, dan wordt er NIETS ingevuld (`project_bron` = "factuur_conflict", chip "factuur noemt
-    ‹nr› — kies zelf"; bij projectplicht blijft de harde check de poort); (b) anders krijgt het gevulde project
-    `project_bron` = "geheugen" (chip "voorstel uit historie"). Grootboek/btw ongewijzigd."""
+    Blok 3 feedbackrun A 25-09 (FV-02, bronvolgorde project) + punt 4 "Boeken prettig 1" (Peter 02-10): het geheugen
+    vult het PROJECT NOOIT meer in — (a) noemt de factuur (regeltekst/kop) een nummer in het administratie-formaat dat
+    niet de code van het geheugen-project is, dan `project_bron` = "factuur_conflict" (chip "factuur noemt ‹nr› —
+    kies zelf"); (b) wijst de historie naar een afgesloten project → `geheugen_afgesloten`; (c) anders
+    `project_bron` = "geheugen" ZONDER `project_id` (alleen herkomst-informatie onder "Herkomst tonen"). Bij
+    projectplicht is een lege regel overhead via de projectverdeling (punt 5) of de mens kiest. Grootboek/btw
+    ongewijzigd."""
     if not engine_observaties:
         return regel
     voorstel = bepaal_voorstel(engine_observaties, regel_sleutel=regel_sleutel, vandaag=vandaag)
@@ -393,13 +395,17 @@ def _met_leverancier_geheugen(
                 ),
             }
         else:
-            wijzigingen["project_id"] = voorstel.project.waarde
-            herkomst[VELD_PROJECT] = HERKOMST_LEVERANCIER_GEHEUGEN
+            # Punt 4 "Boeken prettig 1" (Peter 02-10, casus f00117f4: brandstof op "Afgesloten 25147" uit de historie):
+            # het geheugen vult het PROJECT NIET meer in — ook niet als "voorstel uit historie". De historie reist
+            # alleen als herkomst-informatie mee (`project_bron = geheugen`, zonder `project_id`) zodat "Herkomst
+            # tonen" 'm kan noemen; het veld blijft leeg → regel zonder project = overhead via de projectverdeling
+            # (punt 5) of de mens kiest. Grootboek/btw uit het geheugen zijn ongewijzigd.
             extra = {
                 "project_bron": project_match.HERKOMST_GEHEUGEN,
                 "project_bron_detail": (
-                    "Voorstel uit de historie van deze leverancier — de factuur zelf noemt geen projectnummer. "
-                    "Controleer; de harde check op het project blijft de poort."
+                    "De historie van deze leverancier wijst naar een project, maar de factuur zelf noemt geen "
+                    "projectnummer — niet ingevuld (regel 02-10: nooit een project uit de historie zonder "
+                    "factuurverwijzing). Zonder project loopt de regel via de projectverdeling."
                 ),
             }
     if not wijzigingen and not extra:

@@ -76,7 +76,7 @@ class TestWerknummer:
 
 
 class TestBronvolgordeProject:
-    """Blok 3 feedbackrun A 25-09 (FV-02): het geheugen is voor het project de LAATSTE bron en altijd zichtbaar."""
+    """Blok 3 feedbackrun A 25-09 (FV-02) + punt 4 02-10: het geheugen vult het project NOOIT, alleen zichtbaar."""
 
     def _geheugen(self, keten: Keten, project_id: uuid.UUID) -> None:
         with scoped_session(keten.administratie_id, actor_id=keten.actor) as session:
@@ -104,12 +104,12 @@ class TestBronvolgordeProject:
         voorstel = keten.prefill(factuur)
         assert all(r.project_id == PROJECT_26084 and r.project_bron == "factuur" for r in voorstel.regels)
 
-    def test_geheugen_alleen_zonder_factuurbron_en_dan_zichtbaar(self, keten: Keten, factuur: uuid.UUID) -> None:
+    def test_geheugen_vult_nooit_zonder_factuurbron_maar_zichtbaar(self, keten: Keten, factuur: uuid.UUID) -> None:
         from tests.keten.conftest import PROJECT_26049
 
         self._geheugen(keten, PROJECT_26049)
         voorstel = keten.prefill(factuur)
         # W03611 is een onbekend werknummer (geen mapping) en geen code in het cache-formaat → geen factuurbron;
-        # het geheugen vult dan, mét de zichtbare herkomst "geheugen" (chip "voorstel uit historie").
-        assert all(r.project_id == PROJECT_26049 and r.project_bron == "geheugen" for r in voorstel.regels)
-        assert all((r.prefill_herkomst or {}).get("project") == "leverancier_geheugen" for r in voorstel.regels)
+        # punt 4 02-10: het geheugen vult dan NIETS (veld leeg), de herkomst "geheugen" blijft zichtbaar als uitleg.
+        assert all(r.project_id is None and r.project_bron == "geheugen" for r in voorstel.regels)
+        assert all("project" not in (r.prefill_herkomst or {}) for r in voorstel.regels)

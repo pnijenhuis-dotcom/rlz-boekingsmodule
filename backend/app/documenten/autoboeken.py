@@ -442,10 +442,14 @@ class AutoboekBesluit:
 
 def _geheugen_veld_geblokkeerd(voorstel: GeheugenVoorstel, *, project_vereist: bool) -> str | None:
     """Weiger-reden wanneer het geheugen-voorstel niet volledig app-bevestigd en groen is.
-    Seed-only (alleen RLZ-historie) blijft oranje en boekt dus nooit automatisch."""
+    Seed-only (alleen RLZ-historie) blijft oranje en boekt dus nooit automatisch.
+
+    Punt 4 "Boeken prettig 1" (Peter 02-10): het PROJECT komt nooit meer uit het geheugen — ook niet op het
+    autoboek-pad. `project_vereist` toetst hier dus niets meer; een regel zonder factuur-/cachecode-project blijft
+    leeg en loopt onder projectplicht via de projectverdeling (punt 5) óf de harde check "Verplichte velden"
+    blokkeert het automatisch boeken (bestaand, zichtbaar als `autoboeken_geweigerd`)."""
+    del project_vereist
     velden = [("grootboek", voorstel.gb), ("btw", voorstel.btw)]
-    if project_vereist:
-        velden.append(("project", voorstel.project))
     for naam, veld in velden:
         if veld.waarde is None:
             return f"geheugen heeft geen voorstel voor {naam}"
@@ -457,12 +461,9 @@ def _geheugen_veld_geblokkeerd(voorstel: GeheugenVoorstel, *, project_vereist: b
 def _vul_regel_uit_geheugen(
     regel: BoekvoorstelRegelData, voorstel: GeheugenVoorstel, *, project_vereist: bool
 ) -> BoekvoorstelRegelData:
-    return replace(
-        regel,
-        ledger_id=voorstel.gb.waarde,
-        taxrate_id=voorstel.btw.waarde,
-        project_id=voorstel.project.waarde if project_vereist else regel.project_id,
-    )
+    # Punt 4 02-10: het project blijft wat de factuur/cachecode gaf — nooit het geheugen-project.
+    del project_vereist
+    return replace(regel, ledger_id=voorstel.gb.waarde, taxrate_id=voorstel.btw.waarde, project_id=regel.project_id)
 
 
 def _weiger(

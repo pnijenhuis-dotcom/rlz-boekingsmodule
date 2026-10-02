@@ -43,12 +43,14 @@ export interface GeheugenVulbareRegel {
 export type GeheugenPrefill = Partial<Pick<GeheugenVulbareRegel, 'ledgerId' | 'taxrateId' | 'projectId'>>
 
 /** Prefill-besluit: uitsluitend velden die leeg zijn én nooit door de gebruiker zijn aangeraakt —
- * een handmatige keuze (ook een expres leeggemaakt veld) wordt nooit overschreven. Project alleen
- * bij projectplicht: zonder plicht is de kolom onzichtbaar en reist project_id niet mee in de PUT. */
+ * een handmatige keuze (ook een expres leeggemaakt veld) wordt nooit overschreven.
+ * Punt 4 "Boeken prettig 1" (Peter 02-10): het PROJECT komt nooit uit het geheugen — ook niet bij projectplicht
+ * (de server-spiegel `regel_prefill._met_leverancier_geheugen` vult het evenmin; de historie is alleen nog
+ * herkomst-informatie). `projectVerplicht` blijft als parameter voor de aanroepers, maar stuurt niets meer. */
 export function bepaalPrefill(
   regel: GeheugenVulbareRegel,
   voorstel: GeheugenVoorstelDto,
-  projectVerplicht: boolean,
+  _projectVerplicht: boolean,
 ): GeheugenPrefill {
   const vulling: GeheugenPrefill = {}
   if (voorstel.gb.waarde && regel.ledgerId === null && !regel.handmatigeVelden.ledgerId) {
@@ -56,9 +58,6 @@ export function bepaalPrefill(
   }
   if (voorstel.btw.waarde && regel.taxrateId === null && !regel.handmatigeVelden.taxrateId) {
     vulling.taxrateId = voorstel.btw.waarde
-  }
-  if (projectVerplicht && voorstel.project.waarde && regel.projectId === null && !regel.handmatigeVelden.projectId) {
-    vulling.projectId = voorstel.project.waarde
   }
   return vulling
 }

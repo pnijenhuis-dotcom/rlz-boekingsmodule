@@ -30,7 +30,8 @@ export type BtwBron =
  * projectcode op de factuur, of een bevestigd werknummer van deze leverancier), 'factuur_onbevestigd' = oranje
  * (werknummer nog niet bevestigd — boeken bevestigt 'm — of fuzzy op plaats/opdrachtgever), 'factuur_meerduidig' =
  * niets ingevuld, meerdere projecten passen (de detailtekst noemt ze; de mens kiest). */
-/** Blok 3 feedbackrun A 25-09 (FV-02, bronvolgorde project): 'geheugen' = gevuld uit de historie van de leverancier
+/** Blok 3 feedbackrun A 25-09 (FV-02, bronvolgorde project) + punt 4 02-10: 'geheugen' = de historie van de leverancier
+ * wijst naar een project maar het veld is bewust LEEG gelaten (nooit een project uit de historie zonder factuurverwijzing)
  * (chip "voorstel uit historie" — nooit stil; alleen als factuur/werknummer/klant-loze code niets gaven),
  * 'factuur_conflict' = niets ingevuld omdat de factuur een ánder projectnummer noemt dan het geheugen (chip + keuze). */
 export type ProjectBron = 'factuur' | 'factuur_onbevestigd' | 'factuur_meerduidig' | 'geheugen' | 'factuur_conflict'
@@ -88,14 +89,17 @@ export function bepaalProjectFactuurChip(
       titel: `${detail ?? 'De factuur noemt een projectnummer dat niet het project uit de historie van deze leverancier is.'} Het geheugen vult dan niets in (bronvolgorde: factuur > werknummer > historie).`,
     }
   }
-  if (!huidigProjectId) return null
   if (bron === 'geheugen') {
+    // Punt 4 "Boeken prettig 1" (02-10): het geheugen vult het project NIET meer — de chip is alleen nog uitleg bij
+    // een LEEG veld (historie wijst naar een project, bewust niet ingevuld); weg zodra er iets gekozen is.
+    if (huidigProjectId) return null
     return {
       klasse: 'afwijking',
-      tekst: 'voorstel uit historie',
-      titel: `Project uit de historie van deze leverancier — de factuur zelf noemt geen projectnummer.${toelichting} Controleer; de projectplicht-check blijft de poort.`,
+      tekst: 'historie noemt een project — niet ingevuld',
+      titel: `${detail ?? 'De historie van deze leverancier wijst naar een project, maar de factuur zelf noemt geen projectnummer.'} Sinds 02-10 vult de module nooit een project uit de historie zonder factuurverwijzing: zonder project loopt de regel via de projectverdeling, of u kiest zelf.`,
     }
   }
+  if (!huidigProjectId) return null
   if (bron === 'factuur') {
     return {
       klasse: 'ok',

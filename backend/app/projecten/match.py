@@ -259,7 +259,7 @@ def match_project(
 # --- blok 3 feedbackrun A 25-09 (FV-02): klant-loze projectcode-herkenning op het formaat van de administratie ----
 
 #: `project_bron`-waarden van de bronvolgorde 25-09 (naast HERKOMST_FACTUUR/_ONBEVESTIGD/_MEERDUIDIG hierboven).
-HERKOMST_GEHEUGEN = "geheugen"  # gevuld uit het leverancier-geheugen — ZICHTBAAR ("voorstel uit historie"), nooit stil
+HERKOMST_GEHEUGEN = "geheugen"  # NIET gevuld (punt 4 02-10): de historie wijst naar een project — alleen herkomst-info
 HERKOMST_FACTUUR_CONFLICT = "factuur_conflict"  # niets ingevuld: de factuur noemt een ánder nummer dan het geheugen
 HERKOMST_GEHEUGEN_AFGESLOTEN = "geheugen_afgesloten"  # niets ingevuld: de historie wijst naar een afgesloten project
 

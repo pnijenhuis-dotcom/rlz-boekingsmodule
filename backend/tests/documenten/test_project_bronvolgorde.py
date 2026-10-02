@@ -1,9 +1,10 @@
-"""Blok 3 feedbackrun A 25-09 (FV-02): bronvolgorde voor het PROJECT — (1) factuur/werknummer (bestaand),
-(2) klant-loze projectcode in de factuurtekst op het formaat van de administratie (uit de projectcache, nooit
-hardcoded), (3) het leverancier-geheugen als LAATSTE bron, altijd zichtbaar (`project_bron` = "geheugen"); noemt de
-factuur een ánder nummer dan het geheugen-project, dan wordt er niets ingevuld (`factuur_conflict`). Afgesloten/
-inactieve projecten alleen bij een exacte verwijzing; meerduidig = niets; geen bron + geen geheugen + projectplicht =
-leeg (harde check rood). Het autoboek-pad boekt nooit automatisch bij een factuur-conflict."""
+"""Blok 3 feedbackrun A 25-09 (FV-02) + punt 4 "Boeken prettig 1" (Peter 02-10): bronvolgorde voor het PROJECT —
+(1) factuur/werknummer (bestaand), (2) klant-loze projectcode in de factuurtekst op het formaat van de administratie
+(uit de projectcache, nooit hardcoded), (3) het leverancier-geheugen vult NIETS meer in — het reist alleen als
+herkomst-informatie mee (`project_bron` = "geheugen" zonder `project_id`); noemt de factuur een ánder nummer dan het
+geheugen-project, dan `factuur_conflict`. Afgesloten/inactieve projecten alleen bij een exacte verwijzing; meerduidig =
+niets; geen bron + projectplicht = leeg (overhead via de projectverdeling, anders harde check rood). Het autoboek-pad
+boekt nooit automatisch op het geheugen-project en nooit bij een factuur-conflict."""
 
 from __future__ import annotations
 
@@ -230,25 +231,29 @@ class TestBronvolgorde:
         assert conflict.project_id is None and conflict.project_bron == "factuur_conflict"
         assert "26999" in (conflict.project_bron_detail or "")
         assert conflict.prefill_herkomst is None or "project" not in conflict.prefill_herkomst
-        # De andere regel noemt niets → het geheugen vult 'm, zichtbaar.
-        assert gewoon.project_id == P_TILBURG and gewoon.project_bron == "geheugen"
+        # De andere regel noemt niets → het geheugen vult 'm NIET (punt 4 02-10), alleen zichtbare herkomst.
+        assert gewoon.project_id is None and gewoon.project_bron == "geheugen"
 
-    def test_geen_bron_op_de_factuur_dan_geheugen_zichtbaar_als_voorstel_uit_historie(
+    def test_geen_bron_op_de_factuur_dan_vult_het_geheugen_niets_maar_blijft_zichtbaar(
         self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag, omgeving: None
     ) -> None:
+        """Punt 4 02-10 (casus f00117f4: brandstof op "Afgesloten 25147" uit de historie): het geheugen vult het
+        project NIET meer — grootboek/btw wél; de historie staat alleen als herkomst-informatie op de regel."""
         _geheugen(administratie_id, P_TILBURG)
         document_id = _upload(administratie_id, gescoopte_gebruiker, opslag)
         p = _prefill(administratie_id, document_id)
-        assert [r.project_id for r in p.regels] == [P_TILBURG, P_TILBURG]
+        assert [r.project_id for r in p.regels] == [None, None]
         assert all(r.project_bron == "geheugen" for r in p.regels)
-        assert all((r.prefill_herkomst or {}).get("project") == "leverancier_geheugen" for r in p.regels)
-        assert "historie" in (p.regels[0].project_bron_detail or "")
+        assert all("project" not in (r.prefill_herkomst or {}) for r in p.regels)
+        assert all(r.ledger_id == GB_KOSTEN and r.taxrate_id == HOOG_ID for r in p.regels)  # gb/btw ongewijzigd
+        assert "niet ingevuld" in (p.regels[0].project_bron_detail or "")
         # Persistent bij openen (A10) mét herstelde chip uit het snapshot.
         boekvoorstel.persisteer_prefill_bij_openen(
             administratie_id=administratie_id, document_id=document_id, geopend_door=gescoopte_gebruiker
         )
         data = _prefill(administratie_id, document_id)
         assert data.opgeslagen is True and [r.project_bron for r in data.regels] == ["geheugen", "geheugen"]
+        assert [r.project_id for r in data.regels] == [None, None]
 
     def test_geen_bron_en_geen_geheugen_bij_projectplicht_is_leeg_en_de_check_is_rood(
         self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag, omgeving: None
