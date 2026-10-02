@@ -3508,6 +3508,10 @@ def main(argv: list[str] | None = None) -> int:
     from app.intake.tweelingen_herstel import register as register_tweelingen
 
     register_tweelingen(subparsers)  # dry-run default; --uitvoeren schrijft
+    from app.intake.bijlagen_nabundelen import dispatch as dispatch_bijlagen_nabundelen  # 02-10: bijlagen bij de factuur
+    from app.intake.bijlagen_nabundelen import register as register_bijlagen_nabundelen
+
+    register_bijlagen_nabundelen(subparsers)  # dry-run default; --uitvoeren schrijft; --ongedaan <bijlage-id> --reden
     from app.verkoop.heraanbieden import dispatch as dispatch_vastly_heraanbieden  # 29-09: Vastly-verkoop automatisch
     from app.verkoop.heraanbieden import register as register_vastly_heraanbieden
 
@@ -4369,6 +4373,8 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_pdf_toets
     if (uitkomst_tweelingen := dispatch_tweelingen(args)) is not None:  # 24-09 blok 1: vastly-pdf-tweelingen-herstel
         return uitkomst_tweelingen
+    if (uitkomst_bijlagen := dispatch_bijlagen_nabundelen(args)) is not None:  # 02-10: bijlagen-nabundelen
+        return uitkomst_bijlagen
     if (uitkomst_vastly := dispatch_vastly_heraanbieden(args)) is not None:  # 29-09: vastly-verkoop-heraanbieden
         return uitkomst_vastly
     if (uitkomst_odoo_sync := dispatch_odoo_sync(args)) is not None:  # 24-09 blok 2: odoo-stamgegevens-sync

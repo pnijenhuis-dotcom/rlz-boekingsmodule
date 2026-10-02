@@ -47,6 +47,10 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.NIET_TOEGEWEZEN,
             DocumentStatus.AFGEWEZEN,
             DocumentStatus.VERWIJDERD,
+            # Bijlagen bij de factuur (Peter 02-10, migratie 0174): een niet-factuur-bijlage uit dezelfde mail wordt
+            # direct bij binnenkomst de samengevoegd-rij van zijn factuur (app/documenten/bijlagen.py) — geen eigen
+            # werkvoorraad-rij, nooit geëxtraheerd.
+            DocumentStatus.SAMENGEVOEGD,
         }
     ),
     # Wachtrij: de worker pakt het op (-> bezig, systeem-actor); verwijderen/afwijzen kan nog
@@ -116,6 +120,9 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.WORDT_GEBOEKT,
             DocumentStatus.BOEKEN_MISLUKT,
             DocumentStatus.TE_CONTROLEREN,
+            # Bijlagen-nazorg (02-10, `bijlagen-nabundelen`): een al gesplitste bijlage die klaar-om-te-boeken stond
+            # wordt alsnog de bijlage van zijn factuur — terugvindbaar, terugdraaibaar, nooit verwijderd.
+            DocumentStatus.SAMENGEVOEGD,
             # Klant-accorderingsflow (migratie 0033): administratie met accordering aan —
             # de boekknop wordt "Ter accordering", het document gaat naar de klant.
             DocumentStatus.TER_ACCORDERING,
@@ -283,8 +290,16 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     # document nog in de verzamelbak staat of nagebundeld is); een nagebundeld UBL-DOCUMENT (03-09)
     # gaat terug naar de status van vóór de nabundeling (te_controleren/handmatig_afmaken — uit het
     # tijdlijn-detail `vorige_status`, nooit hardgecodeerd). Nooit naar verwijderd.
+    # Bijlage ongedaan (02-10, `bijlagen-nabundelen --ongedaan`): terug naar de status van vóór de koppeling
+    # (tijdlijn-detail `vorige_status`) — een intake-bijlage gaat naar ontvangen en loopt dan de normale keten.
     DocumentStatus.SAMENGEVOEGD: frozenset(
-        {DocumentStatus.NIET_TOEGEWEZEN, DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN}
+        {
+            DocumentStatus.NIET_TOEGEWEZEN,
+            DocumentStatus.TE_CONTROLEREN,
+            DocumentStatus.HANDMATIG_AFMAKEN,
+            DocumentStatus.ONTVANGEN,
+            DocumentStatus.KLAAR_OM_TE_BOEKEN,
+        }
     ),
     DocumentStatus.VERWIJDERD: _NIET_GEBOEKTE_STATUSSEN,
 }

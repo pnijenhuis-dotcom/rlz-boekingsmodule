@@ -558,12 +558,19 @@ def boek_document(
             # gebundelde of ingesloten factuur-PDF — RLZ toont een PDF, een kale UBL is voor een mens
             # onleesbaar. Zonder beeld gaat het hoofdbestand zelf mee (bestaand gedrag).
             beeld = bepaal_beeld(bestanden, opslag=_standaard_opslag())
+            # Bijlagen bij de factuur (02-10): de bijlagen uit dezelfde mail gaan mee als extra bijlage.
+            from app.documenten import bijlagen as bijlagen_module
+
+            extra_bijlagen = bijlagen_module.extra_bijlagen_voor_boeking(
+                administratie_id=administratie_id, document_id=document_id, boek_cyclus=voorstel.boek_cyclus
+            )
             with timing.met("boek.rlz"):
                 uitkomst = port.boek_inkoopfactuur(
                     document_id=document_id,
                     voorstel=voorstel,
                     bestand=beeld.inhoud,
                     bestandsnaam=beeld.bestandsnaam,
+                    extra_bijlagen=extra_bijlagen,
                 )
             rlz_document_id, rlz_boekstuknummer = uitkomst.extern_document_id, uitkomst.boekstuknummer
         except BackendBoekFout as exc:

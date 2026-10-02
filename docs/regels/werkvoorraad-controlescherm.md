@@ -370,6 +370,50 @@
   `kopDoorgezetTijdlijn.test.ts`; keten-baselines van de detail-casussen ververst (gewilde UI-wijziging). Werkt in productie: niet
   gemeten (dispatch-onderdeel `comfort-controlescherm`).
 
+<!-- toegevoegd 02-10-2026, opdracht "boeken-prettig-1-bijlagen-bij-factuur-controlescherm-rustig-overhead-automatisch" punt 2 -->
+- **Rustig controlescherm — groen = niets tonen, één "Herkomst tonen" per blok (Peter 02-10, casus Universal Steigerbouw f00117f4
+  RLZ-2080142625: "Die velden onder crediteuren (AI 85% · herkend op btw-nummer NL · …) hoef ik allemaal niet te zien … verbergen" /
+  "als het klopt niet tonen, maakt alleen het beeldscherm heel druk en als het niet klopt past de medewerker het wel aan"; geen
+  migratie, geen server-wijziging, geen instelling; BESLISSINGEN "BOEKEN PRETTIG 1 — BIJLAGEN BIJ DE FACTUUR, RUSTIG SCHERM, OVERHEAD
+  AUTOMATISCH (Peter 02-10)"):** in de blokken Crediteur, Kopgegevens en Boekingsregels verdwijnen álle herkomst-/zekerheidschips uit
+  de standaardweergave (AI %, "uit factuur", "herkend op btw-nummer/KvK/IBAN", land-chip, KvK-/btw-nummer-chips + "uit factuur/UBL",
+  "uit template", "uit UBL", "Geheugen N %" groen, "uit geheugen", "standaard administratie/grootboek", "uit regel", "ingekort",
+  "uit pinbon", betaalstatus-/kanaal-/afdeling-herkomst, "uit factuur (21%)", project "uit factuur"). Zichtbaar blijft uitsluitend een
+  AFWIJKING als één regel onder het veld: oranje/rood — onzeker onder de drempel, fuzzy/niet gevonden, "geheugen wisselend", "uit
+  historie, nog niet bevestigd", "AI-voorstel — bevestig", "voorstel uit historie", "factuur noemt een ander project — kies zelf",
+  meerduidig, "Geheugen: ‹andere waarde›", "btw verlegd"-chips, overstap-chips, "weergave hersteld", "btw herrekend (netto
+  gewijzigd)", "tarief onbekend", "niet gelezen (afgedekt)", "pinbon zegt …", én de inhoudelijke uitzonderingen mét rustige klasse
+  ("btw in kosten (niet aftrekbaar)", "samenvoegen niet mogelijk: …", "administratie niet btw-plichtig"). De periode-chip staat
+  alleen als de periode NIET uit de factuur komt ("week van de factuurdatum (aanname)"). Eén deterministische regel uit de bestaande
+  chip-klasse (`document/herkomstZichtbaarheid.ts::chipSoort`: `afwijking`/`blokkerend`/`vraag` = altijd; `ok`/`handmatig`/`geheugen`/
+  `stil`/neutraal = herkomst; `altijdTonen` voor de uitzonderingen) — designpass-v2-semantiek (groen = status, oranje = bevestigen)
+  wordt zo de zichtbaarheidsregel, geen tweede lijst. Per blok een `linkbtn` "Herkomst tonen" / "Herkomst verbergen" in de blokkop
+  (`HerkomstBlokKop`, `aria-pressed`; niet in de alleen-lezen stand) die exact de chips van vóór 02-10 van dát blok uitklapt
+  (`HerkomstBlokProvider` + `HerkomstChip`, niets weggegooid — alleen verborgen); stand per browsersessie (`sessionStorage
+  rlz.controle.herkomst.<blok>`, try/catch, default dicht), nooit server-state. Harde checks, check-rij-acties, de oranje
+  aangifte-check, de regelsom-chip en de KvK-mismatch-guard ongewijzigd. Guards: vitest `herkomstZichtbaarheid.test.ts`,
+  `BoekvoorstelPanel.rustig.test.tsx` (nul chips bij een kloppende f00117f4-stand, per blok uitklappen, afwijkingen zonder klik,
+  bewaarde stand); bestaande chip-tests klappen eerst uit via `testHerkomst.ts::toonHerkomst()` (geen bewering stil verloren);
+  keten-sweep detail-baselines gewild ververst. Werkt in productie: niet gemeten (klikpunt Peter: f00117f4 openen ná deploy).
+
+<!-- toegevoegd 02-10-2026, opdracht "boeken-prettig-1-bijlagen-bij-factuur-controlescherm-rustig-overhead-automatisch" punt 3 -->
+- **Samenvoeg-vinkje óók onder projectplicht (Peter 02-10 "boekingsregels. Waar is mijn vinkje splitsen?", casus Universal
+  Steigerbouw f00117f4 — RLZ-2080142625, brandstof diesel, twee regels 21 %; geen migratie; BESLISSINGEN "BOEKEN PRETTIG 1 —
+  BIJLAGEN BIJ DE FACTUUR, RUSTIG SCHERM, OVERHEAD AUTOMATISCH (Peter 02-10)" punt 3):** de fix-3-regel van 10-07 "projectplicht
+  = hard gesplitst, samenvoegen kan daar niet" (`samenvoegen_toegestaan` False, keuze bij opslaan genegeerd) is HERZIEN.
+  `boekvoorstel._samenvoeg_velden` staat samenvoegen nu in élke administratie toe: bij ≥ 2 regels het vinkje boven de tabel,
+  de één-regel-variant volgens de regel 18-09/23-09 (bron = opgeslagen regels bij ≥ 2, Σ netto/btw cent-exact, één btw-code
+  anders reden-chip, grootboek alleen als alle regels hetzelfde dragen), en de keuze wordt óók onder projectplicht als
+  leverancier-voorkeur onthouden (`LeverancierVoorkeur.regels_samenvoegen`). Het PROJECT van de samengevoegde regel
+  (`_samengevoegde_regel_uit_opgeslagen`) = het gemeenschappelijke project als álle regels hetzelfde dragen, anders leeg —
+  een regel zonder project valt onder de projectverdeling (punt 5). De DEFAULT zonder voorkeur blijft onder projectplicht
+  gesplitst (project per regel is daar de werkvorm; de mens vinkt samen); zonder projectplicht blijft de backend-capability
+  (RLZ samengevoegd, Odoo gesplitst). Autoboek-pad en RLZ-PUT ongewijzigd. Guards:
+  `tests/documenten/test_boekvoorstel_samenvoegen_23_09.py::TestProjectplichtSluitSamenvoegenNietMeerUit` (751,15 / 157,74),
+  `test_boekvoorstel.py` (twee tests omgekeerd), gouden-set-casus ae (voorkeur onthouden → modus hersteld mét tijdlijnregel),
+  vitest `BoekvoorstelPanel.samenvoegen23.test.tsx`. Werkt in productie: niet gemeten (klikpunt Peter: f00117f4 openen ná deploy
+  → vinkje "Splitsen per regel" boven de twee regels; uitvinken = één regel 751,15 / 157,74).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Na boeken direct door, lijstcontext, sneltoetsen, actiebalk, boekingsregels-kolommen (CLAUDE.md `ed6d176` r. 271–294)

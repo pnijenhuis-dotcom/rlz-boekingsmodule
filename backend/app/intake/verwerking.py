@@ -52,8 +52,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from sqlalchemy import select
 
@@ -77,7 +78,7 @@ from app.documenten.ubl import (
     parseer_ubl_factuur,
 )
 from app.extractie import splitsing as splitsing_extractie
-from app.intake import dubbel_voor_ai, splitsing_uitsluiting
+from app.intake import bijlage_herkenning, dubbel_voor_ai, splitsing_uitsluiting
 from app.intake.bundeling import BijlagePaar, BundelItem, bundel_bijlagen
 from app.intake.eml import GeenGeldigeEml, IntakeBijlage, IntakeMail, parse_eml
 from app.intake.models import IntakeBericht, IntakeSplitsing
@@ -100,6 +101,9 @@ class BijlageResultaat:
     uitkomst: str
     document_id: uuid.UUID | None = None
     detail: str | None = None
+    #: Bijlagen bij de factuur (02-10): genormaliseerde sleutels (factuurnummer) van een factuur-document waarop een
+    #: niet-eenduidige bijlage uit dezelfde mail kan matchen; niet in `als_dict` (intern).
+    sleutels: tuple[str, ...] = ()
 
     def als_dict(self) -> dict:
         return {
@@ -753,7 +757,7 @@ def _verwerk_pdf(
             if gelezen_soort == splitsing_extractie.DOCUMENTSOORT_VERPLICHTING
             else DocumentSoort.INKOOPFACTUUR
         )
-        return _wijs_toe_of_verzamelbak(
+        uitkomst = _wijs_toe_of_verzamelbak(
             bijlage_naam=bijlage.bestandsnaam,
             inhoud=bijlage.inhoud,
             soort=soort,
@@ -766,6 +770,10 @@ def _verwerk_pdf(
             body_hint=body_hint,
             bron_bestand=bron_bestand,
             kanaal=kanaal,
+        )
+        # 02-10 (bijlagen bij de factuur): het gelezen factuurnummer als sleutel voor niet-eenduidige bijlagen.
+        return replace(
+            uitkomst, sleutels=tuple(bijlage_herkenning.sleutels_uit_tekst(segmenten[0].factuurnummer))
         )
 
     # Meerdere facturen: bron-document naar de verzamelbak MET splitsingsvoorstel — de
@@ -1030,6 +1038,140 @@ def _routeer_bundel_item(
             mail_store=mail_store,
         )
     ]
+
+
+#: Uitkomsten van een gerouteerd item waarop een bijlage kan hangen (document mét id in verzamelbak of administratie).
+_DRAGER_UITKOMSTEN = frozenset({"toegewezen", "verzamelbak", "splitsingsvoorstel"})
+UITKOMST_BIJLAGE = "bijlage"
+_UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def _administratie_uit_resultaat(r: BijlageResultaat) -> uuid.UUID | None:
+    """Scope van een gerouteerd document: `toegewezen` draagt "‹bron› → ‹administratie-uuid›" in het detail
+    (bestaande vorm, ook de nabundel-nazorg leest 'm zo); verzamelbak/splitsingsvoorstel = scope NULL."""
+    if r.uitkomst != "toegewezen" or not r.detail:
+        return None
+    m = _UUID_RE.search(r.detail)
+    return uuid.UUID(m.group(0)) if m else None
+
+
+def _verwerk_items_met_bijlagen(
+    items: list[BundelItem],
+    *,
+    afzender: str | None,
+    actor_id: uuid.UUID,
+    intake_bericht_id: uuid.UUID | None,
+    opslag: DocumentOpslag | None,
+    body_hint: str | None,
+    kanaal: DocumentBron,
+    logo_filter: bool,
+    mail_tenaamstelling: str | None = None,
+    mail_store: str | None = None,
+) -> list[BijlageResultaat]:
+    """De mail-regel (Peter 02-10): (1) élk niet-BIJLAGE-item loopt de bestaande routing; (2) precies één
+    factuur-document uit die routing → álle BIJLAGE-items hangen eraan; meerdere → per bijlage de factuur waarvan
+    het factuur-/werknummer in bestandsnaam of tekst staat, geen eenduidige treffer → bij álle facturen mét rol
+    'bijlage_niet_eenduidig' (liever dubbel dan kwijt); (3) nul facturen → de BIJLAGE-items lopen alsnog de oude route
+    (bestaand gedrag, ongewijzigd). Een bijlage wordt nooit geëxtraheerd of gesplitst."""
+    from app.documenten import bijlagen as bijlagen_module  # lokaal: houdt de importgraaf intake → documenten klein
+
+    def route(item: BundelItem) -> list[BijlageResultaat]:
+        return _routeer_bundel_item(
+            item,
+            afzender=afzender,
+            actor_id=actor_id,
+            intake_bericht_id=intake_bericht_id,
+            opslag=opslag,
+            body_hint=body_hint,
+            kanaal=kanaal,
+            logo_filter=logo_filter,
+            mail_tenaamstelling=mail_tenaamstelling,
+            mail_store=mail_store,
+        )
+
+    herkenningen = [(item, bijlage_herkenning.herken_item(item, logo_filter=logo_filter)) for item in items]
+    bijlage_items = [(item, h) for item, h in herkenningen if h.klasse == bijlage_herkenning.KLASSE_BIJLAGE]
+    if not bijlage_items:
+        return [r for item in items for r in route(item)]
+
+    resultaten: list[BijlageResultaat] = []
+    dragers: list[tuple[BijlageResultaat, frozenset[str]]] = []
+    gezien: set[uuid.UUID] = set()
+    for item, h in herkenningen:
+        if h.klasse == bijlage_herkenning.KLASSE_BIJLAGE:
+            continue
+        uitkomsten = route(item)
+        resultaten.extend(uitkomsten)
+        for r in uitkomsten:
+            if r.uitkomst not in _DRAGER_UITKOMSTEN or r.document_id is None or r.document_id in gezien:
+                continue
+            gezien.add(r.document_id)
+            sleutels: set[str] = set(r.sleutels)
+            if isinstance(item, BijlagePaar):
+                sleutels |= bijlage_herkenning.sleutels_uit_ubl(item.ubl.inhoud)
+            elif item.is_xml:
+                sleutels |= bijlage_herkenning.sleutels_uit_ubl(item.inhoud)
+            dragers.append((r, frozenset(sleutels)))
+
+    if not dragers:
+        # Nul facturen in de mail: bestaand gedrag — de bijlagen lopen de oude route (verzamelbak/AI), nooit stil weg.
+        for item, _ in bijlage_items:
+            resultaten.extend(route(item))
+        return resultaten
+
+    for item, h in bijlage_items:
+        assert isinstance(item, IntakeBijlage)
+        if len(dragers) == 1:
+            doelen, niet_eenduidig = dragers, False
+        else:
+            treffers = [
+                d for d in dragers if bijlage_herkenning.bijlage_draagt_sleutel(item.bestandsnaam, item.inhoud, d[1])
+            ]
+            doelen, niet_eenduidig = (treffers, False) if len(treffers) == 1 else (dragers, True)
+        gekoppeld: list[str] = []
+        for drager, _ in doelen:
+            try:
+                bijlagen_module.registreer_bijlage(
+                    factuur_document_id=drager.document_id,  # type: ignore[arg-type]
+                    administratie_id=_administratie_uit_resultaat(drager),
+                    bestandsnaam=item.bestandsnaam,
+                    inhoud=item.inhoud,
+                    content_type=item.content_type,
+                    actor_id=actor_id,
+                    intake_bericht_id=intake_bericht_id,
+                    opslag=opslag,
+                    niet_eenduidig=niet_eenduidig,
+                    kanaal=kanaal,
+                )
+                gekoppeld.append(drager.bestandsnaam)
+            except Exception as exc:  # noqa: BLE001 — nooit stil: de bijlage valt terug op de oude route
+                logger.exception("bijlage %s koppelen aan %s mislukt", item.bestandsnaam, drager.document_id)
+                resultaten.extend(route(item))
+                resultaten.append(
+                    BijlageResultaat(
+                        bestandsnaam=item.bestandsnaam,
+                        uitkomst="bijlage_koppelen_mislukt",
+                        detail=(
+                            f"koppelen aan {drager.bestandsnaam} mislukt ({type(exc).__name__}) — oude route gevolgd"
+                        ),
+                    )
+                )
+                gekoppeld = []
+                break
+        if not gekoppeld:
+            continue
+        detail = f"bijlage bij {', '.join(gekoppeld)} ({h.reden})"
+        if niet_eenduidig:
+            detail += " — niet eenduidig (meerdere facturen in de mail, geen treffer op factuur-/werknummer)"
+        resultaten.append(
+            BijlageResultaat(
+                bestandsnaam=item.bestandsnaam,
+                uitkomst=UITKOMST_BIJLAGE,
+                document_id=doelen[0][0].document_id,
+                detail=detail,
+            )
+        )
+    return resultaten
 
 
 def _profx_mail_tenaamstelling(bijlagen: list[IntakeBijlage]) -> str | None:
@@ -1401,22 +1543,20 @@ def verwerk_eml(
     bijlage_hashes = sorted({hashlib.sha256(b.inhoud).hexdigest() for b in mail.bijlagen if not b.inline})
     mail_tenaamstelling = _profx_mail_tenaamstelling(mail.bijlagen)
     mail_store = _dagstaat_mail_store(mail.bijlagen)
-    resultaten: list[BijlageResultaat] = [
-        r
-        for item in bundel_bijlagen(mail.bijlagen)
-        for r in _routeer_bundel_item(
-            item,
-            afzender=mail.afzender,
-            actor_id=actor_id,
-            intake_bericht_id=bericht_id,
-            opslag=opslag,
-            body_hint=mail.body_tekst,
-            kanaal=DocumentBron.EMAIL,
-            logo_filter=True,
-            mail_tenaamstelling=mail_tenaamstelling,
-            mail_store=mail_store,
-        )
-    ]
+    # Bijlagen bij de factuur (Peter 02-10, "één mail = één document"): per mail eerst deterministisch per bijlage
+    # factuur / kandidaat / bijlage (app/intake/bijlage_herkenning.py), dan de mail-regel `_verwerk_items_met_bijlagen`.
+    resultaten: list[BijlageResultaat] = _verwerk_items_met_bijlagen(
+        bundel_bijlagen(mail.bijlagen),
+        afzender=mail.afzender,
+        actor_id=actor_id,
+        intake_bericht_id=bericht_id,
+        opslag=opslag,
+        body_hint=mail.body_tekst,
+        kanaal=DocumentBron.EMAIL,
+        logo_filter=True,
+        mail_tenaamstelling=mail_tenaamstelling,
+        mail_store=mail_store,
+    )
 
     with scoped_session(None, actor_id=actor_id) as session:
         bericht = session.get(IntakeBericht, bericht_id)

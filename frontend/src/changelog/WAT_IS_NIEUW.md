@@ -6,6 +6,18 @@
   vorm). Geen AI.
 -->
 
+## 2026-10-02 — Boeken moet weer prettig (1): bijlagen bij de factuur, rustig controlescherm, samenvoegen terug
+
+<!-- boeken-prettig-1-02-10 -->
+
+- **Eén e-mail is één document: de bijlagen blijven bij de factuur.** Stuurt een leverancier een factuur mét een huurstaat, specificatie, werkbon, foto of spreadsheet in dezelfde e-mail, dan komt alleen de factuur in de werkvoorraad. De overige bijlagen hangen eraan: op het controlescherm staan ze als tabbladen naast "Factuur" in het bijlagepaneel, in de documentenlijst ziet u "N bijlagen" op de factuur, en bij boeken gaan ze als extra bijlage mee naar Reeleezee. Ze worden niet gelezen door de AI en niet gesplitst.
+- **Meerdere facturen in één e-mail?** Dan hangt een bijlage aan de factuur waarvan het factuur- of werknummer in de bestandsnaam of de tekst staat. Is dat niet eenduidig, dan hangt de bijlage aan álle facturen uit die e-mail met het label "niet eenduidig" — liever dubbel dan kwijt. Een e-mail zonder factuur werkt zoals voorheen.
+- **Eerder losgekoppelde bijlagen worden alsnog bij hun factuur gezet.** Daarvoor staat een nazorgactie klaar die per e-mail de al gesplitste documenten volgens dezelfde regel samenvoegt; de losse bijlage-documenten blijven terugvindbaar onder "Toon afgehandelde documenten" als "bijlage van …". Bij een al geboekte factuur gaat de bijlage alsnog als extra bijlage naar Reeleezee. Deze actie draait pas na akkoord.
+- **Het controlescherm is rustiger: wat klopt, laat de module niet meer zien.** De groene en grijze labels onder de velden (AI-zekerheid, "uit factuur", "herkend op btw-nummer", land, KvK- en btw-nummer, "Geheugen 100 %", "uit geheugen", "uit template") staan niet meer standaard in beeld. Alleen een afwijking blijft als één regel onder het veld staan — iets wat onzeker is, niet gevonden is, met de factuur in strijd is of waar u iets mee moet (bijvoorbeeld "factuur noemt een ander project — kies zelf" of "geheugen wisselend — controleer").
+- **Wilt u toch zien waar een waarde vandaan komt?** Boven elk blok (Crediteur, Kopgegevens, Boekingsregels) staat "Herkomst tonen"; die klapt alle labels van dat blok uit en onthoudt die keuze zolang uw browsertab open is. De controles onderaan en de oranje aangiftecontrole veranderen niet.
+- **De periode-chip staat alleen nog als de periode een aanname is** ("week van de factuurdatum (aanname)"). Komt de periode van de factuur zelf, dan ziet u 'm pas onder "Herkomst tonen".
+- **Het vinkje "Splitsen per regel" staat er weer, ook bij administraties met projectplicht.** Tot nu toe ontbrak het vinkje zodra een administratie een project per regel verplicht stelt (zoals Universal Steigerbouw): een factuur met twee of meer regels kon daar niet tot één boekingsregel worden samengevoegd. Nu staat het vinkje boven de boekingsregels zoals overal; samenvoegen geeft één regel met de som van netto en btw (bijvoorbeeld 751,15 / 157,74 bij twee brandstofregels). Dragen alle regels hetzelfde project, dan houdt de samengevoegde regel dat project; anders blijft het projectveld leeg en gebruikt u de projectverdeling. Uw keuze wordt per leverancier onthouden. Standaard opent een factuur in zo'n administratie nog steeds met losse regels.
+
 ## 2026-10-02 — Vastly-huurnota's boeken alleen nog op de rekening die Vastly meestuurt
 
 <!-- vastly-verkoop-administratie-id-terugval-uit-01-10 -->

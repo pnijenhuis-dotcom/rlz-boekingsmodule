@@ -331,6 +331,10 @@ def wijs_toe(
             )
         document = _laad_verzamelbak_document(session, document_id)
         document.administratie_id = administratie_id
+        # Bijlagen bij de factuur (02-10): de bijlage-rijen uit dezelfde mail (scope NULL) gaan mee.
+        from app.documenten import bijlagen as bijlagen_module  # lokaal: houdt de importgraaf klein
+
+        bijlagen_module.verhuis_bijlagen_mee(session, factuur=document, naar_administratie_id=administratie_id)
         # Documentsoort-keuze (offerte-matching 04-09): de mens kan bij het toewijzen kiezen tussen
         # inkoopfactuur en verplichting (offerte/prijsopgave/opdrachtbevestiging) — nodig zodra de
         # intake-AI de soort niet kon bepalen (reden `documentsoort_onduidelijk`) of zich vergiste.

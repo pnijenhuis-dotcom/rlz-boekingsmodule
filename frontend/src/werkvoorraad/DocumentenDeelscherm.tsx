@@ -1335,9 +1335,15 @@ export function DocumentenDeelscherm({
                               to={documentPad(administratieId, { id: d.samengevoegd_in.document_id })}
                               onClick={(e) => e.stopPropagation()}
                               style={{ fontSize: 11.5 }}
-                              title="Dit exemplaar is opgegaan in het leidende document; controleren en boeken gebeurt dáár"
+                              title={
+                                d.samenvoeg_rol
+                                  ? 'Bijlage uit dezelfde e-mail (02-10): hangt aan de factuur en gaat bij boeken mee naar Reeleezee — te bekijken op het controlescherm van de factuur'
+                                  : 'Dit exemplaar is opgegaan in het leidende document; controleren en boeken gebeurt dáár'
+                              }
                             >
-                              → samengevoegd in {d.samengevoegd_in.bestandsnaam}
+                              {d.samenvoeg_rol ? '→ bijlage van ' : '→ samengevoegd in '}
+                              {d.samengevoegd_in.bestandsnaam}
+                              {d.samenvoeg_rol === 'bijlage_niet_eenduidig' ? ' (niet eenduidig)' : ''}
                             </Link>
                           </div>
                         )}
@@ -1350,6 +1356,16 @@ export function DocumentenDeelscherm({
                         {d.status === 'geboekt' && d.geboekt_in_rlz && (
                           <div style={{ marginTop: 4 }}>
                             <OpenInBoekhouding stand={d.geboekt_in_rlz} />
+                          </div>
+                        )}
+                        {(d.bijlagen ?? 0) > 0 && (
+                          <div style={{ marginTop: 4 }}>
+                            <span
+                              className="chip geheugen"
+                              title="Bijlagen uit dezelfde e-mail (specificatie, huurstaat, werkbon, foto) hangen aan deze factuur — te bekijken op het controlescherm, gaan bij boeken mee naar Reeleezee"
+                            >
+                              {bijlagenChipLabel(d.bijlagen ?? 0)}
+                            </span>
                           </div>
                         )}
                         {(d.samengevoegde_exemplaren ?? 0) > 0 && (
@@ -1676,6 +1692,11 @@ export function DocumentenDeelscherm({
 /** Blok 4c herstelrun 08-09: `totaal` = alle exemplaren die in dit document opgingen (hulzen + afgevoerde duplicaten),
  * `afgevoerd` = het afgevoerde deel → "N exemplaren samengevoegd", "N exemplaren afgevoerd" of "… samengevoegd/afgevoerd"
  * (beide aanwezig); enkelvoud bij precies één exemplaar. */
+/** Bijlagen bij de factuur (02-10): chip-tekst "N bijlage(n)" op de factuurrij. */
+export function bijlagenChipLabel(n: number): string {
+  return `${n} ${n === 1 ? 'bijlage' : 'bijlagen'}`
+}
+
 export function exemplarenChipLabel(totaal: number, afgevoerd: number): string {
   const samengevoegd = Math.max(totaal - afgevoerd, 0)
   const woord = totaal === 1 ? 'exemplaar' : 'exemplaren'

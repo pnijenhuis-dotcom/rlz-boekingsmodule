@@ -4,7 +4,10 @@ NIEUWE PurchaseInvoice met gespiegelde negatieve regels, boekdatum vandaag)."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import base64
+import logging
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -14,6 +17,7 @@ from app.backends.port import (
     Backend,
     BackendBoekFout,
     BoekUitkomst,
+    ExtraBijlage,
     OrigineelStand,
     StornoUitkomst,
     TegenboekUitkomst,
@@ -148,6 +152,9 @@ def is_bruikbaar_rlz_document(antwoord: object) -> bool:
     return isinstance(antwoord, dict) and "Status" in antwoord
 
 
+logger = logging.getLogger(__name__)
+
+
 class RlzInkoopPort:
     backend = Backend.RLZ
 
@@ -164,10 +171,18 @@ class RlzInkoopPort:
         return self.client
 
     def boek_inkoopfactuur(
-        self, *, document_id: uuid.UUID, voorstel: BoekvoorstelData, bestand: bytes, bestandsnaam: str
+        self,
+        *,
+        document_id: uuid.UUID,
+        voorstel: BoekvoorstelData,
+        bestand: bytes,
+        bestandsnaam: str,
+        extra_bijlagen: Sequence[ExtraBijlage] = (),
     ) -> BoekUitkomst:
         """PUT + /Uploads + actie 17, in die volgorde (RLZ berekent zelf totalen). Het GUID volgt de
-        boek_cyclus (tegenboek-pad): een herboeking is een NIEUW RLZ-document."""
+        boek_cyclus (tegenboek-pad): een herboeking is een NIEUW RLZ-document. `extra_bijlagen` (02-10, bijlagen bij
+        de factuur): élke bijlage uit dezelfde mail als EXTRA `/Uploads` naast het factuurbeeld (idempotent op
+        bestandsnaam); een mislukte extra bijlage maakt de boeking nooit `boeken_mislukt` — zichtbare waarschuwing."""
         rlz_document_id = rlz_herboeking_id(document_id, voorstel.boek_cyclus)
         assert voorstel.vendor_id is not None and voorstel.factuurdatum is not None  # harde checks
         try:
@@ -214,6 +229,7 @@ class RlzInkoopPort:
                 filename=bestandsnaam,
                 content_base64=base64.b64encode(bestand).decode(),
             )
+            bijlagen_detail = self._extra_bijlagen(rlz_document_id, extra_bijlagen)
             # Betaalstatus (blok 3 bundel 08-09; STAP-0 08-09 "Betaalstatus inkoopfactuur"): RLZ's "Betaling"-veld =
             # `QuickPaymentSelection`, kaal zetbaar vóór het boeken — de post blijft open maar staat niet in de
             # betaallijst (declaratie al betaald / incasso door de bank). Keuze op label uit de per-document-lijst.
@@ -225,8 +241,37 @@ class RlzInkoopPort:
         return BoekUitkomst(
             extern_document_id=rlz_document_id,
             boekstuknummer=geboekt.get("ReceiptNumber"),
-            detail={"backend": Backend.RLZ.value, **betaalstatus_detail},
+            detail={"backend": Backend.RLZ.value, **betaalstatus_detail, **bijlagen_detail},
         )
+
+    def _extra_bijlagen(self, rlz_document_id: uuid.UUID, extra_bijlagen: Sequence[ExtraBijlage]) -> dict:
+        """Bijlagen bij de factuur (02-10): élke bijlage als extra `/Uploads` op het (her)boekings-GUID —
+        aanwezigheid op bestandsnaam (RLZ kent geen her-PUT); een fout per bijlage is zichtbaar, nooit een boekfout."""
+        if not extra_bijlagen:
+            return {}
+        uitkomsten: list[dict] = []
+        for b in extra_bijlagen:
+            try:
+                geupload = zorg_voor_bijlage(
+                    self.client,
+                    "PurchaseInvoices",
+                    rlz_document_id,
+                    upload_id=b.upload_id,
+                    filename=b.bestandsnaam,
+                    content_base64=base64.b64encode(b.inhoud).decode(),
+                    op_bestandsnaam=True,
+                )
+                uitkomsten.append({"bestandsnaam": b.bestandsnaam, "uitkomst": "geupload" if geupload else "stond_al"})
+            except RlzApiError as exc:
+                logger.warning("Extra bijlage %s op %s mislukt: %s", b.bestandsnaam, rlz_document_id, exc)
+                uitkomsten.append({"bestandsnaam": b.bestandsnaam, "uitkomst": "mislukt", "fout": str(exc)[:200]})
+        detail: dict = {"extra_bijlagen": uitkomsten}
+        mislukt = [u["bestandsnaam"] for u in uitkomsten if u["uitkomst"] == "mislukt"]
+        if mislukt:
+            detail["waarschuwing"] = (
+                f"extra bijlage(n) niet naar Reeleezee: {', '.join(mislukt)} — opnieuw via de nazorg"
+            )
+        return detail
 
     def _zet_betaalstatus(self, rlz_document_id: uuid.UUID, voorstel: BoekvoorstelData) -> dict:
         """Zet `QuickPaymentSelection` als het voorstel een betaalstatus draagt (anders niets — RLZ-default "Nog te

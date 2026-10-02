@@ -33,6 +33,8 @@ kruisverwijzing, de gespiegelde tax-override (de wizard neemt die niet mee, §3.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import base64
 import hashlib
 import logging
@@ -48,6 +50,7 @@ from app.backends.port import (
     Backend,
     BackendBoekFout,
     BoekUitkomst,
+    ExtraBijlage,
     CrediteurNietGekoppeld,
     NietOndersteund,
     OrigineelStand,
@@ -685,7 +688,7 @@ class OdooInkoopPort:
             logger.warning("Odoo-concept %s kon niet geannuleerd worden: %s", move_id, exc)
 
     # --- bijlage -----------------------------------------------------------------------------------
-    def _zorg_voor_bijlage(self, move_id: int, bestand: bytes, bestandsnaam: str) -> str:
+    def _zorg_voor_bijlage(self, move_id: int, bestand: bytes, bestandsnaam: str, *, hoofd: bool = True) -> str:
         checksum = hashlib.sha1(bestand).hexdigest()  # noqa: S324 — Odoo's eigen ir.attachment.checksum
         bestaand = self.client.search_read(
             MODEL_ATTACHMENT,
@@ -707,12 +710,19 @@ class OdooInkoopPort:
                     else "application/octet-stream",
                 },
             )
-        self.client.call(MODEL_ATTACHMENT, "register_as_main_attachment", ids=[att_id], force=True)
+        if hoofd:
+            self.client.call(MODEL_ATTACHMENT, "register_as_main_attachment", ids=[att_id], force=True)
         return f"aanwezig ({att_id})"
 
     # --- de operaties ------------------------------------------------------------------------------
     def boek_inkoopfactuur(
-        self, *, document_id: uuid.UUID, voorstel: BoekvoorstelData, bestand: bytes, bestandsnaam: str
+        self,
+        *,
+        document_id: uuid.UUID,
+        voorstel: BoekvoorstelData,
+        bestand: bytes,
+        bestandsnaam: str,
+        extra_bijlagen: Sequence[ExtraBijlage] = (),
     ) -> BoekUitkomst:
         assert voorstel.vendor_id is not None and voorstel.factuurdatum is not None  # harde checks
         try:
@@ -811,6 +821,24 @@ class OdooInkoopPort:
             logger.exception("Bijlage op Odoo-document %s mislukt", move_id)
             detail["bijlage"] = f"MISLUKT: {vertaal_odoo_fout(exc)}"
             _voeg_waarschuwing_toe(detail, "bijlage niet gekoppeld in Odoo — later opnieuw koppelen")
+        # Bijlagen bij de factuur (02-10): extra bijlagen uit dezelfde mail als gewone `ir.attachment` (niet main).
+        if extra_bijlagen:
+            uitkomsten: list[dict[str, Any]] = []
+            for b in extra_bijlagen:
+                try:
+                    uitkomsten.append(
+                        {
+                            "bestandsnaam": b.bestandsnaam,
+                            "uitkomst": self._zorg_voor_bijlage(move_id, b.inhoud, b.bestandsnaam, hoofd=False),
+                        }
+                    )
+                except Exception as exc:  # noqa: BLE001 — zichtbaar, nooit een boekfout
+                    logger.exception("Extra bijlage %s op Odoo-document %s mislukt", b.bestandsnaam, move_id)
+                    uitkomsten.append(
+                        {"bestandsnaam": b.bestandsnaam, "uitkomst": f"MISLUKT: {vertaal_odoo_fout(exc)}"}
+                    )
+                    _voeg_waarschuwing_toe(detail, f"extra bijlage {b.bestandsnaam} niet gekoppeld in Odoo")
+            detail["extra_bijlagen"] = uitkomsten
 
         # Betaalstatus (blok 3 bundel 08-09, 3c): Odoo kent geen niet-afsluitend equivalent van RLZ's "Betaling"-veld
         # (`account.payment.register` sluit de post) — zichtbaar in tijdlijn + rapport, geen fout (PARKEERPOST).

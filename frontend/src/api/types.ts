@@ -303,6 +303,16 @@ export interface DocumentVerwijzingDto {
   bestandsnaam: string
 }
 
+/** Bijlagen bij de factuur (02-10, migratie 0174): één bijlage-rij van een document — tabblad in het bijlage-paneel;
+ * bytes via `GET …/documenten/{document}/bijlagen/{id}/bestand`. `niet_eenduidig` = chip "bijlage niet eenduidig". */
+export interface DocumentBijlageDto {
+  id: string
+  bestandsnaam: string
+  content_type: string
+  niet_eenduidig: boolean
+  aangemaakt_op: string
+}
+
 /** Aantal standaard-verborgen eindstatus-rijen per status (aanvulling blok 3, 08-09). */
 export interface AfgehandeldTellersDto {
   verwijderd: number
@@ -413,6 +423,11 @@ export interface DocumentListItemDto {
   samengevoegde_exemplaren?: number
   /** Blok 4c herstelrun 08-09: het afgevoerde deel van `samengevoegde_exemplaren`. */
   afgevoerde_exemplaren?: number
+  /** Bijlagen bij de factuur (02-10): rol van een bijlage-rij ('bijlage' | 'bijlage_niet_eenduidig' — rij-link
+   * "→ bijlage van ‹factuur›"); null/afwezig = gewone rij. */
+  samenvoeg_rol?: string | null
+  /** Bijlagen bij de factuur (02-10): aantal bijlagen uit dezelfde mail op dit document (chip "N bijlagen"). */
+  bijlagen?: number
   /** Projectverdeling-hercontrole (blok C 04-09): afwijking in % boven de drempel op een geboekte
    * pro-rato-verdeling — chip "verdeling wijkt x% af", actie "Herverdelen…" op het document. */
   projectverdeling_afwijking_pct?: string | null
@@ -758,6 +773,10 @@ export interface DocumentDetailDto {
   tijdlijn: DocumentGebeurtenisDto[]
   /** Duplicaat-afvoer (04-09, migratie 0105): kandidaat + kruisverwijzing beide kanten; alleen inkoopfacturen. */
   duplicaat_afvoer?: DuplicaatAfvoerStandDto | null
+  /** Bijlagen bij de factuur (02-10): de bijlagen uit dezelfde mail (tabbladen in het bijlage-paneel). */
+  bijlagen?: DocumentBijlageDto[]
+  /** Bijlagen bij de factuur (02-10): op een bijlage-rij zelf de rol; null op een gewoon document. */
+  samenvoeg_rol?: string | null
 }
 
 export interface HerkomstMailDto {

@@ -48,9 +48,16 @@ def test_geboekt_en_gesplitst_zijn_de_terminale_statussen() -> None:
     # Verplichtingen (04-09): geaccordeerd is óók terminaal — géén uitgangen.
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEACCORDEERD] == frozenset()
     # Samengevoegd: alleen de ongedaan-uitgangen — terug in de bak (niet_toegewezen) of, voor een
-    # nagebundeld UBL-document (03-09), terug naar de status van vóór de nabundeling.
+    # nagebundeld UBL-document (03-09), terug naar de status van vóór de nabundeling; sinds 02-10 (bijlagen bij
+    # de factuur) óók terug naar ontvangen (intake-bijlage → de normale keten) en klaar_om_te_boeken (nazorg).
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.SAMENGEVOEGD] == frozenset(
-        {DocumentStatus.NIET_TOEGEWEZEN, DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN}
+        {
+            DocumentStatus.NIET_TOEGEWEZEN,
+            DocumentStatus.TE_CONTROLEREN,
+            DocumentStatus.HANDMATIG_AFMAKEN,
+            DocumentStatus.ONTVANGEN,
+            DocumentStatus.KLAAR_OM_TE_BOEKEN,
+        }
     )
     for van in DocumentStatus:
         if van in (

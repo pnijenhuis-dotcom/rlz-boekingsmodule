@@ -241,6 +241,58 @@
   `tests/documenten/test_ubl_rlz_export.py`, `test_xml_niet_leesbaar.py`, gouden-set-casus **a2** `tests/keten/test_a2_ubl_zonder_beeld.py`.
   Werkt in productie: niet gemeten (klikpunt: 250895e8 openen ná deploy → kaart; PDF-tweeling koppelen via nabundelen).
 
+<!-- toegevoegd 02-10-2026, opdracht "boeken-prettig-1-bijlagen-bij-factuur-controlescherm-rustig-overhead-automatisch" punt 1 -->
+- **Eén mail = één document — bijlagen blijven bij de factuur (Peter 02-10 "nu zijn nog steeds alle bijlagen vanuit de verhuur
+  losgekoppeld van de factuur … dat moet zodadelijk als eerste gefixt worden want dat scheelt heel veel werk"; migratie 0174 =
+  `document.samenvoeg_rol` + `verplaats_document`/policy `document_verplaatsing` nemen bijlage-rijen mee; BESLISSINGEN "BOEKEN PRETTIG 1 —
+  BIJLAGEN BIJ DE FACTUUR, RUSTIG SCHERM, OVERHEAD AUTOMATISCH (Peter 02-10)" punt 1):** (1) **Herkenning per bijlage, deterministisch,
+  vóór élke AI-stap** (`app/intake/bijlage_herkenning.py`): FACTUUR = een UBL, óf een PDF mét tekstlaag die de drie factuursignalen samen
+  draagt (factuurwoord factuur/invoice/creditnota + totaalsignaal totaal/te betalen/amount due + btw-/bedragsignaal btw/vat/€); KANDIDAAT
+  = niet deterministisch te zeggen — PDF zonder tekstlaag (scan/foto-naar-PDF), ProfX-kassarapport, omzetbron-spreadsheet, inline of te
+  kleine afbeelding (logo-filter), onbekend bijlagetype — en loopt de BESTAANDE route (AI-splitsing/verzamelbak/niet_verwerkbaar,
+  ongewijzigd); BIJLAGE = PDF mét tekstlaag zonder factuursignalen (huurstaat, specificatie, werkbon), spreadsheet die geen omzetbron is,
+  csv/doc(x)/txt (whitelist — vCards/.ics/.p7s blijven mailgruis) en een niet-inline, groot genoege foto. (2) **De mail-regel**
+  (`verwerking._verwerk_items_met_bijlagen`, alle kanalen incl. facturen@kempengroep.nl): eerst lopen álle niet-BIJLAGE-items de bestaande
+  routing; precies één factuur-document (toegewezen/verzamelbak/splitsingsvoorstel) → élke BIJLAGE hangt eraan; meerdere → per bijlage de
+  factuur waarvan een sleutel (UBL `cbc:ID` ≥ 4 tekens, cijfer-tokens uit `cbc:Note`, het AI-gelezen factuurnummer van een PDF-factuur)
+  in de bestandsnaam of — bij een PDF — in de tekstlaag staat; geen eenduidige treffer → bij álle facturen uit die mail mét rol
+  `bijlage_niet_eenduidig` (chip "niet eenduidig" — liever dubbel dan kwijt); nul facturen → bestaand gedrag (de bijlagen lopen alsnog
+  de oude route, nooit stil weg). De 0106-regel "nooit splitsen binnen één PDF" blijft; de bundeling-regel 24-09 (factuurnummer in
+  PDF-naam/-tekst) maakt een PDF mét tekstlaag ZONDER factuursignalen nooit meer het factuurbeeld (die wordt bijlage). (3) **Een bijlage
+  is een `document`-rij** (`app/documenten/bijlagen.py` — de enige schrijver van `samenvoeg_rol`): status `samengevoegd`,
+  `samengevoegd_in_id` = de factuur, `samenvoeg_rol` 'bijlage' | 'bijlage_niet_eenduidig' (NULL = de hulzen van vóór 02-10: byte-identiek
+  exemplaar / UBL-beeld), opslag onder de scope van de factuur (administratie óf `niet_toegewezen/`), idempotent op (intake-bericht, sha256,
+  factuur). Geen werkvoorraad-rij, nooit geëxtraheerd, nooit gesplitst, nooit verwijderd; tijdlijnregel op beide kanten (sleutel
+  `bijlage_bij_factuur`, `vorige_status` voor ongedaan) + audit `bijlage_gekoppeld` → dagteller `bijlagen_gebundeld` in de reconciliatiemail
+  (`niet_eenduidig` als zachte categorie); intake-bericht-uitkomst `bijlage`. Verzamelbak-factuur: `verzamelbak.wijs_toe` neemt de
+  bijlage-rijen mee (`bijlagen.verhuis_bijlagen_mee`); verplaatsen: de SECURITY DEFINER-functie verhuist ze mee. (4) **Zichtbaar en mee
+  naar RLZ:** `DocumentDetailResponse.bijlagen` → tabbladen "Factuur · ‹bijlage›…" boven het bijlage-paneel (`document/BijlageTabs.tsx`:
+  PDF inline, foto als beeld, overig = downloadknop; chip "niet eenduidig"), route `GET …/documenten/{factuur}/bijlagen/{id}/bestand`
+  (kantoor + accordeur; 404 als de bijlage niet aan dít document hangt); documentenlijst: chip "N bijlagen" op de factuur (bijlagen tellen
+  NIET als `samengevoegde_exemplaren`) en "→ bijlage van ‹factuur› (niet eenduidig)" op de bijlage-rij onder "Toon afgehandelde documenten".
+  Boeken (`InkoopPort.boek_inkoopfactuur(extra_bijlagen=…)`, `bijlagen.extra_bijlagen_voor_boeking`): RLZ = élke bijlage als EXTRA
+  `/Uploads` naast het factuurbeeld (`rlz_ids.rlz_bijlage_upload_id(bijlage, boek_cyclus)`, aanwezigheid op bestandsnaam via
+  `zorg_voor_bijlage(op_bestandsnaam=True)`); een mislukte extra bijlage = zichtbare waarschuwing in het boekdetail, nooit
+  `boeken_mislukt`; Odoo = extra `ir.attachment` (niet main). (5) **Nazorg** `bijlagen-nabundelen [--dry-run] [--uitvoeren]
+  [--administratie <uuid|naamdeel>] [--sinds JJJJ-MM-DD] [--ongedaan <bijlage-id> --reden …]` (`app/intake/bijlagen_nabundelen.py`,
+  dry-run default, nameting-allowlist alleen mét `--dry-run`; de échte run = `gcloud run jobs execute rlz-reconciliatie
+  --args=-m,app.cli,bijlagen-nabundelen,--uitvoeren` ná Peters "ja"): per `intake_bericht` mét ≥ 2 documenten dezelfde herkenning op de
+  opgeslagen bytes + dezelfde mail-regel; alleen OPEN bijlage-documenten (ontvangen/te_controleren/handmatig_afmaken/klaar_om_te_boeken/
+  niet_toegewezen), een document waar een mens al over oordeelde (vraag, accordering, geboekt, afgewezen) = overgeslagen mét reden; andere
+  administratie = "eerst verplaatsen"; verzamelbak-bijlage verhuist mee naar de factuur; niet eenduidig = het bestaande document aan de
+  eerste factuur, een KOPIE-rij per volgende; geboekte factuur → bijlage alsnog als RLZ-upload (`PurchaseInvoices/{herboeking-GUID}` resp.
+  `SalesInvoices/{verkoop_rlz_id}`, Odoo = overgeslagen mét reden); dry-run = "factuur ← bijlagen" per administratie + TOTAAL-regel;
+  ongedaan = `bijlagen.maak_bijlage_ongedaan` (terug naar `vorige_status`; intake-bijlage → ontvangen en de normale keten; geweigerd zodra
+  de factuur geboekt is). Statusmachine: ontvangen/klaar_om_te_boeken → samengevoegd, samengevoegd → ontvangen/klaar_om_te_boeken.
+  **Keuzes zonder Peter:** scan zonder tekstlaag = kandidaat (nooit raden), foto's alleen bijlage als de mail een factuur draagt,
+  ongedaan als CLI-vorm (geen nieuwe knop), bijlage als `samengevoegd`-rij i.p.v. een nieuwe tabel (één representatie voor intake én
+  nazorg; RLS/verplaatsen/archief/zoeken ongewijzigd). **Beperking:** een splitsingsvoorstel-bron krijgt de bijlagen; de kinderen ná
+  bevestiging niet (de nazorg-CLI vangt ze op hetzelfde bericht). Guards `tests/intake/test_bijlagen_bij_factuur.py` (herkenning,
+  één factuur, routes, meerdere facturen, nul facturen, scan = AI-route, verzamelbak, boeken mét extra uploads, RLZ-fout zichtbaar, nazorg
+  dry-run/uitvoeren/idempotent/ongedaan/mens-oordeel/geboekt-upload, dagteller), gouden-set-casus **ap**
+  `tests/keten/test_ap_bijlagen_bij_factuur.py`, vitest `DocumentDetailScreen.test.tsx` + `WerkvoorraadScreen.test.tsx`; dispatch-onderdeel
+  `bijlagen-factuur`. Werkt in productie: niet gemeten.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verzamelbak "Niet toegewezen" (preview, optimistisch toewijzen, verplaatsen, documentenlijst) (CLAUDE.md `ed6d176` r. 494–528)

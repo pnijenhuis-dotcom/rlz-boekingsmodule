@@ -485,6 +485,10 @@ class DocumentListItemResponse(BaseModel):
     # = het afgevoerde deel daarvan.
     samengevoegde_exemplaren: int = 0
     afgevoerde_exemplaren: int = 0
+    # Bijlagen bij de factuur (02-10, migratie 0174): rol van een bijlage-rij ('bijlage' | 'bijlage_niet_eenduidig';
+    # rij-link "→ bijlage van ‹factuur›") en op de factuur het aantal bijlagen (chip "N bijlagen").
+    samenvoeg_rol: str | None = None
+    bijlagen: int = 0
     # 'inkoopfactuur' | 'kassarapport' (migratie 0027) — de werkvoorraad routeert een
     # kassarapport naar het omzetreview-scherm en toont de omzetboeking-chip.
     soort: str = "inkoopfactuur"
@@ -678,6 +682,17 @@ class HerkomstMailDto(BaseModel):
     uit_spam: bool = False
 
 
+class DocumentBijlageDto(BaseModel):
+    """Bijlagen bij de factuur (02-10): één bijlage-rij van het document — tabblad in het bijlage-paneel; bytes via
+    `GET …/documenten/{document}/bijlagen/{id}/bestand`. `niet_eenduidig` = chip "bijlage niet eenduidig"."""
+
+    id: uuid.UUID
+    bestandsnaam: str
+    content_type: str
+    niet_eenduidig: bool = False
+    aangemaakt_op: datetime
+
+
 class DocumentDetailResponse(BaseModel):
     id: uuid.UUID
     administratie_id: uuid.UUID | None
@@ -707,6 +722,9 @@ class DocumentDetailResponse(BaseModel):
     # Duplicaat-afvoer (04-09, migratie 0105): kandidaat + kruisverwijzing beide kanten; alleen voor
     # inkoopfacturen gevuld.
     duplicaat_afvoer: DuplicaatAfvoerStandDto | None = None
+    # Bijlagen bij de factuur (02-10): de bijlagen uit dezelfde mail (leeg = geen), en op een bijlage-rij zelf de rol.
+    bijlagen: list[DocumentBijlageDto] = Field(default_factory=list)
+    samenvoeg_rol: str | None = None
 
 
 class BoekvoorstelRegelDto(BaseModel):

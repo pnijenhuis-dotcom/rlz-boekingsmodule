@@ -579,6 +579,8 @@ def documenten_lijst(
                 verwijderd_reden=item.verwijderd_reden,
                 samengevoegde_exemplaren=item.samengevoegde_exemplaren,
                 afgevoerde_exemplaren=item.afgevoerde_exemplaren,
+                samenvoeg_rol=item.samenvoeg_rol,
+                bijlagen=item.bijlagen,
                 mogelijk_duplicaat_van=_naar_duplicaat_response(item.duplicaat_referentie),
                 toegewezen_aan=item.document.toegewezen_aan,
                 aangemaakt_op=item.document.aangemaakt_op,
@@ -811,6 +813,17 @@ def document_detail(
         bron_bestandsnaam=d.bron_bestandsnaam,
         tenaamstelling=d.tenaamstelling,
         geboekt_in_rlz=_naar_geboekt_in_rlz(detail.geboekt_in_rlz),
+        samenvoeg_rol=d.samenvoeg_rol,
+        bijlagen=[
+            schemas.DocumentBijlageDto(
+                id=b.id,
+                bestandsnaam=b.bestandsnaam,
+                content_type=b.content_type,
+                niet_eenduidig=b.niet_eenduidig,
+                aangemaakt_op=b.aangemaakt_op,
+            )
+            for b in detail.bijlagen
+        ],
         duplicaat_afvoer=(
             _naar_duplicaat_afvoer_stand(administratie_id, document_id)
             if d.soort == DocumentSoort.INKOOPFACTUUR.value
@@ -859,6 +872,31 @@ def document_bestand(
             administratie_id=administratie_id, document_id=document_id, vorm="data" if vorm == "data" else "beeld"
         )
     except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(
+        content=inhoud,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{bestandsnaam}"'},
+    )
+
+
+@bestand_router.get("/administraties/{administratie_id}/documenten/{document_id}/bijlagen/{bijlage_id}/bestand")
+def document_bijlage_bestand(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    bijlage_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _rol: CurrentGebruiker = Depends(vereis_kantoor_of_accordeur),
+) -> Response:
+    """Bijlagen bij de factuur (02-10): de bytes van één bijlage-rij van dit document (tabblad in het bijlage-paneel);
+    404 als de bijlage niet (meer) aan dit document hangt."""
+    from app.documenten import bijlagen as bijlagen_module
+
+    try:
+        inhoud, bestandsnaam, content_type = bijlagen_module.haal_bijlage_op(
+            administratie_id=administratie_id, document_id=document_id, bijlage_id=bijlage_id
+        )
+    except bijlagen_module.BijlageNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return Response(
         content=inhoud,

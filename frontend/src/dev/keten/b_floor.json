@@ -571,7 +571,9 @@
    ],
    "module_treffers": [],
    "afmelding": null
-  }
+  },
+  "bijlagen": [],
+  "samenvoeg_rol": null
  },
  "boekvoorstel": {
   "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
@@ -801,6 +803,8 @@
     "verwijderd_reden": null,
     "samengevoegde_exemplaren": 1,
     "afgevoerde_exemplaren": 1,
+    "samenvoeg_rol": null,
+    "bijlagen": 0,
     "soort": "inkoopfactuur",
     "mogelijk_duplicaat_van": null,
     "toegewezen_aan": null,
@@ -869,6 +873,8 @@
     "verwijderd_reden": null,
     "samengevoegde_exemplaren": 0,
     "afgevoerde_exemplaren": 0,
+    "samenvoeg_rol": null,
+    "bijlagen": 0,
     "soort": "inkoopfactuur",
     "mogelijk_duplicaat_van": {
      "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
@@ -922,6 +928,8 @@
     "verwijderd_reden": null,
     "samengevoegde_exemplaren": 1,
     "afgevoerde_exemplaren": 1,
+    "samenvoeg_rol": null,
+    "bijlagen": 0,
     "soort": "inkoopfactuur",
     "mogelijk_duplicaat_van": null,
     "toegewezen_aan": null,

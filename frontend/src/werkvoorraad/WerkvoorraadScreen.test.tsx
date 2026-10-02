@@ -1443,3 +1443,32 @@ describe('Blok 11 (herstelrun 08-09) — "Wachten op anderen" en de teller "Alle
     expect(screen.queryByText(/werk\.pdf/)).not.toBeInTheDocument()
   })
 })
+
+describe('WerkvoorraadScreen — bijlagen bij de factuur (Peter 02-10)', () => {
+  it('toont "2 bijlagen" op de factuur en via de toggle de bijlage-rij als "→ bijlage van ‹factuur›" (niet als exemplaar)', async () => {
+    const gebruiker = userEvent.setup()
+    const factuur = document({ bestandsnaam: 'RLZ-2080142625.xml', bijlagen: 2, samengevoegde_exemplaren: 0 })
+    const bijlage = document({
+      id: SAMENGEVOEGD_DOCUMENT_ID,
+      bestandsnaam: 'huurstaat-wk27.pdf',
+      status: 'samengevoegd',
+      samenvoeg_rol: 'bijlage_niet_eenduidig',
+      samengevoegd_in: { document_id: DOCUMENT_ID, bestandsnaam: 'RLZ-2080142625.xml' },
+    })
+    installFetchMock({
+      documenten: [factuur],
+      afgehandeldeDocumenten: [factuur, bijlage],
+      afgehandeld: { verwijderd: 0, afgewezen: 0, samengevoegd: 1, afgevoerd_duplicaat: 0, totaal: 1 },
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('RLZ-2080142625.xml')).toBeInTheDocument())
+    expect(screen.getByText('2 bijlagen')).toBeInTheDocument()
+    expect(screen.queryByText(/exemplaren samengevoegd/)).not.toBeInTheDocument()
+    await gebruiker.click(screen.getByLabelText('Toon afgehandelde documenten (1)'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open (2)' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: 'Open (2)' }))
+    await waitFor(() => expect(screen.getByText('huurstaat-wk27.pdf')).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: /→ bijlage van RLZ-2080142625\.xml \(niet eenduidig\)/ })).toBeInTheDocument()
+  })
+})

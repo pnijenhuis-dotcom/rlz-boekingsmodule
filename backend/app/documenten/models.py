@@ -140,6 +140,10 @@ class Document(Base):
             postgresql_where=text("samengevoegd_in_id IS NOT NULL"),
         ),
         Index("ix_document_status", "status"),
+        CheckConstraint(
+            "samenvoeg_rol IS NULL OR samenvoeg_rol IN ('bijlage', 'bijlage_niet_eenduidig')",
+            name="ck_document_samenvoeg_rol",
+        ),
         {"schema": "boekhouding"},
     )
 
@@ -186,6 +190,12 @@ class Document(Base):
     samengevoegd_in_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), default=None
     )
+    # Bijlagen bij de factuur (migratie 0174, Peter 02-10 "één mail = één document"): een niet-factuur-bijlage uit
+    # dezelfde mail hangt als `samengevoegd`-rij aan de factuur mét rol 'bijlage' (eenduidig) of
+    # 'bijlage_niet_eenduidig' (meerdere facturen in de mail, geen treffer op factuur-/werknummer → bij álle facturen
+    # mét chip). NULL = de bestaande hulzen van vóór 02-10 (byte-identiek exemplaar / UBL-beeld). Zie
+    # app/documenten/bijlagen.py — de enige schrijver.
+    samenvoeg_rol: Mapped[str | None] = mapped_column(default=None)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     laatst_gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

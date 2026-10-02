@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0173
+-- Migratie-head bij deze dump: 0174
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -151,6 +151,11 @@ BEGIN
     PERFORM set_config('app.verplaatsing_document_id', p_document_id::text, true);
 
     UPDATE boekhouding.document SET administratie_id = p_naar WHERE id = p_document_id;
+    -- 0174 (bijlagen bij de factuur, Peter 02-10): de bijlage-rijen van dit document (status samengevoegd mét
+    -- samenvoeg_rol) reizen mee — policy document_verplaatsing dekt ze binnen deze definer-context.
+    UPDATE boekhouding.document SET administratie_id = p_naar
+        WHERE samengevoegd_in_id = p_document_id AND administratie_id = p_van
+          AND status = 'samengevoegd' AND samenvoeg_rol IS NOT NULL;
 
     -- Kindtabellen mét eigen administratie_id: rijen van dit document volgen mee, zodat ze in de
     -- doel-scope zichtbaar blijven (vragen/afwijzingen = historie + open vragen; signaal-caches
@@ -1221,6 +1226,8 @@ CREATE TABLE boekhouding.document (
     bron_bestandsnaam text,
     bron_content_type text,
     samengevoegd_in_id uuid,
+    samenvoeg_rol text,
+    CONSTRAINT ck_document_samenvoeg_rol CHECK (((samenvoeg_rol IS NULL) OR (samenvoeg_rol = ANY (ARRAY['bijlage'::text, 'bijlage_niet_eenduidig'::text])))),
     CONSTRAINT document_soort_geldig CHECK ((soort = ANY (ARRAY['inkoopfactuur'::text, 'kassarapport'::text, 'verkoopfactuur'::text, 'waarborg'::text, 'verplichting'::text])))
 );
 
@@ -12064,7 +12071,7 @@ CREATE POLICY document_herinnering_verplaatsing ON boekhouding.document_herinner
 -- Name: document document_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
 --
 
-CREATE POLICY document_verplaatsing ON boekhouding.document USING (((id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+CREATE POLICY document_verplaatsing ON boekhouding.document USING ((((id = platform.verplaatsing_document_id()) OR ((samengevoegd_in_id = platform.verplaatsing_document_id()) AND (samenvoeg_rol IS NOT NULL))) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK ((((id = platform.verplaatsing_document_id()) OR ((samengevoegd_in_id = platform.verplaatsing_document_id()) AND (samenvoeg_rol IS NOT NULL))) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
 
 
 --

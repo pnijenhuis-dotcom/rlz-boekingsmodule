@@ -36,6 +36,9 @@ interface MockOpties {
   /** FV-01 (25-09): /bestand serveert XML (i.p.v. PDF) en /ubl-samenvatting deze kaart. */
   bijlageXml?: string
   ublSamenvatting?: unknown
+  /** Bijlagen bij de factuur (02-10): aanroepen van …/bijlagen/{id}/bestand + het content-type van het antwoord. */
+  bijlageAanroepen?: string[]
+  bijlageContentType?: string
 }
 
 function installFetchMock(detail: unknown, opties?: MockOpties) {
@@ -79,6 +82,12 @@ function installFetchMock(detail: unknown, opties?: MockOpties) {
       if (url.endsWith('/ubl-samenvatting')) {
         if (opties?.ublSamenvatting === undefined) return Promise.resolve(new Response(null, { status: 404 }))
         return Promise.resolve(jsonResponse(opties.ublSamenvatting))
+      }
+      // Bijlagen bij de factuur (02-10): de bytes van één bijlage-tab (PDF, afbeelding of overig — de test kiest).
+      if (url.includes('/bijlagen/') && url.endsWith('/bestand')) {
+        opties?.bijlageAanroepen?.push(url)
+        const ct = opties?.bijlageContentType ?? 'application/pdf'
+        return Promise.resolve(new Response(new Blob(['x']), { status: 200, headers: { 'Content-Type': ct } }))
       }
       if (url.endsWith('/bestand') && opties?.bijlageXml !== undefined)
         return Promise.resolve(new Response(opties.bijlageXml, { status: 200, headers: { 'Content-Type': 'application/xml' } }))
@@ -1737,5 +1746,71 @@ describe('DocumentDetailScreen — XML-bijlage (FV-01, 25-09)', () => {
     const kaartChip = await screen.findByTestId('xml-niet-leesbaar-chip')
     expect(kaartChip).toHaveTextContent(reden)
     expect(screen.queryByTestId('xml-bron')).not.toBeInTheDocument()
+  })
+})
+
+describe('DocumentDetailScreen — bijlagen bij de factuur (Peter 02-10 "één mail = één document")', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const basis = {
+    id: DOCUMENT_ID,
+    administratie_id: ADMINISTRATIE_ID,
+    bestandsnaam: 'RLZ-2080142625.xml',
+    status: 'te_controleren',
+    bron: 'email',
+    mogelijk_duplicaat_van: null,
+    toegewezen_aan: null,
+    aangemaakt_op: '2026-10-02T10:00:00Z',
+    laatst_gewijzigd_op: '2026-10-02T10:00:00Z',
+    veldvoorstel: null,
+    tijdlijn: [{ van_status: null, naar_status: 'ontvangen', actor_id: 'x', detail: null, tijdstip: '2026-10-02T10:00:00Z' }],
+  }
+  const BIJLAGE_1 = 'cccccccc-0000-0000-0000-000000000011'
+  const BIJLAGE_2 = 'cccccccc-0000-0000-0000-000000000012'
+  const bijlagen = [
+    { id: BIJLAGE_1, bestandsnaam: 'huurstaat-wk27.pdf', content_type: 'application/pdf', niet_eenduidig: false, aangemaakt_op: '2026-10-02T10:00:00Z' },
+    { id: BIJLAGE_2, bestandsnaam: 'specificatie.xlsx', content_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', niet_eenduidig: true, aangemaakt_op: '2026-10-02T10:00:00Z' },
+  ]
+
+  it('zonder bijlagen geen tabbalk; mét bijlagen "Factuur" + één tab per bijlage, chip "niet eenduidig" waar dat zo is', async () => {
+    installFetchMock({ ...basis, bijlagen: [] })
+    renderScherm()
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Bijlage' })).toBeInTheDocument())
+    expect(screen.queryByRole('tablist', { name: 'Factuur en bijlagen' })).not.toBeInTheDocument()
+    vi.unstubAllGlobals()
+
+    installFetchMock({ ...basis, bijlagen })
+    renderScherm()
+    const tablist = await screen.findByRole('tablist', { name: 'Factuur en bijlagen' })
+    expect(within(tablist).getByRole('tab', { name: 'Factuur' })).toHaveAttribute('aria-selected', 'true')
+    expect(within(tablist).getByRole('tab', { name: /huurstaat-wk27\.pdf/ })).toBeInTheDocument()
+    expect(within(tablist).getByRole('tab', { name: /specificatie\.xlsx/ })).toHaveTextContent('niet eenduidig')
+  })
+
+  it('klik op een bijlage-tab laadt …/bijlagen/{id}/bestand en toont een PDF inline; een xlsx krijgt een downloadknop', async () => {
+    const gebruiker = userEvent.setup()
+    const bijlageAanroepen: string[] = []
+    installFetchMock({ ...basis, bijlagen }, { bijlageAanroepen })
+    renderScherm()
+    const tablist = await screen.findByRole('tablist', { name: 'Factuur en bijlagen' })
+    await gebruiker.click(within(tablist).getByRole('tab', { name: /huurstaat-wk27\.pdf/ }))
+    await waitFor(() => expect(bijlageAanroepen).toHaveLength(1))
+    expect(bijlageAanroepen[0]).toContain(`/documenten/${DOCUMENT_ID}/bijlagen/${BIJLAGE_1}/bestand`)
+    await waitFor(() => expect(screen.getByTestId('bijlage-tab-pdf')).toBeInTheDocument())
+    expect(within(tablist).getByRole('tab', { name: /huurstaat-wk27\.pdf/ })).toHaveAttribute('aria-selected', 'true')
+    vi.unstubAllGlobals()
+
+    const aanroepen2: string[] = []
+    installFetchMock({ ...basis, bijlagen }, { bijlageAanroepen: aanroepen2, bijlageContentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    renderScherm()
+    const tablist2 = await screen.findByRole('tablist', { name: 'Factuur en bijlagen' })
+    await gebruiker.click(within(tablist2).getByRole('tab', { name: /specificatie\.xlsx/ }))
+    await waitFor(() => expect(screen.getByTestId('bijlage-tab-download')).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: /Downloaden \(specificatie\.xlsx\)/ })).toBeInTheDocument()
+    // Terug naar de factuur: het factuurbeeld (PDF-object van /bestand) staat er weer.
+    await gebruiker.click(within(tablist2).getByRole('tab', { name: 'Factuur' }))
+    await waitFor(() => expect(screen.queryByTestId('bijlage-tab-download')).not.toBeInTheDocument())
   })
 })

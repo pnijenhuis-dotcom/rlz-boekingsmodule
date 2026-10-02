@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import enum
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Protocol
@@ -131,6 +132,20 @@ class ToetsUitkomst:
     ruw: dict[str, Any] = field(default_factory=dict, compare=False)
 
 
+@dataclass(frozen=True)
+class ExtraBijlage:
+    """Bijlagen bij de factuur (Peter 02-10, migratie 0174): een niet-factuur-bijlage uit dezelfde mail die bij het
+    boeken als EXTRA bijlage mee moet (RLZ `/Uploads` naast het factuurbeeld; Odoo `ir.attachment`). `upload_id` =
+    deterministisch GUID per bijlage × boek_cyclus (`rlz_ids.rlz_bijlage_upload_id`); een mislukte extra bijlage is
+    nooit een boeken_mislukt — de boeking staat, de fout is een zichtbare waarschuwing op de boeking."""
+
+    bijlage_document_id: uuid.UUID
+    bestandsnaam: str
+    inhoud: bytes
+    content_type: str
+    upload_id: uuid.UUID
+
+
 class InkoopPort(Protocol):
     backend: Backend
 
@@ -141,7 +156,13 @@ class InkoopPort(Protocol):
     def leesclient(self) -> Any: ...
 
     def boek_inkoopfactuur(
-        self, *, document_id: uuid.UUID, voorstel: BoekvoorstelData, bestand: bytes, bestandsnaam: str
+        self,
+        *,
+        document_id: uuid.UUID,
+        voorstel: BoekvoorstelData,
+        bestand: bytes,
+        bestandsnaam: str,
+        extra_bijlagen: Sequence[ExtraBijlage] = (),
     ) -> BoekUitkomst: ...
 
     def origineel_stand(self, *, document_id: uuid.UUID, boek_cyclus: int) -> OrigineelStand: ...

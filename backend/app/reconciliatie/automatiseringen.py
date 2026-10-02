@@ -314,6 +314,11 @@ INTAKE_POSTVAK = "intake_postvak"
 #: dubbel_voor_ai.py`) — bron audit `ai_dubbel_voor_extractie` (gedaan = één bespaarde AI-call).
 AI_HERAANBIEDING = "ai_heraanbiedingen"
 AI_BESPAARD_DUBBEL = "ai_bespaard_dubbel"
+#: Bijlagen bij de factuur (Peter 02-10, migratie 0174; `app/documenten/bijlagen.py`): élke niet-factuur-bijlage uit
+#: dezelfde mail die aan haar factuur is gekoppeld (intake én nazorg `bijlagen-nabundelen`) — bron audit
+#: `bijlage_gekoppeld` (één per bijlage; `niet_eenduidig` = zacht overgeslagen-achtig signaal: bij álle facturen).
+BIJLAGEN_GEBUNDELD = "bijlagen_gebundeld"
+BIJLAGE_NIET_EENDUIDIG = "niet_eenduidig"
 #: Vastly-verkoop volledig automatisch (Peter 29-09): heraanbieding van niet-gekoppelde + open Vastly-verkoopdocumenten
 #: (dagelijkse stap + nazorg-CLI + koppel-handeling) — bron audit `vastly_verkoop_heraanbieding_run` (één rij per run;
 #: gedaan = geboekt + toegewezen, overgeslagen per uitkomst; alles zacht — de bevindingen in blok `vastly_verkoop`
@@ -344,6 +349,7 @@ VOLGORDE: tuple[str, ...] = (
     INTAKE_POSTVAK,
     AI_HERAANBIEDING,
     AI_BESPAARD_DUBBEL,
+    BIJLAGEN_GEBUNDELD,
     VASTLY_HERAANBIEDING,
     OMZETBRON_HERKENNING,
     KASSARAPPORT_AUTOTYPE,
@@ -356,6 +362,7 @@ VOLGORDE: tuple[str, ...] = (
 LABEL: dict[str, str] = {
     AI_HERAANBIEDING: "AI-heraanbieding ná limiet (verzamelbak + overgeslagen extracties)",
     AI_BESPAARD_DUBBEL: "AI bespaard — byte-identiek dubbel vóór de extractie",
+    BIJLAGEN_GEBUNDELD: "Bijlagen bij de factuur (specificaties/huurstaten/foto's uit dezelfde mail gekoppeld)",
     VASTLY_HERAANBIEDING: "Vastly-verkoop automatisch (heraanbieding niet-gekoppelde + open UBL's)",
     INTAKE_POSTVAK: "Intake-postvakken (facturen@ak-nijenhuis.nl + facturen@kempengroep.nl — INBOX + Spam, op Message-ID)",
     BOEK_WACHTRIJ: "Boeken in RLZ — achtergrond-schrijver (ingediend → geboekt/mislukt)",
@@ -468,6 +475,8 @@ _ACTIES: tuple[str, ...] = (
     # 24-09: AI-heraanbieding ná limiet (één rij per run) + byte-identiek dubbel vóór de AI-stap (per exemplaar)
     "ai_heraanbieding_run",
     "ai_dubbel_voor_extractie",
+    # 02-10: bijlagen bij de factuur (per gekoppelde bijlage)
+    "bijlage_gekoppeld",
     # 29-09: Vastly-verkoop heraanbieding (één rij per run)
     "vastly_verkoop_heraanbieding_run",
 )
@@ -952,6 +961,12 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "vóór élke splitsings-AI-call: sha256 kantoorbreed — bestaat al = exemplaar samengevoegd, geen AI",
         "audit ai_dubbel_voor_extractie (per bespaard exemplaar)",
     )
+    bijlagen_gebundeld = maak(
+        BIJLAGEN_GEBUNDELD,
+        "altijd",
+        "bij intake (één mail = één document) + nazorg bijlagen-nabundelen; niet eenduidig = bij álle facturen, chip",
+        "audit bijlage_gekoppeld (per gekoppelde bijlage)",
+    )
     herkoppeling = maak(
         DOORBELASTING_HERKOPPELING,
         "altijd",
@@ -1063,6 +1078,11 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         elif f.actie == "ai_dubbel_voor_extractie":
             for v in vensters(ai_bespaard, f.tijdstip):
                 v.tel_gedaan()
+        elif f.actie == "bijlage_gekoppeld":
+            for v in vensters(bijlagen_gebundeld, f.tijdstip):
+                v.tel_gedaan()
+            if nw.get("niet_eenduidig"):
+                tel_over(bijlagen_gebundeld, f.tijdstip, BIJLAGE_NIET_EENDUIDIG, None, None, hard_registreren=False)
         elif f.actie == "vastly_verkoop_heraanbieding_run":
             if not nw.get("dry_run"):
                 per_uitkomst = nw.get("per_uitkomst") or {}

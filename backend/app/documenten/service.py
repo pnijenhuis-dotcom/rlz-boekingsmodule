@@ -5,7 +5,7 @@ import hashlib
 import logging
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -1943,6 +1943,11 @@ class DocumentMetDuplicaat:
     # Aanvulling blok 3 (08-09): reden van de verwijder-overgang (detail `reden` van de laatste VERWIJDERD-
     # gebeurtenis) — de afgehandelde rij toont zijn reden. None bij elke andere status.
     verwijderd_reden: str | None = None
+    # Bijlagen bij de factuur (02-10, migratie 0174): op een bijlage-rij de rol ('bijlage' |
+    # 'bijlage_niet_eenduidig', rij-link "→ bijlage van ‹factuur›"), op de factuur het aantal bijlagen (chip
+    # "N bijlagen"). Bijlagen tellen NIET mee in `samengevoegde_exemplaren` (een bijlage is geen dubbel exemplaar).
+    samenvoeg_rol: str | None = None
+    bijlagen: int = 0
     # Kopgegevens voor de werkvoorraad-documentenlijst (mockup #klantpagina: kolommen
     # Leverancier + Bedrag): uit het opgeslagen boekvoorstel, of anders het laatste
     # extractie-veldvoorstel — None zolang er nog geen van beide is.
@@ -2064,7 +2069,27 @@ def lijst_documenten(
             dict(
                 session.execute(
                     select(Document.samengevoegd_in_id, func.count())
-                    .where(Document.samengevoegd_in_id.in_(lijst_ids), Document.status == DocumentStatus.SAMENGEVOEGD)
+                    .where(
+                        Document.samengevoegd_in_id.in_(lijst_ids),
+                        Document.status == DocumentStatus.SAMENGEVOEGD,
+                        Document.samenvoeg_rol.is_(None),  # 02-10: bijlagen zijn geen exemplaren
+                    )
+                    .group_by(Document.samengevoegd_in_id)
+                ).all()
+            )
+            if lijst_ids
+            else {}
+        )
+        # Bijlagen bij de factuur (02-10): chip "N bijlagen" op de factuur — één GROUP BY op de rol.
+        bijlagen_per_doel: dict[uuid.UUID, int] = (
+            dict(
+                session.execute(
+                    select(Document.samengevoegd_in_id, func.count())
+                    .where(
+                        Document.samengevoegd_in_id.in_(lijst_ids),
+                        Document.status == DocumentStatus.SAMENGEVOEGD,
+                        Document.samenvoeg_rol.is_not(None),
+                    )
                     .group_by(Document.samengevoegd_in_id)
                 ).all()
             )
@@ -2270,6 +2295,8 @@ def lijst_documenten(
                     samengevoegde_exemplaren=exemplaren_per_doel.get(d.id, 0) + afgevoerd_per_origineel.get(d.id, 0),
                     afgevoerde_exemplaren=afgevoerd_per_origineel.get(d.id, 0),
                     verwijderd_reden=verwijderd_redenen.get(d.id),
+                    samenvoeg_rol=d.samenvoeg_rol,
+                    bijlagen=bijlagen_per_doel.get(d.id, 0),
                     leverancier=leverancier,
                     totaalbedrag=totaalbedrag,
                     factuurdatum=factuurdatum,
@@ -2508,6 +2535,8 @@ class DocumentDetail:
     herkomst_mail: HerkomstMail | None = None
     # Blok C 02-09: 'Geboekt in RLZ · boekstuk · tegenpartij' + vindplaats-hint voor de detailkop.
     geboekt_in_rlz: GeboektInRlz | None = None
+    # Bijlagen bij de factuur (02-10): de bijlage-rijen van dit document (tabbladen in het bijlage-paneel).
+    bijlagen: list = field(default_factory=list)
 
 
 def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> DocumentDetail:
@@ -2554,6 +2583,11 @@ def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> 
                 )
         geboekt_in_rlz = bepaal_geboekt_in_rlz(session, [document]).get(document.id)
 
+        from app.documenten import bijlagen as bijlagen_module  # lokaal: bijlagen importeert service
+
+        bijlagen_info = [
+            bijlagen_module._info(b) for b in bijlagen_module.lijst_bijlagen_in_sessie(session, document_id)
+        ]
     return DocumentDetail(
         document=document,
         gebeurtenissen=gebeurtenissen,
@@ -2561,6 +2595,7 @@ def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> 
         duplicaat_referentie=duplicaat_referentie,
         herkomst_mail=herkomst_mail,
         geboekt_in_rlz=geboekt_in_rlz,
+        bijlagen=bijlagen_info,
     )
 
 

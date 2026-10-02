@@ -175,8 +175,18 @@ def bundel_bijlagen(bijlagen: list[IntakeBijlage]) -> list[BundelItem]:
         for pdf in vrije:
             if id(pdf) not in tekstlagen:
                 tekstlagen[id(pdf)] = pdf_tekstlaag_genormaliseerd(pdf.inhoud)
-            if pdf_draagt_factuurnummer(pdf.bestandsnaam, None, nummer, tekstlaag=tekstlagen[id(pdf)]):
-                kandidaten.append(pdf)
+            if not pdf_draagt_factuurnummer(pdf.bestandsnaam, None, nummer, tekstlaag=tekstlagen[id(pdf)]):
+                continue
+            # Bijlagen bij de factuur (02-10): een PDF mét tekstlaag ZONDER factuursignalen (specificatie/huurstaat
+            # die het factuurnummer noemt) is het beeld van de factuur niet — die wordt een bijlage (verwerking),
+            # nooit stil het factuurbeeld. Een scan zonder tekstlaag of een PDF mét factuursignalen blijft kandidaat.
+            from app.intake import bijlage_herkenning  # lokaal: bijlage_herkenning importeert deze module
+
+            if bijlage_herkenning.herken_pdf(pdf.inhoud, tekstlaag=tekstlagen[id(pdf)]).klasse == (
+                bijlage_herkenning.KLASSE_BIJLAGE
+            ):
+                continue
+            kandidaten.append(pdf)
         if len(kandidaten) == 1:
             paren[id(b)] = BijlagePaar(ubl=b, pdf=kandidaten[0], reden=REDEN_FACTUURNUMMER, pdf_is_losse_bijlage=True)
             gebruikt.add(id(kandidaten[0]))

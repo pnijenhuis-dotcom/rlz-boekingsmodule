@@ -192,3 +192,10 @@ def rlz_bank_aanbetaling_id(relatie_boeking_id: uuid.UUID) -> uuid.UUID:
     storno automatisch een nieuw GUID — STAP-0 H5: her-PUT op hetzelfde GUID geeft geen nieuw
     PaymentItem); een retry op dezelfde rij raakt hetzelfde RLZ-document."""
     return uuid.uuid5(_NAMESPACE, f"bank-aanbetaling:{relatie_boeking_id}")
+
+
+def rlz_bijlage_upload_id(bijlage_document_id: uuid.UUID, boek_cyclus: int) -> uuid.UUID:
+    """Bijlagen bij de factuur (Peter 02-10): basis-GUID voor de EXTRA `/Uploads` van één bijlage-document op de
+    (her)boeking van zijn factuur — per bijlage én per boek_cyclus (een herboeking is een nieuw RLZ-document);
+    retry-idempotentie via `app.rlz.bijlage.zorg_voor_bijlage(op_bestandsnaam=True)`."""
+    return uuid.uuid5(_NAMESPACE, f"bijlage-upload:{bijlage_document_id}:{boek_cyclus}")

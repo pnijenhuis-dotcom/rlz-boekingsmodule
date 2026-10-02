@@ -33,6 +33,7 @@ import { CorrectieBalk, CorrigerenDialog, CorrigerenMenuItem, correctieTijdlijnT
 import { AfwijsModal } from './AfwijsModal'
 import { metViewerOpties } from './pdfWeergaveUrl'
 import { UblSamenvattingKaart } from './UblSamenvattingKaart'
+import { BijlageTabs, BijlageWeergave, FACTUUR_TAB } from './BijlageTabs'
 import { DuplicaatAfvoerSectie } from './DuplicaatAfvoer'
 import { VerplaatsModal } from './VerplaatsModal'
 import { redenNietVerplaatsbaar } from './verplaatsen'
@@ -464,6 +465,8 @@ export function DocumentDetailScreen() {
   const [detail, setDetail] = useState<DocumentDetailDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [bijlage, setBijlage] = useState<Bijlage | null>(null)
+  // Bijlagen bij de factuur (02-10): welk tabblad het bijlage-paneel toont — de factuur zelf of één bijlage-rij.
+  const [bijlageKeuze, setBijlageKeuze] = useState<string>(FACTUUR_TAB)
   const [opnieuwBezig, setOpnieuwBezig] = useState(false)
   const [opnieuwFout, setOpnieuwFout] = useState<string | null>(null)
   // UX-fix 2026-07-11: her-extractie vanaf een gesláágd voorstel vraagt eerst bevestiging —
@@ -674,6 +677,7 @@ export function DocumentDetailScreen() {
     // blob-URL van het vorige document — Chrome herlaadt een <object> niet bij een data-wissel.
     // Daarom: bijlage expliciet leegmaken (skeleton) én het <object> keyen op de nieuwe URL.
     setBijlage(null)
+    setBijlageKeuze(FACTUUR_TAB)
 
     void apiFetch(`/administraties/${administratieId}/documenten/${documentId}/bestand`).then(async (resp) => {
       if (!resp.ok || !actief) return
@@ -698,6 +702,7 @@ export function DocumentDetailScreen() {
   const xmlNietLeesbaar = laatsteXmlNietLeesbaar(detail)
   const isHandmatigAfmaken = detail.status === 'handmatig_afmaken'
   const achtergrondBezig = extractieActief(detail.status)
+  const gekozenBijlage = (detail.bijlagen ?? []).find((b) => b.id === bijlageKeuze) ?? null
 
   const opnieuwExtraheren = async () => {
     setOpnieuwBezig(true)
@@ -983,6 +988,13 @@ export function DocumentDetailScreen() {
               <h2 style={{ margin: 0 }}>Bijlage</h2>
               <ReviewVergrootKnop splitter={splitter} />
             </div>
+            {/* Bijlagen bij de factuur (02-10): tabbladen "Factuur" + één per bijlage uit dezelfde mail. */}
+            <BijlageTabs bijlagen={detail.bijlagen ?? []} keuze={bijlageKeuze} onKeuze={setBijlageKeuze} />
+            {bijlageKeuze !== FACTUUR_TAB && gekozenBijlage ? (
+              <div className="bijlage-inhoud">
+                <BijlageWeergave administratieId={administratieId} documentId={documentId} bijlage={gekozenBijlage} />
+              </div>
+            ) : (
             <div className="bijlage-inhoud">
               {!bijlage && <SkeletonBlok />}
               {bijlage?.contentType.includes('pdf') && (
@@ -1010,7 +1022,8 @@ export function DocumentDetailScreen() {
                 <p className="hint">Geen inline weergave voor dit bestandstype.</p>
               )}
             </div>
-            {bijlage && (
+            )}
+            {bijlage && bijlageKeuze === FACTUUR_TAB && (
               <p style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <a className="btn secondary" href={bijlage.url} download={ublMetBeeld ? detail.bron_bestandsnaam ?? detail.bestandsnaam.replace(/\.xml$/i, '.pdf') : detail.bestandsnaam}>
                   Downloaden
