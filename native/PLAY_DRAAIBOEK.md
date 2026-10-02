@@ -187,6 +187,16 @@ vullen in `deploy.yml` (Play-listing-URL; leeg = niets tonen), (2) vc5 (1.1) bou
 §4 release name `1.1 (5)`), (3) `STORE_APP_VERSIE_ANDROID=1.1` pas als de 1.1-listing publiek is (TESTFLIGHT §0f stap 1). iOS
 loopt vóór: 1.1 (140) ingediend 16-09 22:24 (TESTFLIGHT §0f "STAND 16-09").
 
+**✅ versionCode 7 (1.3) GEBOUWD 02-10 20:59 (run D blok F — NIET geüpload; klikbestand
+`opdrachten/terminal/2026-10-03-android-vc7-upload.md`):** `native/scripts/bouw_android_release.sh 7 1.3` →
+`native/android/app/release/nijenhuis-goedkeuren-1.3-vc7-20261002-2059.aab` (17 MB, SHA-256
+`3bb5afc31f91adce9f0d8b79ab4180a322818b056f0d18390cfb375640742582`) + `-mapping.txt` + `-native-debug-symbols.zip`;
+signatuur = upload-key, bundletool validate ✓, versionCode 7 · versionName 1.3 ✓, OTA-plugins ✓. Inhoud t.o.v. vc6:
+**Android-kluis-zelfherstel** (bug Peter 02-10 "Opslag-verwijderfout: null"): `allowBackup="false"` +
+`dataExtractionRules`/`fullBackupContent` die `veilige_opslag` en `appslot_bio` uitsluiten (manifest-dump bevestigd),
+`VeiligeOpslagPlugin` wist en hermaakt een onleesbare kluis zelf + methode `herstel`, scherm "App-opslag opnieuw instellen"
+mét knop (docs/regels/accordering-native-app.md). Upload = Productie-release zoals 30-09 (vc6), debug-symbols erbij.
+
 - **Elke volgende upload: versionCode +1** (Play weigert een hergebruikt nummer); versionName
   volgt de iOS `MARKETING_VERSION` (STORE_GEREEDHEID §6).
 - **Upload-artefacten náást de AAB (sinds 30-08):** het script legt in `app/release/` óók

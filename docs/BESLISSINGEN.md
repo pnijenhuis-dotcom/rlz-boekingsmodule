@@ -14027,3 +14027,61 @@ Seam-eis: nieuwe code alleen in `app/odoo/` + port-methode (RLZ-port "niet van t
 mét verschil of blokkeren; (3) factuur vóór ontvangst = ORANJE "Toch boeken" of wachten; (4) rekening uit Odoo-product/categorie of uit het
 boekvoorstel; (5) IC Universal Materiaal: Materiaal-verkoopfactuur via de intake naar Verkoop → PO (raakt blok D) of handmatig in Odoo; (6) PO-nummer
 verplicht op de factuur/UBL vragen; (7) GO voor STAP-0 deel 2. Werkt in productie: n.v.t.
+
+### Blok F — native 1.3 (vc7): Android-kluis-zelfherstel, geen back-up van de kluis, knop "App-opslag opnieuw instellen" (bug Peter 02-10, foto IMG_2512 `Opslag-verwijderfout: null`)
+
+**Diagnose (code, geen toestel):** de regel op de foto is de laatste slotfout uit de lokale diagnose: `verwijder appslot_slot
+(Opslag-verwijderfout: null)`. Die handeling is het `herstelSlotWaarde`-pad van `stelCodeIn` (10-09 (2)) ná een mislukte
+schrijf — dus faalde élke kluis-aanroep (lees, schrijf, verwijder), niet alleen de laatste. Op Android betekent dat dat
+`EncryptedSharedPreferences` niet meer bij de Keystore-MasterKey past (teruggezette Google-back-up, toestel-overdracht of
+OS-update; `AEADBadTagException`/`KeyStoreException` mét `getMessage() == null` → letterlijk "null"). Zonder de sleutel is de
+inhoud per definitie onleesbaar; "neem contact op met het kantoor" was daarmee het verkeerde advies, want niemand op kantoor kon er
+iets aan doen.
+
+**Besluit/gebouwd (geen migratie, geen backend):**
+1. `AndroidManifest.xml`: `android:allowBackup="false"` + `android:dataExtractionRules="@xml/data_extraction_rules"` (API 31+:
+   cloud-backup én device-transfer) + `android:fullBackupContent="@xml/backup_rules"` (ouder); beide xml-regels sluiten
+   `veilige_opslag.xml` (de kluis) en `appslot_bio.xml` (biometrie-kopie) uit. Bevestigd in de gebouwde AAB (bundletool dump manifest).
+2. `VeiligeOpslagPlugin.java`: `opslag()` probeert ná een open-fout één keer `deleteSharedPreferences("veilige_opslag")` + opnieuw
+   aanmaken en rejectt pas als dat óók faalt; `foutTekst()` maakt van élke exception `<klasse>: <message>` (leeg = `<klasse> (zonder
+   melding)`, oorzaak meegenomen) — nooit meer "null"; nieuwe methode `herstel` (kluisbestand + MasterKey-alias
+   `_androidx_security_master_key_` weg, kluis opnieuw aangemaakt, proef-schrijf + -lees, `{hersteld: true}` of
+   `Opslag-herstelfout: …`). iOS `VeiligeOpslagPlugin.swift`: `herstel` wist álle Keychain-items van de service + proef
+   (tegenhanger, zodat de knop op beide platformen hetzelfde doet; op iOS is het scenario zeldzaam — Keychain-items zijn
+   ThisDeviceOnly).
+3. Webcode: `nativeSessie.ts` plugin-interface mét optioneel `herstel?`; `appSlot.ts::kanOpslagHerstellen()` (alleen modus
+   `native` mét `herstel` — de web-adapter nooit: gewiste IndexedDB = het 18-09-pad `OPSLAG_GEWIST_MELDING`) en
+   `herstelOpslag()` → `'hersteld' | 'niet_beschikbaar' | 'mislukt'` (anker, tabbladvenster en laatste slotfout weg; mislukking
+   genoteerd als slotfout `herstel` zonder waarde); `slotDiagnose.ts::isKluisOpslagFout` herkent de plugin-rejecties
+   `Opslag-(schrijf|lees|verwijder|herstel)fout` en `Keychain-…fout` (patroon, niet geankerd); `SlotOpslagFout.tsx` toont bij
+   kluisfout ÉN schil ≥ 1.3 de kop **"App-opslag opnieuw instellen"** mét uitleg ("de app wist de onleesbare opslag en je kiest
+   daarna opnieuw je toegangscode; je facturen en je toegang blijven bij het kantoor bewaard") en knop → `herstelOpslag` → lokale
+   audit `app_opslag_hersteld` → `opnieuw` (AppActiveren: code kiezen op hetzelfde activatieresultaat, geen tweede
+   server-activatie; AccordeurApp legacy-pad: PincodeKiezen) + tweede knop "Opnieuw proberen zonder wissen"; mislukt = eerlijke
+   melding + diagnoseregel. **Afwezig-pad ongewijzigd:** web, schil < 1.3 of een eigen controle-fout → de 10-09-melding.
+4. Versie (train-regel/TESTFLIGHT §6: native plugin + manifest = winkelrelease): marketingversie **1.3**, Android **versionCode 7**
+   (pbxproj ×2, `build.gradle`, `appVersie.ts`, guard `test_app_marketingversie_consistent.py` → 1.3/vc7 +
+   `test_android_kluis_niet_in_backup_sinds_1_3`); `APP_MIN_RUNTIME_VERSIE` ongewijzigd 1.1; OTA-registratie per runtime
+   ongewijzigd. AAB gebouwd 02-10 20:59 in de worktree: `native/android/app/release/nijenhuis-goedkeuren-1.3-vc7-20261002-2059.aab`
+   (17 MB, SHA-256 `3bb5afc31f91adce9f0d8b79ab4180a322818b056f0d18390cfb375640742582`) + `-mapping.txt` + `-native-debug-symbols.zip`,
+   signatuur = upload-key `4A:B4:3C:…:8F:A1`, bundletool validate ✓, versionCode 7 · versionName 1.3 ✓, OTA-plugins ✓, webbundel
+   bevat het nieuwe scherm; gekopieerd naar MAIN `native/android/app/release/` (gitignored). Klikbestand
+   `opdrachten/terminal/2026-10-03-android-vc7-upload.md` (Productie-release zoals 30-09 + debug-symbols + releasenotes + controle
+   ná publicatie). Store-upload = Peter. Xcode Cloud bouwt iOS 1.3 ná de push; indienen pas als Peter dat wil. PLAY §3 en
+   TESTFLIGHT §0f dragen de 02-10-stand.
+
+**Tests:** vitest `accordeur/appslot/SlotOpslagFout.test.tsx` (8: patroon incl. "null" en iOS, afwezig-pad controle-fout;
+`kanOpslagHerstellen`/`herstelOpslag` web + schil zonder/mét herstel + rejectie; scherm: knop → herstel → opnieuw + audit +
+slotfout gewist, mislukt-pad, afwezig-pad web, afwezig-pad schil < 1.3 en controle-fout mét herstel) + bestaande
+`appSlot`/`nativeSessie`/`AppActiveren`/`AccordeurApp`/`appBundelGuard` groen (123/123), `tsc -b` groen; backend
+`test_app_marketingversie_consistent.py` 10/11 groen in de worktree — de elfde (`test_wat_is_nieuw_noemt_de_huidige_marketingversie`)
+wordt groen zodra de coördinator `watisnieuw_F.md` ("versie 1.3") in WAT_IS_NIEUW zet (hot file, niet door de agent aangeraakt).
+Java-plugin compileert in de release-build (javac zonder fout op onze bron).
+
+**Werkt in productie: niet gemeten** — meetlat: Play Console release `1.3 (7)` live; request-log `POST /auth/app/activeren` /
+`/auth/app/toestel-koppeling` ná publicatie mét `X-App-Versie: 1.3` vanaf Android; op het toestel van de foto ⚙ Toegang › Diagnose
+`app 1.3 (7)` + lokale audit `app_opslag_hersteld` ná gebruik van de knop. Geen dispatch-onderdeel (winkelrelease = klikwerk Peter).
+
+**Klikpunten Peter:** (1) upload vc7 (klikbestand 03-10); (2) ná goedkeuring: toestel van de foto updaten, knop gebruiken, verse
+uitnodiging/koppelcode; oude toestel-token intrekken op Gebruikers & toegang; (3) later `STORE_APP_VERSIE_ANDROID` ná een publieke
+1.3-listing; `APP_MIN_RUNTIME_VERSIE` pas ophogen als 1.3 op beide winkels live is; (4) iOS 1.3 indienen wanneer gewenst.

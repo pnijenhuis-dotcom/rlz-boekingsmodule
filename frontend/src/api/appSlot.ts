@@ -20,8 +20,8 @@
 // Zelfde toegangspatroon als nativeSessie: bridge-globals, geen @capacitor-import, fail-closed. De statische import-cyclus met nativeSessie is bewust en veilig: beide modules
 // gebruiken elkaars functies uitsluitend ín functie-bodies (geen top-level uitvoering).
 
-import { veiligeOpslagPlugin } from './nativeSessie'
-import { bewaarLaatsteSlotfout, type SlotHandeling } from './slotDiagnose'
+import { slotModus, veiligeOpslagPlugin } from './nativeSessie'
+import { bewaarLaatsteSlotfout, wisLaatsteSlotfout, type SlotHandeling } from './slotDiagnose'
 
 /** Sinds 10-09 (bugfix toegangscode wijzigen) staan salt + wrap als ÉÉN waarde onder één sleutel, zodat het
  * slot nooit half geschreven kan zijn: `v2.<salt-b64>.<iv-b64>.<cipher-b64>`. */
@@ -439,6 +439,46 @@ export async function wisAppSlotLokaal(): Promise<void> {
       // biometrie-kopie niet wisbaar = geen blokkade; zonder wrap is het anker toch onbruikbaar
     }
   }
+}
+
+// ---- kluis-herstel (native 1.3 / vc7, run D 02-10) ----------------------------------------------
+// Bug Peter 02-10 (foto IMG_2512): op een Android-toestel faalde élke kluis-aanroep ("Opslag-verwijderfout: null") —
+// de EncryptedSharedPreferences pasten niet meer bij de Keystore-sleutel (backup-herstel/overdracht). De schil ≥ 1.3
+// herstelt dat zelf (één wis + opnieuw aanmaken in de plugin) en biedt `herstel` voor de knop "App-opslag opnieuw
+// instellen" op het SlotOpslagFout-scherm. Alles in de kluis is daarna weg: het slot gaat lokaal op "geen" en de
+// activatieflow volgt. Web-adapter / schil < 1.3: geen `herstel` → de knop verschijnt niet (afwezig-pad = oude melding).
+
+/** True alleen in een schil waarvan de VeiligeOpslag-plugin `herstel` draagt (≥ 1.3) — nooit op web. */
+export function kanOpslagHerstellen(): boolean {
+  // Expliciet alleen 'native': een web-adapter mét zo'n methode zou de knop anders stil krijgen — in de browser heet
+  // een gewiste IndexedDB "opslag gewist" en loopt een ander pad (SPOED 18-09, OPSLAG_GEWIST_MELDING).
+  if (slotModus() !== 'native') return false
+  const plugin = veiligeOpslagPlugin()
+  return !!plugin && typeof plugin.herstel === 'function'
+}
+
+export type HerstelOpslagUitkomst = 'hersteld' | 'niet_beschikbaar' | 'mislukt'
+
+/** Wist de kluis via de plugin en zet de lokale slot-stand op nul (anker, tabblad-venster, laatste slotfout). De reden
+ * van een mislukking gaat — zonder waarde — naar de slot-diagnose, zodat de diagnoseregel zegt wat er faalde. */
+export async function herstelOpslag(): Promise<HerstelOpslagUitkomst> {
+  if (!kanOpslagHerstellen()) return 'niet_beschikbaar'
+  const plugin = veiligeOpslagPlugin()
+  if (!plugin?.herstel) return 'niet_beschikbaar'
+  try {
+    const { hersteld } = await plugin.herstel()
+    if (!hersteld) {
+      noteerSlotfout('herstel', SLOT_SLEUTEL, 'plugin meldde hersteld=false')
+      return 'mislukt'
+    }
+  } catch (fout) {
+    noteerSlotfout('herstel', SLOT_SLEUTEL, fout)
+    return 'mislukt'
+  }
+  ankerInGeheugen = null
+  wisOntgrendeldVenster()
+  wisLaatsteSlotfout()
+  return 'hersteld'
 }
 
 // ---- biometrie (gemakslaag over het anker) -------------------------------------------------------

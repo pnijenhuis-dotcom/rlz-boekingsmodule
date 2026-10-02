@@ -10,6 +10,9 @@
 
 <!-- run-d-02-10 -->
 
+- De goedkeur-app (versie 1.3) herstelt zijn eigen beveiligde opslag: lukt het activeren op Android niet omdat de opslag op het toestel onleesbaar is geworden (bijvoorbeeld na een back-up, overdracht of systeemupdate), dan toont de app "App-opslag opnieuw instellen" met een knop — daarna kies je opnieuw je toegangscode; de melding "neem contact op met het kantoor" komt alleen nog als er écht niets te herstellen valt.
+- De app maakt geen back-up meer van zijn beveiligde opslag (die hoort bij één toestel), zodat de fout "Opslag-verwijderfout: null" niet meer kan ontstaan; de nieuwe Android-versie staat klaar voor Google Play, de iOS-versie 1.3 volgt via de App Store zodra het kantoor hem indient.
+
 - Onderlinge facturen tussen eigen BV's: de dagelijkse controle toetst nu álle richtingen tussen groepsmaatschappijen (Universal: 12), ook als een BV haar zuster nog niet als klant of leverancier kent; een BV die bij een zuster inkoopt krijgt automatisch "intercompany — accordering overslaan".
 - Inzicht › Reconciliatie: bij "Onderlinge factuur ontbreekt bij ontvanger" staat de knop "Factuur opvragen bij ‹BV›" — die maakt een mailconcept (onderwerp + tekst + openen in je mailprogramma) om de PDF/UBL naar de boekhoudmail te laten sturen; er wordt niets automatisch verzonden.
 - Facturen die via de Reeleezee-export met "RLZ-" voor het nummer binnenkomen tellen nu gewoon als "onderweg in de module"; de verkoopkant van een administratie die ná de knipdatum in Odoo factureert wordt uit Odoo gelezen.

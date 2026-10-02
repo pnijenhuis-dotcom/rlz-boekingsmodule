@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backup-/overdrachtsregels voor Android 12+ (android:dataExtractionRules). Native 1.3 / vc7 (run D 02-10):
+     de kluis `veilige_opslag` en de biometrie-kopie `appslot_bio` zijn toestel-gebonden (Keystore) en worden
+     uitgesloten van cloud-backup én device-to-device-overdracht — zie backup_rules.xml voor de reden. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="veilige_opslag.xml" />
+        <exclude domain="sharedpref" path="appslot_bio.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="veilige_opslag.xml" />
+        <exclude domain="sharedpref" path="appslot_bio.xml" />
+    </device-transfer>
+</data-extraction-rules>

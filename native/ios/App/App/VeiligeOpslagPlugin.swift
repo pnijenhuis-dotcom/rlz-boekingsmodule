@@ -18,7 +18,8 @@ public class VeiligeOpslagPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "zet", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "haal", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "verwijder", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "verwijder", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "herstel", returnType: CAPPluginReturnPromise)
     ]
 
     private let service = Bundle.main.bundleIdentifier ?? "nl.aknijenhuis.goedkeuren"
@@ -82,6 +83,38 @@ public class VeiligeOpslagPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve()
         } else {
             call.reject("Keychain-verwijderfout (\(status))")
+        }
+    }
+
+    /// Expliciet herstel (native 1.3 / vc7, run D 02-10 — tegenhanger van de Android-kluis-zelfherstel): wist ÁLLE
+    /// Keychain-items van deze service (toestel-token, slot, voorkeuren) en bewijst dat de Keychain daarna schrijf- en
+    /// leesbaar is. Op iOS is een onleesbare kluis zeldzaam (Keychain-items zijn ThisDeviceOnly), maar de knop "App-opslag
+    /// opnieuw instellen" moet op beide platformen hetzelfde doen: schoon beginnen met de activatieflow.
+    @objc func herstel(_ call: CAPPluginCall) {
+        let alles: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service
+        ]
+        let wis = SecItemDelete(alles as CFDictionary)
+        guard wis == errSecSuccess || wis == errSecItemNotFound else {
+            call.reject("Keychain-herstelfout (\(wis))")
+            return
+        }
+        let proefSleutel = "_herstel_proef"
+        var proef = basisQuery(proefSleutel)
+        proef[kSecValueData as String] = Data("1".utf8)
+        proef[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let schrijf = SecItemAdd(proef as CFDictionary, nil)
+        var lees = basisQuery(proefSleutel)
+        lees[kSecReturnData as String] = true
+        lees[kSecMatchLimit as String] = kSecMatchLimitOne
+        var resultaat: AnyObject?
+        let gelezen = SecItemCopyMatching(lees as CFDictionary, &resultaat)
+        SecItemDelete(basisQuery(proefSleutel) as CFDictionary)
+        if schrijf == errSecSuccess, gelezen == errSecSuccess, let data = resultaat as? Data, String(data: data, encoding: .utf8) == "1" {
+            call.resolve(["hersteld": true])
+        } else {
+            call.reject("Keychain-herstelfout: opnieuw aangemaakt maar niet leesbaar (\(schrijf)/\(gelezen))")
         }
     }
 }

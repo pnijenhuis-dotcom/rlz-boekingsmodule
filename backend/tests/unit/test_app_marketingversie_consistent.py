@@ -52,11 +52,35 @@ def test_ios_android_en_web_dragen_dezelfde_marketingversie() -> None:
     )
 
 
-def test_marketingversie_is_1_2_sinds_17_09_en_versioncode_6() -> None:
-    # Train-regel: 1.0 gesloten ná build 44 (09-09), 1.1 gesloten ná de goedkeuring van build 140 (17-09) —
-    # terugvallen naar 1.0 of 1.1 is altijd fout (ITMS-90186/90062).
-    assert _web_versie() == "1.2"
-    assert _android_versioncode() == 6, "vc5 = 1.1 is nooit gebouwd/geüpload; 1.2 begint bij versionCode 6"
+def test_marketingversie_is_1_3_sinds_02_10_en_versioncode_7() -> None:
+    # Train-regel: 1.0 gesloten ná build 44 (09-09), 1.1 gesloten ná de goedkeuring van build 140 (17-09), 1.2 (vc6) op de
+    # Play-productietrack sinds 30-09 — run D 02-10 blok F (native kluis-zelfherstel = winkelrelease, TESTFLIGHT §6) → 1.3 / vc7.
+    # Terugvallen naar een eerdere versie is altijd fout (ITMS-90186/90062; Play weigert een hergebruikt versionCode).
+    assert _web_versie() == "1.3"
+    assert _android_versioncode() == 7, "1.3 begint bij versionCode 7 (vc6 = 1.2)"
+
+
+def test_android_kluis_niet_in_backup_sinds_1_3() -> None:
+    """Run D 02-10 blok F (bug Peter 02-10 "Opslag-verwijderfout: null"): de kluis `veilige_opslag` (EncryptedSharedPreferences)
+    is aan de Keystore van het toestel gebonden — een teruggezette back-up is onleesbaar. Het manifest zet allowBackup uit en
+    verwijst naar backup-/extractieregels die de kluis en de biometrie-kopie expliciet uitsluiten; de plugin draagt `herstel`."""
+    android = REPO / "native" / "android" / "app" / "src" / "main"
+    manifest = (android / "AndroidManifest.xml").read_text(encoding="utf-8")
+    assert 'android:allowBackup="false"' in manifest
+    assert 'android:dataExtractionRules="@xml/data_extraction_rules"' in manifest
+    assert 'android:fullBackupContent="@xml/backup_rules"' in manifest
+    for naam in ("backup_rules.xml", "data_extraction_rules.xml"):
+        regels = (android / "res" / "xml" / naam).read_text(encoding="utf-8")
+        assert 'path="veilige_opslag.xml"' in regels, naam
+        assert 'path="appslot_bio.xml"' in regels, naam
+    extractie = (android / "res" / "xml" / "data_extraction_rules.xml").read_text(encoding="utf-8")
+    assert "<cloud-backup>" in extractie and "<device-transfer>" in extractie
+    plugin = (android / "java" / "nl" / "aknijenhuis" / "goedkeuren" / "VeiligeOpslagPlugin.java").read_text(encoding="utf-8")
+    assert "public void herstel(PluginCall call)" in plugin
+    assert "deleteSharedPreferences(OPSLAG_NAAM)" in plugin
+    assert 'call.reject("Opslag-verwijderfout: " + fout.getMessage())' not in plugin, "foutmelding mag nooit 'null' worden"
+    ios = (REPO / "native" / "ios" / "App" / "App" / "VeiligeOpslagPlugin.swift").read_text(encoding="utf-8")
+    assert 'CAPPluginMethod(name: "herstel"' in ios and "func herstel(" in ios
 
 
 def test_store_app_versie_ios_in_deploy_yml_is_de_live_store_versie_en_nooit_boven_de_marketingversie() -> None:

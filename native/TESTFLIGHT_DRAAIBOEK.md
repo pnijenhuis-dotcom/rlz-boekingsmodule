@@ -304,6 +304,12 @@ queue with demonstration invoices appears. On later launches the app asks only f
 
 ### 0f. Versie 1.1 — waarom en hoe (mini-run 09-09)
 
+> **STAND 02-10 (run D blok F) — marketingversie 1.3 / Android vc7.** Native wijziging (VeiligeOpslag-plugin: kluis-zelfherstel +
+> `herstel` op Android én iOS, `allowBackup` uit) = winkelrelease volgens §6: `MARKETING_VERSION = 1.3` (pbxproj ×2), `build.gradle`
+> 1.3 / versionCode 7, `appVersie.ts` 1.3, guard `test_app_marketingversie_consistent.py`. Xcode Cloud bouwt de eerste 1.3-build ná
+> de push; **niets ingediend** — indienen pas als Peter dat wil (releasenotes in `opdrachten/terminal/2026-10-03-android-vc7-upload.md`).
+> `APP_MIN_RUNTIME_VERSIE` blijft 1.1; `STORE_APP_VERSIE_IOS` blijft 1.1 tot 1.3 live is. Android-AAB vc7 staat klaar (PLAY §3).
+
 > **STAND 17-09 — versie 1.1 (build 140) GOEDGEKEURD EN LIVE ("eligible for distribution", submission dad3608e…; App Store-lookup
 > id6803862748: version 1.1, vrijgegeven 2026-09-16T23:23Z). Gedaan in de SPOED-run 17-09:** `STORE_APP_VERSIE_IOS=1.1` in deploy.yml
 > (service én jobs; sleutel in `test_deploy_yml_envset_compleet.py`) → de uitnodigingsmail toont vanaf die deploy de App Store-link;

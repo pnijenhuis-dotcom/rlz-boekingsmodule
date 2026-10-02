@@ -219,8 +219,9 @@ const APPSLOT_AUDIT_MAX = 20
 
 export interface AppSlotAuditRegel {
   tijdstip: string
-  /** `toegangscode_opslag_mislukt` (bugfix 10-09 (2)): de eerste opslag van de code stond niet aantoonbaar — nooit de code zelf. */
-  actie: 'toegangscode_gewijzigd' | 'toegangscode_opslag_mislukt'
+  /** `toegangscode_opslag_mislukt` (bugfix 10-09 (2)): de eerste opslag van de code stond niet aantoonbaar — nooit de code zelf.
+   * `app_opslag_hersteld` (native 1.3, run D 02-10): de gebruiker heeft de kluis via "App-opslag opnieuw instellen" gewist. */
+  actie: 'toegangscode_gewijzigd' | 'toegangscode_opslag_mislukt' | 'app_opslag_hersteld'
 }
 
 export function leesAppSlotAudit(): AppSlotAuditRegel[] {

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backup-regels voor Android < 12 (android:fullBackupContent). Native 1.3 / vc7 (run D 02-10):
+     de kluis `veilige_opslag` (EncryptedSharedPreferences — toestel-token + app-slot) mag NOOIT in een
+     Google-backup: de Keystore-sleutel reist niet mee, dus een hersteld bestand is onleesbaar en gaf
+     "Opslag-verwijderfout: null" bij activatie (bug Peter 02-10). Ook de biometrie-kopie (appslot_bio)
+     hoort bij dit toestel. allowBackup staat bovendien op false; dit is de gordel bij de bretels. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="veilige_opslag.xml" />
+    <exclude domain="sharedpref" path="appslot_bio.xml" />
+</full-backup-content>

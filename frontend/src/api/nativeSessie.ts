@@ -19,10 +19,14 @@ import { webSlotModusActief, webVeiligeOpslag } from './webVeiligeOpslag'
 
 const REFRESH_SLEUTEL = 'refresh_token'
 
-interface VeiligeOpslagPlugin {
+export interface VeiligeOpslagPlugin {
   zet(opties: { sleutel: string; waarde: string }): Promise<void>
   haal(opties: { sleutel: string }): Promise<{ waarde: string | null }>
   verwijder(opties: { sleutel: string }): Promise<void>
+  /** Native 1.3 (run D 02-10): wist de hele kluis en maakt 'm opnieuw aan (Android EncryptedSharedPreferences +
+   * MasterKey, iOS Keychain-service). Optioneel: een schil van vóór 1.3 en de web-adapter hebben 'm niet — de
+   * aanroeper toetst `kanOpslagHerstellen()` (appSlot.ts) en toont de knop alleen dán. */
+  herstel?(): Promise<{ hersteld: boolean }>
 }
 
 interface CapacitorGlobal {

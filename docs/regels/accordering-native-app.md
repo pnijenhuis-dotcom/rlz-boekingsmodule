@@ -240,6 +240,44 @@
   0 rijen kanaal `e-mail`. Guards: `tests/berichten/test_push_only_02_10.py` (afwezig-pad beide jobs, push-fout, push ok, kantoorknop
   mailt wél, teller, CLI), `test_herinneringen.py`, `test_nieuwe_facturen.py`, `test_multi_administratie_wachtrij.py` herschreven.
 
+<!-- toegevoegd 02-10-2026, opdracht "run-D" blok F — DOEL: docs/regels/accordering-native-app.md -->
+- **Native 1.3 (vc7) — Android-kluis-zelfherstel, geen back-up van de kluis, knop "App-opslag opnieuw instellen" (blok F run D,
+  bug Peter 02-10 foto IMG_2512 `Opslag-verwijderfout: null`; geen migratie, geen backend; BESLISSINGEN "RUN D 02-10 — BTW < € 0,10,
+  PROJECTMATCH, AFWIJZEN, IC 12 RICHTINGEN, PO STAP-0, NATIVE 1.3 (Peter 02-10)" blok F):** Diagnose uit de foto: de laatste
+  slotfout was `verwijder appslot_slot (Opslag-verwijderfout: null)` — dat is het `herstelSlotWaarde`-pad van `stelCodeIn` ná een
+  mislukte schrijf, dus ÉLKE kluis-aanroep faalde; op Android betekent dat dat `EncryptedSharedPreferences` niet meer bij de
+  Keystore-MasterKey past (teruggezette back-up/toestel-overdracht/OS-update; de exception draagt vaak `getMessage() == null` →
+  "null"). Regels: (1) **`android:allowBackup="false"`** + `android:dataExtractionRules="@xml/data_extraction_rules"` (API 31+:
+  cloud-backup én device-transfer) + `android:fullBackupContent="@xml/backup_rules"` (ouder) sluiten de prefs `veilige_opslag.xml`
+  en de biometrie-kopie `appslot_bio.xml` uit — een kluis zonder zijn sleutel reist nooit mee. (2) **`VeiligeOpslagPlugin.java`
+  herstelt zichzelf:** faalt `opslag()` (MasterKey/EncryptedSharedPreferences-exception), dan één keer
+  `deleteSharedPreferences("veilige_opslag")` + opnieuw aanmaken (de inhoud was toch onleesbaar) en pas als dat óók faalt een
+  reject; een foutmelding is nooit "null" (`foutTekst`: `<klasse>: <message>`, leeg = `<klasse> (zonder melding)`, oorzaak
+  meegenomen); nieuwe methode **`herstel`** = kluisbestand + MasterKey-alias (`_androidx_security_master_key_`) weg, kluis
+  opnieuw aangemaakt en bewezen schrijf-/leesbaar (`{hersteld: true}`), anders `Opslag-herstelfout: …`. iOS-tegenhanger
+  `herstel` in `VeiligeOpslagPlugin.swift` wist álle Keychain-items van de service + proef. (3) **Webcode:** `nativeSessie.ts`
+  draagt `herstel?` optioneel op de plugin-interface; `appSlot.ts::kanOpslagHerstellen()` is alleen true in modus `native` mét
+  `herstel` (web-adapter nooit — een gewiste IndexedDB is het 18-09-pad `OPSLAG_GEWIST_MELDING`), `herstelOpslag()` →
+  `'hersteld' | 'niet_beschikbaar' | 'mislukt'` (anker + tabbladvenster + laatste slotfout weg; mislukking als slotfout
+  `herstel` zonder waarde); `slotDiagnose.ts::isKluisOpslagFout` herkent de plugin-rejecties `Opslag-…fout`/`Keychain-…fout`
+  (patroon, niet geankerd — `String(rejectie)` kan "Error: " voorop dragen); `SlotOpslagFout.tsx` toont bij kluisfout ÉN schil
+  ≥ 1.3 de kop **"App-opslag opnieuw instellen"** mét uitleg en knop (roept `herstelOpslag` aan, lokale audit
+  `app_opslag_hersteld`, daarna `opnieuw` = code kiezen op hetzelfde activatieresultaat / PincodeKiezen op het legacy-pad) +
+  "Opnieuw proberen zonder wissen"; mislukt = eerlijke melding + diagnoseregel. **Afwezig-pad ongewijzigd:** web, schil < 1.3
+  (plugin zonder `herstel`) of een eigen controle-fout (terugleescontrole/ontsleutelcontrole) → de 10-09-melding mét "neem
+  contact op met het kantoor". (4) **Versie:** marketingversie 1.3 / Android versionCode 7 (pbxproj ×2, `build.gradle`,
+  `appVersie.ts`; winkelrelease volgens TESTFLIGHT §6 — native plugin + manifest), `APP_MIN_RUNTIME_VERSIE` ongewijzigd 1.1,
+  OTA-registratie per runtime ongewijzigd (de eerste deploy ná de push registreert een bundel voor runtime 1.3). AAB gebouwd
+  02-10 20:59 (`nijenhuis-goedkeuren-1.3-vc7-20261002-2059.aab`, SHA-256 `3bb5afc3…742582`, bundletool ✓, manifest-dump
+  `allowBackup="false"` ✓), klikbestand `opdrachten/terminal/2026-10-03-android-vc7-upload.md` (Productie-release zoals 30-09 +
+  debug-symbols; store-upload = Peter); Xcode Cloud bouwt iOS 1.3 ná de push, indienen pas als Peter dat wil. Guards:
+  `tests/unit/test_app_marketingversie_consistent.py` (1.3/vc7; `test_android_kluis_niet_in_backup_sinds_1_3`: manifest,
+  beide xml-regels, `herstel` in beide plugins, geen `fout.getMessage()`-reject meer), vitest
+  `accordeur/appslot/SlotOpslagFout.test.tsx` (patroon, `kanOpslagHerstellen`/`herstelOpslag` web + schil zonder/mét herstel,
+  scherm: knop → herstel → opnieuw + audit, mislukt-pad, drie afwezig-paden). Werkt in productie: niet gemeten — meetlat =
+  Play-Console-stand `1.3 (7)` live + request-log activatie/toestel-koppeling mét `X-App-Versie: 1.3` + lokale audit
+  `app_opslag_hersteld` op het toestel van de foto.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Accordeur-app koude start + niet-geactiveerd account (CLAUDE.md `ed6d176` r. 690–699)
