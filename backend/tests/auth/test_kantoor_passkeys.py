@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from datetime import timedelta
+from datetime import UTC, timedelta
 
 import pyotp
 import pytest
@@ -152,7 +152,11 @@ def test_registratie_en_passkey_login_met_bestaande_jwt_semantiek(admin_engine: 
             ),
             {"g": gid},
         ).one()
-    ttl = rij.verloopt_op - rij.aangemaakt_op
+    # TTL in absolute seconden (UTC): psycopg geeft beide timestamptz-kolommen terug mét
+    # dezelfde ZoneInfo (Europe/Amsterdam) en Python trekt aware datetimes mét hetzelfde tzinfo
+    # NAÏEF van elkaar af (wandkloktijd) — over een zomertijdwissel heen is dat 29 d 23 h en de
+    # test was dan rood zonder code-oorzaak (25-09 → 25-10). Zie test_refresh_ttl_zomertijd.py.
+    ttl = rij.verloopt_op.astimezone(UTC) - rij.aangemaakt_op.astimezone(UTC)
     verwacht = timedelta(seconds=settings.jwt_refresh_ttl_seconds)
     assert verwacht - timedelta(minutes=1) < ttl < verwacht + timedelta(minutes=1)
     assert ttl > timedelta(days=8), "kantoor-TTL mag niet de 7-dagen-accordeurcadans zijn"

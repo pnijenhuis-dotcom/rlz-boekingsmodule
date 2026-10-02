@@ -124,7 +124,8 @@ def test_accordeur_refresh_ttl_is_7_dagen_sliding(beheerder_id: uuid.UUID, admin
             ),
             {"mail": e_mail},
         ).one()
-    ttl = rij.verloopt_op - rij.aangemaakt_op
+    # Absolute seconden (UTC), niet wandkloktijd — zelfde zomertijd-les als test_kantoor_passkeys.
+    ttl = rij.verloopt_op.astimezone(UTC) - rij.aangemaakt_op.astimezone(UTC)
     assert timedelta(days=6, hours=23) < ttl < timedelta(days=7, hours=1)
     assert rij.apparaat_id is not None  # sessie is apparaat-gebonden
 
