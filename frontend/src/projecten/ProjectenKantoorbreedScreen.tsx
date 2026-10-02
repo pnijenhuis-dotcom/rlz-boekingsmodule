@@ -130,7 +130,9 @@ export function ProjectenKantoorbreedScreen() {
   const administratieId = zoekParams.get('administratie_id') ?? ''
   const statusParam = zoekParams.get('status')
   const status: ProjectStatusFacet = isStatusFacet(statusParam) ? statusParam : 'alle'
-  const [zoek, setZoek] = useState('')
+  // Run A 02-10 punt 13: de zoekterm staat in de URL (`?zoek=`, deeplink wint — zelfde patroon als de klantenlijst 18-09);
+  // het veld is de bron tijdens het typen, de URL volgt ná de debounce (replace, geen history-vervuiling).
+  const [zoek, setZoek] = useState(() => zoekParams.get('zoek') ?? '')
   const [pagina, setPagina] = useState(1)
   const [data, setData] = useState<ProjectenKantoorbreedDto | null>(null)
   const [laadFout, setLaadFout] = useState<string | null>(null)
@@ -162,6 +164,19 @@ export function ProjectenKantoorbreedScreen() {
     }
   }, [pagina, zoek, administratieId, status, versie, toonAfgesloten])
 
+  // Punt 13: URL volgt het zoekveld (ná dezelfde debounce), zodat een deeplink/herlaad dezelfde selectie geeft.
+  useEffect(() => {
+    const term = zoek.trim()
+    if ((zoekParams.get('zoek') ?? '') === term) return
+    const timer = window.setTimeout(() => {
+      const p = new URLSearchParams(zoekParams)
+      if (term) p.set('zoek', term)
+      else p.delete('zoek')
+      setZoekParams(p, { replace: true })
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [zoek, zoekParams, setZoekParams])
+
   const zetParam = (naam: string, waarde: string | null) => {
     const p = new URLSearchParams(zoekParams)
     if (waarde) p.set(naam, waarde)
@@ -191,7 +206,7 @@ export function ProjectenKantoorbreedScreen() {
 
       <div className="segment" role="tablist" aria-label="Projecten" style={{ marginBottom: 12 }}>
         <button role="tab" aria-selected={tab === 'projecten'} className={tab === 'projecten' ? 'actief' : undefined} onClick={() => zetParam('tab', null)} data-testid="tab-projecten">
-          Projecten{data ? ` (${data.tellers.projecten})` : ''}
+          Projecten{data ? ` (${zoek.trim() ? `${data.totaal} van ${data.tellers.projecten}` : data.tellers.projecten})` : ''}
         </button>
         <button role="tab" aria-selected={tab === 'afsluiten'} className={tab === 'afsluiten' ? 'actief' : undefined} onClick={() => zetParam('tab', 'afsluiten')} data-testid="tab-afsluiten">
           Afsluiten?{(afsluitAantal ?? data?.tellers.kandidaat_afsluiten) !== undefined && (afsluitAantal ?? data?.tellers.kandidaat_afsluiten) !== null ? ` (${afsluitAantal ?? data?.tellers.kandidaat_afsluiten})` : ''}
@@ -266,11 +281,15 @@ export function ProjectenKantoorbreedScreen() {
           <input
             type="search"
             aria-label="Zoek project"
-            placeholder="🔍 project, opdrachtgever, werknummer…"
+            placeholder="🔍 nummer, naam, opdrachtgever, werknummer…"
             value={zoek}
             onChange={(e) => {
               setZoek(e.target.value)
               setPagina(1)
+            }}
+            onKeyDown={(e) => {
+              // Enter filtert niet "harder" dan typen (het filter loopt al); het mag alleen niets breken.
+              if (e.key === 'Enter') e.preventDefault()
             }}
             style={{ width: 220, maxWidth: '100%' }}
           />

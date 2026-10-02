@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProjectenIngang } from './ProjectenIngang'
 import { ProjectenKantoorbreedScreen } from './ProjectenKantoorbreedScreen'
@@ -88,9 +88,15 @@ function stubFetch(antwoord: ProjectenKantoorbreedDto = lijst()) {
   return aangeroepen
 }
 
+/** Run A 02-10 punt 13: de zoekterm staat in de URL — deze spion toont de actuele querystring. */
+function LocatieSpion() {
+  return <output data-testid="locatie">{useLocation().search}</output>
+}
+
 function renderScherm(pad = '/projecten') {
   return render(
     <MemoryRouter initialEntries={[pad]}>
+      <LocatieSpion />
       <Routes>
         <Route path="/projecten" element={<ProjectenIngang />} />
         <Route path="/projecten/:administratieId/:projectId" element={<div data-testid="detail-doel">detail</div>} />
@@ -136,6 +142,37 @@ describe('ProjectenKantoorbreedScreen', () => {
     await waitFor(() => expect(aangeroepen).toContain('/projecten/kantoorbreed?pagina=1&status=signaal'))
     await userEvent.type(screen.getByLabelText('Zoek project'), 'breda')
     await waitFor(() => expect(aangeroepen).toContain('/projecten/kantoorbreed?pagina=1&status=signaal&q=breda'))
+  })
+
+  // Run A 02-10 punt 13 (Cowork 02-10: typen + Enter leek niet te filteren, de teller bleef 240; `?zoek=` deed niets).
+  it('punt 13: typen filtert direct op nummer (server-side q), de tab telt "N van M", Enter breekt niets en de URL volgt', async () => {
+    const aangeroepen = stubFetch(lijst([RIJ_SIGNAAL], { totaal: 1, administraties_in_selectie: 1 }))
+    renderScherm()
+    await screen.findByTestId('projecten-tabel')
+    const veld = screen.getByLabelText('Zoek project')
+    await userEvent.type(veld, '26014{Enter}')
+    await waitFor(() => expect(aangeroepen).toContain('/projecten/kantoorbreed?pagina=1&status=alle&q=26014'))
+    // De tab zegt hoeveel van het totaal de zoekterm overhoudt — niet meer alleen het totaal (dat leek "niet filteren").
+    expect(screen.getByTestId('tab-projecten')).toHaveTextContent('Projecten (1 van 2)')
+    expect(screen.getAllByTestId('projecten-rij')).toHaveLength(1)
+    // Enter heeft niets gebroken: nog steeds op /projecten, de URL draagt de term (deeplink/herlaad = zelfde selectie).
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent('?zoek=26014'))
+    expect(veld).toHaveValue('26014')
+    // Leegmaken haalt de term weer uit de URL.
+    await userEvent.clear(veld)
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(''))
+    expect(screen.getByTestId('locatie').textContent).not.toContain('zoek=')
+  })
+
+  it('punt 13: `?zoek=` in de URL (deeplink) filtert vanaf de eerste lading op opdrachtgever/werknummer en vult het veld', async () => {
+    const aangeroepen = stubFetch(lijst([RIJ_SIGNAAL], { totaal: 1, administraties_in_selectie: 1 }))
+    renderScherm('/projecten?zoek=MB-88412&status=signaal')
+    await screen.findByTestId('projecten-tabel')
+    expect(aangeroepen.filter((u) => u.startsWith('/projecten/kantoorbreed?'))[0]).toBe('/projecten/kantoorbreed?pagina=1&status=signaal&q=MB-88412')
+    expect(screen.getByLabelText('Zoek project')).toHaveValue('MB-88412')
+    expect(screen.getByTestId('tab-projecten')).toHaveTextContent('Projecten (1 van 2)')
+    // De URL blijft intact (geen tweede navigatie, status-facet blijft staan).
+    expect(screen.getByTestId('locatie')).toHaveTextContent('?zoek=MB-88412&status=signaal')
   })
 
   it('klik op een rij navigeert naar het bestaande projectdetail', async () => {

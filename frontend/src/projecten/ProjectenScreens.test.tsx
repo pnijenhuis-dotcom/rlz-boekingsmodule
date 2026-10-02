@@ -3,7 +3,7 @@
  * resultaat-detail (tegels + weektabel + onbepaalbaar-waarschuwing) en het cumulatieve
  * overzicht (totalen + signalen). */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProjectenScreen } from './ProjectenScreen'
 import { ProjectResultaatScreen } from './ProjectResultaatScreen'
@@ -92,6 +92,58 @@ describe('ProjectenScreen (lijst)', () => {
     fireEvent.change(screen.getByLabelText(/Plaats/), { target: { value: 'Tilburg' } })
     fireEvent.change(screen.getByLabelText(/Opdrachtgever/), { target: { value: 'Heijmans' } })
     expect(screen.getByText('26127 Tilburg (Heijmans)')).toBeInTheDocument()
+  })
+})
+
+describe('ProjectenScreen (lijst) — zoekveld punt 13 run A 02-10', () => {
+  const LEEG = { projecten: [], zonder_specs: 0, aantal_afgesloten: 0 }
+  function LocatieSpion() {
+    return <output data-testid="locatie">{useLocation().search}</output>
+  }
+  function renderMetUrl(pad: string) {
+    return render(
+      <MemoryRouter initialEntries={[pad]}>
+        <LocatieSpion />
+        <Routes>
+          <Route path="/projecten" element={<ProjectenScreen />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('`?zoek=` in de URL gaat vanaf de eerste lading als zoekterm naar de server en vult het veld', async () => {
+    const aangeroepen: string[] = []
+    installMock({ [`/projecten/${ADMINISTRATIE_ID}`]: () => jsonResponse(LEEG) })
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      aangeroepen.push(url)
+      if (url.includes('/auth/administraties')) return Promise.resolve(jsonResponse({ administraties: [] }))
+      return Promise.resolve(jsonResponse(LEEG))
+    })
+    renderMetUrl(`/projecten?administratie=${ADMINISTRATIE_ID}&zoek=25013`)
+    await waitFor(() => expect(aangeroepen.some((u) => u.startsWith(`/projecten/${ADMINISTRATIE_ID}?zoek=25013`))).toBe(true))
+    expect(screen.getByLabelText('Zoek projecten')).toHaveValue('25013')
+    expect(await screen.findByText('Geen projecten gevonden voor "25013".')).toBeInTheDocument()
+  })
+
+  it('typen filtert direct (server-side zoek), Enter breekt niets en de URL volgt het veld', async () => {
+    const aangeroepen: string[] = []
+    installMock({})
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      aangeroepen.push(url)
+      if (url.includes('/auth/administraties')) return Promise.resolve(jsonResponse({ administraties: [] }))
+      return Promise.resolve(jsonResponse(LEEG))
+    })
+    renderMetUrl(`/projecten?administratie=${ADMINISTRATIE_ID}`)
+    await waitFor(() => expect(aangeroepen.some((u) => u.startsWith(`/projecten/${ADMINISTRATIE_ID}?zoek=`))).toBe(true))
+    const veld = screen.getByLabelText('Zoek projecten')
+    fireEvent.change(veld, { target: { value: '26149' } })
+    fireEvent.keyDown(veld, { key: 'Enter' })
+    await waitFor(() => expect(aangeroepen.some((u) => u.startsWith(`/projecten/${ADMINISTRATIE_ID}?zoek=26149`))).toBe(true))
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`?administratie=${ADMINISTRATIE_ID}&zoek=26149`))
+    expect(veld).toHaveValue('26149')
   })
 })
 

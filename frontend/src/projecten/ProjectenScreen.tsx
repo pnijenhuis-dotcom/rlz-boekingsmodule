@@ -59,7 +59,9 @@ export function ProjectenScreen() {
   }
   const { administraties } = useAdministraties()
   const [data, setData] = useState<ProjectenLijstDto | null>(null)
-  const [zoek, setZoek] = useState('')
+  // Run A 02-10 punt 13: `?zoek=` in de URL is de deeplink (wint bij openen), het veld is de bron tijdens het typen,
+  // de URL volgt ná de debounce — zelfde patroon als de klantenlijst (18-09) en de kantoorbrede lijst.
+  const [zoek, setZoek] = useState(() => searchParams.get('zoek') ?? '')
   const [fout, setFout] = useState<string | null>(null)
   const [herlaad, setHerlaad] = useState(0)
   const [nieuwOpen, setNieuwOpen] = useState(false)
@@ -84,6 +86,18 @@ export function ProjectenScreen() {
     )
     return () => window.clearTimeout(timer)
   }, [administratieId, zoek, herlaad, toonAfgesloten])
+
+  useEffect(() => {
+    const term = zoek.trim()
+    if ((searchParams.get('zoek') ?? '') === term) return
+    const timer = window.setTimeout(() => {
+      const p = new URLSearchParams(searchParams)
+      if (term) p.set('zoek', term)
+      else p.delete('zoek')
+      setSearchParams(p, { replace: true })
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [zoek, searchParams, setSearchParams])
 
   if (!administratieId) {
     return <p className="hint">Geen administratie gekozen — open de projecten vanaf de klantpagina.</p>
@@ -142,9 +156,12 @@ export function ProjectenScreen() {
           <input
             type="search"
             aria-label="Zoek projecten"
-            placeholder="Zoek op nummer, plaats of opdrachtgever…"
+            placeholder="Zoek op nummer, plaats, opdrachtgever of werknummer…"
             value={zoek}
             onChange={(e) => setZoek(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.preventDefault()
+            }}
             style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text)', font: 'inherit', maxWidth: 340, padding: '8px 12px', width: '100%' }}
           />
           {data !== null && data.zonder_specs > 0 && <Badge variant="warn">{data.zonder_specs} zonder specs</Badge>}
