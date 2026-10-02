@@ -336,6 +336,68 @@
   "Anders…"; de verdeling blijft achteraf aanpasbaar (bestaand). Guard `tests/projectverdeling/test_standaard_sleutel.py`, vitest
   `ProjectverdelingBlok.test.tsx`.
 
+<!-- toegevoegd 02-10-2026, opdracht "boeken-prettig-1" punt 4 — DOEL: docs/regels/verplichtingen-projecten-voorraad.md -->
+- **Project nooit uit de historie zonder factuurverwijzing, nooit een afgesloten project (punt 4 "Boeken prettig 1", Peter 02-10,
+  casus Universal Steigerbouw f00117f4 — brandstof voorgevuld op "Afgesloten 25147" uit de historie; geen migratie; HERZIET stap (3)
+  van de bronvolgorde 25-09; BESLISSINGEN "BOEKEN PRETTIG 1 — BIJLAGEN BIJ DE FACTUUR, RUSTIG SCHERM, OVERHEAD AUTOMATISCH (Peter
+  02-10)"):** het leverancier-geheugen vult het PROJECT NIET meer in — ook niet als "voorstel uit historie". Bronvolgorde per regel
+  (`regel_prefill.verrijk_prefill`): (1) factuur/werknummer, (2) klant-loze cachecode in het administratie-formaat; daarna NIETS.
+  Wijst de historie naar een project, dan reist dat alleen als herkomst-informatie mee (`project_bron = geheugen`, `project_bron_detail`
+  "… niet ingevuld", géén `project_id`, géén `prefill_herkomst.project`) — zichtbaar onder "Herkomst tonen" (chip "historie noemt een
+  project — niet ingevuld", alleen zolang het veld leeg is). `factuur_conflict`/`geheugen_afgesloten` ongewijzigd; afgesloten/inactief
+  alleen bij exacte factuurverwijzing (bestaand). Grootboek/btw uit het geheugen ongewijzigd (punt 8 = aparte opdracht). Autoboek-pad:
+  `_geheugen_veld_geblokkeerd`/`_vul_regel_uit_geheugen` eisen/vullen geen project meer; een regel zonder project loopt onder
+  projectplicht via de automatische projectverdeling (punt 5) óf de harde check "Verplichte velden" weigert zichtbaar
+  (`autoboeken_geweigerd`). Frontend-spiegel `geheugenVoorstel.bepaalPrefill` vult `projectId` nooit. Meetlat: bibliotheekquery
+  `project-prefill-herkomst` — `herkomst_project = leverancier_geheugen` komt ná de deploy niet meer voor. Guards
+  `tests/documenten/test_project_bronvolgorde.py` (incl. autoboek-afwezig-pad), gouden set i, vitest `geheugenVoorstel.test.ts`,
+  `regelVoorstelChips.test.ts`. Werkt in productie: niet gemeten.
+
+<!-- toegevoegd 02-10-2026, opdracht "boeken-prettig-1" punt 5 — DOEL: docs/regels/verplichtingen-projecten-voorraad.md -->
+- **Overhead automatisch via de omzetsleutel, sleutelmaand = maand van de factuurdatum, "Verdelen" overrult (punt 5 "Boeken prettig 1",
+  Peter 02-10 "wordt de kosten verdelen voor overhead dan gefixt? daar lopen we nu echt tegenaan"; geen migratie; HERZIET de opt-in-
+  prefill ④ onder projectplicht én de periode-default "vorige afgesloten maand"; BESLISSINGEN "BOEKEN PRETTIG 1 — …(Peter 02-10)"):**
+  (1) Regels zonder project op een kostenrekening = overhead. Onder projectplicht staat de projectverdeling bij openen KLAAR voor het
+  volledige bedrag van die regels (`projectverdeling.service.lees`, `prefill=True`, niets opgeslagen; de leverancier-opt-in is géén
+  voorwaarde meer — buiten projectplicht blijft ④), volgens `standaard_sleutel` van de administratie (Universal = omzetsleutel uit de
+  historie, nooit hardcoded; een OVH-project komt er nooit, 21-09). Boeken kan direct: de check "Projectverdeling" is groen mét
+  samenvatting, "Verplichte velden" eist geen project op regels die de verdeling dekt, `bevries_bij_boeking` bevriest de live stand en
+  de adapters splitsen per project. (2) Sleutelmaand = MAAND VAN DE FACTUURDATUM (`service.automatische_periode`, herziet "huidige/
+  vorige maand"): `omzet_jaar` → jaar van de factuurdatum (geldig, anders vorig jaar); anders de factuurmaand als die omzet heeft (of de
+  cijfers-sync nooit draaide); geen omzet in de factuurmaand / geen factuurdatum / maand in de toekomst → terugval op de vorige
+  afgesloten maand mét zichtbare reden (`periode_herkomst = vorige_maand_terugval`, oranje chip "automatisch — ‹sleutel› · geen omzet in
+  de factuurmaand ‹maand› — vorige afgesloten maand genomen"); normaal "· maand van de factuurdatum". Nooit stil. (3) Kan de
+  automaat niet (geen omzetcijfers): "Verplichte velden" blokkeert mét verwijzing naar de verdeling en de reden ("niet gedekt door de
+  projectverdeling (Geen omzetcijfers bekend voor … — ⟳ …): vul de projectverdeling aan … óf kies per regel een project"), de check
+  "Projectverdeling" is een oranje signaal "Automatische verdeling niet mogelijk voor N regels zonder project — ‹reden›" — één oorzaak,
+  één rode rij. (4) "Verdelen over projecten" OVERRULT: dragen regels al een project, dan maakt de knop die leeg (client), de PUT draagt
+  `verdelen_leeggemaakt {regels: n}` → één tijdlijnregel "Verdelen over projecten: project van N regels leeggemaakt — het hele bedrag
+  verdeeld via de projectverdeling" (`VERDELEN_LEEGGEMAAKT_SLEUTEL`, nooit op autosave) en het blok opent; nooit meer "€ 0,00 · verdeeld
+  100 %" zonder uitleg — dragen álle regels een project, dan zegt het blok "Alle regels dragen al een project — er is niets te verdelen …"
+  (DTO `regels_zonder_project`/`regels_totaal`). De verdeling blijft achteraf aanpasbaar. (5) Tegenboeken: de bevroren verdeling dekt de
+  regels zonder project óók in de tegenboek-checks (vóór 02-10 blokkeerde een overhead-boeking daar op "project ontbreekt"). Gouden set
+  q/r: het vierde exemplaar boekt automatisch via de automatische verdeling op de factuurmaand (geen geheugen-project meer, punt 4).
+  Guards `tests/projectverdeling/test_service.py::TestOverheadAutomatisch` (incl. afwezig-pad zonder omzetcijfers), keten q/r/k,
+  vitest `ProjectverdelingBlok.test.tsx`, `BoekvoorstelPanel.kopDoorzetten.test.tsx`, `verdelenLeeggemaaktTijdlijn.test.ts`. Werkt in
+  productie: niet gemeten (casus f00117f4 openen ná deploy → verdeling klaar op juni 2026 of oranje terugval; `db-lezen
+  projectverdeling` pro_rato_periode = factuurmaand).
+
+<!-- toegevoegd 02-10-2026, opdracht "boeken-prettig-1" punt 6 — DOEL: docs/regels/verplichtingen-projecten-voorraad.md -->
+- **Balansrekeningen zonder project (punt 6 "Boeken prettig 1", Peter 02-10 "soms hebben we gewoon spullen die als voorraad worden
+  gekocht, die moeten helemaal geen project krijgen" / "voorraad boeken vraagt nog steeds om project"; geen migratie, geen instelling,
+  geen keuzelijst; BESLISSINGEN "BOEKEN PRETTIG 1 — …(Peter 02-10)"):** projecteis en projectverdeling gelden UITSLUITEND voor
+  KOSTENrekeningen — `grootboekrekening.soort == 2` (RLZ `AccountType` onvertaald: 1 opbrengsten, 2 kosten, 3 activa, 4 passiva; Odoo
+  `account_type` expense* → 2 via `odoo/sync.soort_voor_account_type`). Voorraad (3xxx), activa (0xxx), tussenrekeningen (soort 3/4):
+  géén projectveld op de regel (cel "— geen project (balansrekening)"), geen verdeling (de regel telt niet in het basisbedrag en wordt
+  door RLZ-/Odoo-adapter nooit over de verdeling gesplitst), geen check, en de prefill zet er nooit een project op (ook niet uit de
+  factuur). Deterministisch op het rekeningtype uit de sync (`app/documenten/rekeningtype.py`: `balans_ledger_ids`,
+  `project_van_toepassing`); een rekening die niet in de cache staat telt als kosten (fail-closed). De vlag
+  `BoekvoorstelRegelData.project_van_toepassing` wordt in `boekvoorstel._met_projectverdeling` gezet (één query per lezing) en gelezen
+  door checks (`CheckRegel.project_van_toepassing`), `_regels_zonder_project`, `projectverdeling.verrijk_boekvoorstel`/`sla_op` en de
+  adapters; "Alle regels — project" en "N regels zonder project" tellen alleen kostenregels. Activa-kaart (0168) ongewijzigd. Guards
+  `tests/documenten/test_project_rekeningtype.py`, gouden set ag (`test_ag_balansregel_zonder_project_geen_projecteis`), vitest
+  `BoekvoorstelPanel.balans.test.tsx`. Werkt in productie: niet gemeten.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)

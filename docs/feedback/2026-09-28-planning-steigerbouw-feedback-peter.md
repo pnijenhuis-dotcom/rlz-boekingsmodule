@@ -40,3 +40,17 @@ Bijlagen: schermafbeelding 1 (Planning Universal Steigerbouw week 38, ZZP-pool r
 > openen → lijst afvinken is de werkwijze. Project slepen blijft mét klik-alternatief.
 > **Waarneming schermopname (doodlopend infopaneel op een gereserveerde kaart):** gefixt — opent nu het ploeg-paneel; opslaan mét ≥ 1
 > persoon maakt de reservering tot planning.
+
+## Wens Peter 02-10-2026 (voor later, geen bouw nu)
+- "mogelijkheid om ingepland werk op maandag via ctrl-C / ctrl-V bijvoorbeeld naar vrijdag te kopiëren" — kopiëren van een dagplanning
+  (projectkaart mét ploeg) naar een andere dag binnen dezelfde week via toetsenbord; past op de bestaande bulkroute (bron
+  `kopie_volgende_week` → generaliseren naar `kopie_dag`). Prioriteit ná de opschoon-run controlescherm/bijlagen.
+
+## Feedback Peter 02-10-2026 (letterlijk; nog niet gebouwd)
+- "als er een transport gepland staat op een werk dan willen wij bij tabje personeel op dat werk een vrachtwagen icoontje zien, zodat
+  we weten dat daar een planning geleverd staat"
+- "beter onderscheid maken in de vakjes werken, nu zien we soms door de bomen het bos niet meer"
+- Native app, rol uitvoerder: "het tabje mijn uren moeten we vervangen door tabje planning. Hierin moet de uitvoerder een lijst zien
+  van alle geplande projecten van die dag (gaat dus mee met de agenda) en die moet met links swipen een dag terug kunnen kijken en met
+  rechts swipen in de toekomst kunnen kijken" (NB: herziet "geen planningstab" uit de uitvoerder-feedback 18-09 — voor de rol
+  uitvoerder komt er wél een planningstab, in plaats van "Mijn uren").
