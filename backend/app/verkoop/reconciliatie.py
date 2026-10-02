@@ -1,17 +1,20 @@
-"""Reconciliatieblok `vastly_verkoop` (Peter 29-09, punt 1/2/7): élk Vastly-verkoopdocument dat niet automatisch
-geboekt is, is één bevinding MÉT handeling — nooit een document in een lijst (verzamelbak/werkvoorraad).
+"""Reconciliatieblok `vastly_verkoop` (Peter 29-09, punt 1/2/7; herzien 01-10 "100 % auto zonder menselijke tussenstap,
+hou het simpel"): élk Vastly-verkoopdocument dat niet automatisch geboekt is, is één bevinding — nooit een document in
+een lijst (verzamelbak/werkvoorraad) en sinds 01-10 nooit een mens-keuze in de module.
 
-Drie bevindingssoorten (alle direct in stand `actie`, besluit Peter 28/29-09 — een bestaand deterministisch pad mét
-één handeling, geen nieuwe domeinhypothese; explosie-rem blijft):
+Drie bevindingssoorten (alle direct in stand `actie`, besluit Peter 28/29-09 — een bestaand deterministisch pad, geen
+nieuwe domeinhypothese; explosie-rem blijft):
 - `vastly_entiteit_niet_gekoppeld` — platformbreed, één per entiteitsleutel (KvK of genormaliseerde naam) uit de
-  niet-gekoppelde documenten; handeling "Koppel aan administratie…" (`POST /reconciliatie/vastly/entiteit-koppelen`
-  → register-rij + directe heraanbieding van díé documenten).
-- `vastly_omzetrekening_ontbreekt` — per (administratie, regelsoort), afgeleid uit open documenten waarvan het
-  autoboek-pad weigerde op `omzetrekening_ontbreekt`; handeling "Rekening kiezen" (`PUT …/vastly-omzetrekeningen`).
+  niet-gekoppelde documenten; tekst "UBL draagt geen administratie-id en geen bekende KvK — melden bij Vastly" (of: het
+  id uit de UBL is onbekend). Géén koppelknop (de mens-koppeling van 29-09 is per 01-10 vervallen; de UBL hoort het
+  platform-administratie-id te dragen, koppelcontract §2d-notitie 01-10).
+- `vastly_omzetrekening_ontbreekt` — per open document waarvan het autoboek-pad weigerde op `omzetrekening_ontbreekt`
+  (geen of onbekende `AccountingCost`); handeling alleen "Opnieuw aanbieden" (`POST /reconciliatie/vastly/documenten/
+  {id}/opnieuw-aanbieden`) ná de herzending van de UBL door Vastly — "Rekening kiezen" is per 01-10 weg.
 - `vastly_verkoop_niet_geboekt` — per open Vastly-verkoopdocument > `MINIMUM_LEEFTIJD` (1 dag) in een
   vastgoed-administratie mét de reden (lees-only oordeel `autoboeken.beoordeel_lees_only`); handeling "Opnieuw
-  aanbieden" (`POST /reconciliatie/vastly/documenten/{id}/opnieuw-aanbieden`) + deeplink naar het document. Een
-  document dat al onder `omzetrekening_ontbreekt` valt krijgt géén tweede rij (één feit, één handeling).
+  aanbieden" + deeplink naar het document. Een document dat al onder `omzetrekening_ontbreekt` valt krijgt géén
+  tweede rij (één feit, één handeling).
 Lees-only: geen RLZ-call (de duplicaat-/RLZ-checks lopen pas in de motor), geen writes."""
 
 from __future__ import annotations
@@ -74,7 +77,12 @@ def _entiteit_bevindingen(*, stdout: Callable[[str], None], verzamelaar, nu: dat
         primair = sleutels.primair or ("naam", document.tenaamstelling or "?")
         g = groepen.setdefault(
             primair,
-            {"weergave": sleutels.weergave or document.tenaamstelling, "kvk": sleutels.kvk, "documenten": []},
+            {
+                "weergave": sleutels.weergave or document.tenaamstelling,
+                "kvk": sleutels.kvk,
+                "administratie_id_ubl": sleutels.administratie_id_ruw or None,
+                "documenten": [],
+            },
         )
         g["documenten"].append(
             {
@@ -86,10 +94,16 @@ def _entiteit_bevindingen(*, stdout: Callable[[str], None], verzamelaar, nu: dat
     for (soort, sleutel), g in sorted(groepen.items()):
         naam = g["weergave"] or sleutel
         aantal = len(g["documenten"])
+        weigering = entiteit.WEIGERING_ID_ONBEKEND if g["administratie_id_ubl"] else entiteit.WEIGERING_GEEN_ID_GEEN_KVK
+        reden = entiteit.weigering_tekst(
+            entiteit.EntiteitSleutels(
+                kvk=g["kvk"], naam_norm=None, weergave=g["weergave"], administratie_id_ruw=g["administratie_id_ubl"]
+            ),
+            weigering,
+        )
         tekst = (
             f"AFWIJKING  vastly_verkoop: {aantal} Vastly-verkoopfactu{'ur' if aantal == 1 else 'ren'} van entiteit "
-            f"{naam!r} ({soort} {sleutel}) niet gekoppeld aan een administratie — koppel éénmalig, daarna boekt de "
-            "module ze automatisch"
+            f"{naam!r} ({soort} {sleutel}) niet gekoppeld aan een administratie — {reden}"
         )
         stdout(tekst)
         _bevinding(
@@ -104,6 +118,8 @@ def _entiteit_bevindingen(*, stdout: Callable[[str], None], verzamelaar, nu: dat
                 "sleutel": sleutel,
                 "kvk": g["kvk"],
                 "weergave": g["weergave"],
+                "administratie_id_ubl": g["administratie_id_ubl"],
+                "reden": reden,
                 "aantal": aantal,
                 "documenten": g["documenten"][:MAX_DOCUMENTEN_IN_DETAIL],
                 "doel_pad": "/reconciliatie",
@@ -140,69 +156,51 @@ def _reden_voor(administratie_id: uuid.UUID, document: Document) -> str:
 
 
 def _administratie_bevindingen(*, stdout: Callable[[str], None], verzamelaar, nu: datetime) -> tuple[int, int, int]:  # noqa: ANN001
-    """(b)+(c): per vastgoed-administratie. → (gecontroleerd, omzetrekening-bevindingen, niet-geboekt-bevindingen)."""
+    """(b)+(c): per vastgoed-administratie. → (gecontroleerd, omzetrekening-bevindingen, niet-geboekt-bevindingen).
+    Sinds 01-10 is (b) per DOCUMENT (de handeling is "Opnieuw aanbieden" ná de herzending door Vastly, niet meer een
+    rekening kiezen per administratie)."""
     gecontroleerd = 0
     n_rek = 0
     n_doc = 0
     for administratie_id, naam in heraanbieden.vastgoed_administraties():
         documenten = _open_documenten(administratie_id, nu=nu)
         gecontroleerd += len(documenten)
-        per_regelsoort: dict[str, list[Document]] = {}
-        overige: list[tuple[Document, str]] = []
         for d in documenten:
             reden = _reden_voor(administratie_id, d)
-            if reden.startswith(autoboeken.REDEN_OMZETREKENING_ONTBREEKT):
-                soort = _regelsoort_uit_reden(reden)
-                per_regelsoort.setdefault(soort, []).append(d)
+            code_ontbreekt = reden.startswith(autoboeken.REDEN_OMZETREKENING_ONTBREEKT)
+            soort = SOORT_OMZETREKENING if code_ontbreekt else SOORT_NIET_GEBOEKT
+            if code_ontbreekt:
+                n_rek += 1
+                tekst = (
+                    f"AFWIJKING  vastly_verkoop {naam}: {d.bestandsnaam} ({d.status.value}) sinds "
+                    f"{d.aangemaakt_op:%d-%m} zonder (bekende) grootboekcode in de UBL — melden bij Vastly, ná herzending "
+                    f"opnieuw aanbieden — {reden}"
+                )
             else:
-                overige.append((d, reden))
-        for regelsoort, docs in sorted(per_regelsoort.items()):
-            n_rek += 1
-            tekst = (
-                f"AFWIJKING  vastly_verkoop {naam}: geen Vastly-omzetrekening voor regelsoort {regelsoort!r} — "
-                f"{len(docs)} verkoopfactu{'ur' if len(docs) == 1 else 'ren'} wacht(en); kies de rekening éénmalig"
-            )
+                n_doc += 1
+                tekst = (
+                    f"AFWIJKING  vastly_verkoop {naam}: {d.bestandsnaam} ({d.status.value}) sinds "
+                    f"{d.aangemaakt_op:%d-%m} niet geboekt — {reden}"
+                )
             stdout(tekst)
+            detail = {
+                "afwijking_soort": soort,
+                "document_id": str(d.id),
+                "bestandsnaam": d.bestandsnaam,
+                "status": d.status.value,
+                "reden": reden[:500],
+                "sinds": d.aangemaakt_op.isoformat() if d.aangemaakt_op else None,
+                "doel_pad": f"/verkoop/{administratie_id}/{d.id}",
+            }
+            if code_ontbreekt:
+                detail["regelsoort"] = _regelsoort_uit_reden(reden)
             _bevinding(
                 verzamelaar,
                 soort="afwijking",
                 administratie_id=administratie_id,
-                vingerafdruk=_vingerafdruk(SOORT_OMZETREKENING, str(administratie_id), regelsoort),
+                vingerafdruk=_vingerafdruk(soort, str(d.id)),
                 tekst=tekst[:1000],
-                detail={
-                    "afwijking_soort": SOORT_OMZETREKENING,
-                    "regelsoort": regelsoort,
-                    "aantal": len(docs),
-                    "documenten": [
-                        {"document_id": str(d.id), "bestandsnaam": d.bestandsnaam}
-                        for d in docs[:MAX_DOCUMENTEN_IN_DETAIL]
-                    ],
-                    "doel_pad": f"/instellingen/administraties/{administratie_id}",
-                },
-                blok=BLOK,
-            )
-        for d, reden in overige:
-            n_doc += 1
-            tekst = (
-                f"AFWIJKING  vastly_verkoop {naam}: {d.bestandsnaam} ({d.status.value}) sinds "
-                f"{d.aangemaakt_op:%d-%m} niet geboekt — {reden}"
-            )
-            stdout(tekst)
-            _bevinding(
-                verzamelaar,
-                soort="afwijking",
-                administratie_id=administratie_id,
-                vingerafdruk=_vingerafdruk(SOORT_NIET_GEBOEKT, str(d.id)),
-                tekst=tekst[:1000],
-                detail={
-                    "afwijking_soort": SOORT_NIET_GEBOEKT,
-                    "document_id": str(d.id),
-                    "bestandsnaam": d.bestandsnaam,
-                    "status": d.status.value,
-                    "reden": reden[:500],
-                    "sinds": d.aangemaakt_op.isoformat() if d.aangemaakt_op else None,
-                    "doel_pad": f"/verkoop/{administratie_id}/{d.id}",
-                },
+                detail=detail,
                 blok=BLOK,
             )
     return gecontroleerd, n_rek, n_doc

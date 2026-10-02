@@ -20,7 +20,6 @@ import { BtwDefaultRij } from './BtwDefaultRij'
 import { BtwAftrekUitgeslotenBlok } from './BtwAftrekUitgeslotenBlok'
 import { BuaJaarrapportBlok } from './BuaJaarrapportBlok'
 import { BtwPlichtigRij } from './BtwPlichtigRij'
-import { VastlyOmzetrekeningenRij } from './VastlyOmzetrekeningenRij'
 import { ActivaInstellingenBlok } from './ActivaInstellingenBlok'
 import { AutoboekenLerenRij } from './AutoboekenLerenRij'
 import { OmzetBronnenBlok } from './OmzetBronnenBlok'
@@ -290,9 +289,9 @@ export function AdministratieDetailPagina({
             />
           </InstellingRij>
           {toggle('is_vastgoed', a.is_vastgoed, 'Vastgoed-koppeling (Vastly)', 'Events, projectaanvragen en verkoop-autoboeken volgen deze schakelaar.')}
-          {/* 29-09 (Peter 28-09): Vastly-huurfacturen boeken volledig automatisch — de vaste omzetrekening per regelsoort en de
-              gekoppelde verhuurder-entiteiten staan hier, zichtbaar én wijzigbaar (Beheerder); alleen bij een vastgoed-administratie. */}
-          {a.is_vastgoed && <VastlyOmzetrekeningenRij administratieId={a.id} naam={a.naam} />}
+          {/* 01-10 (Peter "hou het simpel"): de rij "Vastly-omzetrekeningen" van 29-09 is weg — Vastly-huurfacturen boeken
+              uitsluitend op het administratie-id en de grootboekcode uit de UBL; ontbreekt die, dan is het een bevinding
+              "melden bij Vastly" op Inzicht › Reconciliatie, geen instelling hier. */}
           {toggle(
             'uren_meerwerk',
             a.uren_meerwerk_ingeschakeld,

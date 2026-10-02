@@ -729,7 +729,9 @@ def test_onderdeel_vastly_verkoop_alleen_op_verzoek_en_lees_only(tmp_path: Path)
     assert "vastly-verkoop-heraanbieden --dry-run" in blok and "--uitvoeren" not in blok
     assert "db-lezen vastly-verkoop --param dagen=14" in blok
     assert "db-lezen vastly-verkoop-administratie --administratie" in blok
-    assert "/reconciliatie/vastly/" in blok and "/vastly-omzetrekeningen" in blok
+    # 01-10: de koppel-/rekening-kiezen-routes zijn vervallen; het request-log blijft ze tonen (404 = bewijs dat niemand
+    # ze nog raakt) náást de enige handeling "Opnieuw aanbieden".
+    assert "/reconciliatie/vastly/" in blok and "/vastly-omzetrekeningen" in blok and "/vastly-instellingen" in blok
     assert 'UIT="verkenning/nameting-vastly-verkoop-$DATUM.txt"' in blok
     assert 'elif [[ "$ONDERDEEL" == "vastly-verkoop" ]]; then\n            OORDEEL_BRON="verkenning/nameting-vastly-verkoop-$DATUM.txt"' in tekst
     assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "vastly-verkoop"' not in tekst

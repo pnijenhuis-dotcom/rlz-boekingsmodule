@@ -40,9 +40,8 @@ import {
   isVastlyEntiteitNietGekoppeld,
   isVastlyOmzetrekeningOntbreekt,
   isVastlyVerkoopNietGeboekt,
-  KoppelEntiteitActie,
+  MeldBijVastlyHint,
   OpnieuwAanbiedenActie,
-  RekeningKiezenActie,
 } from './VastlyActies'
 import { isActivumAanmakenMislukt, OpnieuwAanmakenActie } from './OpnieuwAanmakenActie'
 import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
@@ -285,33 +284,13 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
       )
     }
 
-    // 29-09 (Peter 28-09 "moet gewoon als omzet geboekt worden, punt"): Vastly-verkoop — drie bevindingen, drie handelingen.
+    // 29-09 (Peter 28-09 "moet gewoon als omzet geboekt worden, punt"), herzien 01-10 ("100 % auto zonder menselijke
+    // tussenstap"): Vastly-verkoop — entiteit onbekend = melden bij Vastly (geen koppelknop), code ontbreekt / niet
+    // geboekt = "Opnieuw aanbieden" (ná de herzending door Vastly).
     if (r.soort === 'afwijking' && isVastlyEntiteitNietGekoppeld(r)) {
-      return (
-        <KoppelEntiteitActie
-          bevinding={r}
-          onGelukt={(melding) => {
-            toast.meld(melding)
-            herlaad()
-          }}
-        />
-      )
+      return <MeldBijVastlyHint bevinding={r} />
     }
-    if (r.soort === 'afwijking' && isVastlyOmzetrekeningOntbreekt(r)) {
-      return (
-        <>
-          <RekeningKiezenActie
-            bevinding={r}
-            onGelukt={(melding) => {
-              toast.meld(melding)
-              herlaad()
-            }}
-          />{' '}
-          {deeplink}
-        </>
-      )
-    }
-    if (r.soort === 'afwijking' && isVastlyVerkoopNietGeboekt(r)) {
+    if (r.soort === 'afwijking' && (isVastlyOmzetrekeningOntbreekt(r) || isVastlyVerkoopNietGeboekt(r))) {
       return (
         <>
           <OpnieuwAanbiedenActie

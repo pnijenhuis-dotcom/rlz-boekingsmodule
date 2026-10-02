@@ -13,7 +13,8 @@ dat het hele voorstel deterministisch uit de UBL volgt:
    GB-codes bekend, btw-per-regel-=-factuur-btw, geen ankerdebiteur, duplicaat lokaal + RLZ,
    creditnota-herleiding) — een blokkerende check wint altijd.
 3. Elke regel is ondubbelzinnig uit de UBL geresolved: GB-code aanwezig én bekend in het
-   rekeningschema ('bekend' — 'ontbreekt' = mens kiest, 'onbekend' = blokkerend + autovraag),
+   rekeningschema ('bekend'; 'ontbreekt'/'onbekend' = weigering `omzetrekening_ontbreekt` → bevinding "Opnieuw
+   aanbieden" ná herzending door Vastly — sinds 01-10 nooit een afgeleide rekening, nooit "mens kiest"),
    en de btw VERGRENDELD (bron 'factuur', of 'onthouden' — dat is de eerder door een mens
    bevestigde keuze bij echte ambiguïteit, per administratie; zonder die bevestiging boekt
    ambiguïteit nooit automatisch — zelfde lijn als app-bevestigd geheugen bij inkoop).
@@ -62,33 +63,38 @@ logger = logging.getLogger(__name__)
 # het standaardtarief van de administratie (`administratie_default`, verkoop/voorstel.py) en de niet-btw-plichtige
 # bruto-regel (22-09) een deterministische bron — geen "onthouden keuze"-drempel meer.
 _TOEGESTANE_BTW_BRONNEN = frozenset({"factuur", "onthouden", BTW_BRON_ADMINISTRATIE_DEFAULT, BTW_BRON_NIET_PLICHTIG})
-#: Weigerredenen die het reconciliatieblok `vastly_verkoop` als aparte bevindingssoort/handeling kent.
+#: Weigerredenen die het reconciliatieblok `vastly_verkoop` als aparte bevindingssoort/handeling kent. Sinds 01-10
+#: (Peter: code uit de UBL of zichtbaar weigeren) dekt `omzetrekening_ontbreekt` zowel "geen code" als "code onbekend in
+#: het rekeningschema" — beide = Vastly stuurt (de juiste) code mee, daarna "Opnieuw aanbieden".
 REDEN_OMZETREKENING_ONTBREEKT = omzetrekening_service.REDEN_OMZETREKENING_ONTBREEKT
-REDEN_GB_CODE_ONBEKEND = "gb_code_onbekend"
 REDEN_BTW_NIET_BEPAALBAAR = "btw_niet_bepaalbaar"
 
 
 def _regels_geblokkeerd(voorstel: VerkoopVoorstelData) -> str | None:
     """Weiger-reden wanneer het voorstel niet volledig deterministisch vaststaat. De harde checks in de motor toetsen
-    de gekózen waarden nogmaals — hier gaat het om de vraag of alles deterministisch bepaald is. Sinds 29-09 bestaat
-    "mens kiest" niet meer: een regel zónder rekening betekent dat de administratie geen Vastly-omzetrekening voor die
-    regelsoort heeft (reden `omzetrekening_ontbreekt` → bevinding "Rekening kiezen"), een onbekende UBL-code blijft
-    blokkerend (koppelcontract §2d), en btw zonder dekkend tarief is een rekeningschema-gat (bevinding)."""
+    de gekózen waarden nogmaals — hier gaat het om de vraag of alles deterministisch bepaald is. "Mens kiest" bestaat
+    niet (29-09) en een afgeleide omzetrekening evenmin (01-10): een regel zónder bekende `AccountingCost` is reden
+    `omzetrekening_ontbreekt` (bevinding mét "Opnieuw aanbieden" ná herzending door Vastly); btw zonder dekkend tarief
+    is
+    een rekeningschema-gat (bevinding)."""
     if not voorstel.regels:
         return "de UBL leverde geen boekbare regels"
     for regel in voorstel.regels:
         if regel.netto_bedrag is None:
             return f"regel {regel.volgnummer} heeft geen nettobedrag"
         if regel.gb_code_status != "bekend" or regel.ledger_id is None:
+            soort = regel.regelsoort or omzetrekening_service.REGELSOORT_OVERIG
             if regel.gb_code_status == "onbekend":
                 return (
-                    f"{REDEN_GB_CODE_ONBEKEND}: regel {regel.volgnummer}: grootboekcode {regel.gb_code} uit de UBL is "
-                    "onbekend in het rekeningschema (blokkerend + automatische vraag)"
+                    f"{REDEN_OMZETREKENING_ONTBREEKT}: regel {regel.volgnummer} ({soort}): grootboekcode "
+                    f"{regel.gb_code} "
+                    "uit de UBL is onbekend in het rekeningschema van deze administratie — melden bij Vastly; ná de "
+                    "herzending 'Opnieuw aanbieden' (nooit een afgeleide rekening)"
                 )
             return (
-                f"{REDEN_OMZETREKENING_ONTBREEKT}: regel {regel.volgnummer} ({regel.regelsoort or 'overig'}): geen "
-                "grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — "
-                "kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)"
+                f"{REDEN_OMZETREKENING_ONTBREEKT}: regel {regel.volgnummer} ({soort}): geen grootboekcode "
+                "(cbc:AccountingCost) in de UBL — melden bij Vastly; ná de herzending 'Opnieuw aanbieden' (nooit een "
+                "afgeleide rekening)"
             )
         if not regel.btw_vergrendeld or regel.taxrate_id is None or regel.btw_bron not in _TOEGESTANE_BTW_BRONNEN:
             return (

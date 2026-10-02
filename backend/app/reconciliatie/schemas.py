@@ -303,27 +303,6 @@ class ExternGeboektTochVerschillendResultaatDto(BaseModel):
     checks_cache_ongeldig: int
 
 
-class VastlyEntiteitKoppelenInvoerDto(BaseModel):
-    """"Koppel aan administratie…" op de bevinding `vastly_entiteit_niet_gekoppeld` (Peter 29-09): de sleutel komt uit
-    de bevinding (KvK of genormaliseerde naam), de administratie kiest de mens éénmalig."""
-
-    sleutel_soort: str
-    sleutel: str
-    administratie_id: uuid.UUID
-    weergave: str | None = None
-
-
-class VastlyEntiteitKoppelenResultaatDto(BaseModel):
-    sleutel_soort: str
-    sleutel: str
-    administratie_id: uuid.UUID
-    administratie_naam: str
-    #: Directe heraanbieding van de wachtende documenten van deze entiteit: per uitkomst (geboekt/toegewezen/…).
-    documenten: int
-    per_uitkomst: dict[str, int]
-    doel_pad: str
-
-
 class VastlyOpnieuwAanbiedenResultaatDto(BaseModel):
     document_id: uuid.UUID
     administratie_id: uuid.UUID

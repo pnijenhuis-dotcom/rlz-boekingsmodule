@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-10-02 — Vastly-huurnota's boeken alleen nog op de rekening die Vastly meestuurt
+
+<!-- vastly-verkoop-administratie-id-terugval-uit-01-10 -->
+
+- **Vastly-huurnota's boeken alleen nog op de rekening die Vastly meestuurt.** Elke huurnota draagt voortaan per regel de grootboekcode én het kenmerk van de administratie van de verhuurder. De module boekt daar direct op — zonder dat iemand een rekening of administratie kiest. Ontbreekt een code of het kenmerk, dan boekt de module niet op een afgeleide rekening maar meldt dat als één regel op Inzicht › Reconciliatie: "melden bij Vastly". Na de herzending door Vastly volstaat "Opnieuw aanbieden".
+- **De instelling "Vastly-omzetrekeningen" en de knoppen "Koppel aan administratie…" en "Rekening kiezen" zijn verdwenen.** Ze waren een tijdelijke tussenstap; Vastly levert de gegevens nu zelf mee. Eerder gemaakte koppelingen blijven gewoon werken.
+
 ## 2026-09-29 — Huurfacturen uit Vastly boeken volledig automatisch als omzet
 
 <!-- vastly-verkoop-automatisch-29-09 -->

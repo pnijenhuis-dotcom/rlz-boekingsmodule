@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import re
+import uuid
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree as ET
@@ -474,6 +475,11 @@ def is_ubl_veldvoorstel(veldvoorstel: dict | None) -> bool:
 
 # §2d-markering (koppelcontract, vaste constante — nooit een prefix-match).
 VASTLY_VERKOOP_MARKERING = "VASTLY-VERKOOP"
+# §2d-notitie 01-10 (avond): tweede cac:AdditionalDocumentReference náást VASTLY-VERKOOP mét het PLATFORM-
+# administratie-id van de verhuurder (`platform.administratie.id`, §5/§8-sleutel — nooit het RLZ-interne admin-id).
+# Eén constante voor het
+# prefix; wijkt Vastly ooit af van deze vorm, dan verandert alleen deze regel (opdracht Peter 01-10).
+RLZ_ADMINISTRATIE_PREFIX = "RLZ-ADMINISTRATIE:"
 # Koppelcontract §2 punt 2: documenten van de vastgoedmodule dragen dit Reference-prefix — al
 # door vastgoed geboekt, nooit als werkvoorraad tonen.
 VGB_PREFIX = "VGB-"
@@ -482,6 +488,38 @@ VGB_PREFIX = "VGB-"
 def is_vastly_verkoop(voorstel: UblVeldvoorstel) -> bool:
     """§2d-routeringsregel: exact `VASTLY-VERKOOP` in cac:AdditionalDocumentReference/cbc:ID."""
     return VASTLY_VERKOOP_MARKERING in voorstel.additional_document_reference_ids
+
+
+@dataclass(frozen=True)
+class AdministratieVerwijzing:
+    """Het administratie-id uit de UBL (§2d-notitie 01-10): `aanwezig` = er staat een `RLZ-ADMINISTRATIE:`-referentie,
+    `ruw` = de tekst ná het prefix, `administratie_id` = die tekst als UUID (None = ongeldig of meerdere verwijzingen —
+    nooit raden, nooit stil een andere administratie)."""
+
+    aanwezig: bool
+    ruw: str | None
+    administratie_id: uuid.UUID | None
+
+
+def administratie_verwijzing(voorstel: UblVeldvoorstel) -> AdministratieVerwijzing:
+    """Leest de `RLZ-ADMINISTRATIE:<platform administratie-uuid>`-referentie(s) uit de UBL. Precies één geldige UUID =
+    het id; ontbreekt het element = niet aanwezig (terugval KvK aan de aanroeperkant); meerdere of ongeldig = aanwezig
+    zonder id (zichtbaar weigeren aan de aanroeperkant)."""
+    waarden = [
+        ref[len(RLZ_ADMINISTRATIE_PREFIX) :].strip()
+        for ref in voorstel.additional_document_reference_ids
+        if ref.startswith(RLZ_ADMINISTRATIE_PREFIX)
+    ]
+    if not waarden:
+        return AdministratieVerwijzing(aanwezig=False, ruw=None, administratie_id=None)
+    if len(set(waarden)) != 1:
+        return AdministratieVerwijzing(aanwezig=True, ruw="|".join(waarden), administratie_id=None)
+    ruw = waarden[0]
+    try:
+        administratie_id = uuid.UUID(ruw)
+    except ValueError:
+        administratie_id = None
+    return AdministratieVerwijzing(aanwezig=True, ruw=ruw or None, administratie_id=administratie_id)
 
 
 def is_vgb_document(voorstel: UblVeldvoorstel) -> bool:

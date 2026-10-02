@@ -266,7 +266,7 @@ def _verwerk_niet_gekoppeld(k: Kandidaat, *, dry_run: bool, actor_id: uuid.UUID,
         return RijUitkomst(
             k,
             UITKOMST_NIET_GEKOPPELD,
-            f"entiteit {entiteit_naam} niet in het register — koppel via de bevinding",
+            f"entiteit {entiteit_naam}: {entiteit.weigering_tekst(sleutels, besluit.weigering)}",
         )
     if dry_run:
         return RijUitkomst(k, UITKOMST_ZOU_TOEWIJZEN, f"entiteitenregister:{besluit.bron}", administratie_naam=naam)
@@ -383,34 +383,6 @@ def _administratie_van(document_id: uuid.UUID) -> uuid.UUID | None:
     with scoped_session(None) as session:
         document = session.get(Document, document_id)
         return document.administratie_id if document is not None else None
-
-
-def heraanbied_voor_sleutel(*, sleutel_soort: str, sleutel: str, actor_id: uuid.UUID) -> RunResultaat:
-    """Ná een mens-koppeling in de bevinding: alleen de niet-gekoppelde documenten van díé entiteit direct door het
-    pad (synchroon — het zijn er per entiteit hoogstens enkele tientallen; de dagelijkse stap vangt de rest)."""
-    from app.documenten.service import _standaard_opslag
-
-    opslag = _standaard_opslag()
-    resultaat = RunResultaat(
-        run_id=uuid.uuid4(), bron="entiteit_gekoppeld", dry_run=False, gestart_op=datetime.now(UTC)
-    )
-    for k in vind_niet_gekoppeld():
-        with scoped_session(None) as session:
-            document = session.get(Document, k.document_id)
-            if document is None:
-                continue
-            sleutels = _sleutels_voor(document, opslag=opslag)
-        if sleutels is None:
-            continue
-        past = (sleutel_soort == entiteit.SLEUTEL_KVK and sleutels.kvk == sleutel) or (
-            sleutel_soort == entiteit.SLEUTEL_NAAM and sleutels.naam_norm == sleutel
-        )
-        if past:
-            resultaat.uitkomsten.append(_verwerk_niet_gekoppeld(k, dry_run=False, actor_id=actor_id, opslag=opslag))
-    resultaat.klaar_op = datetime.now(UTC)
-    if resultaat.uitkomsten:
-        _audit_run(resultaat, actor_id=actor_id)
-    return resultaat
 
 
 # ---- CLI ------------------------------------------------------------------------------------------------------------

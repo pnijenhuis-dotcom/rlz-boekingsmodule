@@ -63,9 +63,12 @@ def bouw_vastly_verkoop_ubl(
     markering: str | None = "VASTLY-VERKOOP",
     document_gb_code: str | None = None,
     leverancier_kvk: str | None = None,
+    platform_administratie_id: str | None = None,
 ) -> bytes:
     """UBL 2.1 Invoice (380) exact conform §2d: markering in AdditionalDocumentReference,
-    AccountingCost per regel (BT-133). Default: één huurregel € 1.000 + 21% = € 1.210."""
+    AccountingCost per regel (BT-133). Default: één huurregel € 1.000 + 21% = € 1.210.
+    `platform_administratie_id` (01-10, §2d-notitie 01-10 avond): tweede AdditionalDocumentReference
+    `RLZ-ADMINISTRATIE:<waarde>` ná de verkoopmarkering (de letterlijke waarde — ook een ongeldige, voor de guard)."""
     regels = regels if regels is not None else [
         {"naam": "Huur augustus 2026", "netto": "1000.00", "pct": "21.00", "categorie": "S", "gb_code": "8000"},
     ]
@@ -79,6 +82,12 @@ def bouw_vastly_verkoop_ubl(
         if markering
         else ""
     )
+    if platform_administratie_id is not None:
+        adr += f"""
+  <cac:AdditionalDocumentReference>
+    <cbc:ID>RLZ-ADMINISTRATIE:{platform_administratie_id}</cbc:ID>
+    <cbc:DocumentDescription>Platform-administratie van de verhuurder (RLZ-boekhoudkoppeling)</cbc:DocumentDescription>
+  </cac:AdditionalDocumentReference>"""
     doc_gb = f"<cbc:AccountingCost>{document_gb_code}</cbc:AccountingCost>" if document_gb_code else ""
     regel_xml = "".join(
         _regel_xml(element="InvoiceLine", volgnummer=i, **r) for i, r in enumerate(regels, start=1)

@@ -49,12 +49,17 @@ class TestCreditnoteGate:
     ) -> None:
         monkeypatch.setattr(settings, "creditnota_381_ingeschakeld", True)
         # 29-09 (Peter): routering UITSLUITEND via het entiteitenregister — de naam alleen wijst nooit toe.
+        from app.intercompany.identiteit import naam_norm
         from app.verkoop import entiteit
+        from app.verkoop.models import VastlyEntiteitKoppeling
 
         with scoped_session(None, actor_id=gescoopte_gebruiker) as session:
-            entiteit.koppel_entiteit(
-                session, sleutel_soort="naam", sleutel="BLOW B.V.", administratie_id=administratie_heet_blow,
-                actor_id=gescoopte_gebruiker,
+            # 01-10: de mens-koppelroute is vervallen; een BESTAANDE mens-rij (van vóór 01-10) wordt nog gelezen.
+            session.add(
+                VastlyEntiteitKoppeling(
+                    sleutel_soort="naam", sleutel=naam_norm("BLOW B.V."), administratie_id=administratie_heet_blow,
+                    bron=entiteit.BRON_MENS, weergave="BLOW B.V.",
+                )
             )
         resultaat = _verwerk(
             bouw_vastly_creditnote_ubl(leverancier="BLOW B.V."), gescoopte_gebruiker, opslag

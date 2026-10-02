@@ -635,47 +635,6 @@ def document_extern_geboekt_toch_verschillend(
 
 
 @router.post(
-    "/reconciliatie/vastly/entiteit-koppelen",
-    response_model=schemas.VastlyEntiteitKoppelenResultaatDto,
-)
-def vastly_entiteit_koppelen(
-    invoer: schemas.VastlyEntiteitKoppelenInvoerDto, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
-) -> schemas.VastlyEntiteitKoppelenResultaatDto:
-    """"Koppel aan administratie…" (Peter 28/29-09) op de bevinding `vastly_entiteit_niet_gekoppeld`: schrijft de
-    registerrij (bron 'mens', audit `vastly_entiteit_gekoppeld`) en biedt de wachtende documenten van díé entiteit
-    DIRECT aan door het automatische pad (`heraanbieden.heraanbied_voor_sleutel` — administratie zetten, UBL-extractie,
-    autoboek; elke uitkomst geauditeerd). 422 = onbekende sleutelsoort/lege sleutel/inactieve administratie."""
-    from app.db.models import Administratie
-    from app.db.session import scoped_session
-    from app.verkoop import entiteit, heraanbieden
-
-    try:
-        with scoped_session(None, actor_id=actor.id) as session:
-            rij = entiteit.koppel_entiteit(
-                session,
-                sleutel_soort=invoer.sleutel_soort,
-                sleutel=invoer.sleutel,
-                administratie_id=invoer.administratie_id,
-                actor_id=actor.id,
-                weergave=invoer.weergave,
-            )
-            sleutel = rij.sleutel
-            naam = session.get(Administratie, invoer.administratie_id).naam
-    except entiteit.EntiteitFout as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
-    r = heraanbieden.heraanbied_voor_sleutel(sleutel_soort=invoer.sleutel_soort, sleutel=sleutel, actor_id=actor.id)
-    return schemas.VastlyEntiteitKoppelenResultaatDto(
-        sleutel_soort=invoer.sleutel_soort,
-        sleutel=sleutel,
-        administratie_id=invoer.administratie_id,
-        administratie_naam=naam,
-        documenten=r.kandidaten,
-        per_uitkomst=r.per_uitkomst(),
-        doel_pad=f"/administraties/{invoer.administratie_id}",
-    )
-
-
-@router.post(
     "/reconciliatie/vastly/documenten/{document_id}/opnieuw-aanbieden",
     response_model=schemas.VastlyOpnieuwAanbiedenResultaatDto,
 )
@@ -684,8 +643,9 @@ def vastly_opnieuw_aanbieden(
     invoer: schemas.BundelenInvoerDto,
     actor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.VastlyOpnieuwAanbiedenResultaatDto:
-    """"Opnieuw aanbieden" (Peter 29-09) op `vastly_verkoop_niet_geboekt`: hetzelfde autoboek-pad als bij intake voor dít
-    document (systeem-actor boekt; harde checks + volumerem onverkort; elke uitkomst geauditeerd). Een document dat geen
+    """"Opnieuw aanbieden" (Peter 29-09) op `vastly_verkoop_niet_geboekt` én (sinds 01-10)
+    `vastly_omzetrekening_ontbreekt` — ná de herzending van de UBL door Vastly: hetzelfde autoboek-pad als bij intake
+    voor dít document (systeem-actor boekt; harde checks + volumerem onverkort; elke uitkomst geauditeerd). Een document dat geen
     kandidaat (meer) is (status/soort) = 409 mét reden; buiten scope = 404 (RLS)."""
     from app.db.session import scoped_session
     from app.documenten.models import Document, DocumentStatus

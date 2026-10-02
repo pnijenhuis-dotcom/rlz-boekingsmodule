@@ -461,39 +461,3 @@ class EigenaarDto(StrikteInvoer):
     eigenaar_gebruiker_id: uuid.UUID | None = None
 
 
-class VastlyOmzetrekeningStandDto(BaseModel):
-    """Eén regelsoort (huur/servicekosten/waarborg/overig) → omzetrekening (Peter 29-09, migratie 0172)."""
-
-    regelsoort: str
-    ledger_id: uuid.UUID | None
-    code: str | None
-    naam: str | None
-    bron: str | None  # historie | mens | None
-
-
-class VastlyOmzetrekeningKeuzeDto(BaseModel):
-    ledger_id: uuid.UUID
-    code: str
-    naam: str
-
-
-class VastlyEntiteitKoppelingDto(BaseModel):
-    sleutel_soort: str
-    sleutel: str
-    weergave: str | None
-    bron: str
-
-
-class VastlyInstellingenDto(BaseModel):
-    """Instellingen › Administratie › Vastgoed-koppeling (Peter 29-09): de vaste omzetrekeningen per regelsoort + de
-    keuzelijst (8xxx) + de entiteitkoppelingen die naar deze administratie wijzen."""
-
-    administratie_id: uuid.UUID
-    omzetrekeningen: list[VastlyOmzetrekeningStandDto]
-    keuzelijst: list[VastlyOmzetrekeningKeuzeDto]
-    entiteiten: list[VastlyEntiteitKoppelingDto]
-
-
-class VastlyOmzetrekeningZettenDto(StrikteInvoer):
-    regelsoort: str
-    ledger_id: uuid.UUID

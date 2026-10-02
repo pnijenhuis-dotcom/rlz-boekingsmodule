@@ -21,7 +21,7 @@ from app.projectverdeling import service as pv_service
 from tests.keten import casussen
 from tests.keten.casussen import Casus
 from tests.keten.conftest import GB_ADVIES, GB_INHUUR, TAXRATE_HOOG, Keten
-from tests.projectverdeling.conftest import maak_project, seed_omzet
+from tests.projectverdeling.conftest import maak_project, na_boekmaand, seed_omzet
 
 OMZETMAAND = date(2026, 8, 1)
 DCTE, KADER = Casus(casussen.K1_DCTE), Casus(casussen.K2_KADER)
@@ -158,7 +158,7 @@ class TestBoekenMetProRato:
 class TestHercontrole:
     def test_ongewijzigde_omzet_nul_procent_geen_signaal(self, keten: Keten, dcte: uuid.UUID, kader: uuid.UUID) -> None:
         tellers = hercontrole.herbereken_administratie(
-            administratie_id=keten.administratie_id, vandaag=date(2026, 10, 2), forceer=True
+            administratie_id=keten.administratie_id, vandaag=na_boekmaand(), forceer=True
         )
         assert tellers["signalen"] == 0 and tellers["herrekend"] == 2
         for document_id in (dcte, kader):
@@ -171,7 +171,7 @@ class TestHercontrole:
         # +€ 400 op Venlo (3.000 → 3.400 van 20.400 totaal): Venlo-deel 94,50 → 105,00 = 1,67 % < 5 %.
         seed_omzet(keten.admin_engine, keten.administratie_id, projecten["venlo"], "400.00", date(2026, 8, 30))
         tellers = hercontrole.herbereken_administratie(
-            administratie_id=keten.administratie_id, vandaag=date(2026, 10, 2), forceer=True
+            administratie_id=keten.administratie_id, vandaag=na_boekmaand(), forceer=True
         )
         assert tellers["signalen"] == 0
         rij = _pv_rij(keten.admin_engine, kader)
@@ -183,7 +183,7 @@ class TestHercontrole:
         # +€ 6.000 op Venlo: 3.000 → 9.000 van 26.000 → Venlo-deel 94,50 → 218,08 = 19,6 % > 5 %.
         seed_omzet(keten.admin_engine, keten.administratie_id, projecten["venlo"], "6000.00", date(2026, 8, 30))
         tellers = hercontrole.herbereken_administratie(
-            administratie_id=keten.administratie_id, vandaag=date(2026, 10, 2), forceer=True
+            administratie_id=keten.administratie_id, vandaag=na_boekmaand(), forceer=True
         )
         assert tellers["signalen"] == 1
         assert _signaal_events(keten.admin_engine, kader) == 1
@@ -192,7 +192,7 @@ class TestHercontrole:
     def test_ontbrekende_omzet_geeft_geen_herverdelingssignaal(self, keten: Keten, dcte: uuid.UUID) -> None:
         _verwijder_omzet_augustus(keten.admin_engine, keten.administratie_id)
         tellers = hercontrole.herbereken_administratie(
-            administratie_id=keten.administratie_id, vandaag=date(2026, 10, 2), forceer=True
+            administratie_id=keten.administratie_id, vandaag=na_boekmaand(), forceer=True
         )
         assert tellers["signalen"] == 0
         assert _pv_rij(keten.admin_engine, dcte)["hercontrole_verdeling"] is None
@@ -201,7 +201,7 @@ class TestHercontrole:
     def test_ontbrekende_omzet_is_een_zichtbare_bevinding(self, keten: Keten, dcte: uuid.UUID) -> None:
         _verwijder_omzet_augustus(keten.admin_engine, keten.administratie_id)
         tellers = hercontrole.herbereken_administratie(
-            administratie_id=keten.administratie_id, vandaag=date(2026, 10, 2), forceer=True
+            administratie_id=keten.administratie_id, vandaag=na_boekmaand(), forceer=True
         )
         assert tellers["signalen"] == 0
         assert tellers.get("omzet_ontbreekt") == 1

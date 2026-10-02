@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0172
+-- Migratie-head bij deze dump: 0173
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -3167,7 +3167,7 @@ CREATE TABLE boekhouding.vastly_entiteit_koppeling (
     weergave text,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     aangemaakt_door uuid,
-    CONSTRAINT ck_vastly_entiteit_koppeling_bron CHECK ((bron = ANY (ARRAY['identiteit'::text, 'mens'::text]))),
+    CONSTRAINT ck_vastly_entiteit_koppeling_bron CHECK ((bron = ANY (ARRAY['identiteit'::text, 'mens'::text, 'ubl'::text]))),
     CONSTRAINT ck_vastly_entiteit_koppeling_sleutel_soort CHECK ((sleutel_soort = ANY (ARRAY['kvk'::text, 'naam'::text])))
 );
 

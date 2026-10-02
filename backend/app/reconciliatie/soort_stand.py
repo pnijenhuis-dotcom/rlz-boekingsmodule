@@ -181,25 +181,30 @@ REGISTRY: dict[str, SoortDefinitie] = {
         # in de mailbox zelf, de handeling is deterministisch ("Nu verwerken" = de intake-job opnieuw starten). Besluit
         # Peter in de opdracht: "verschil > 0 = actie-bevinding mét de Message-ID's en knop Nu verwerken".
         # Vastly-verkoop volledig automatisch (Peter 28-09 "nooit in de verzamelbak of werkvoorraad … moet gewoon als omzet
-        # geboekt worden, punt"; opdracht 29-09): drie soorten in blok `vastly_verkoop`, alle direct in `actie` — het is
-        # het bestaande deterministische verkoop-boekpad dat op één ontbrekende registerrij wacht, elk mét één
-        # handeling (Koppel aan administratie… / Rekening kiezen / Opnieuw aanbieden); explosie-rem blijft.
+        # geboekt worden, punt"; opdracht 29-09; herzien 01-10 "100 % auto zonder menselijke tussenstap, hou het
+        # simpel"):
+        # drie soorten in blok `vastly_verkoop`, alle direct in `actie` — het is het bestaande deterministische
+        # verkoop-boekpad; de handeling is sinds 01-10 nooit een mens-keuze in de module: entiteit/code ontbreekt =
+        # melden
+        # bij Vastly (de UBL draagt administratie-id + AccountingCost), daarna "Opnieuw aanbieden"; explosie-rem blijft.
         SoortDefinitie(
             soort="vastly_entiteit_niet_gekoppeld",
             blok="vastly_verkoop",
             sinds=date(2026, 9, 29),
             default=ACTIE,
-            direct_actie_reden="Peter 28/29-09 (opdracht Vastly-verkoop automatisch): de UBL noemt de verhuurder-entiteit, "
-            "alleen de registerrij ontbreekt — één deterministische handeling (Koppel aan administratie…), daarna boekt "
-            "de module zelf; explosie-rem blijft",
+            direct_actie_reden="Peter 28/29-09 + 01-10 (Vastly-verkoop automatisch): de UBL hoort het administratie-id "
+            "van de verhuurder te dragen (koppelcontract §2d-notitie 01-10) — ontbreekt het én is de KvK onbekend, dan "
+            "is "
+            "de handeling 'melden bij Vastly' (geen mens-keuze in de module); explosie-rem blijft",
         ),
         SoortDefinitie(
             soort="vastly_omzetrekening_ontbreekt",
             blok="vastly_verkoop",
             sinds=date(2026, 9, 29),
             default=ACTIE,
-            direct_actie_reden="Peter 29-09 (opdracht Vastly-verkoop automatisch): per administratie éénmalig de vaste "
-            "omzetrekening kiezen — de documenten wachten deterministisch op die ene rij; explosie-rem blijft",
+            direct_actie_reden="Peter 29-09 + 01-10 (Vastly-verkoop automatisch): een regel zonder (bekende) "
+            "AccountingCost boekt nooit op een afgeleide rekening — melden bij Vastly, ná de herzending 'Opnieuw "
+            "aanbieden' op de rij; explosie-rem blijft",
         ),
         SoortDefinitie(
             soort="vastly_verkoop_niet_geboekt",

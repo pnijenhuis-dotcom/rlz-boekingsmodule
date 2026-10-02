@@ -23,7 +23,6 @@ from app.verkoop import autoboeken as verkoop_autoboeken
 from app.verkoop import voorstel as voorstel_service
 from app.verkoop.models import VerkoopBtwVoorkeur
 from tests.verkoop.conftest import (
-    OMZET_LEDGER_ID,
     TAXRATE_21_ID,
     FakeVerkoopClient,
     bouw_vastly_creditnote_ubl,
@@ -207,6 +206,10 @@ class TestVerkoopAutoboeken:
         vastgoed_administratie: uuid.UUID,
         optin_aan: None,
     ) -> None:
+        """Guard 01-10 (Peter: code uit de UBL of zichtbaar weigeren): een regel zonder `AccountingCost` boekt NOOIT op een
+        afgeleide rekening — óók niet als het rekeningschema precies één omzetrekening 8000 kent (de terugval van 29-09 is
+        afgezet, koppelcontract §2d-notitie 01-10). Weigering mét reden `omzetrekening_ontbreekt`, tabel
+        `vastly_omzetrekening` blijft leeg."""
         _patch_client(monkeypatch, FakeVerkoopClient())
         ubl = bouw_vastly_verkoop_ubl(
             regels=[{"naam": "Huur", "netto": "1000.00", "pct": "21.00", "categorie": "S", "gb_code": None}]
@@ -214,16 +217,12 @@ class TestVerkoopAutoboeken:
         document_id = _upload(
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag, inhoud=ubl
         )
-        # 29-09 (Peter): geen "mens kiest" meer — de regel zonder AccountingCost krijgt de vaste Vastly-omzetrekening van
-        # de administratie (hier afgeleid uit het rekeningschema: precies één omzetrekening 8000) en boekt automatisch.
-        assert _status(admin_engine, document_id) == "geboekt"
-        assert _weiger_redenen(admin_engine, document_id) == []
+        assert _status(admin_engine, document_id) == "te_controleren"
+        [reden] = _weiger_redenen(admin_engine, document_id)
+        assert reden.startswith("omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode (cbc:AccountingCost)")
+        assert "melden bij Vastly" in reden and "Opnieuw aanbieden" in reden
         with admin_engine.connect() as conn:
-            rij = conn.execute(
-                text("SELECT ledger_id::text, bron FROM boekhouding.vastly_omzetrekening WHERE administratie_id = :a AND regelsoort = 'huur'"),
-                {"a": vastgoed_administratie},
-            ).one()
-        assert rij == (str(OMZET_LEDGER_ID), "historie")
+            assert conn.execute(text("SELECT count(*) FROM boekhouding.vastly_omzetrekening")).scalar_one() == 0
 
     def test_gb_code_ontbreekt_zonder_afleidbare_omzetrekening_weigert_met_reden(
         self,
@@ -236,8 +235,8 @@ class TestVerkoopAutoboeken:
         vastgoed_administratie: uuid.UUID,
         optin_aan: None,
     ) -> None:
-        """Twee omzetrekeningen zonder naam-treffer en zonder eigen historie = niets afleidbaar → weigering mét de
-        reden `omzetrekening_ontbreekt` (bevinding "Rekening kiezen"), nooit "mens kiest" per document."""
+        """Ook mét twee omzetrekeningen in het schema: een regel zonder code = weigering `omzetrekening_ontbreekt`
+        (01-10: bevinding mét alleen "Opnieuw aanbieden" ná herzending door Vastly), nooit "mens kiest", nooit raden."""
         with scoped_session(vastgoed_administratie) as session:
             session.add(
                 Grootboekrekening(

@@ -137,7 +137,7 @@ class VerkoopBoeking(Base):
 
 
 VASTLY_SLEUTEL_SOORTEN = ("kvk", "naam")
-VASTLY_KOPPELING_BRONNEN = ("identiteit", "mens")
+VASTLY_KOPPELING_BRONNEN = ("identiteit", "mens", "ubl")  # 01-10: bron ubl (administratie-id uit de UBL, migratie 0173)
 VASTLY_REGELSOORTEN = ("huur", "servicekosten", "waarborg", "overig")
 VASTLY_OMZETREKENING_BRONNEN = ("historie", "mens")
 
@@ -146,8 +146,10 @@ class VastlyEntiteitKoppeling(Base):
     """Entiteitenregister verkoopkant (Peter 28/29-09, migratie 0172): de verhuurder-entiteit uit de Vastly-UBL
     (`AccountingSupplierParty` — KvK uit PartyLegalEntity/CompanyID schemeID 0106, anders de genormaliseerde naam)
     → platform-administratie. Nooit een fuzzy tenaamstelling-match: een KvK-treffer op `administratie_identiteit`
-    (precies één actieve administratie) wordt hier vastgelegd met bron 'identiteit'; alles anders is een expliciete
-    mens-koppeling via de bevinding `vastly_entiteit_niet_gekoppeld` ("Koppel aan administratie…", bron 'mens').
+    (precies één actieve administratie) wordt hier vastgelegd met bron 'identiteit'; sinds 01-10 (migratie 0173) legt
+    het
+    administratie-id uit de UBL (`RLZ-ADMINISTRATIE:<uuid>`) de rij vast met bron 'ubl'. Bron 'mens' (bevinding "Koppel
+    aan administratie…", 29-09) is per 01-10 vervallen — bestaande mens-rijen worden alleen nog gelezen.
     Platformbreed (intake leest zonder scope), sleutel (sleutel_soort, sleutel) uniek. Nooit verwijderen — een
     foute koppeling wordt overschreven mét audit."""
 
@@ -170,11 +172,10 @@ class VastlyEntiteitKoppeling(Base):
 
 
 class VastlyOmzetrekening(Base):
-    """Vaste Vastly-omzetrekening per (administratie, regelsoort) (Peter 29-09, migratie 0172): de rekening waarop
-    een UBL-regel ZONDER `cbc:AccountingCost` geboekt wordt. Bron 'historie' = afgeleid uit de eigen geboekte
-    Vastly-verkoopregels van de administratie of het eenduidige rekeningschema (zichtbaar én wijzigbaar op
-    Instellingen › Administratie › Vastgoed-koppeling), 'mens' = gezet door een Beheerder. Een regel MÉT bekende
-    AccountingCost gaat altijd vóór (koppelcontract §2d v1.10)."""
+    """LEES-ONLY HISTORIE sinds 01-10 (Peter: "code uit de UBL of zichtbaar weigeren, niets ertussen"): de vaste
+    Vastly-omzetrekening per (administratie, regelsoort) van 29-09 (migratie 0172) is als BOEKBRON afgezet — geen
+    afleiding, geen Beheerder-instelling meer. De tabel blijft staan voor de meetlat `db-lezen
+    vastly-verkoop-administratie`; geen migratie, niets wordt verwijderd."""
 
     __tablename__ = "vastly_omzetrekening"
     __table_args__ = {"schema": "boekhouding"}

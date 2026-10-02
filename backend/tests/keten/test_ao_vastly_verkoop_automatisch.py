@@ -1,17 +1,20 @@
 # ruff: noqa: E501 — lange assert-regels bewust (één feit per regel)
 """Casus (ao) — Vastly-verkoopfacturen volledig automatisch (Peter 28/29-09: "deze huurfacturen horen daar sowieso niet
 in te staan (ik wil ze niet eens zien). De koppeling met de boekhouding staat en dan moet het gewoon als omzet geboekt
-worden, punt"). Productie 23-09/28-09: 23 UBL's `te_controleren` (weigering "geen grootboekcode — mens kiest" / "btw
-ambigu zonder onthouden keuze") + 9 in de verzamelbak (`vastly_verkoop_zonder_eenduidige_entiteit`, Van Rooijen/
-Schaalje). Doelgedrag door de hele keten (IMAP-intake → entiteitenregister → UBL-extractie → autoboek → RLZ-stub):
+worden, punt"; herzien 01-10: "ik wil gewoon dat de vastly facturen automatisch per BV op de juiste GB geboekt worden …
+100% auto zonder menselijke tussenstap … hou het simpel"). Productie 23-09/28-09: 23 UBL's `te_controleren` + 9 in de
+verzamelbak (Van Rooijen/Schaalje, geen KvK). Doelgedrag door de hele keten (IMAP-intake → UBL → register → UBL-extractie
+→ autoboek → RLZ-stub):
 
 1. verhuurder mét KvK die in `administratie_identiteit` staat → toegewezen zónder tenaamstelling-match, registerrij
    bron 'identiteit', direct GEBOEKT (omzetrekening: AccountingCost 8000 uit de UBL; btw: E 0 % vrijgesteld + S 21 %
    deterministisch), webhook `factuur_geboekt`, chip 'automatisch', nul AI-calls;
-2. dezelfde factuur zonder AccountingCost → de vaste Vastly-omzetrekening van de administratie (afgeleid uit het
-   rekeningschema, vastgelegd bron 'historie') → óók geboekt;
-3. onbekende verhuurder (geen KvK, geen koppeling) → NIET in de verzamelbak-lijst, wél de kantoorbrede bevinding
-   `vastly_entiteit_niet_gekoppeld`; "Koppel aan administratie…" → registerrij + directe boeking."""
+2. dezelfde factuur zonder AccountingCost → GEWEIGERD `omzetrekening_ontbreekt`, nooit op een afgeleide rekening (01-10;
+   de terugval van 29-09 is afgezet) → bevinding `vastly_omzetrekening_ontbreekt` per document mét "Opnieuw aanbieden";
+3. verhuurder zónder KvK mét het platform-administratie-id in de UBL (`RLZ-ADMINISTRATIE:<uuid>`, §2d-notitie 01-10) →
+   toegewezen (bron 'ubl'), direct GEBOEKT — géén mens;
+4. onbekende verhuurder (geen KvK, geen id) → NIET in de verzamelbak-lijst, wél de kantoorbrede bevinding
+   `vastly_entiteit_niet_gekoppeld` "melden bij Vastly"; de koppelroute bestaat niet meer (404)."""
 
 from __future__ import annotations
 
@@ -95,16 +98,43 @@ class TestVastlyVerkoopAutomatisch:
             ).all()
         assert [(Decimal(n), Decimal(b)) for n, b in regels] == [(Decimal("1000.00"), Decimal("0.00")), (Decimal("200.00"), Decimal("42.00"))]
 
-    def test_zonder_accountingcost_boekt_op_de_vaste_omzetrekening(self, vastgoed_keten: Keten) -> None:
+    def test_zonder_accountingcost_wordt_geweigerd_nooit_afgeleid(self, vastgoed_keten: Keten) -> None:
         keten = vastgoed_keten
         ubl = _ubl().replace(b"<cbc:AccountingCost>8000</cbc:AccountingCost>", b"").replace(b"RUB-2026-0099", b"RUB-2026-0100")
         [rij] = keten.mail([(XML_NAAM.replace("0099", "0100"), ubl)], afzender="facturen@vastly.example").bijlagen
-        assert keten.status(rij.document_id) == DocumentStatus.GEBOEKT
+        assert keten.status(rij.document_id) == DocumentStatus.TE_CONTROLEREN
         with keten.admin_engine.connect() as conn:
-            standen = conn.execute(text("SELECT regelsoort, ledger_id::text, bron FROM boekhouding.vastly_omzetrekening WHERE administratie_id = :a ORDER BY regelsoort"), {"a": keten.administratie_id}).all()
-        assert standen == [("huur", str(OMZET_8000), "historie"), ("servicekosten", str(OMZET_8000), "historie")]
+            assert conn.execute(text("SELECT count(*) FROM boekhouding.vastly_omzetrekening")).scalar_one() == 0, "nooit een afgeleide rekening (01-10)"
+            [reden] = [r[0] for r in conn.execute(text("SELECT nieuwe_waarde->>'reden' FROM platform.audit_event WHERE actie = 'autoboeken_geweigerd' AND record_id = :id"), {"id": rij.document_id})]
+        assert reden.startswith("omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode (cbc:AccountingCost)") and "melden bij Vastly" in reden
+        # > 1 dag oud → bevinding per document mét alleen "Opnieuw aanbieden"; de herzending door Vastly boekt 'm daarna.
+        with keten.admin_engine.begin() as conn:
+            conn.execute(text("UPDATE boekhouding.document SET aangemaakt_op = now() - interval '2 days' WHERE id = :id"), {"id": rij.document_id})
+        v = Verzamelaar()
+        v.start_blok(vastly_reconciliatie.BLOK)
+        assert vastly_reconciliatie.cli_blok(argparse.Namespace(), v, stdout=lambda s: None) == 1
+        [b] = [b for b in v.bevindingen if b.detail.get("afwijking_soort") == "vastly_omzetrekening_ontbreekt"]
+        assert b.administratie_id == keten.administratie_id and b.detail["document_id"] == str(rij.document_id)
+        assert keten.ai.aanroepen == []
 
-    def test_onbekende_verhuurder_is_bevinding_niet_verzamelbak_en_koppelen_boekt(self, vastgoed_keten: Keten) -> None:
+    def test_administratie_id_in_ubl_boekt_zonder_kvk_en_zonder_mens(self, vastgoed_keten: Keten) -> None:
+        keten = vastgoed_keten
+        element = f"<cac:AdditionalDocumentReference><cbc:ID>RLZ-ADMINISTRATIE:{keten.administratie_id}</cbc:ID><cbc:DocumentDescription>Platform-administratie van de verhuurder (RLZ-boekhoudkoppeling)</cbc:DocumentDescription></cac:AdditionalDocumentReference>".encode()
+        ubl = (
+            _ubl()
+            .replace(b"</cac:AdditionalDocumentReference>", b"</cac:AdditionalDocumentReference>" + element, 1)
+            .replace(b'<cbc:CompanyID schemeID="0106">87654321</cbc:CompanyID></cac:PartyLegalEntity></cac:Party></cac:AccountingSupplierParty>', b"</cac:PartyLegalEntity></cac:Party></cac:AccountingSupplierParty>")
+            .replace(b"Rubicon Investments B.V.", b"B. van Rooijen")
+            .replace(b"RUB-2026-0099", b"BG-2026-0027")
+        )
+        [rij] = keten.mail([("factuur-BG-2026-0027-ubl.xml", ubl)], afzender="bvrooijen1983@gmail.example").bijlagen
+        assert rij.uitkomst == "toegewezen" and (rij.detail or "").startswith("entiteitenregister:ubl → "), rij
+        assert keten.status(rij.document_id) == DocumentStatus.GEBOEKT
+        assert keten.ai.aanroepen == []
+        with keten.admin_engine.connect() as conn:
+            assert conn.execute(text("SELECT sleutel_soort, sleutel, bron FROM boekhouding.vastly_entiteit_koppeling")).one() == ("naam", "b van rooijen", "ubl")
+
+    def test_onbekende_verhuurder_is_bevinding_melden_bij_vastly_zonder_koppelknop(self, vastgoed_keten: Keten) -> None:
         keten = vastgoed_keten
         ubl = (
             _ubl()
@@ -120,16 +150,16 @@ class TestVastlyVerkoopAutomatisch:
         assert vastly_reconciliatie.cli_blok(argparse.Namespace(), v, stdout=lambda s: None) == 1
         [b] = [b for b in v.bevindingen if b.detail.get("afwijking_soort") == "vastly_entiteit_niet_gekoppeld"]
         assert b.administratie_id is None and b.detail["sleutel"] == "b van rooijen" and b.detail["aantal"] == 1
-        # De handeling: Koppel aan administratie… → registerrij (mens) + directe boeking, nul AI-calls.
+        assert b.detail["reden"] == "UBL draagt geen administratie-id en geen bekende KvK — melden bij Vastly"
+        # 01-10: geen koppelknop meer — de route bestaat niet; de UBL hoort het administratie-id te dragen.
         resp = keten.api.post(
             "/reconciliatie/vastly/entiteit-koppelen",
-            json={"sleutel_soort": "naam", "sleutel": "b van rooijen", "administratie_id": str(keten.administratie_id), "weergave": "B. van Rooijen"},
+            json={"sleutel_soort": "naam", "sleutel": "b van rooijen", "administratie_id": str(keten.administratie_id)},
             headers=keten.headers,
         )
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["per_uitkomst"] == {"geboekt": 1}
-        assert keten.status(rij.document_id) == DocumentStatus.GEBOEKT
+        assert resp.status_code == 404, resp.text
+        assert keten.status(rij.document_id) == DocumentStatus.NIET_TOEGEWEZEN
         assert keten.ai.aanroepen == []
         with scoped_session(None) as session:
             besluit = entiteit.resolve_administratie(session, entiteit.EntiteitSleutels(kvk=None, naam_norm="b van rooijen", weergave=None))
-        assert besluit.administratie_id == keten.administratie_id and besluit.bron == "koppeling_naam"
+        assert besluit.administratie_id is None and besluit.weigering == entiteit.WEIGERING_GEEN_ID_GEEN_KVK

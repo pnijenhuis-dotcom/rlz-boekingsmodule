@@ -1046,13 +1046,13 @@ jobs:
               echo "== db-lezen vastly-verkoop --param dagen=14 =="
               scripts/gcp/nameting.sh db-lezen vastly-verkoop --param dagen=14 2> nameting-vv-db.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-vv-db.stderr; }
               echo
-              for ADM in "Rubicon" "Elissen" "ARVUM" "Meyer" "Shuto" "Inpensas" "Rooijen"; do
+              for ADM in "Rubicon" "Elissen" "ARVUM B.V." "Meyer" "Shuto" "Inpensas" "Rooijen"; do
                 echo "== db-lezen vastly-verkoop-administratie --administratie $ADM --param dagen=14 =="
                 scripts/gcp/nameting.sh db-lezen vastly-verkoop-administratie --administratie "$ADM" --param dagen=14 2> nameting-vv-db2.stderr || { echo "(db-lezen exit $? — stderr:)"; cat nameting-vv-db2.stderr; }
                 echo
               done
-              echo "== request-log POST /reconciliatie/vastly/* + PUT /vastly-omzetrekeningen sinds $SINDS_VV =="
-              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" (httpRequest.requestUrl:"/reconciliatie/vastly/" OR httpRequest.requestUrl:"/vastly-omzetrekeningen") timestamp>="'"$SINDS_VV"'"' --project "$PROJECT_ID" --limit 200 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' || echo "(request-log niet leesbaar)"
+              echo "== request-log POST /reconciliatie/vastly/* (Opnieuw aanbieden; 01-10: entiteit-koppelen + vastly-omzetrekeningen zijn vervallen = 404 verwacht) sinds $SINDS_VV =="
+              gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="rlz-backend" (httpRequest.requestUrl:"/reconciliatie/vastly/" OR httpRequest.requestUrl:"/vastly-omzetrekeningen" OR httpRequest.requestUrl:"/vastly-instellingen") timestamp>="'"$SINDS_VV"'"' --project "$PROJECT_ID" --limit 200 --order asc --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.latency,httpRequest.requestUrl)' || echo "(request-log niet leesbaar)"
             } > "$UIT"
             cat nameting-vv.stderr >&2
             if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-vv.stderr; then

@@ -1188,28 +1188,45 @@ def _intake(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
 
 
 def _vastly_verkoop(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
-    """Blok `vastly_verkoop` (Peter 29-09): Vastly-verkoopfacturen boeken automatisch; elke rij hier is één ontbrekende
-    registerrij of één gestrand document, mét de handeling op de rij."""
+    """Blok `vastly_verkoop` (Peter 29-09, herzien 01-10 "100 % auto zonder menselijke tussenstap"): Vastly-
+    verkoopfacturen
+    boeken automatisch op het administratie-id en de grootboekcode uit de UBL; elke rij hier is een UBL die iets mist
+    (melden bij Vastly — geen mens-keuze in de module) of één gestrand document (Opnieuw aanbieden)."""
     aantal = int(d.get("aantal") or 0)
     if soort == "vastly_entiteit_niet_gekoppeld":
         naam = _s(d, "weergave") or _s(d, "sleutel") or "onbekende entiteit"
         kvk = _s(d, "kvk")
+        ruw_id = _s(d, "administratie_id_ubl")
+        if ruw_id:
+            wat = (
+                f"Vastly stuurt huurfacturen van {naam}" + (f" (KvK {kvk})" if kvk else "") + f" mét administratie-id "
+                f"{ruw_id} in de UBL, maar de module kent geen actieve administratie met dat id — {aantal} "
+                f"factu{'ur' if aantal == 1 else 'ren'} wacht(en); ze staan bewust niet in de verzamelbak."
+            )
+        else:
+            wat = (
+                f"Vastly stuurt huurfacturen van {naam}" + (f" (KvK {kvk})" if kvk else "") + ", maar de UBL draagt "
+                "geen "
+                f"administratie-id en de KvK is niet bekend als administratie — {aantal} "
+                f"factu{'ur' if aantal == 1 else 'ren'} wacht(en); ze staan bewust niet in de verzamelbak."
+            )
         return (
             _titel(f"Vastly-verhuurder niet gekoppeld: {naam}", f"{aantal} factu{'ur' if aantal == 1 else 'ren'}"),
-            f"Vastly stuurt huurfacturen van {naam}" + (f" (KvK {kvk})" if kvk else "") + f", maar het entiteitenregister "
-            f"kent geen administratie voor deze verhuurder — {aantal} factu{'ur' if aantal == 1 else 'ren'} "
-            "wacht(en); ze staan bewust niet in de verzamelbak.",
-            "Kies in 'Koppel aan administratie…' de administratie van deze verhuurder; de koppeling wordt onthouden en de "
-            "wachtende facturen worden direct automatisch als omzet geboekt.",
+            wat,
+            "Melden bij Vastly: de UBL hoort het platform-administratie-id van de verhuurder te dragen "
+            "(RLZ-ADMINISTRATIE) — "
+            "ná de herzending boekt de module de facturen automatisch; er is bewust geen koppelknop in de module.",
         )
     if soort == "vastly_omzetrekening_ontbreekt":
-        regelsoort = _s(d, "regelsoort") or "overig"
+        bestand = _s(d, "bestandsnaam") or "deze verkoopfactuur"
+        reden = _s(d, "reden") or _terugval_wat(tekst)
+        sinds = datum(d.get("sinds"))
         return (
-            _titel(f"Omzetrekening voor {regelsoort} ontbreekt", f"{aantal} factu{'ur' if aantal == 1 else 'ren'}"),
-            f"De Vastly-facturen dragen geen grootboekcode voor regels van het soort '{regelsoort}' en deze administratie "
-            f"heeft nog geen vaste omzetrekening daarvoor — {aantal} factu{'ur' if aantal == 1 else 'ren'} wacht(en).",
-            "Kies éénmalig de omzetrekening (8xxx) in 'Rekening kiezen' — daarna boekt de module deze en volgende "
-            "facturen automatisch; wijzigen kan altijd op Instellingen › Administratie › Vastgoed-koppeling.",
+            _titel("Grootboekcode ontbreekt in de Vastly-factuur", bestand),
+            f"{bestand} staat sinds {sinds or 'meer dan een dag'} zonder boeking: {reden}",
+            "Melden bij Vastly: elke factuurregel hoort een bekende grootboekcode (AccountingCost) te dragen; de module "
+            "boekt "
+            "nooit op een afgeleide rekening. Ná de herzending: 'Opnieuw aanbieden' op de rij.",
         )
     if soort == "vastly_verkoop_niet_geboekt":
         bestand = _s(d, "bestandsnaam") or "deze verkoopfactuur"

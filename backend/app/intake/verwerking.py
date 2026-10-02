@@ -206,13 +206,15 @@ def _verwerk_vastly_verkoop(
     bron_bestand: BronBestand | None,
     kanaal: DocumentBron,
 ) -> BijlageResultaat:
-    """VASTLY-VERKOOP-UBL → administratie via het entiteitenregister (`app/verkoop/entiteit.py`; Peter 28/29-09,
-    migratie 0172). Gevonden = gewoon `upload_document` (deterministische UBL-extractie + het autoboek-pad in de
+    """VASTLY-VERKOOP-UBL → administratie via de UBL + het entiteitenregister (`app/verkoop/entiteit.py`; Peter
+    28/29-09, herzien 01-10: administratie-id `RLZ-ADMINISTRATIE:<uuid>` uit de UBL als EERSTE bron, daarna KvK; geen
+    mens-koppeling;
+    migraties 0172/0173). Gevonden = gewoon `upload_document` (deterministische UBL-extractie + het autoboek-pad in de
     post-commit-hook). Niet gevonden = het document wordt geregistreerd ZONDER administratie mét de reden
-    `vastly_entiteit_niet_gekoppeld: kvk=…|naam=…` — het staat NIET in de verzamelbak-lijst (Peter: "ik wil ze niet
-    eens zien") maar wordt één kantoorbrede bevinding `vastly_entiteit_niet_gekoppeld` per entiteit in het
-    reconciliatieblok `vastly_verkoop`, mét de handeling "Koppel aan administratie…"; ná de koppeling verwerkt de
-    heraanbieding (`app/verkoop/heraanbieden.py`) het document automatisch. Niets verdwijnt stil, geen AI."""
+    `vastly_entiteit_niet_gekoppeld: kvk=…|naam=…|administratie_id=…` — NIET in de verzamelbak-lijst (Peter: "ik
+    wil ze niet eens zien") maar wordt één kantoorbrede bevinding `vastly_entiteit_niet_gekoppeld` per entiteit in het
+    reconciliatieblok `vastly_verkoop` ("melden bij Vastly"); ná de herzending door Vastly verwerkt de heraanbieding
+    (`app/verkoop/heraanbieden.py`) het document automatisch. Niets verdwijnt stil, geen AI."""
     from app.verkoop import entiteit as entiteit_service
 
     sleutels = entiteit_service.sleutels_uit_voorstel(voorstel)

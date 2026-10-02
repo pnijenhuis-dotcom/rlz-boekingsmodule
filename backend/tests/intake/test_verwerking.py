@@ -66,12 +66,17 @@ class TestVastlyEnVgbRouting:
         # Verkoopfactuur: ónze entiteit is de LEVERANCIER — de klant is de huurder. Sinds 29-09 uitsluitend via het
         # entiteitenregister: zonder KvK in de UBL is een mens-koppeling op naam de enige route (nooit tenaamstelling).
         from app.db.session import scoped_session
+        from app.intercompany.identiteit import naam_norm
         from app.verkoop import entiteit
+        from app.verkoop.models import VastlyEntiteitKoppeling
 
         with scoped_session(None, actor_id=gescoopte_gebruiker) as session:
-            entiteit.koppel_entiteit(
-                session, sleutel_soort="naam", sleutel="BLOW B.V.", administratie_id=administratie_heet_blow,
-                actor_id=gescoopte_gebruiker,
+            # 01-10: de mens-koppelroute is vervallen; een BESTAANDE mens-rij (van vóór 01-10) wordt nog gelezen.
+            session.add(
+                VastlyEntiteitKoppeling(
+                    sleutel_soort="naam", sleutel=naam_norm("BLOW B.V."), administratie_id=administratie_heet_blow,
+                    bron=entiteit.BRON_MENS, weergave="BLOW B.V.",
+                )
             )
         ubl = bouw_ubl(leverancier="BLOW B.V.", klant="Huurder Jansen", adr_id="VASTLY-VERKOOP")
         eml = bouw_eml(bijlagen=[("verkoop.xml", ubl, "application", "xml")])

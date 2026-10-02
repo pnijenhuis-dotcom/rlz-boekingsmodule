@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 from app.db.audit import record_audit_event
 from app.db.models import Grootboekrekening
 from app.db.session import scoped_session
-from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.checks import CheckRapport
 from app.documenten.models import Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
 from app.documenten.service import DocumentNietGevonden
@@ -74,9 +73,10 @@ class VerkoopRegelData:
     # deterministisch bepaald (mens kiest).
     btw_bron: str | None = None
     btw_kandidaten: tuple[uuid.UUID, ...] = ()
-    # Herkomst van de REKENING (Peter 29-09): 'ubl' (AccountingCost bekend), 'omzetrekening' (vaste Vastly-
-    # omzetrekening van de administratie per regelsoort — app/verkoop/omzetrekening.py), 'mens' (opgeslagen
-    # keuze) of None (niets afleidbaar → bevinding `vastly_omzetrekening_ontbreekt`, nooit "mens kiest").
+    # Herkomst van de REKENING: 'ubl' (AccountingCost bekend), 'mens' (opgeslagen keuze) of None (geen/onbekende code
+    # → autoboek weigert `omzetrekening_ontbreekt`, bevinding `vastly_omzetrekening_ontbreekt`; sinds 01-10 nooit meer
+    # een afgeleide omzetrekening — koppelcontract §2d "AccountingCost = winnaar", code uit de UBL of zichtbaar
+    # weigeren).
     gb_bron: str | None = None
     regelsoort: str | None = None
 
@@ -271,28 +271,16 @@ def _administratie_standaard_tarief(
     return sorted(kandidaten, key=lambda k: (len(namen.get(k, "")), namen.get(k, ""), str(k)))[0]
 
 
-def _met_omzetrekening(
-    session: Session, *, administratie_id: uuid.UUID, regel: VerkoopRegelData
-) -> VerkoopRegelData:
-    """Regel zónder (bekende) AccountingCost → de vaste Vastly-omzetrekening per regelsoort (Peter 29-09, punt 2b);
-    niets afleidbaar → regel blijft leeg mét `regelsoort` gezet (bevinding). Een ONBEKENDE code blijft blokkerend."""
+def _met_regelsoort(regel: VerkoopRegelData) -> VerkoopRegelData:
+    """Regelsoort (pure tekst) + herkomst van de rekening. Sinds 01-10 (Peter: code uit de UBL of zichtbaar weigeren)
+    wordt een regel zónder (bekende) `AccountingCost` NIET meer aangevuld uit een vaste omzetrekening of de historie —
+    de regel blijft leeg (`gb_code_status` 'ontbreekt'/'onbekend', `ledger_id` None) en het autoboek-pad weigert mét
+    reden `omzetrekening_ontbreekt`."""
     regelsoort = omzetrekening_service.classificeer_regel(regel.omschrijving)
     if regel.ledger_id is not None:
-        return replace(regel, gb_bron=regel.gb_bron or ("mens" if regel.herkomst == "opgeslagen" else "ubl"), regelsoort=regelsoort)
-    if regel.gb_code_status == "onbekend":
-        return replace(regel, regelsoort=regelsoort)
-    ledger_id = omzetrekening_service.omzetrekening_voor(
-        session, administratie_id=administratie_id, regelsoort=regelsoort, actor_id=SYSTEEM_ACTOR_ID
-    )
-    if ledger_id is None:
-        return replace(regel, regelsoort=regelsoort)
-    return replace(
-        regel,
-        ledger_id=ledger_id,
-        gb_code_status="bekend",
-        gb_bron=omzetrekening_service.GB_BRON_OMZETREKENING,
-        regelsoort=regelsoort,
-    )
+        bron = regel.gb_bron or ("mens" if regel.herkomst == "opgeslagen" else "ubl")
+        return replace(regel, gb_bron=bron, regelsoort=regelsoort)
+    return replace(regel, regelsoort=regelsoort)
 
 
 def verkoop_omschrijving_vastly(factuurnummer: str, *, is_creditnota: bool) -> str:
@@ -416,7 +404,7 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
                 regels=_niet_btw_plichtig_toepassen(
                     session,
                     administratie_id=administratie_id,
-                    regels=[_met_omzetrekening(session, administratie_id=administratie_id, regel=r) for r in regels],
+                    regels=[_met_regelsoort(r) for r in regels],
                 ),
                 opgeslagen=True,
                 rlz_boekstuknummer=bestaand.rlz_boekstuknummer,
@@ -471,7 +459,7 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
             regels=_niet_btw_plichtig_toepassen(
                 session,
                 administratie_id=administratie_id,
-                regels=[_met_omzetrekening(session, administratie_id=administratie_id, regel=r) for r in regels],
+                regels=[_met_regelsoort(r) for r in regels],
             ),
             opgeslagen=False,
         )
