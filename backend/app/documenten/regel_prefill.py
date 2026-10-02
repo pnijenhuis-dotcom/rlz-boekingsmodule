@@ -54,6 +54,19 @@ Twee onafhankelijke verrijkingen, één aanroep vanuit `boekvoorstel.haal_boekvo
   leeg). Het gekozen tarief draagt zijn herkomst als `btw_bron_detail` (chip-tekst: "voorkeur beheerder" /
   "meest gebruikt in RLZ-historie (n×)" / "administratie-default" / …) — nooit toeval.
 
+  **WINNAARSVOLGORDE grootboekrekening (één plek, bindend — punt 8 run A 02-10, Peter; casus f00117f4):**
+    1. opgeslagen keuze van de MENS (nooit geraakt — alleen het prefill-pad komt hier);
+    2. uit de factuur/template DETERMINISTISCH (`ledger_id` al gezet door de extractie: UBL-/template-regel);
+    3. REGEL-GEHEUGEN op de omschrijving (`regel_gb.bepaal_regel_gb`: groen / seed / conflict — de deterministische
+       omschrijvingsroute; wijst die een rekening aan, dan komt het leverancier-geheugen er nooit meer overheen);
+    4. AI-classificatie tegen de historische grootboeken (oranje, `gb_bron='ai'`);
+    5. LEVERANCIER-GEHEUGEN (kop-niveau-engine, chip "Geheugen N %") — UITSLUITEND bij zekerheid ≥
+       `GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID` (90 %) óf recency-consensus (`geheugen_grootboek_zeker`); daaronder blijft het
+       veld LEEG mét `gb_bron='leverancier_geheugen_niet_ingevuld'` + detail (chip "voorstel uit historie — niet
+       ingevuld (N %)"), zodat 7005 Inhuur steiger nooit meer op 71 % onder "brandstof diesel" belandt;
+    6. leeg = de mens kiest; de harde check "Verplichte velden" blijft de poort (ook voor het autoboek-pad).
+  Frontend-spiegel: `geheugenVoorstel.ts::bepaalPrefill` hanteert exact dezelfde drempel.
+
   **WINNAARSVOLGORDE btw-code (één plek, bindend):**
     1. opgeslagen keuze van de MENS (nooit geraakt — alleen het prefill-pad komt hier);
     2. uit de factuur BEREKEND (`btw_bron='factuur'`, netto × tarief ≈ btw, groen) — `_regels_prefill`;
@@ -101,7 +114,7 @@ from app.documenten import rekeningtype
 from app.documenten.checks import is_buitenland_tarief
 from app.documenten.regelsom import zet_btw_in_kosten
 from app.geheugen import regel_gb
-from app.geheugen.engine import Observatie, bepaal_voorstel
+from app.geheugen.engine import Observatie, VeldVoorstel, bepaal_voorstel
 from app.geheugen.models import BoekingObservatie
 from app.geheugen.normalisatie import normaliseer_regel_sleutel
 from app.geheugen.service import laad_engine_observaties
@@ -318,6 +331,12 @@ def _met_factuur_verlegd(
 # HERKOMST_LEVERANCIER_GEHEUGEN; btw: "factuur" / HERKOMST_LEVERANCIER_GEHEUGEN / "standaard"; project:
 # HERKOMST_LEVERANCIER_GEHEUGEN.
 HERKOMST_LEVERANCIER_GEHEUGEN = regel_gb.HERKOMST_LEVERANCIER_GEHEUGEN  # één definitie (regel_gb leest 'm ook)
+GB_BRON_GEHEUGEN_NIET_INGEVULD = regel_gb.BRON_LEVERANCIER_GEHEUGEN_NIET_INGEVULD
+#: Punt 8 run A 02-10 (Peter): het leverancier-geheugen (kop-niveau-engine, chip "Geheugen N %") vult de
+#: GROOTBOEKREKENING alleen bij een zekerheid van minstens 90 % (gewogen aandeel van de winnende waarde) óf een
+#: recency-consensus (laatste drie mens-boekingen identiek, besluit Peter 10-09 — die is per definitie zeker). Daaronder
+#: blijft het veld LEEG mét herkomst-info. Constante, bewust geen instelling ("geen nieuwe drempel-instelling").
+GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID = 0.90
 HERKOMST_FACTUUR = "factuur"
 # BUG 18-09 (Zilver Horeca): btw-code uit de btw-KOLOM van de factuurregel ("9%"/"0%") — regelniveau, wint van het
 # geheugen (dat vult alleen een lege btw). Zelfde herkomst-tag als "factuur" (chip "factuur 0 %", geen autosave-trigger).
@@ -330,6 +349,26 @@ VELD_PROJECT = "project"
 
 def _met_herkomst(regel: BoekvoorstelRegelData, **velden: str) -> BoekvoorstelRegelData:
     return replace(regel, prefill_herkomst={**(regel.prefill_herkomst or {}), **velden})
+
+
+def geheugen_grootboek_zeker(veld: VeldVoorstel) -> bool:
+    """Punt 8 run A 02-10: mag het leverancier-geheugen dit grootboek INVULLEN? Ja bij een recency-consensus (laatste
+    drie mens-boekingen identiek — besluit Peter 10-09, groen én app-bevestigd) of een gewogen zekerheid ≥
+    `GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID`. Een gesplitste stem onder de drempel (71 %) = niet invullen."""
+    if veld.waarde is None:
+        return False
+    return bool(veld.recent_consensus) or veld.confidence >= GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID
+
+
+def geheugen_grootboek_niet_ingevuld_detail(veld: VeldVoorstel) -> str:
+    """Chip-/tooltiptekst bij een leeg gelaten grootboek (punt 8): percentage + engine-reden, zonder omschrijving."""
+    pct = round(veld.confidence * 100)
+    drempel = round(GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID * 100)
+    reden = f" ({veld.reden})" if veld.reden else ""
+    return (
+        f"historie van deze leverancier wijst naar een grootboek met {pct} % zekerheid{reden} — niet ingevuld: "
+        f"onder de drempel van {drempel} %. Kies zelf; boeken leert het regel-geheugen deze omschrijving."
+    )
 
 
 def _met_leverancier_geheugen(
@@ -359,8 +398,18 @@ def _met_leverancier_geheugen(
     herkomst: dict[str, str] = {}
     extra: dict[str, str | None] = {}
     if regel.ledger_id is None and voorstel.gb.waarde is not None:
-        wijzigingen["ledger_id"] = voorstel.gb.waarde
-        herkomst[VELD_GROOTBOEK] = HERKOMST_LEVERANCIER_GEHEUGEN
+        if geheugen_grootboek_zeker(voorstel.gb):
+            wijzigingen["ledger_id"] = voorstel.gb.waarde
+            herkomst[VELD_GROOTBOEK] = HERKOMST_LEVERANCIER_GEHEUGEN
+        elif regel.gb_bron is None:
+            # Punt 8 run A 02-10 (casus f00117f4: 7005 Inhuur steiger, "Geheugen 71 %" op brandstof diesel): onder de
+            # drempel vult het geheugen het grootboek NIET — leeg mét herkomst-info, de mens kiest; de harde check
+            # "Verplichte velden" blijft de poort (en blokkeert het autoboek-pad zichtbaar).
+            extra = {
+                **extra,
+                "gb_bron": GB_BRON_GEHEUGEN_NIET_INGEVULD,
+                "gb_voorstel_detail": geheugen_grootboek_niet_ingevuld_detail(voorstel.gb),
+            }
     if regel.taxrate_id is None and voorstel.btw.waarde is not None:
         wijzigingen["taxrate_id"] = voorstel.btw.waarde
         herkomst[VELD_BTW] = HERKOMST_LEVERANCIER_GEHEUGEN

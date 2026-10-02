@@ -8,7 +8,10 @@
  * Pure beslislogica los van React (zelfde patroon als geheugenVoorstel.ts) zodat de chip-stand direct
  * unit-testbaar is. Teal = actie, groen = status, oranje = bevestigen (semantiek-regel designpass v2). */
 
-export type GbBron = 'geheugen' | 'geheugen_seed' | 'geheugen_conflict' | 'ai'
+/** Punt 8 run A 02-10: 'leverancier_geheugen_niet_ingevuld' = het leverancier-geheugen (kop-niveau, "Geheugen N %") kent
+ * een grootboek maar de zekerheid ligt onder de 90 %-drempel → het veld is bewust LEEG gelaten; de chip is de uitleg
+ * (oranje, alleen zolang het veld leeg is). */
+export type GbBron = 'geheugen' | 'geheugen_seed' | 'geheugen_conflict' | 'ai' | 'leverancier_geheugen_niet_ingevuld'
 
 /** 'factuur' = door code berekend uit netto/btw (groen, chip in het paneel); 'standaard' = btw-default van de
  * administratie (grijs); 'factuur_verlegd' (blok 4c 08-09) = de factuur vermeldt "btw verlegd" en de btw is 0 → het
@@ -43,7 +46,13 @@ export interface RegelChip {
   titel: string
 }
 
-const GB_BRONNEN: ReadonlySet<string> = new Set<GbBron>(['geheugen', 'geheugen_seed', 'geheugen_conflict', 'ai'])
+const GB_BRONNEN: ReadonlySet<string> = new Set<GbBron>([
+  'geheugen',
+  'geheugen_seed',
+  'geheugen_conflict',
+  'ai',
+  'leverancier_geheugen_niet_ingevuld',
+])
 
 /** Server-waarde → gevalideerde bron; onbekende/lege waarden tellen als "geen voorstel". */
 export function gbBronUitDto(waarde: string | null | undefined): GbBron | null {
@@ -135,7 +144,19 @@ export function bepaalGbChip(
   huidigLedgerId: string | null,
   handmatig: boolean,
 ): RegelChip | null {
-  if (!bron || !huidigLedgerId || handmatig) return null
+  if (!bron || handmatig) return null
+  if (bron === 'leverancier_geheugen_niet_ingevuld') {
+    // Punt 8 run A 02-10 (casus f00117f4): uitleg-chip bij een LEEG veld — het leverancier-geheugen zat onder de 90 %-drempel
+    // (bv. "Geheugen 71 %" voor 7005 Inhuur steiger op brandstof); weg zodra er iets gekozen is.
+    if (huidigLedgerId) return null
+    const pct = detail?.match(/(\d+) % zekerheid/)?.[1]
+    return {
+      klasse: 'afwijking',
+      tekst: pct ? `voorstel uit historie — niet ingevuld (${pct} %)` : 'voorstel uit historie — niet ingevuld',
+      titel: `${detail ?? 'De historie van deze leverancier wijst naar een grootboek, maar de zekerheid ligt onder 90 %.'} Sinds 02-10 vult de module de grootboekrekening alleen uit het leverancier-geheugen bij minstens 90 % zekerheid; kies zelf — de harde check "Verplichte velden" blijft de poort.`,
+    }
+  }
+  if (!huidigLedgerId) return null
   const toelichting = detail ? ` ${detail}.` : ''
   switch (bron) {
     case 'geheugen':

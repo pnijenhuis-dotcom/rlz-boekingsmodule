@@ -1124,6 +1124,9 @@ _AUTOSAVE_HERKOMSTEN = frozenset(
 # óók (opdracht: "via het A10-prefill-/autosave-pad") — de projectplicht-check en het doorbelasten-blok zien dan
 # hetzelfde project als de mens. "factuur_meerduidig" vult niets en triggert dus niet.
 _PROJECT_FACTUUR_HERKOMSTEN = frozenset({"factuur", "factuur_onbevestigd"})
+# Punt 8 run A 02-10: gb_bron van een LEEG gelaten grootboek (leverancier-geheugen onder de 90 %-drempel) — geen
+# autosave-trigger (er is niets gevuld), wél in het snapshot zodat de uitleg-chip ná het persisteren terugkomt.
+_GB_BRON_GEHEUGEN_NIET_INGEVULD = "leverancier_geheugen_niet_ingevuld"
 
 
 def _str_of_none(waarde: object) -> str | None:
@@ -1462,6 +1465,14 @@ def _opgeslagen_regel_data(regel: BoekvoorstelRegel, snapshot: dict | None) -> B
             gb_bron, gb_detail = snap.get("gb_bron"), snap.get("gb_voorstel_detail")
             if "grootboek" in snap_herkomst:
                 herkomst["grootboek"] = snap_herkomst["grootboek"]
+        elif (
+            regel.ledger_id is None
+            and snap.get("ledger_id") is None
+            and snap.get("gb_bron") == _GB_BRON_GEHEUGEN_NIET_INGEVULD
+        ):
+            # Punt 8 run A 02-10: "voorstel uit historie — niet ingevuld" — het veld is bewust leeg, de uitleg-chip
+            # blijft tot de mens kiest (zelfde patroon als het project-"meerduidig"-pad hieronder).
+            gb_bron, gb_detail = snap.get("gb_bron"), snap.get("gb_voorstel_detail")
         if regel.taxrate_id is not None and _str_of_none(regel.taxrate_id) == snap.get("taxrate_id"):
             btw_bron, btw_detail = snap.get("btw_bron"), snap.get("btw_bron_detail")
             if "btw" in snap_herkomst:

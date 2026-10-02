@@ -214,6 +214,36 @@ describe('BoekvoorstelPanel — regel-GB-voorstel (blok D 04-09, Derks-casus)', 
     await waitFor(() => expect(screen.queryByTestId('regel-gb-chip')).toBeNull())
   })
 
+  it('punt 8 run A 02-10 (f00117f4): leverancier-geheugen 71 % vult het grootboek NIET — leeg veld mét uitleg-chip, ook client-side niet gevuld', async () => {
+    installFetchMock(
+      [
+        regel({
+          omschrijving: 'Brandstof diesel Floor',
+          ledger_id: null,
+          gb_bron: 'leverancier_geheugen_niet_ingevuld',
+          gb_voorstel_detail:
+            'historie van deze leverancier wijst naar een grootboek met 71 % zekerheid (gesplitste stem) — niet ingevuld: onder de drempel van 90 %. Kies zelf; boeken leert het regel-geheugen deze omschrijving.',
+        }),
+      ],
+      {
+        gb: { waarde: GB_4112, confidence: 0.71, telling: 5, oranje: true, reden: 'gesplitste stem', app_bevestigd: true },
+        btw: { waarde: TAXRATE_HOOG, confidence: 0.95, telling: 3, oranje: false, reden: null, app_bevestigd: true },
+        project: { waarde: null, confidence: 0, telling: 0, oranje: true, reden: 'geen observaties', app_bevestigd: false },
+      },
+    )
+    renderPanel()
+    // De uitleg-chip is een AFWIJKING: zichtbaar zonder "Herkomst tonen".
+    const chip = await screen.findByTestId('regel-gb-chip')
+    expect(chip).toHaveTextContent('voorstel uit historie — niet ingevuld (71 %)')
+    expect(chip).toHaveClass('chip', 'afwijking')
+    expect(chip).toHaveAttribute('title', expect.stringContaining('drempel van 90 %'))
+    // De btw komt wél uit het geheugen (95 %); het grootboek blijft leeg — ook de client-side spiegel vult 'm niet.
+    await waitFor(() => expect(screen.getAllByLabelText('Btw-code', { exact: false })[0]).toHaveValue('21% · NL, Hoog Tarief'))
+    expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toHaveValue('')
+    // Geen tweede ("Geheugen: 4112") afwijkingschip naast de uitleg-chip.
+    expect(screen.queryByText(/Geheugen: 4112/)).toBeNull()
+  })
+
   it('het kop-niveau-geheugen zwijgt op het grootboek zolang de regel-chip staat, maar blijft op btw praten', async () => {
     installFetchMock([regel({ ledger_id: GB_4110, gb_bron: 'geheugen', gb_voorstel_detail: '3× bevestigd' })], {
       gb: { waarde: GB_4112, confidence: 0.6, telling: 3, oranje: true, reden: 'gesplitste stem', app_bevestigd: true },

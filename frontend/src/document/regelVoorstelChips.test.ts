@@ -23,6 +23,20 @@ describe('regelVoorstelChips — grootboek per regel (blok D 04-09, mockup blok 
     expect(bepaalGbChip('ai', 'AI koos uit 4 GB', 'gb-1', false)).toMatchObject({ klasse: 'afwijking', tekst: 'AI-voorstel — bevestig' })
   })
 
+  it('leverancier_geheugen_niet_ingevuld (punt 8 run A 02-10) = oranje uitleg-chip mét percentage zolang het veld LEEG is', () => {
+    const detail = 'historie van deze leverancier wijst naar een grootboek met 71 % zekerheid (gesplitste stem) — niet ingevuld: onder de drempel van 90 %.'
+    expect(bepaalGbChip('leverancier_geheugen_niet_ingevuld', detail, null, false)).toMatchObject({
+      klasse: 'afwijking',
+      tekst: 'voorstel uit historie — niet ingevuld (71 %)',
+    })
+    expect(bepaalGbChip('leverancier_geheugen_niet_ingevuld', detail, null, false)?.titel).toContain('71 % zekerheid')
+    expect(bepaalGbChip('leverancier_geheugen_niet_ingevuld', null, null, false)).toMatchObject({ tekst: 'voorstel uit historie — niet ingevuld' })
+    // Zodra er iets gekozen is of de mens het veld aanraakte: weg.
+    expect(bepaalGbChip('leverancier_geheugen_niet_ingevuld', detail, 'gb-1', false)).toBeNull()
+    expect(bepaalGbChip('leverancier_geheugen_niet_ingevuld', detail, null, true)).toBeNull()
+    expect(gbBronUitDto('leverancier_geheugen_niet_ingevuld')).toBe('leverancier_geheugen_niet_ingevuld')
+  })
+
   it('geen chip zonder bron, zonder waarde in het veld, of zodra de mens het veld aanraakte', () => {
     expect(bepaalGbChip(null, null, 'gb-1', false)).toBeNull()
     expect(bepaalGbChip('geheugen', null, null, false)).toBeNull()

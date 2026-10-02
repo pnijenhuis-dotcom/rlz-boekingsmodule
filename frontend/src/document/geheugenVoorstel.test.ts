@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { GeheugenVeldVoorstelDto, GeheugenVoorstelDto } from '../api/types'
-import { bepaalGeheugenChip, bepaalPrefill, eerderOokTekst, korteReden, omschrijvingSleutel } from './geheugenVoorstel'
+import {
+  GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID,
+  bepaalGeheugenChip,
+  bepaalPrefill,
+  eerderOokTekst,
+  geheugenGrootboekZeker,
+  korteReden,
+  omschrijvingSleutel,
+} from './geheugenVoorstel'
 
 const GB = 'aaaaaaaa-0000-0000-0000-00000000000a'
 const BTW = 'bbbbbbbb-0000-0000-0000-00000000000b'
@@ -52,6 +60,26 @@ describe('bepaalPrefill', () => {
 
   it('vult niets zonder geheugen-waarde', () => {
     expect(bepaalPrefill(regel(), voorstel({ gb: veld(null), btw: veld(null), project: veld(null) }), true)).toEqual({})
+  })
+})
+
+describe('bepaalPrefill — grootboek alleen bij ≥ 90 % zekerheid (punt 8 run A 02-10, casus f00117f4 "Geheugen 71 %")', () => {
+  it('een gesplitste stem onder de drempel vult het grootboek NIET — de btw wél (spiegel van regel_prefill)', () => {
+    const onzeker = voorstel({ gb: veld(GB, { confidence: 0.71, oranje: true, reden: 'gesplitste stem' }) })
+    expect(geheugenGrootboekZeker(onzeker.gb)).toBe(false)
+    expect(bepaalPrefill(regel(), onzeker, false)).toEqual({ taxrateId: BTW })
+  })
+
+  it('precies op de drempel (90 %) vult het wél; de drempel is een constante, geen instelling', () => {
+    expect(GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID).toBe(0.9)
+    expect(bepaalPrefill(regel(), voorstel({ gb: veld(GB, { confidence: 0.9 }) }), false)).toEqual({ ledgerId: GB, taxrateId: BTW })
+    expect(bepaalPrefill(regel(), voorstel({ gb: veld(GB, { confidence: 0.89 }) }), false)).toEqual({ taxrateId: BTW })
+  })
+
+  it('recency-consensus (laatste drie mens-boekingen identiek, 10-09) telt als zeker, ook onder de 90 %', () => {
+    const recency = voorstel({ gb: veld(GB, { confidence: 0.6, recent_consensus: true, eerder_ook: [ANDER] }) })
+    expect(geheugenGrootboekZeker(recency.gb)).toBe(true)
+    expect(bepaalPrefill(regel(), recency, false)).toEqual({ ledgerId: GB, taxrateId: BTW })
   })
 })
 

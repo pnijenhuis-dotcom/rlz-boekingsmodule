@@ -47,13 +47,29 @@ export type GeheugenPrefill = Partial<Pick<GeheugenVulbareRegel, 'ledgerId' | 't
  * Punt 4 "Boeken prettig 1" (Peter 02-10): het PROJECT komt nooit uit het geheugen — ook niet bij projectplicht
  * (de server-spiegel `regel_prefill._met_leverancier_geheugen` vult het evenmin; de historie is alleen nog
  * herkomst-informatie). `projectVerplicht` blijft als parameter voor de aanroepers, maar stuurt niets meer. */
+/** Punt 8 run A 02-10 (Peter, casus f00117f4: 7005 Inhuur steiger "Geheugen 71 %" op brandstof diesel): het
+ * leverancier-geheugen vult de GROOTBOEKREKENING alleen bij ≥ 90 % zekerheid óf een recency-consensus (laatste drie
+ * mens-boekingen identiek — besluit Peter 10-09). Spiegel van `regel_prefill.GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID`;
+ * constante, bewust geen instelling. */
+export const GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID = 0.9
+
+export function geheugenGrootboekZeker(veld: GeheugenVeldVoorstelDto): boolean {
+  if (!veld.waarde) return false
+  return Boolean(veld.recent_consensus) || veld.confidence >= GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID
+}
+
 export function bepaalPrefill(
   regel: GeheugenVulbareRegel,
   voorstel: GeheugenVoorstelDto,
   _projectVerplicht: boolean,
 ): GeheugenPrefill {
   const vulling: GeheugenPrefill = {}
-  if (voorstel.gb.waarde && regel.ledgerId === null && !regel.handmatigeVelden.ledgerId) {
+  if (
+    voorstel.gb.waarde &&
+    regel.ledgerId === null &&
+    !regel.handmatigeVelden.ledgerId &&
+    geheugenGrootboekZeker(voorstel.gb)
+  ) {
     vulling.ledgerId = voorstel.gb.waarde
   }
   if (voorstel.btw.waarde && regel.taxrateId === null && !regel.handmatigeVelden.taxrateId) {

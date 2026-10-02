@@ -1104,10 +1104,14 @@ describe('BoekvoorstelPanel', () => {
       />,
     )
 
-    await waitFor(() => expect(screen.getByText('Geheugen 55%')).toBeInTheDocument())
-    expect(screen.getByText('Geheugen 55%')).toHaveClass('chip', 'afwijking')
-    expect(screen.getByText('gesplitste stem; uit historie, nog niet bevestigd')).toBeInTheDocument()
-    expect(screen.getByText('Geheugen 55%')).toHaveAttribute('title', expect.stringContaining('1 observatie'))
+    // Punt 8 run A 02-10 (casus f00117f4 "Geheugen 71 %"): onder de 90 %-drempel vult het geheugen het grootboek NIET
+    // (vóór 02-10: 4699 gevuld mét oranje "Geheugen 55%"); het veld blijft leeg, de chip zegt wat het geheugen dacht en
+    // dat het bewust niet is ingevuld — de mens kiest.
+    const chip = await screen.findByText(/Geheugen: 4699 · Diverse kosten — niet ingevuld \(55%\)/)
+    expect(chip).toHaveClass('chip', 'afwijking')
+    expect(chip).toHaveAttribute('title', expect.stringContaining('1 observatie'))
+    expect(chip).toHaveAttribute('title', expect.stringContaining('drempel van 90 %'))
+    expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toHaveValue('')
   })
 
   it('geheugen: samengevoegde regel → één voorstel op leverancier-niveau (zonder omschrijving)', async () => {

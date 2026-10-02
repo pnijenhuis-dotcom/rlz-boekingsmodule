@@ -748,8 +748,10 @@ class BoekvoorstelRegelDto(BaseModel):
     # netto = bruto, btw 0,00) — chip "btw in kosten (niet aftrekbaar)". Informatief; de server negeert 'm bij opslaan.
     btw_in_kosten: bool = False
     # Blok D 04-09 (app/geheugen/regel_gb.py): herkomst van het grootboek-voorstel per regel —
-    # "geheugen" (groen) | "geheugen_seed" / "geheugen_conflict" (oranje) | "ai" (oranje, bevestigen);
-    # None = leeg/mens. `gb_voorstel_detail` = tooltip-tekst. Informatief — de server negeert ze bij opslaan.
+    # "geheugen" (groen) | "geheugen_seed" / "geheugen_conflict" (oranje) | "ai" (oranje, bevestigen) |
+    # "leverancier_geheugen_niet_ingevuld" (punt 8 run A 02-10: veld LEEG, leverancier-geheugen onder de 90 %-drempel —
+    # uitleg-chip); None = leeg/mens. `gb_voorstel_detail` = tooltip-tekst. Informatief — de server negeert ze bij
+    # opslaan.
     gb_bron: str | None = None
     gb_voorstel_detail: str | None = None
     # Slotstuk 04-09 (C1, migratie 0112): hervertaling van een OPEN boekvoorstel bij een Odoo-overstap — per veld

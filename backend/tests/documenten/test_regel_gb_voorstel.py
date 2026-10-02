@@ -219,11 +219,15 @@ class TestPrefillVolgorde:
         assert bekend.gb_voorstel_detail == f"2× bevestigd, laatst {vandaag_nl():%d-%m-%Y}"
         assert nieuw.ledger_id == GB_4112 and nieuw.gb_bron == "ai"
         assert nieuw.gb_voorstel_detail == "AI koos uit 2 grootboeken van deze leverancier — bevestig of corrigeer"
-        # De samengevoegde regel krijgt nooit een regel-GB (synthetische omschrijving) — wél het leverancier-geheugen
-        # (kop-niveau-engine, sinds blok A10 07-09 server-side; geen gb_bron: de UI toont de GeheugenChipBlok).
-        assert data.samengevoegde_regel is not None and data.samengevoegde_regel.gb_bron is None
-        assert data.samengevoegde_regel.ledger_id == GB_4110
-        assert data.samengevoegde_regel.prefill_herkomst["grootboek"] == "leverancier_geheugen"
+        # De samengevoegde regel krijgt nooit een regel-GB (synthetische omschrijving). Het leverancier-geheugen
+        # (kop-niveau-engine) staat hier op 4110 mét een gesplitste stem (2 × app 4110 vs 1 × seed 4112 ≈ 86 %) — punt 8
+        # run A 02-10: onder de 90 %-drempel vult het geheugen het grootboek NIET meer in; leeg mét uitleg-chip (vóór
+        # 02-10: 4110 gevuld).
+        assert data.samengevoegde_regel is not None
+        assert data.samengevoegde_regel.ledger_id is None
+        assert data.samengevoegde_regel.gb_bron == "leverancier_geheugen_niet_ingevuld"
+        assert "86 % zekerheid" in (data.samengevoegde_regel.gb_voorstel_detail or "")
+        assert "grootboek" not in (data.samengevoegde_regel.prefill_herkomst or {})
 
     def test_herladen_doet_geen_tweede_call(
         self,
@@ -258,9 +262,11 @@ class TestPrefillVolgorde:
         document_id = _upload(administratie_id, gescoopte_gebruiker, opslag)
         assert _classificaties(admin_engine, document_id) == [(2, None)]
         data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
-        # Geen regel-GB (AI koos "geen"); het leverancier-geheugen vult 'm wél (A10 07-09, geen regel-chip).
-        assert data.regels[1].gb_bron is None and data.regels[1].ledger_id == GB_4110
-        assert data.regels[1].prefill_herkomst["grootboek"] == "leverancier_geheugen"
+        # Geen regel-GB (AI koos "geen"); het leverancier-geheugen (4110, gesplitste stem ≈ 86 %) vult 'm sinds punt 8
+        # run A 02-10 NIET meer (drempel 90 %) — leeg mét uitleg-chip, de mens kiest (vóór 02-10: 4110 gevuld).
+        assert data.regels[1].ledger_id is None
+        assert data.regels[1].gb_bron == "leverancier_geheugen_niet_ingevuld"
+        assert "grootboek" not in (data.regels[1].prefill_herkomst or {})
         assert regel_gb.classificeer_document(administratie_id=administratie_id, document_id=document_id) == 0
         assert len(fake_claude.aanroepen) == 1
 

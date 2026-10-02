@@ -69,6 +69,11 @@ BRON_AI = "ai"  # oranje — AI-classificatie tegen de historische grootboeken v
 # AI: voor de classificatie telt zo'n regel nog als OPEN (de AI-classificatie gaat vóór de engine-vulling,
 # zelfde volgorde als de UI vóór 07-09).
 HERKOMST_LEVERANCIER_GEHEUGEN = "leverancier_geheugen"
+# Punt 8 run A 02-10 (Peter, casus Universal f00117f4: 7005 Inhuur steiger "Geheugen 71 %" op brandstof diesel): het
+# leverancier-geheugen heeft wél een grootboek maar vult het NIET in — zekerheid onder de drempel
+# (`regel_prefill.GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID`). Alleen herkomst-informatie (`gb_bron` op een LEGE regel, chip
+# "voorstel uit historie — niet ingevuld"), nooit een waarde.
+BRON_LEVERANCIER_GEHEUGEN_NIET_INGEVULD = "leverancier_geheugen_niet_ingevuld"
 
 # Onder dit aantal historische grootboeken geen AI-call (zie moduledocstring, punt 2).
 MIN_KANDIDATEN_VOOR_AI = 2
@@ -355,7 +360,9 @@ def classificeer_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID
         (i, r)
         for i, r in enumerate(voorstel.regels, start=1)
         if (r.ledger_id is None or (r.prefill_herkomst or {}).get("grootboek") == HERKOMST_LEVERANCIER_GEHEUGEN)
-        and r.gb_bron is None
+        # Punt 8 run A 02-10: een regel die het leverancier-geheugen bewust LEEG liet (onder de 90 %-drempel) is óók
+        # open.
+        and r.gb_bron in (None, BRON_LEVERANCIER_GEHEUGEN_NIET_INGEVULD)
         and (r.omschrijving or "").strip()
     ]
     if not open_regels:

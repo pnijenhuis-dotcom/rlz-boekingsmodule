@@ -105,6 +105,20 @@ class TestRecencyWint:
         _boek_met_gb(keten, docs[2], gb_anders)
         v = _geheugen(keten).gb
         assert v.oranje and not v.recent_consensus and "gesplitste stem" in (v.reden or "")
+        # Punt 8 run A 02-10 (casus f00117f4 "Geheugen 71 %" → 7005 Inhuur steiger op brandstof): het leverancier-
+        # geheugen staat hier op een gesplitste stem onder de 90 %-drempel (A, A, B ≈ 67 %) en mag het grootboek dus
+        # NIET invullen. Het vierde exemplaar heeft dezelfde regelomschrijving als de drie geboekte → de
+        # deterministische OMSCHRIJVINGSROUTE (regel-geheugen, `gb_bron` geheugen_conflict: wisselend geboekt, jongste
+        # mens-keuze vooringevuld, oranje) wint; het leverancier-niveau (A, 67 %) komt er niet overheen en
+        # `prefill_herkomst["grootboek"]` is nooit "leverancier_geheugen" (winnaarsvolgorde grootboek,
+        # regel_prefill.py).
+        assert v.confidence < 0.90
+        vierde = _intake(keten, 3)
+        prefill = keten.prefill(vierde)
+        assert prefill.regels, "casus h levert regels"
+        for r in prefill.regels:
+            assert r.gb_bron == "geheugen_conflict" and r.ledger_id in (GB_ADVIES, gb_anders), (r.gb_bron, r.ledger_id)
+            assert (r.prefill_herkomst or {}).get("grootboek") == "geheugen_conflict"
 
     def test_activatie_motor_ongewijzigd_B_A_A_A_activeert_met_schakelaar_aan(
         self,

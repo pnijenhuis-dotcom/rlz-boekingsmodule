@@ -264,7 +264,9 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     btwDetail:
       r.btw_bron_detail ??
       (r.btw_bron === 'factuur_regel' ? factuurRegelPctTekst(percentageUitDto(r.factuur_btw_percentage)) : null),
-    gbBron: r.ledger_id ? gbBronUitDto(r.gb_bron) : null,
+    // Punt 8 run A 02-10: ook zonder ledger_id — 'leverancier_geheugen_niet_ingevuld' is de uitleg bij een LEEG veld;
+    // `bepaalGbChip` eist voor de gevulde bronnen zelf een waarde in het veld.
+    gbBron: gbBronUitDto(r.gb_bron),
     gbDetail: r.gb_voorstel_detail ?? null,
     projectBron: projectBronUitDto(r.project_bron),
     projectDetail: r.project_bron_detail ?? null,
@@ -614,14 +616,22 @@ function GeheugenChipBlok({ veld, huidig, handmatig, opties }: GeheugenChipBlokP
   const pct = zekerheidPct(stand.confidence)
   const bron = `Uit geheugen — ${stand.telling} observatie${stand.telling === 1 ? '' : 's'}, confidence ${pct}`
   if (stand.soort === 'afwijkend') {
+    // Punt 8 run A 02-10: een LEEG veld náást een geheugen-waarde = het geheugen zat onder de 90 %-drempel (of de server liet
+    // 'm bewust leeg) — uitleg "niet ingevuld" i.p.v. "wijkt af"; de mens kiest, de harde check blijft de poort.
+    const leeg = huidig === null
     return (
       <div style={{ marginTop: 4 }}>
         <span
           className="chip afwijking"
           style={{ whiteSpace: 'normal', textAlign: 'left' }}
-          title={`${bron}. De huidige waarde (uit de extractie of het opgeslagen voorstel) wijkt hiervan af — controleer de keuze.`}
+          title={
+            leeg
+              ? `${bron}. Zekerheid onder de drempel van 90 % — de module vult de grootboekrekening dan niet in (sinds 02-10); kies zelf.`
+              : `${bron}. De huidige waarde (uit de extractie of het opgeslagen voorstel) wijkt hiervan af — controleer de keuze.`
+          }
         >
           Geheugen: {optieWeergave(opties, stand.waarde)}
+          {leeg ? ` — niet ingevuld (${pct})` : ''}
         </span>
       </div>
     )
