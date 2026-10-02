@@ -1772,6 +1772,14 @@ tr.subrij .eerste-sync-rij ul {
 .plan-kaart.ghost.overgeslagen { border-color: var(--faint); background: var(--panel-2); }
 .plan-kaart .n { font-weight: 600; font-size: 12.5px; line-height: 1.25; display: flex; gap: 6px; align-items: baseline; }
 .plan-kaart .n .plan-aantal { margin-left: auto; font-size: 11px; color: var(--muted); font-weight: 700; }
+/* Run B punt 24 (02-10): vrachtwagen-icoon = "hier staat een transport gepland" (lezen uit de Transport-tab; klik = die tab op die
+   dag). Teal = actie (klikbaar), ≥ 24 px klikvlak binnen een kaart van 12 px tekst. */
+.plan-kaart .n .plan-transport-icoon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; margin: -4px 0; padding: 0;
+  border: 0; border-radius: 6px; background: transparent; color: var(--primary); cursor: pointer; flex-shrink: 0;
+}
+.plan-kaart .n .plan-transport-icoon:hover, .plan-kaart .n .plan-transport-icoon:focus-visible { background: var(--accent-bg); outline: none; }
 .plan-kaart .s { font-size: 11.5px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
 .plan-kaart .ploeg { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
 .plan-kaart .meta { display: flex; gap: 6px; align-items: center; margin-top: 6px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }

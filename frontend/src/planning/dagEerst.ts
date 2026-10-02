@@ -7,6 +7,7 @@ import {
   type PlanningPoolPersoonDto,
   type PlanningProjectRijDto,
   type PlanningReserveringDto,
+  type PlanningTransportKortDto,
   type PlanningWeekDto,
   type UrenFilter,
   type UrenStatus,
@@ -635,4 +636,39 @@ export function initialen(naam: string | null): string {
 export function parseKaartParam(param: string | null): string | null {
   if (!param) return null
   return /^[0-9a-f-]{8,}\|\d{4}-\d{2}-\d{2}$/i.test(param) ? param : null
+}
+
+/* ---- Run B punt 24 (Peter 02-10): transport-icoon op de projectkaart ---------------------------------------------------- */
+
+/** Transporten per matrixcel (`${project_id}|${datum}`), in de volgorde van de server (datum, tijdstip). Lege map zonder veld. */
+export function transportenPerCel(data: Pick<PlanningWeekDto, 'transporten'>): Map<string, PlanningTransportKortDto[]> {
+  const uit = new Map<string, PlanningTransportKortDto[]>()
+  for (const t of data.transporten ?? []) {
+    const sleutel = `${t.project_id}|${t.datum}`
+    const lijst = uit.get(sleutel) ?? []
+    lijst.push(t)
+    uit.set(sleutel, lijst)
+  }
+  return uit
+}
+
+const TRANSPORT_SOORT_LABEL: Record<PlanningTransportKortDto['soort'], string> = { levering: 'levering', retour: 'retour' }
+
+/** "07:30:00" → "07:30"; null → null. */
+export function transportTijd(tijdstip: string | null): string | null {
+  if (!tijdstip) return null
+  const m = /^(\d{2}):(\d{2})/.exec(tijdstip)
+  return m ? `${m[1]}:${m[2]}` : tijdstip
+}
+
+/** Tooltip van het vrachtwagen-icoon: "transport gepland: 07:30 levering — Levering steiger 600 m² (bevestigd)"; meerdere
+ * transporten op één dag = één regel per transport. */
+export function transportTooltip(items: PlanningTransportKortDto[]): string {
+  const regels = items.map((t) => {
+    const tijd = transportTijd(t.tijdstip)
+    const kop = [tijd, TRANSPORT_SOORT_LABEL[t.soort] ?? t.soort].filter(Boolean).join(' ')
+    const stand = t.status === 'gereserveerd' ? 'nog niet bevestigd' : t.status
+    return `${kop} — ${t.samenvatting} (${stand})`
+  })
+  return `transport gepland: ${regels.join(' · ')}`
 }

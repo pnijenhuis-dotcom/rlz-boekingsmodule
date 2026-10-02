@@ -21,6 +21,9 @@ import {
   perProjectRijen,
   poolStand,
   projectTegels,
+  transportTijd,
+  transportTooltip,
+  transportenPerCel,
   vulhandvatVoorbeeld,
   zonderAkkoord,
 } from './dagEerst'
@@ -341,5 +344,26 @@ describe('planBulkOngedaan — toast en Cmd/Ctrl-Z', () => {
     expect(isOngedaanToets({ ...buiten, metaKey: false })).toBe(false)
     const input = document.createElement('input')
     expect(isOngedaanToets({ ...buiten, target: input })).toBe(false)
+  })
+})
+
+describe('Run B punt 24 — transporten per cel + tooltip (Peter 02-10)', () => {
+  const t1 = { transport_id: 't1', project_id: 'p1', datum: '2026-08-24', soort: 'levering' as const, tijdstip: '07:30:00', status: 'gereserveerd' as const, samenvatting: 'Levering steiger 600 m²' }
+  const t2 = { transport_id: 't2', project_id: 'p1', datum: '2026-08-24', soort: 'retour' as const, tijdstip: null, status: 'definitief' as const, samenvatting: 'Retour' }
+  const t3 = { transport_id: 't3', project_id: 'p2', datum: '2026-08-26', soort: 'levering' as const, tijdstip: '12:00:00', status: 'geleverd' as const, samenvatting: 'Levering Lift (1×)' }
+
+  it('groepeert per project × dag in servervolgorde; zonder veld een lege map', () => {
+    const m = transportenPerCel({ transporten: [t1, t2, t3] })
+    expect([...m.keys()]).toEqual(['p1|2026-08-24', 'p2|2026-08-26'])
+    expect(m.get('p1|2026-08-24')?.map((t) => t.transport_id)).toEqual(['t1', 't2'])
+    expect(transportenPerCel({}).size).toBe(0)
+    expect(transportenPerCel({ transporten: [] }).size).toBe(0)
+  })
+
+  it('tijd "07:30:00" → "07:30", null blijft null; tooltip noemt tijd/soort, samenvatting en stand (gereserveerd = nog niet bevestigd)', () => {
+    expect(transportTijd('07:30:00')).toBe('07:30')
+    expect(transportTijd(null)).toBeNull()
+    expect(transportTooltip([t1])).toBe('transport gepland: 07:30 levering — Levering steiger 600 m² (nog niet bevestigd)')
+    expect(transportTooltip([t1, t2])).toBe('transport gepland: 07:30 levering — Levering steiger 600 m² (nog niet bevestigd) · retour — Retour (definitief)')
   })
 })

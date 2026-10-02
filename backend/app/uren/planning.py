@@ -243,6 +243,9 @@ class PlanningWeekData:
     reserveringen: list[ReserveringData] = field(default_factory=list)
     afwezigheid: list[AfwezigheidData] = field(default_factory=list)
     # 21-09: bewust gehouden conflicten in deze week (het paneel verbergt een conflict alleen bij exact dezelfde stand).
+    # Run B punt 24 (02-10): geplande transporten per project × dag (lees-only uit de Transport-tab) → vrachtwagen-
+    # icoon op de kaart.
+    transporten: list = field(default_factory=list)
     conflict_akkoorden: list[ConflictAkkoordData] = field(default_factory=list)
 
 
@@ -1502,6 +1505,13 @@ def planning_overzicht(
         for tw in toewijzingen:
             personeel[(tw.project_id, tw.datum)] = personeel.get((tw.project_id, tw.datum), 0) + 1
         wachtrisico = wachtrisico_in_sessie(session, administratie_id=administratie_id, personeel=personeel)
+        # Run B punt 24 (02-10): transporten deze week (status ≠ geannuleerd) als kaartsignaal — zelfde bron als de
+        # Transport-tab.
+        from app.materiaal.service import transporten_week_kort_in_sessie
+
+        transporten = transporten_week_kort_in_sessie(
+            session, administratie_id=administratie_id, van=maandag, tot_en_met=zondag
+        )
         akkoorden = [
             _conflict_akkoord_data(a)
             for a in session.scalars(
@@ -1528,6 +1538,7 @@ def planning_overzicht(
             reserveringen=reserveringen,
             afwezigheid=[_afwezigheid_data(a) for a in afwezig_rijen],
             conflict_akkoorden=akkoorden,
+            transporten=transporten,
         )
 
 

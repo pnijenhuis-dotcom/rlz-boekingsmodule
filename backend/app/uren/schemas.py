@@ -691,6 +691,19 @@ class WachtrisicoKortDto(BaseModel):
     samenvatting: str
 
 
+class PlanningTransportKortDto(BaseModel):
+    """Run B punt 24 (Peter 02-10): gepland transport (Transport-tab, status ≠ geannuleerd) op project × dag →
+    vrachtwagen-icoon op de projectkaart in de Personeel-tab. Alleen lezen."""
+
+    transport_id: uuid.UUID
+    project_id: uuid.UUID
+    datum: date
+    soort: str  # levering | retour
+    tijdstip: time | None = None
+    status: str
+    samenvatting: str
+
+
 class PlanningWeekDto(BaseModel):
     jaar: int
     weeknummer: int
@@ -707,6 +720,8 @@ class PlanningWeekDto(BaseModel):
     afwezigheid: list[AfwezigheidDto] = []
     # 21-09 (conflictenpaneel mét handeling, migratie 0169): bewust gehouden conflicten in deze week.
     conflict_akkoorden: list[PlanningConflictAkkoordDto] = []
+    # Run B punt 24 (02-10): transporten deze week per project × dag (lees-only; oudere responses missen het veld).
+    transporten: list[PlanningTransportKortDto] = []
 
 
 class PlanningConflictAkkoordDto(BaseModel):

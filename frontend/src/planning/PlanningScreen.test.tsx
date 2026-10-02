@@ -161,6 +161,13 @@ function installMock(opties: MockOpties = {}) {
     }
     if (url.includes('/uren/kantoor/planning'))
       return Promise.resolve((opties.planning ?? (() => jsonResponse(planningWeek())))())
+    // Run B punt 24: de Transport-tab mount ná een klik op het vrachtwagen-icoon — minimale, lege transportweek.
+    if (url.includes('/materiaal/') && url.includes('/transport'))
+      return Promise.resolve(
+        jsonResponse({ jaar: 2026, weeknummer: 35, maandag: '2026-08-24', zondag: '2026-08-30', projecten: [], wachtrisico: [], aantal_transporten: 1, bestellingen_concept: 0, bestellingen_met_wijzigingen: 0, materiaalmatch_open: 0, te_plannen: [] }),
+      )
+    if (url.includes('/materiaal/') && url.includes('/bestellingen')) return Promise.resolve(jsonResponse({ items: [], totaal: 0, pagina: 1, per_pagina: 10 }))
+    if (url.includes('/materiaal/') && url.includes('/leveranciers')) return Promise.resolve(jsonResponse([]))
     return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -794,5 +801,33 @@ describe('Planning v4 — pool weg, matrix, paneel als dé werkwijze, quick-add,
     fireEvent.click(screen.getByTestId('weergave-project'))
     const tabel = await screen.findByTestId('per-project')
     expect(within(tabel).getByTestId('pp-vrij')).toHaveTextContent('1 veldwerker hele week vrij · Sanne V.')
+  })
+})
+
+describe('Run B punt 24 — transport-icoon op de projectkaart (Peter 02-10)', () => {
+  const TRANSPORT = { transport_id: 't-1', project_id: PROJECT_ID, datum: '2026-08-24', soort: 'levering', tijdstip: '07:30:00', status: 'bevestigd', samenvatting: 'Levering steiger 600 m²' }
+
+  it('kaart mét gepland transport draagt het vrachtwagen-icoon mét tooltip "transport gepland: …"; klik = Transport-tab op die dag', async () => {
+    installMock({ planning: () => jsonResponse(planningWeek({ transporten: [TRANSPORT] })) })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    const kaart = screen.getByTestId(`kaart-${KAART_MA}`)
+    const icoon = within(kaart).getByTestId('kaart-transport')
+    expect(icoon).toHaveAttribute('title', 'transport gepland: 07:30 levering — Levering steiger 600 m² (bevestigd)')
+    expect(icoon.getAttribute('aria-label')).toContain('transport gepland: 07:30 levering')
+    expect(icoon.querySelector('svg')).not.toBeNull()
+    fireEvent.click(icoon)
+    // De klik selecteert de kaart niet (stopPropagation) maar wisselt naar de Transport-tab mét die dag gemarkeerd.
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Transport/ })).toHaveAttribute('aria-selected', 'true'))
+    await waitFor(() => expect(screen.getByTestId('transport-dagkop-2026-08-24')).toHaveAttribute('data-focus', 'true'))
+    expect(screen.getByTestId('transport-dagkop-2026-08-24')).toHaveTextContent('vanuit Personeel')
+    expect(screen.getByTestId('transport-dagkop-2026-08-25')).not.toHaveAttribute('data-focus')
+  })
+
+  it('zonder transport (of geannuleerd = door de server al weggelaten) staat er geen icoon; een oudere respons zonder het veld werkt gewoon', async () => {
+    installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    expect(within(screen.getByTestId(`kaart-${KAART_MA}`)).queryByTestId('kaart-transport')).toBeNull()
   })
 })

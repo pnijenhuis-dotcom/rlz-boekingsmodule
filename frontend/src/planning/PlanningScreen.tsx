@@ -496,12 +496,15 @@ export function PlanningScreen() {
       { replace: true },
     )
   }
-  function zetTab(t: 'personeel' | 'transport') {
+  function zetTab(t: 'personeel' | 'transport', dag?: string) {
     setSearchParams(
       (prev) => {
         const p = new URLSearchParams(prev)
         if (t === 'transport') p.set('tab', 'transport')
         else p.delete('tab')
+        // Run B punt 24 (02-10): vanaf het vrachtwagen-icoon landt de Transport-tab op díe dag (`?dag=`); een gewone tabwissel wist 'm.
+        if (t === 'transport' && dag) p.set('dag', dag)
+        else p.delete('dag')
         return p
       },
       { replace: true },
@@ -918,7 +921,7 @@ export function PlanningScreen() {
       </div>
 
       {tab === 'transport' && administratieId && (
-        <TransportTab administratieId={administratieId} week={week} dagen={dagen} filterTerm={filterTerm} setFilterTerm={setFilterTerm} />
+        <TransportTab administratieId={administratieId} week={week} dagen={dagen} filterTerm={filterTerm} setFilterTerm={setFilterTerm} focusDag={searchParams.get('dag')} />
       )}
 
       {tab === 'personeel' && fout && <FoutMelding melding="De planning kon niet geladen worden." detail={fout} onOpnieuw={laad} />}
@@ -988,6 +991,7 @@ export function PlanningScreen() {
                         else setWoDialoog({ projectId: kaart.project_id, projectNaam: kaart.project_naam ?? '' })
                       }}
                       onHandvatLoslaten={handvatLoslaten}
+                      onTransportKlik={(datum) => zetTab('transport', datum)}
                       onOpenWeekstaat={(persoon) => {
                         if (persoon.weekstaat_id) window.open(`/meerwerk?administratie=${administratieId}&weekstaat=${persoon.weekstaat_id}`, '_self')
                       }}

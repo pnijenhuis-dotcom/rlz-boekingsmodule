@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import { Badge, Button, Select, useToastOptioneel, SkeletonRegels } from '../ui/basis'
 import { BestellingPopup } from './BestellingPopup'
@@ -95,12 +95,15 @@ export function TransportTab({
   dagen,
   filterTerm,
   setFilterTerm,
+  focusDag = null,
 }: {
   administratieId: string
   week: { jaar: number; weeknummer: number }
   dagen: { datum: string; naam: string }[]
   filterTerm: string
   setFilterTerm: (t: string) => void
+  /** Run B punt 24 (02-10): dag (ISO) waarop de tab landt vanaf het vrachtwagen-icoon in de Personeel-tab — kolom gemarkeerd + in beeld. */
+  focusDag?: string | null
 }) {
   const { meld } = useToastOptioneel()
   const [data, setData] = useState<TransportWeekDto | null>(null)
@@ -172,6 +175,11 @@ export function TransportTab({
   const zichtbaar = (r: TransportProjectRijDto) => !term || `${r.project_naam ?? ''} ${r.opdrachtgever ?? ''}`.toLowerCase().includes(term)
   const wachtrisicoKeys = useMemo(() => new Set((data?.wachtrisico ?? []).map((w) => `${w.project_id}|${w.datum}`)), [data])
   const werkdagen = dagen.slice(0, 5)
+  // Run B punt 24: de gemarkeerde dagkolom in beeld scrollen (deeplink vanaf het vrachtwagen-icoon).
+  const focusDagRef = useRef<HTMLTableCellElement>(null)
+  useEffect(() => {
+    if (focusDag) focusDagRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+  }, [focusDag, data])
   const leverancierBij = (id: string) => leveranciers.find((l) => l.id === id) ?? null
 
   // Dag-agenda: alle kaarten van de week per datum (over álle projecten), gesorteerd op
@@ -458,9 +466,10 @@ export function TransportTab({
                 <thead>
                   <tr>
                     {werkdagen.map(({ datum }, i) => (
-                      <th key={datum}>
+                      <th key={datum} className={datum === focusDag ? 'plan-vandaag' : undefined} data-testid={`transport-dagkop-${datum}`} data-focus={datum === focusDag ? 'true' : undefined} ref={datum === focusDag ? focusDagRef : undefined}>
                         {dagLabel(datum)}
                         {i === 0 ? ` · wk ${week.weeknummer}` : ''}
+                        {datum === focusDag && <span className="plan-chip ok" style={{ marginLeft: 6 }}>vanuit Personeel</span>}
                       </th>
                     ))}
                   </tr>

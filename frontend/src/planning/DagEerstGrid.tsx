@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
-import { dagKort, handvatBereik, initialen, matrixRijen, vulhandvatVoorbeeld, type DagKaart, type DagKolom, type VulhandvatVoorbeeld } from './dagEerst'
-import { UREN_STATUS_KLEUR, UREN_STATUS_LABEL, urenKort, type PlanningKaartDto, type PlanningWeekDto, type UrenFilter } from './planningApi'
+import { dagKort, handvatBereik, initialen, matrixRijen, transportTooltip, transportenPerCel, vulhandvatVoorbeeld, type DagKaart, type DagKolom, type VulhandvatVoorbeeld } from './dagEerst'
+import { UREN_STATUS_KLEUR, UREN_STATUS_LABEL, urenKort, type PlanningKaartDto, type PlanningTransportKortDto, type PlanningWeekDto, type UrenFilter } from './planningApi'
 import { useDagDrop } from './useDagDrop'
 
 /* Weekgrid dag-eerst v4 — PROJECT × DAG-MATRIX (feedback Peter 28-09, herziet v3 18-09 "vrije kaartvolgorde per dag"): rijen =
@@ -49,6 +49,8 @@ export interface DagEerstGridProps {
   onWerkopdracht: (kaart: DagKaart) => void
   onHandvatLoslaten: (kaart: DagKaart, doelDatums: string[], voorbeeld: VulhandvatVoorbeeld) => void
   onOpenWeekstaat: (persoon: PlanningKaartDto) => void
+  /** Run B punt 24 (02-10): vrachtwagen-icoon geklikt → Transport-tab op die dag. */
+  onTransportKlik: (datum: string) => void
 }
 
 export function DagEerstGrid(p: DagEerstGridProps) {
@@ -96,6 +98,8 @@ export function DagEerstGrid(p: DagEerstGridProps) {
   const getoond = p.kolommen.filter((k) => p.werkdagen.includes(k.datum) || (weekend && k.kaarten.length > 0))
   const rijen = matrixRijen(getoond, { urenFilter: p.urenFilter })
   const dossierOnvolledig = new Set(p.data.pool.filter((x) => x.dossier_onvolledig).map((x) => x.gebruiker_id))
+  // Run B punt 24: transporten (Transport-tab, status ≠ geannuleerd) per project × dag → icoon op de kaart.
+  const transporten = transportenPerCel(p.data)
 
   function celKlik(e: MouseEvent<HTMLTableCellElement>, datum: string) {
     // Klik op de lege ruimte van een cel (niet op een kaart): mét een geselecteerd project = reserveren (klik-alternatief).
@@ -176,6 +180,8 @@ export function DagEerstGrid(p: DagEerstGridProps) {
                           oplichten={p.oplichten === cel.kaart.sleutel}
                           handvatActief={handvat?.kaart.sleutel === cel.kaart.sleutel}
                           dossierOnvolledig={dossierOnvolledig}
+                          transporten={transporten.get(cel.kaart.sleutel) ?? []}
+                          onTransportKlik={() => p.onTransportKlik(cel.datum)}
                           onSelecteer={() => p.onSelecteer(p.geselecteerd === cel.kaart!.sleutel ? null : cel.kaart)}
                           onVerwijderPersoon={(persoon) => p.onVerwijderPersoon(cel.kaart!, persoon)}
                           onDagdeel={(persoon) => p.onDagdeel(cel.kaart!, persoon)}
@@ -252,6 +258,8 @@ function KaartView({
   oplichten,
   handvatActief,
   dossierOnvolledig,
+  transporten,
+  onTransportKlik,
   onSelecteer,
   onVerwijderPersoon,
   onDagdeel,
@@ -265,6 +273,8 @@ function KaartView({
   oplichten: boolean
   handvatActief: boolean
   dossierOnvolledig: Set<string>
+  transporten: PlanningTransportKortDto[]
+  onTransportKlik: () => void
   onSelecteer: () => void
   onVerwijderPersoon: (persoon: PlanningKaartDto) => void
   onDagdeel: (persoon: PlanningKaartDto) => void
@@ -308,6 +318,21 @@ function KaartView({
     >
       <div className="n">
         {kaart.project_naam ?? kaart.project_id}
+        {transporten.length > 0 && (
+          <button
+            type="button"
+            className="plan-transport-icoon"
+            data-testid="kaart-transport"
+            title={transportTooltip(transporten)}
+            aria-label={`${transportTooltip(transporten)} — open de Transport-tab op ${dagKort(kaart.datum)}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onTransportKlik()
+            }}
+          >
+            <TransportIcoon />
+          </button>
+        )}
         {!kaart.gereserveerd && (
           <span className="plan-aantal" data-testid="kaart-aantal">
             {kaart.ploeg.length}
@@ -455,5 +480,17 @@ function KaartView({
         />
       )}
     </div>
+  )
+}
+
+/** Vrachtwagen (inline SVG, zoals de overige shell-iconen — geen nieuwe dependency); kleur volgt `currentColor`. */
+function TransportIcoon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.5 6.5h11v9h-11z" />
+      <path d="M12.5 9.5h4.2l3.3 3.3v2.7h-7.5" />
+      <circle cx="5.5" cy="17.5" r="1.8" />
+      <circle cx="17.5" cy="17.5" r="1.8" />
+    </svg>
   )
 }

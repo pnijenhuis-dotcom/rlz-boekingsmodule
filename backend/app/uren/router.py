@@ -1049,6 +1049,7 @@ def kantoor_planning(
         reserveringen=[schemas.PlanningReserveringDto(**r.__dict__) for r in data.reserveringen],
         afwezigheid=[_afwezigheid_dto(a) for a in data.afwezigheid],
         conflict_akkoorden=[schemas.PlanningConflictAkkoordDto(**a.__dict__) for a in data.conflict_akkoorden],
+        transporten=[schemas.PlanningTransportKortDto(**t.__dict__) for t in data.transporten],
     )
 
 

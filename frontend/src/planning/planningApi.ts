@@ -228,6 +228,18 @@ export interface DubbeleDagTellerDto {
   aantal: number
 }
 
+/** Run B punt 24 (Peter 02-10): gepland transport (Transport-tab, status ≠ geannuleerd) op project × dag → vrachtwagen-icoon op de
+ * projectkaart in de Personeel-tab. Alleen lezen; de Transport-tab blijft de plek om te wijzigen. */
+export interface PlanningTransportKortDto {
+  transport_id: string
+  project_id: string
+  datum: string
+  soort: 'levering' | 'retour'
+  tijdstip: string | null
+  status: 'gereserveerd' | 'bevestigd' | 'definitief' | 'geleverd'
+  samenvatting: string
+}
+
 export interface PlanningWeekDto {
   jaar: number
   weeknummer: number
@@ -245,6 +257,8 @@ export interface PlanningWeekDto {
   afwezigheid?: AfwezigheidDto[]
   /** 21-09: bewust gehouden conflicten in deze week (conflictenpaneel). */
   conflict_akkoorden?: PlanningConflictAkkoordDto[]
+  /** Run B punt 24 (02-10): transporten deze week per project × dag (lees-only; oudere responses missen het veld). */
+  transporten?: PlanningTransportKortDto[]
 }
 
 export function haalPlanning(administratieId: string, jaar: number, weeknummer: number): Promise<PlanningWeekDto> {

@@ -2244,6 +2244,57 @@ class WachtrisicoMelding:
     samenvatting: str
 
 
+@dataclass(frozen=True)
+class TransportKort:
+    """Run B punt 24 (Peter 02-10 "vrachtwagen-icoontje op het werk zodat we weten dat daar een planning geleverd
+    staat"): lees-only samenvatting van een gepland transport voor de Personeel-tab (project × dag). Geen status-flow,
+    geen schrijfpad."""
+
+    transport_id: uuid.UUID
+    project_id: uuid.UUID
+    datum: date
+    soort: str  # levering | retour
+    tijdstip: time | None
+    status: str  # effectief (legacy 'gepland' reist als 'gereserveerd'); nooit 'geannuleerd'
+    samenvatting: str
+
+
+def transporten_week_kort_in_sessie(
+    session, *, administratie_id: uuid.UUID, van: date, tot_en_met: date
+) -> list[TransportKort]:
+    """Alle NIET-geannuleerde transporten van de administratie in [van, tot_en_met] (Transport-tab = bron), als korte
+    kaartsignalen voor de personeelsplanning. Eén query + de bestaande context-opbouw (set-based, onafhankelijk van het
+    aantal transporten). Lees-only: schrijft niets, wijzigt geen status."""
+    transporten = session.scalars(
+        select(MateriaalTransport)
+        .where(
+            MateriaalTransport.administratie_id == administratie_id,
+            MateriaalTransport.datum >= van,
+            MateriaalTransport.datum <= tot_en_met,
+            MateriaalTransport.status != TransportStatus.GEANNULEERD.value,
+        )
+        .order_by(MateriaalTransport.datum, MateriaalTransport.tijdstip, MateriaalTransport.aangemaakt_op)
+    ).all()
+    if not transporten:
+        return []
+    producten, leveranciers, projecten, bestellingen, specs = _transport_context(session, administratie_id, transporten)
+    uit: list[TransportKort] = []
+    for t in transporten:
+        data = _transport_data(session, t, producten, leveranciers, projecten, bestellingen, specs)
+        uit.append(
+            TransportKort(
+                transport_id=t.id,
+                project_id=t.project_id,
+                datum=t.datum,
+                soort=t.soort,
+                tijdstip=t.tijdstip,
+                status=data.status,
+                samenvatting=data.samenvatting,
+            )
+        )
+    return uit
+
+
 def wachtrisico_in_sessie(
     session, *, administratie_id: uuid.UUID, personeel: dict[tuple[uuid.UUID, date], int]
 ) -> list[WachtrisicoMelding]:
