@@ -7,11 +7,11 @@
 // server-side faalt). Ná de correctie toont het controlescherm een gele balk uit de tijdlijnregel `gecorrigeerd`.
 // Teal = actie (dialoogknop), geel = waarschuwing/status (balk). `?corrigeren=1` in de URL (archief-⋯-menu) opent de
 // dialoog direct.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import type { CorrigeerBlokkadeDto, CorrigeerToetsDto, CorrigerenResponseDto, DocumentGebeurtenisDto } from '../api/types'
-import { AnkerPopup, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField } from '../ui/basis'
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField } from '../ui/basis'
 import {
   AL_GECORRIGEERD_CODE,
   CORRIGEREN_REDEN_MINIMUM,
@@ -19,6 +19,7 @@ import {
   corrigerenBlokkadeUit,
   haalCorrigeerToetsOp,
 } from './corrigerenApi'
+import { ReviewActiesMenu } from './ReviewActiesMenu'
 
 export const CORRIGEERBARE_SOORTEN = ['inkoopfactuur', 'verkoopfactuur', 'kassarapport'] as const
 
@@ -64,42 +65,10 @@ export function CorrigerenMenuItem({ onKies, disabled = false }: { onKies: () =>
   )
 }
 
-/** Zelfstandig ⋯-menu mét alleen "Corrigeren…" — voor de verkoop-/omzet-reviewschermen die geen eigen ⋯-menu hebben. */
+/** Zelfstandig ⋯-menu mét alleen "Corrigeren…" — dunne laag op `ReviewActiesMenu` (blok C 02-10: de verkoop-/omzet-
+ * reviewschermen tonen sinds 02-10 het gedeelde menu mét óók "Afwijzen…"; dit blijft voor aanroepers met één actie). */
 export function CorrigerenMenu({ onKies, label = 'Meer acties' }: { onKies: () => void; label?: string }) {
-  const knop = useRef<HTMLButtonElement | null>(null)
-  const [open, setOpen] = useState(false)
-  return (
-    <>
-      <button
-        ref={knop}
-        type="button"
-        className="icon-btn"
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        ⋯
-      </button>
-      <AnkerPopup
-        open={open}
-        anker={knop}
-        kant="onder"
-        uitlijning="eind"
-        className="rijmenu"
-        role="menu"
-        aria-label={label}
-        onAnkerUitBeeld={() => setOpen(false)}
-      >
-        <CorrigerenMenuItem
-          onKies={() => {
-            setOpen(false)
-            onKies()
-          }}
-        />
-      </AnkerPopup>
-    </>
-  )
+  return <ReviewActiesMenu label={label} acties={[{ sleutel: 'corrigeren', label: 'Corrigeren…', onKies }]} />
 }
 
 function BlokkadeRoute({ blokkade, onTegenboeken }: { blokkade: CorrigeerBlokkadeDto; onTegenboeken?: () => void }) {

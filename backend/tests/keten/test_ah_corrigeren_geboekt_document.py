@@ -104,3 +104,40 @@ class TestCorrigerenInDeKeten:
         assert keten.rlz._invoices[str(rlz_herboeking_id(bdo_geboekt, 1))]["Status"] == 2
         assert keten.rlz._invoices[str(rlz_herboeking_id(bdo_geboekt, 0))]["Status"] == 1  # oud concept blijft
         assert [p["reference"] for p in keten.rlz.puts] == ["6088744", "6088744"]
+
+
+class TestAfwijzenNaCorrigeren:
+    """Run D 02-10 blok C: ná "Corrigeren…" staat het document op klaar_om_te_boeken — vanuit het verkoop-/omzet-/
+    inkoop-controlescherm biedt het ⋯-menu dan "Afwijzen…" (zelfde dialoog, zelfde route `POST …/afwijzen` als de
+    bulkbalk). De servicelaag accepteert die herkomst (`_HERSTELBARE_HERKOMSTEN`), de reden blijft verplicht, heropenen
+    keert exact naar klaar_om_te_boeken terug; de RLZ-kant blijft het concept van de storno (geen tweede write)."""
+
+    def test_na_corrigeren_kan_het_document_afgewezen_worden_met_reden_en_heropend(
+        self, keten: Keten, bdo_geboekt: uuid.UUID
+    ) -> None:
+        from app.documenten import afwijzen
+
+        corrigeren.corrigeer(
+            administratie_id=keten.administratie_id, document_id=bdo_geboekt, actor_id=keten.actor, reden=REDEN
+        )
+        assert keten.status(bdo_geboekt) == DocumentStatus.KLAAR_OM_TE_BOEKEN
+        puts_voor = len(keten.rlz.puts)
+
+        with pytest.raises(afwijzen.RedenVerplicht):
+            afwijzen.wijs_af(
+                administratie_id=keten.administratie_id, document_id=bdo_geboekt, actor_id=keten.actor, reden="  "
+            )
+        data = afwijzen.wijs_af(
+            administratie_id=keten.administratie_id,
+            document_id=bdo_geboekt,
+            actor_id=keten.actor,
+            reden="tóch niet boeken — factuur wordt gecrediteerd (TEST gouden set ah)",
+        )
+        assert data.status_voor_afwijzing == DocumentStatus.KLAAR_OM_TE_BOEKEN.value
+        assert keten.status(bdo_geboekt) == DocumentStatus.AFGEWEZEN
+        # Niets verdwijnt stil: de afwijzing draagt de reden; RLZ is niet opnieuw geraakt (storno-concept blijft).
+        assert data.reden.startswith("tóch niet boeken")
+        assert len(keten.rlz.puts) == puts_voor and len(keten.rlz.correcties) == 1
+
+        afwijzen.heropen(administratie_id=keten.administratie_id, document_id=bdo_geboekt, actor_id=keten.actor)
+        assert keten.status(bdo_geboekt) == DocumentStatus.KLAAR_OM_TE_BOEKEN

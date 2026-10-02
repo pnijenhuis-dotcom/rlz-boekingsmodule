@@ -13948,3 +13948,26 @@ leveranciersnaam, één project per document ×3, Huvanco 7 facturen, onbevestig
 **Meetlat:** querybibliotheek `project-prefill-herkomst` v2 (bron `factuur_plaats_opdrachtgever`, kolom `project_kandidaten`), dispatch-onderdeel
 `project-match` (Universal Steigerbouw; Oordeel = rijen plaats+opdrachtgever / meerduidig). Klikpunt Peter ná deploy: een Hoogwerkservice-
 factuur openen → alle regels 25170 oranje "op plaats + opdrachtgever"; een Huvanco-factuur boeken → de volgende zes groen.
+
+### Blok C — "Afwijzen…" in het ⋯-menu van het verkoop- en kassarapport-controlescherm (GEBOUWD 02-10 avond; geen migratie, geen nieuwe route)
+
+**Aanleiding:** gesignaleerd 02-10 bij de Vastly-nazorg — een verkoopfactuur of kassarapport kon alleen via de documentenlijst/bulkbalk
+afgewezen worden; het reviewscherm zelf had geen "Afwijzen…".
+
+**Besluit/regel:** het ⋯-menu van `VerkoopReviewScreen` en `OmzetReviewScreen` is het gedeelde `document/ReviewActiesMenu.tsx`
+(één primaire knop + ⋯; items = `linkbtn`, `role=menu`/`menuitem`). Het draagt "Afwijzen…" op élke afwijsbare status
+(`document/afwijzenDoorloop.ts::AFWIJSBARE_STATUSSEN` = te_controleren · handmatig_afmaken · klaar_om_te_boeken — spiegel van
+`afwijzen.py::_HERSTELBARE_HERKOMSTEN`, dus óók ná "Corrigeren…") en "Corrigeren…" alleen op geboekt (`CorrigerenMenu` = dunne laag).
+Afwijzen = dezelfde `AfwijsModal` (verplichte reden, "Ter controle naar" mét eigenaar-default; titel per soort) en dezelfde route
+`POST …/documenten/{id}/afwijzen` als inkoop en de bulkbalk — de route was al soort-onafhankelijk, bewezen in het route-contract
+`tests/documenten/test_afwijzen_reviewschermen.py` (201 verkoopfactuur/kassarapport vanuit te_controleren én klaar_om_te_boeken, 422
+zonder reden). Ná afwijzen dezelfde doorloop als inkoop (`routeNaAfwijzen`: toast, volgende verwerkbare document in de lijstvolgorde
+via `kiesVolgendDocument`, route volgt de soort; anders de lijst mét filter).
+
+**Gebouwd:** `frontend/src/document/ReviewActiesMenu.tsx` (nieuw), `frontend/src/document/afwijzenDoorloop.ts` (nieuw),
+`AfwijsModal.tsx` (prop `titel`, hint "Het document krijgt status …"), `CorrigerenActie.tsx` (`CorrigerenMenu` op het gedeelde menu),
+`verkoop/VerkoopReviewScreen.tsx`, `omzet/OmzetReviewScreen.tsx`. Tests: vitest beide schermen (+3 per scherm), gouden-set-casus ah
+`TestAfwijzenNaCorrigeren`, route-contract backend.
+
+**Werkt in productie:** niet gemeten — meetrecept: request-log `POST …/documenten/<id>/afwijzen` 201 ná de deploy + `db_lezen.sh --sql`
+op `boekhouding.afwijzing` × `boekhouding.document.soort` ∈ {verkoopfactuur, kassarapport} mét `afgewezen_op` ≥ deploy.

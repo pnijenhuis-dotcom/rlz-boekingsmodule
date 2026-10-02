@@ -16,6 +16,8 @@ interface Props {
   documentId: string
   /** Referentie/factuurnummer voor de toast ná afwijzen (optioneel — de modal heeft 'm zelf niet). */
   referentie?: string | null
+  /** Dialoogtitel — standaard "Factuur afwijzen"; het omzetscherm zegt "Kassarapport afwijzen" (blok C 02-10). */
+  titel?: string
   onAfgewezen: (afwijzing: AfwijzingDto, info: AfgewezenInfo) => void
   onAnnuleren: () => void
 }
@@ -24,7 +26,7 @@ interface Props {
  * administratie-eigenaar als voorgeselecteerde standaard, en de expliciete melding dat de
  * factuur zichtbaar blijft in de werkvoorraad — zelfde opbouw en eigenaar-default als de
  * vraagmodal (vragen/VraagModal.tsx). */
-export function AfwijsModal({ administratieId, documentId, referentie = null, onAfgewezen, onAnnuleren }: Props) {
+export function AfwijsModal({ administratieId, documentId, referentie = null, titel = 'Factuur afwijzen', onAfgewezen, onAnnuleren }: Props) {
   const { medewerkers, fout: medewerkersFout } = useMedewerkers(administratieId)
   const [eigenaarId, setEigenaarId] = useState<string | null>(null)
   const [eigenaarGeladen, setEigenaarGeladen] = useState(false)
@@ -78,7 +80,7 @@ export function AfwijsModal({ administratieId, documentId, referentie = null, on
       }}
     >
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="afwijs-modal-titel">
-        <h2 id="afwijs-modal-titel">Factuur afwijzen</h2>
+        <h2 id="afwijs-modal-titel">{titel}</h2>
         <div className="row">
           <label htmlFor="afwijs-reden">Reden van afwijzing (verplicht)</label>
           <textarea
@@ -109,7 +111,7 @@ export function AfwijsModal({ administratieId, documentId, referentie = null, on
           {medewerkersFout && <div className="fout">Kon medewerkers niet laden: {medewerkersFout}</div>}
         </div>
         <p className="hint" style={{ marginTop: 0 }}>
-          De factuur krijgt status <b>Afgewezen — ter controle</b> en blijft zichtbaar in de werkvoorraad.
+          Het document krijgt status <b>Afgewezen — ter controle</b> en blijft zichtbaar in de werkvoorraad.
           Niets verdwijnt zonder spoor; heropenen zet het document terug op de status van vóór de afwijzing.
         </p>
         {fout && <div className="fout">{fout}</div>}

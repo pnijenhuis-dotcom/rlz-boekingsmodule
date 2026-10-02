@@ -10,6 +10,8 @@
 
 <!-- run-d-02-10 -->
 
+- **Afwijzen vanuit het verkoop- en kassarapport-scherm.** Het ⋯-menu op een verkoopfactuur of kassarapport heeft nu "Afwijzen…" — dezelfde dialoog met verplichte reden als bij een inkoopfactuur; ook op een document dat je net via "Corrigeren…" hebt teruggezet. Ná afwijzen ga je direct door naar het volgende document.
+
 - Projectvoorstel leest nu de hele factuur: staan een plaats én een opdrachtgever uit een projectnaam allebei op de factuur (kop, betreft-regel of regels), dan stelt de module dat project voor met de oranje chip "op plaats + opdrachtgever" — u controleert en boekt; nooit meer "lijkt op".
 - Eén factuur, één project: het projectvoorstel geldt voor alle regels; alleen een regel die zelf een ander projectnummer of werknummer noemt krijgt een eigen project.
 - Passen er meerdere projecten, dan blijft het veld leeg en staan de kandidaten als knoppen onder het veld — één klik kiest.

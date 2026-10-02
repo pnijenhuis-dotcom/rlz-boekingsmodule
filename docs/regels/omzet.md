@@ -164,6 +164,13 @@
   `2026-10-03-nameting-vastly-verkoop-administratie-id-na-herzending.md`). Stand 02-10 04:30 (bot `812a43b`): 14 open geweigerd (Rubicon 8,
   ARVUM 3, Shuto 3), 11 door de module geboekt (Rubicon 2, Elissen 5, Meyer 4).
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "run-D-alles-in-een" blok C -->
+- **"Afwijzen…" in het ⋯-menu van het omzet-controlescherm (run D 02-10 blok C; geen migratie):** het kassarapport-reviewscherm deelt
+  sinds 02-10 het ⋯-menu, de `AfwijsModal` (titel "Kassarapport afwijzen", verplichte reden) en de afwijs-route mét het
+  inkoop-controlescherm; volledige tekst in `docs/regels/werkvoorraad-controlescherm.md` alinea "Afwijzen… in het ⋯-menu van het
+  verkoop- en kassarapport-controlescherm" — BESLISSINGEN "RUN D 02-10 — BTW < € 0,10, PROJECTMATCH, AFWIJZEN, IC 12 RICHTINGEN, PO
+  STAP-0, NATIVE 1.3 (Peter 02-10)" blok C.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Omzetboekingen (omzetmodule, Receipts, omzet-autoboeken) (CLAUDE.md `ed6d176` r. 700–737)

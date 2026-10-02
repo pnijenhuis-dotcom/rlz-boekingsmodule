@@ -506,6 +506,28 @@
   hetzelfde kop-project. Volledige tekst en motor in `docs/regels/verplichtingen-projecten-voorraad.md` alinea "Projectmatch
   op plaats + opdrachtgever uit de héle factuurtekst (blok B run D, Peter 02-10)".
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "run-D-alles-in-een" blok C -->
+- **"Afwijzen…" in het ⋯-menu van het verkoop- en kassarapport-controlescherm (run D 02-10 blok C; gesignaleerd 02-10 bij de
+  Vastly-nazorg: afwijzen kon alleen via de lijst/bulkbalk; geen migratie, geen nieuwe route; BESLISSINGEN "RUN D 02-10 — BTW < € 0,10,
+  PROJECTMATCH, AFWIJZEN, IC 12 RICHTINGEN, PO STAP-0, NATIVE 1.3 (Peter 02-10)" blok C):** het ⋯-menu van `VerkoopReviewScreen` en
+  `OmzetReviewScreen` is sinds 02-10 het gedeelde `document/ReviewActiesMenu.tsx` (één primaire knop + ⋯, menu-items = `linkbtn`,
+  `role=menu`/`menuitem`); het draagt **"Afwijzen…"** op élke afwijsbare status (`document/afwijzenDoorloop.ts::AFWIJSBARE_STATUSSEN` =
+  te_controleren · handmatig_afmaken · klaar_om_te_boeken — de spiegel van `app/documenten/afwijzen.py::_HERSTELBARE_HERKOMSTEN`,
+  dus óók een `klaar_om_te_boeken`-document ná "Corrigeren…") en **"Corrigeren…"** alleen op geboekt (`CorrigerenMenu` is nu een
+  dunne laag op hetzelfde menu). Afwijzen = exact dezelfde `AfwijsModal` (verplichte reden, "Ter controle naar" mét eigenaar-default,
+  titel per soort "Verkoopfactuur afwijzen"/"Kassarapport afwijzen") en dezelfde route `POST …/documenten/{id}/afwijzen` als het
+  inkoop-controlescherm en de bulkbalk — de route was al soort-onafhankelijk (route-contract `tests/documenten/
+  test_afwijzen_reviewschermen.py`: 201 verkoopfactuur/kassarapport vanuit te_controleren én klaar_om_te_boeken, 422 zonder reden).
+  Ná afwijzen dezelfde doorloop als inkoop (`routeNaAfwijzen`): toast "Afgewezen — ‹factuurnummer/bestandsnaam›", het volgende
+  verwerkbare document in de lijstvolgorde van de administratie (`kiesVolgendDocument`, positioneel/cyclisch, route volgt de soort
+  via `documentRoute`), anders de documentenlijst mét het actieve filter; onleesbare lijst = de lijst. Het ⋯ staat in de actiebalk
+  náást "Boeken in RLZ" (niet geboekt) en náást de geboekt-regel (geboekt). Guards: vitest `VerkoopReviewScreen.test.tsx` +
+  `OmzetReviewScreen.test.tsx` (menu-item, dialoog, reden verplicht, route, doorloop naar volgend document/lijst, geboekt = alleen
+  Corrigeren…), gouden-set-casus ah `TestAfwijzenNaCorrigeren` (corrigeren → klaar_om_te_boeken → afwijzen mét reden → heropenen,
+  RLZ niet opnieuw geraakt). Werkt in productie: niet gemeten (meetrecept: request-log `POST …/documenten/<id>/afwijzen` 201 ná de
+  deploy + `db_lezen.sh --sql` op `boekhouding.afwijzing` × `boekhouding.document.soort` ∈ {verkoopfactuur, kassarapport} met
+  `afgewezen_op` ≥ deploy — vóór 02-10 kon zo'n rij alleen via de bulkroute ontstaan).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Na boeken direct door, lijstcontext, sneltoetsen, actiebalk, boekingsregels-kolommen (CLAUDE.md `ed6d176` r. 271–294)

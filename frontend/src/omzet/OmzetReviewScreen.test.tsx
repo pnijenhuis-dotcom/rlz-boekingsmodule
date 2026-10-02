@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { OmzetReviewScreen } from './OmzetReviewScreen'
 
@@ -77,6 +77,9 @@ interface MockOpties {
   checksAanroepen?: string[]
   boekenAanroepen?: string[]
   boekenAntwoord?: () => Response
+  /** Blok C 02-10: afwijzen vanuit het ⋯-menu — POST …/afwijzen + de documentenlijst voor de doorloop. */
+  afwijsAanroepen?: { url: string; body: unknown }[]
+  lijst?: Record<string, unknown>[]
 }
 
 function installFetchMock(opties: MockOpties = {}) {
@@ -123,6 +126,13 @@ function installFetchMock(opties: MockOpties = {}) {
       if (url.includes('/documenten/') && url.endsWith('/bestand')) {
         return Promise.resolve(new Response(new Blob(['%PDF']), { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
       }
+      if (url.endsWith('/afwijzen') && init?.method === 'POST') {
+        opties.afwijsAanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
+        return Promise.resolve(jsonResponse({ id: 'a1', status: 'open' }, 201))
+      }
+      if (url.endsWith(`/administraties/${ADMINISTRATIE_ID}/documenten`)) {
+        return Promise.resolve(jsonResponse({ documenten: opties.lijst ?? [] }))
+      }
       if (url.includes(`/documenten/${DOCUMENT_ID}`)) {
         return Promise.resolve(jsonResponse(documentDetail(opties.detail ?? {})))
       }
@@ -142,11 +152,18 @@ function installFetchMock(opties: MockOpties = {}) {
   vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:test'), revokeObjectURL: vi.fn() }))
 }
 
+/** Vangt élke navigatie ná afwijzen op (blok C 02-10): toont het pad + de query waar het scherm heen ging. */
+function Locatie() {
+  const locatie = useLocation()
+  return <div data-testid="locatie">{locatie.pathname + locatie.search}</div>
+}
+
 function renderScherm() {
   return render(
     <MemoryRouter initialEntries={[`/omzet/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`]}>
       <Routes>
         <Route path="/omzet/:administratieId/:documentId" element={<OmzetReviewScreen />} />
+        <Route path="*" element={<Locatie />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -557,5 +574,57 @@ describe('OmzetReviewScreen — automatisch getypeerd + "Tóch inkoopfactuur…"
     expect(await screen.findByText(/omzetboeking · kassarapport/)).toBeInTheDocument()
     expect(screen.queryByTestId('chip-automatisch-getypeerd')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Tóch inkoopfactuur…' })).not.toBeInTheDocument()
+  })
+})
+
+describe('OmzetReviewScreen — "Afwijzen…" in het ⋯-menu (run D 02-10 blok C)', () => {
+  const VOLGENDE_ID = 'cccccccc-1111-0000-0000-000000000077'
+  const lijstMetVolgende = [
+    { id: DOCUMENT_ID, soort: 'kassarapport', status: 'klaar_om_te_boeken', bestandsnaam: 'huidig', aangemaakt_op: '2026-10-02T09:00:00Z' },
+    { id: VOLGENDE_ID, soort: 'inkoopfactuur', status: 'te_controleren', bestandsnaam: 'volgende.pdf', aangemaakt_op: '2026-10-02T08:00:00Z' },
+  ]
+
+  it('klaar_om_te_boeken (ná "Corrigeren…"): ⋯ → Afwijzen… → verplichte reden → dezelfde afwijs-route → door naar het volgende document', async () => {
+    const afwijsAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ detail: { status: 'klaar_om_te_boeken' }, afwijsAanroepen, lijst: lijstMetVolgende })
+    renderScherm()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Meer acties' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Afwijzen…' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Kassarapport afwijzen' })).toBeInTheDocument()
+    const bevestig = screen.getByRole('button', { name: 'Afwijzen' })
+    expect(bevestig).toBeDisabled()
+    await user.type(screen.getByLabelText(/Reden van afwijzing/), 'dubbel aangeleverd rapport — periode al geboekt')
+    expect(bevestig).toBeEnabled()
+    await user.click(bevestig)
+
+    await waitFor(() => expect(afwijsAanroepen).toHaveLength(1))
+    expect(afwijsAanroepen[0].url).toMatch(new RegExp(`/administraties/${ADMINISTRATIE_ID}/documenten/${DOCUMENT_ID}/afwijzen$`))
+    expect(afwijsAanroepen[0].body).toMatchObject({ reden: 'dubbel aangeleverd rapport — periode al geboekt' })
+    // Doorloop zoals inkoop: het volgende document in de lijst, route volgens zijn soort.
+    expect((await screen.findByTestId('locatie')).textContent).toBe(`/documenten/${ADMINISTRATIE_ID}/${VOLGENDE_ID}`)
+  })
+
+  it('te_controleren zonder volgend document: ná afwijzen terug naar de documentenlijst van de administratie', async () => {
+    const afwijsAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ afwijsAanroepen, lijst: [] })
+    renderScherm()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Meer acties' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Afwijzen…' }))
+    await user.type(await screen.findByLabelText(/Reden van afwijzing/), 'dubbel aangeleverd rapport — periode al geboekt')
+    await user.click(screen.getByRole('button', { name: 'Afwijzen' }))
+    await waitFor(() => expect(afwijsAanroepen).toHaveLength(1))
+    expect((await screen.findByTestId('locatie')).textContent).toBe(`/?administratie=${ADMINISTRATIE_ID}`)
+  })
+
+  it('geboekt: het ⋯-menu draagt alleen Corrigeren…, geen Afwijzen… (afwijzen kan niet vanuit geboekt)', async () => {
+    installFetchMock({ detail: { status: 'geboekt' } })
+    renderScherm()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Meer acties' }))
+    expect(await screen.findByRole('menuitem', { name: 'Corrigeren…' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Afwijzen…' })).not.toBeInTheDocument()
   })
 })

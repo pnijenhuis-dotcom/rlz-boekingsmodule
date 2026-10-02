@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson } from '../api/client'
 import type {
   CheckRapportDto,
@@ -11,7 +11,10 @@ import type {
   OmzetVoorstelInputDto,
 } from '../api/types'
 import { GeboektInRlzRegel } from '../document/GeboektInRlz'
-import { CorrectieBalk, CorrigerenDialog, CorrigerenMenu, corrigerenMogelijk, useCorrigerenDialoog } from '../document/CorrigerenActie'
+import { AfwijsModal } from '../document/AfwijsModal'
+import { CorrectieBalk, CorrigerenDialog, corrigerenMogelijk, useCorrigerenDialoog } from '../document/CorrigerenActie'
+import { isAfwijsbaar, routeNaAfwijzen } from '../document/afwijzenDoorloop'
+import { ReviewActiesMenu, type ReviewActie } from '../document/ReviewActiesMenu'
 import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { anderModus, brutoNaarNetto, rondCenten, useBedragModus } from '../document/bedragModus'
 import { BedragModusInput } from '../document/BedragModusInput'
@@ -24,7 +27,8 @@ import { DatePicker } from '../ui/DatePicker'
 import { haalOmzetVoorstelOp, slaOmzetVoorstelOp, voerOmzetChecksUit, zetVerkoopCategorie } from './omzetApi'
 import { BronBlok, bronNaam } from './BronBlok'
 import { TochInkoopfactuurModal } from './TochInkoopfactuurModal'
-import { SkeletonPaneel } from '../ui/basis'
+import { SkeletonPaneel, useToastOptioneel } from '../ui/basis'
+import { lijstContextUitParams } from '../werkvoorraad/lijstContext'
 import { metViewerOpties } from '../document/pdfWeergaveUrl'
 
 /** Bewerkbare regel-staat: bedragen als tekst (NL-invoer toegestaan), keuzes als id's. Kassabedragen zijn BRUTO
@@ -138,6 +142,13 @@ export function OmzetReviewScreen() {
 
   // Corrigeren… (Peter 21-09): storno van Receipt + kostprijsmemoriaal en opnieuw klaarzetten; daarna herladen.
   const corrigeren = useCorrigerenDialoog()
+
+  // Blok C 02-10: "Afwijzen…" in het ⋯-menu — zelfde dialoog (verplichte reden) en route als het inkoop-controlescherm en
+  // de bulkbalk; ná afwijzen dezelfde doorloop als inkoop (volgende document in de lijst, anders de lijst mét filter).
+  const [searchParams] = useSearchParams()
+  const lijstContext = useMemo(() => lijstContextUitParams(searchParams), [searchParams])
+  const { meld } = useToastOptioneel()
+  const [afwijsOpen, setAfwijsOpen] = useState(false)
   const [herlaadTeller, setHerlaadTeller] = useState(0)
   const markeerGewijzigd = useCallback(() => {
     setChecksActueel(false)
@@ -311,6 +322,14 @@ export function OmzetReviewScreen() {
     }
   }
 
+
+  const naAfwijzen = async () => {
+    setAfwijsOpen(false)
+    if (!administratieId || !documentId) return
+    meld(`Afgewezen — ${detail?.bestandsnaam ?? 'kassarapport'}`, 'ok')
+    void navigate(await routeNaAfwijzen(administratieId, documentId, lijstContext))
+  }
+
   const boeken = async () => {
     if (!administratieId || !documentId) return
     setBoekenBezig(true)
@@ -362,6 +381,12 @@ export function OmzetReviewScreen() {
   if (!detail || !voorstel || !administratieId || !documentId) return <SkeletonPaneel />
 
   const isGeboekt = detail.status === 'geboekt'
+  const menuActies: ReviewActie[] = [
+    ...(isAfwijsbaar(detail.status) ? [{ sleutel: 'afwijzen', label: 'Afwijzen…', onKies: () => setAfwijsOpen(true) }] : []),
+    ...(corrigerenMogelijk(detail.status, detail.soort)
+      ? [{ sleutel: 'corrigeren', label: 'Corrigeren…', onKies: () => corrigeren.setOpen(true) }]
+      : []),
+  ]
   const isVraagOpen = detail.status === 'vraag_open'
   const isBoekbaar = BOEKBARE_STATUSSEN.has(detail.status)
   const nieuweCategorieen = regels.filter((r) => r.herkomst === 'nieuw')
@@ -1020,7 +1045,7 @@ export function OmzetReviewScreen() {
                   &ldquo;Corrigeren…&rdquo; in het ⋯-menu: verkoopboeking én kostprijsmemoriaal worden gestorneerd (actie 19)
                   en het rapport komt terug als klaar om te boeken.
                 </p>
-                {corrigerenMogelijk(detail.status, detail.soort) && <CorrigerenMenu onKies={() => corrigeren.setOpen(true)} />}
+                <ReviewActiesMenu acties={menuActies} />
               </div>
             )}
             {corrigerenMogelijk(detail.status, detail.soort) && (
@@ -1065,11 +1090,22 @@ export function OmzetReviewScreen() {
                 >
                   {boekenBezig ? 'Bezig…' : boekLabel}
                 </button>
+                <ReviewActiesMenu acties={menuActies} />
               </div>
             )}
           </div>
         </div>
       </div>
+      {afwijsOpen && (
+        <AfwijsModal
+          administratieId={administratieId}
+          documentId={documentId}
+          referentie={detail.bestandsnaam}
+          titel="Kassarapport afwijzen"
+          onAfgewezen={() => void naAfwijzen()}
+          onAnnuleren={() => setAfwijsOpen(false)}
+        />
+      )}
       {popupChecks && (
         <ChecksPopup
           melding={popupChecks.melding}
