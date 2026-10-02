@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
+import { toonHerkomst } from './testHerkomst'
 
 /** Blok 10 07-09 — project uit de factuur (casus Spot Services: óns projectnummer staat op de factuur): chip
  * "uit factuur" (groen) / "uit factuur, nog niet bevestigd" (oranje) / uitleg-chip bij meerduidig op het projectveld;
@@ -114,6 +115,7 @@ describe('BoekvoorstelPanel — project uit de factuur (blok 10 07-09, Spot Serv
     ])
     renderPanel()
     await waitFor(() => expect(screen.getAllByLabelText('Project', { exact: false })[0]).toHaveValue('26140 Koningstraat (Confide)'))
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     const chip = screen.getByTestId('regel-project-factuur-chip')
     expect(chip).toHaveTextContent('uit factuur')
     expect(chip).toHaveClass('chip', 'ok')
@@ -147,6 +149,7 @@ describe('BoekvoorstelPanel — project uit de factuur (blok 10 07-09, Spot Serv
     installFetchMock([regel({ project_id: PROJECT_KONING, project_bron: 'factuur' })])
     const gebruiker = userEvent.setup()
     renderPanel()
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(await screen.findByTestId('regel-project-factuur-chip')).toHaveTextContent('uit factuur')
     await gebruiker.click(screen.getAllByLabelText('Project', { exact: false })[0])
     await gebruiker.click(await screen.findByRole('option', { name: /26127.*Tilburg/ }))
@@ -160,6 +163,7 @@ describe('BoekvoorstelPanel — project uit de factuur (blok 10 07-09, Spot Serv
       project: { waarde: PROJECT_TILBURG, confidence: 0.9, telling: 3, oranje: false, reden: null, app_bevestigd: true },
     })
     renderPanel()
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(await screen.findByTestId('regel-project-factuur-chip')).toHaveTextContent('uit factuur')
     await waitFor(() => expect(screen.getAllByText(/Geheugen 95%/).length).toBeGreaterThan(0))
     // Geen "Geheugen: 26127 …"-afwijkingschip naast de factuur-chip; het veld houdt het factuur-project.

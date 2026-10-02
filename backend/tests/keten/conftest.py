@@ -16,7 +16,12 @@ niet met de kalender meelopen. Tijdstippen normaliseert `normaliseer_voor_export
 ontvangstmoment afleidt (de afwijsreden "… van <ontvangstdatum> …" op een module-duplicaat, casus b) niet — en
 `document.aangemaakt_op` is een DB-`now()` zonder Python-seam. Daarom bevriest `Keten` ná élke intake-stap het
 ontvangstmoment van verse documenten op REFERENTIE_TIJDSTIP (zie `_bevries_ontvangst`); guard:
-test_export_deterministisch.py."""
+test_export_deterministisch.py.
+
+Rustig controlescherm (punt 2 "groen = niets tonen", Peter 02-10): de herkomst-chips (AI %, "uit factuur", geheugen,
+template, land/KvK/btw-nummer) staan sinds 02-10 achter één `linkbtn` "Herkomst tonen" per blok; een afwijking blijft
+zichtbaar, de periode-chip alleen als de periode NIET uit de factuur komt. De DTO's wijzigen niet — de detail-baselines van
+`frontend/scripts/keten_sweep.sh` zijn gewild veranderd (frontend/src/document/herkomstZichtbaarheid.ts)."""
 
 from __future__ import annotations
 

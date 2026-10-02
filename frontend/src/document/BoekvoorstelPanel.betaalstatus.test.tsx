@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BETAALSTATUS_OPTIES_FALLBACK, BoekvoorstelPanel } from './BoekvoorstelPanel'
+import { toonHerkomst } from './testHerkomst'
 
 /** RLZ-betaalstatus (blok 3 bundel 08-09, B3): het kopveld "Betaalstatus (Reeleezee)" is een keuzelijst van de acht
  * RLZ-waarden, server-side gevuld mét herkomst-chip ('uit factuur (incasso)' / 'uit kanaal (declaratie)'); een andere keuze
@@ -113,6 +114,7 @@ describe('BoekvoorstelPanel — RLZ-betaalstatus (blok 3 bundel 08-09)', () => {
     expect(betaalstatusVeld()!.value).toBe('Wordt automatisch geïncasseerd')
     const opties = Array.from(betaalstatusVeld()!.options).map((o) => o.value)
     expect(opties).toEqual(['', ...BETAALSTATUS_OPTIES_FALLBACK])
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     const chip = screen.getByTestId('betaalstatus-chip')
     expect(chip).toHaveTextContent('uit factuur (incasso) · verwacht 2026-09-25')
     expect(chip.getAttribute('title')).toContain('Gelezen tekst: "het factuurbedrag wordt automatisch geincasseerd')
@@ -133,6 +135,7 @@ describe('BoekvoorstelPanel — RLZ-betaalstatus (blok 3 bundel 08-09)', () => {
     await waitFor(() => expect(putBodies.length).toBeGreaterThan(0), { timeout: 4000 })
     const laatste = putBodies[putBodies.length - 1] as { betaalstatus: unknown }
     expect(laatste.betaalstatus).toBe('Betaald met PIN')
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     await waitFor(() => expect(screen.getByTestId('betaalstatus-chip')).toHaveTextContent('handmatig'))
   })
 
@@ -144,6 +147,7 @@ describe('BoekvoorstelPanel — RLZ-betaalstatus (blok 3 bundel 08-09)', () => {
     renderPanel()
     await waitFor(() => expect(betaalstatusVeld()).not.toBeNull())
     expect(betaalstatusVeld()!.value).toBe('Betaald per bank')
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(screen.getByTestId('betaalstatus-chip')).toHaveTextContent('uit kanaal (declaratie)')
     expect(Array.from(betaalstatusVeld()!.options)[0].textContent).toBe('Kies betaalwijze…')
     await gebruiker.selectOptions(betaalstatusVeld()!, '')

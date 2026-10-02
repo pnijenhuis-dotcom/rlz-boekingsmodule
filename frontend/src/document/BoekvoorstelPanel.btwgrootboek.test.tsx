@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
+import { toonHerkomst } from './testHerkomst'
 
 /** Btw-code volgt de standaard van de grootboekrekening (opdracht Peter 14-09, casus L.H.G. Holding "Kosten mobiele
  * telefonie"): de grootboek-lijst draagt `standaard_taxrate_id`; kiest de mens (een andere) rekening, dan volgt de
@@ -118,6 +119,7 @@ describe('BoekvoorstelPanel — btw volgt de standaard van de grootboekrekening 
     renderPanel()
     const btwVeld = (await screen.findAllByLabelText('Btw-code', { exact: false }))[0]
     await waitFor(() => expect(btwVeld).toHaveValue('21% · NL, Hoog Tarief'))
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     const chip = screen.getByTestId('regel-btw-standaard-chip')
     expect(chip).toHaveTextContent('standaard grootboek')
     expect(chip).toHaveClass('chip', 'handmatig')
@@ -133,6 +135,7 @@ describe('BoekvoorstelPanel — btw volgt de standaard van de grootboekrekening 
     await kiesGrootboek(gebruiker, /Kosten mobiele telefonie/)
     const btwVeld = screen.getAllByLabelText('Btw-code', { exact: false })[0]
     await waitFor(() => expect(btwVeld).toHaveValue('21% · NL, Hoog Tarief'))
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(screen.getByTestId('regel-btw-standaard-chip')).toHaveTextContent('standaard grootboek')
     expect(screen.getAllByLabelText('Btw bedrag')[0]).toHaveValue('21,00')
 
@@ -172,6 +175,7 @@ describe('BoekvoorstelPanel — btw volgt de standaard van de grootboekrekening 
     // Rekening mét RLZ-default én historie: de RLZ-default wint (grijs, laag) — zelfde volgorde als server-side.
     await kiesGrootboek(gebruiker, /Kantoorkosten/)
     await waitFor(() => expect(btwVeld).toHaveValue('9% · NL, Laag Tarief'))
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(screen.getByTestId('regel-btw-standaard-chip')).toHaveTextContent('standaard grootboek')
 
     // Rekening zonder enige default: de gevolgde btw gaat weg.

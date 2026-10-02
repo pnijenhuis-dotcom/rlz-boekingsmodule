@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
 import { alsUblVoorstel, isUblVoorstel } from './aiVoorstel'
 import { exemplarenChipLabel } from '../werkvoorraad/DocumentenDeelscherm'
+import { toonHerkomst } from './testHerkomst'
 
 /** Blok 3 herstelrun "Basis eerst" 08-09 (casus BDO 6088744): een UBL-veldvoorstel is deterministisch — de
  * crediteur-kaart en "+ Nieuwe crediteur in RLZ" worden uit de XML gevuld (naam · KvK · btw · IBAN · adres, chip
@@ -116,6 +117,7 @@ describe('BoekvoorstelPanel — UBL deterministisch (blok 3 08-09)', () => {
     await waitFor(() => expect(screen.getByText(/UBL: „Voorbeeld Accountancy, Tax & Legal B.V.”/)).toBeInTheDocument())
     expect(screen.queryByText(/AI las:/)).not.toBeInTheDocument()
     expect(screen.getByText('btw NL123456782B01')).toBeInTheDocument()
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(screen.getByText('KvK 87654321')).toBeInTheDocument()
     expect(screen.getByText('uit UBL')).toBeInTheDocument()
 

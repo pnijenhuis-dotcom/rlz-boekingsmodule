@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
+import { toonHerkomst } from './testHerkomst'
 
 /* BUG 18-09 (Peter, casus Zilver Horeca Fac-25-022711, BLOW): "hij splitst nu per regel zonder het vinkje?" — de server had
  * 21 losse regels opgeslagen (geen samengevoegde variant) terwijl de voorkeur "samenvoegen" zei; het scherm toonde ze als
@@ -127,6 +128,7 @@ describe('BoekvoorstelPanel — samenvoegen-bug 18-09 (Zilver Horeca)', () => {
     installFetchMock(OPGESLAGEN_DRIE_REGELS)
     renderPanel()
     await waitFor(() => expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(3))
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     const chips = screen.getAllByTestId('regel-btw-standaard-chip')
     expect(chips.map((c) => c.textContent)).toEqual(expect.arrayContaining(['factuur 9 %', 'factuur 0 %']))
     expect(screen.getByTestId('regel-bedrag-niet-gelezen-chip')).toHaveTextContent('niet gelezen (afgedekt)')
@@ -157,6 +159,7 @@ describe('BoekvoorstelPanel — samenvoegen-bug 18-09 (Zilver Horeca)', () => {
       totaal_pinbon_status: 'groen',
     })
     renderPanel()
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     await waitFor(() => expect(screen.getByTestId('totaal-pinbon-chip')).toHaveTextContent('uit pinbon'))
     expect(screen.getByLabelText('Totaalbedrag (incl. btw)')).toHaveValue('30.37')
   })

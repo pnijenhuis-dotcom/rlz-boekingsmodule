@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BoekvoorstelPanel, parsePeriodeInvoer, parseWeken, periodeLabel } from './BoekvoorstelPanel'
+import { toonHerkomst } from './testHerkomst'
 
 /** Factuurperiode op weekniveau (blok 11 vervolgrun 07-09 — datalaag): het kopveld "Periode (weken)" is server-side
  * gevuld mét herkomst-chip ("wk 34–35 · 2026 · uit factuur" / "afgeleid van factuurdatum"); corrigeren via het inline-veld
@@ -115,6 +116,7 @@ describe('BoekvoorstelPanel — factuurperiode (blok 11)', () => {
     await waitFor(() => expect(wekenVeld()).not.toBeNull())
     expect(wekenVeld()!.value).toBe('34-35')
     expect(jaarVeld()!.value).toBe('2026')
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     const chip = screen.getByTestId('periode-chip')
     expect(chip).toHaveTextContent('wk 34–35 · 2026 · uit factuur')
     expect(chip.getAttribute('title')).toContain('Gelezen tekst: "week 34-35"')
@@ -152,6 +154,7 @@ describe('BoekvoorstelPanel — factuurperiode (blok 11)', () => {
     const metDatums = { jaar: 2026, week_van: 27, week_tot: 31, herkomst: 'factuur', tekst: '01-07-2026 t/m 31-07-2026', datum_van: '2026-07-01', datum_tot: '2026-07-31' }
     installFetchMock(boekvoorstel({ periode: metDatums }), {}, [])
     renderPanel()
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     await waitFor(() => expect(screen.getByTestId('periode-chip')).toBeInTheDocument())
     expect(screen.getByTestId('periode-chip')).toHaveTextContent('1 jul – 31 jul 2026 (wk 27–31 · 2026) · uit factuur')
   })

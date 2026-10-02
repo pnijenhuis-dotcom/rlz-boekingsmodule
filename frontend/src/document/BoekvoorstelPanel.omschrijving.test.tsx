@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
 import { isKopOmschrijvingNotitie, kopOmschrijvingTijdlijnTekst } from './kopOmschrijvingTijdlijn'
+import { toonHerkomst } from './testHerkomst'
 
 /** Kop-omschrijving automatisch (blok 9 vervolgrun 07-09, auto-first): het veld "Omschrijving boekstuk" op het controlescherm
  * is server-side gevuld mét herkomst-chip ('uit regel' / 'uit factuur' / 'afgeleid'); bewerken laat de chip
@@ -112,6 +113,7 @@ describe('BoekvoorstelPanel — kop-omschrijving (blok 9)', () => {
     await waitFor(() => expect(kopVeld()).not.toBeNull())
     const veld = kopVeld() as HTMLInputElement
     expect(veld.value).toBe('Steigerhuur week 34')
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(screen.getByTestId('kop-omschrijving-chip')).toHaveTextContent('uit regel')
 
     await gebruiker.clear(veld)
@@ -128,6 +130,7 @@ describe('BoekvoorstelPanel — kop-omschrijving (blok 9)', () => {
   it('chip "uit factuur" bij een betreft-regel en "afgeleid" bij de terugval; geen chip zonder herkomst', async () => {
     installFetchMock(boekvoorstel({ omschrijving: 'Huur steigermateriaal project 26123 week 34', omschrijving_herkomst: 'factuur' }), {}, [])
     const { unmount } = renderPanel()
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(await screen.findByTestId('kop-omschrijving-chip')).toHaveTextContent('uit factuur')
     unmount()
     vi.unstubAllGlobals()

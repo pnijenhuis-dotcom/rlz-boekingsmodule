@@ -58,6 +58,8 @@ import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
 import { KOLOM_PX, minimaleTabelbreedte } from './boekingsregelsKolommen'
 import { aantalTariefstaffels, boekbareAiRegels } from './nulregels'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
+import { HerkomstBlokKop, HerkomstBlokProvider, HerkomstChip, useHerkomstTonen } from './HerkomstChip'
+import { bewaarHerkomstStand, leesAlleHerkomstStanden, periodeIsAanname, type HerkomstBlok } from './herkomstZichtbaarheid'
 import { CrediteurPaneel, type NieuweCrediteurResultaat } from './CrediteurPaneel'
 import { rekenBedragExpressieUit } from './bedragExpressie'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
@@ -116,11 +118,9 @@ function OverstapChip({
   const chip = bepaalOverstapChip(vertaling ?? null, veld, huidig, handmatig)
   if (!chip) return null
   return (
-    <div style={{ marginTop: 4 }}>
-      <span className={`chip ${chip.klasse}`} title={chip.titel} data-testid={`regel-overstap-chip-${veld}`}>
-        {chip.tekst}
-      </span>
-    </div>
+    <HerkomstChip klasse={chip.klasse} omhulling="div" title={chip.titel} data-testid={`regel-overstap-chip-${veld}`}>
+      {chip.tekst}
+    </HerkomstChip>
   )
 }
 
@@ -483,10 +483,10 @@ export function BetaalstatusChip({ herkomst, bronTekst, verwachteBetaaldatum }: 
     .filter(Boolean)
     .join(' ')
   return (
-    <span className={chip.klasse} title={`${chip.titel} ${extra}`.trim()} data-testid="betaalstatus-chip">
+    <HerkomstChip klasse={chip.klasse.replace(/^chip\s*/, '')} title={`${chip.titel} ${extra}`.trim()} data-testid="betaalstatus-chip">
       {chip.label}
       {verwachteBetaaldatum ? ` · verwacht ${verwachteBetaaldatum}` : ''}
-    </span>
+    </HerkomstChip>
   )
 }
 
@@ -529,9 +529,16 @@ function PeriodeChip({ periode }: { periode: BoekvoorstelPeriodeDto }) {
   const titel = periode.tekst ? `${chip.titel} Gelezen tekst: "${periode.tekst}".` : chip.titel
   const datums = periodeDatumLabel(periode)
   return (
-    <span className={chip.klasse} title={titel} data-testid="periode-chip">
+    // Punt 2 (02-10): de terugval "week van de factuurdatum (aanname)" is een afwijking (altijd zichtbaar); een periode
+    // uit de factuur of van de mens is herkomst (alleen onder "Herkomst tonen").
+    <HerkomstChip
+      klasse={chip.klasse.replace(/^chip\s*/, '')}
+      altijdTonen={periodeIsAanname(periode.herkomst)}
+      title={titel}
+      data-testid="periode-chip"
+    >
       {datums ? `${datums} (${periodeLabel(periode)})` : periodeLabel(periode)} · {chip.label}
-    </span>
+    </HerkomstChip>
   )
 }
 
@@ -539,9 +546,9 @@ function KopOmschrijvingChip({ herkomst }: { herkomst: string }) {
   const chip = KOP_OMSCHRIJVING_CHIP[herkomst]
   if (!chip) return null
   return (
-    <span className={chip.klasse} title={chip.titel} data-testid="kop-omschrijving-chip">
+    <HerkomstChip klasse={chip.klasse.replace(/^chip\s*/, '')} title={chip.titel} data-testid="kop-omschrijving-chip">
       {chip.label}
-    </span>
+    </HerkomstChip>
   )
 }
 
@@ -565,12 +572,12 @@ function AiChip({ score, drempel, match, bron }: AiChipProps) {
   const fuzzy = match === 'fuzzy'
   if (bron === 'template') {
     return (
-      <span
-        className="chip ok"
+      <HerkomstChip
+        klasse="ok"
         title="Deterministisch gelezen via het geleerde template van deze leverancier (lokale code, geen AI). Het template reproduceert de laatste bevestigde facturen exact; de harde checks blijven de poort."
       >
         uit template{opNummer ? ` · herkend op ${HERKENNING_LABEL[match ?? '']}` : ''}
-      </span>
+      </HerkomstChip>
     )
   }
   const laag = fuzzy || (!opNummer && score < drempel)
@@ -580,10 +587,10 @@ function AiChip({ score, drempel, match, bron }: AiChipProps) {
       ? 'Crediteur benaderd op naam (fuzzy match tegen de crediteuren-cache) — controleer de keuze.'
       : 'Zekerheid van de AI-extractie voor dit veld.'
   return (
-    <span className={`chip ${laag ? 'afwijking' : 'ok'}`} title={titel}>
+    <HerkomstChip klasse={laag ? 'afwijking' : 'ok'} title={titel}>
       AI {zekerheidPct(score)}
       {fuzzy ? ' · naam benaderd' : opNummer ? ` · herkend op ${HERKENNING_LABEL[match ?? '']}` : ''}
-    </span>
+    </HerkomstChip>
   )
 }
 
@@ -600,6 +607,7 @@ interface GeheugenChipBlokProps {
  * Verdwijnt zodra de controleur het veld zelf aanraakt: die keuze is van de mens, de leerlus
  * leert er bij het boeken van. Bron beknopt in de tooltip (n observaties, confidence, reden). */
 function GeheugenChipBlok({ veld, huidig, handmatig, opties }: GeheugenChipBlokProps) {
+  const herkomstTonen = useHerkomstTonen()
   const stand = bepaalGeheugenChip(veld, huidig, handmatig)
   if (!stand) return null
   const pct = zekerheidPct(stand.confidence)
@@ -618,6 +626,8 @@ function GeheugenChipBlok({ veld, huidig, handmatig, opties }: GeheugenChipBlokP
     )
   }
   const hint = stand.oranje ? korteReden(stand.reden) : null
+  // Punt 2 (02-10): een groen geheugen (klopt) is herkomst — alleen onder "Herkomst tonen"; oranje blijft altijd staan.
+  if (!stand.oranje && !herkomstTonen) return null
   // Blok 3 vervolgrun 10-09 avond ("recency wint"): groen via de laatste drie identieke mens-boekingen, maar de historie
   // kende eerder een andere waarde — zichtbaar als rustige historie-regel, nooit als oranje signaal.
   const eerderOok = eerderOokTekst(veld, (id) => optieWeergave(opties, id))
@@ -774,6 +784,14 @@ export function BoekvoorstelPanel({
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
   // controleur, niet meer van de AI.
   const [aiChipsActief, setAiChipsActief] = useState(false)
+  // Punt 2 (Peter 02-10, "groen = niets tonen"): per blok staat de herkomst (AI-zekerheid, geheugen, factuur, template)
+  // achter één linkbtn "Herkomst tonen"; een afwijking blijft altijd zichtbaar (herkomstZichtbaarheid.ts). Stand per
+  // browsersessie, nooit server-state.
+  const [herkomstTonen, setHerkomstTonen] = useState<Record<HerkomstBlok, boolean>>(() => leesAlleHerkomstStanden())
+  const wisselHerkomst = (blok: HerkomstBlok, aan: boolean) => {
+    setHerkomstTonen((h) => ({ ...h, [blok]: aan }))
+    bewaarHerkomstStand(blok, aan)
+  }
   // "Btw verlegd"-vermelding uit de extractie (punt 3, 26-08) — hint bij 0%-regels zonder code.
   const [verlegdVermelding, setVerlegdVermelding] = useState<string | null>(null)
   const [cacheVersie, setCacheVersie] = useState(0)
@@ -1885,8 +1903,9 @@ export function BoekvoorstelPanel({
   return (
     <>
       {!isReadOnly && (
+        <HerkomstBlokProvider tonen={herkomstTonen.crediteur}>
         <div className="panel crediteur-kaart" data-testid="crediteur-kaart">
-          <h2>Crediteur</h2>
+          <HerkomstBlokKop titel="Crediteur" blok="crediteur" tonen={herkomstTonen.crediteur} onWissel={wisselHerkomst} />
           {synchroniserenFout && <div className="fout">Synchroniseren gaf fouten: {synchroniserenFout}</div>}
           {!vendorLaden && vendorOpties.length === 0 && !vendorFout && (
             <LegeCacheBanner naam="crediteuren" bezig={synchroniserenBezig} onSynchroniseren={() => void nuSynchroniseren()} />
@@ -1965,22 +1984,23 @@ export function BoekvoorstelPanel({
                     de andere kopvelden; wordt per crediteur onthouden zodra het voorstel mét crediteur is
                     opgeslagen (voedt nummer-match + duplicaat over crediteuren heen). */}
                 {leverancierLand.land && (
-                  <div className="hint" style={{ marginTop: 4 }}>
-                    <span
-                      className="chip handmatig"
-                      data-testid="leverancier-land-chip"
-                      title="Land van de leverancier, deterministisch afgeleid (btw-nummer crediteur → btw-nummer factuur → IBAN). Bij NL toont de btw-keuzelijst alleen de Nederlandse codes; buitenland staat ingeklapt onderaan."
-                    >
-                      {leverancierLand.land}
-                      {leverancierLand.bron ? ` · ${leverancierLand.bron}` : ''}
-                    </span>
-                  </div>
+                  <HerkomstChip
+                    klasse="handmatig"
+                    omhulling="div"
+                    data-testid="leverancier-land-chip"
+                    title="Land van de leverancier, deterministisch afgeleid (btw-nummer crediteur → btw-nummer factuur → IBAN). Bij NL toont de btw-keuzelijst alleen de Nederlandse codes; buitenland staat ingeklapt onderaan."
+                  >
+                    {leverancierLand.land}
+                    {leverancierLand.bron ? ` · ${leverancierLand.bron}` : ''}
+                  </HerkomstChip>
                 )}
-                {(gelezenNummers?.btw_nummer || gelezenNummers?.kvk_nummer) && (
+                {(gelezenNummers?.btw_nummer || gelezenNummers?.kvk_nummer) &&
+                  // Punt 2 (02-10): de nummer-chips + "uit factuur/UBL" zijn herkomst, behalve een niet-verifieerbaar btw-nummer.
+                  (herkomstTonen.crediteur || (gelezenNummers?.btw_nummer && !gelezenNummers.btw_nummer_geverifieerd)) && (
                   <div className="hint" style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                     {gelezenNummers?.btw_nummer && (
-                      <span
-                        className={`chip ${gelezenNummers.btw_nummer_geverifieerd ? 'ok' : 'afwijking'}`}
+                      <HerkomstChip
+                        klasse={gelezenNummers.btw_nummer_geverifieerd ? 'ok' : 'afwijking'}
                         title={
                           gelezenNummers.btw_nummer_geverifieerd
                             ? 'Btw-nummer uit de factuur — vorm én elfproef/mod-97 kloppen.'
@@ -1988,14 +2008,14 @@ export function BoekvoorstelPanel({
                         }
                       >
                         btw {gelezenNummers.btw_nummer}
-                      </span>
+                      </HerkomstChip>
                     )}
                     {gelezenNummers?.kvk_nummer && (
-                      <span className="chip ok" title="KvK-nummer uit de factuur (8 cijfers).">
+                      <HerkomstChip klasse="ok" title="KvK-nummer uit de factuur (8 cijfers).">
                         KvK {gelezenNummers.kvk_nummer}
-                      </span>
+                      </HerkomstChip>
                     )}
-                    <span>{gelezenBronLabel === 'UBL' ? 'uit UBL' : 'uit factuur'}</span>
+                    {herkomstTonen.crediteur && <span>{gelezenBronLabel === 'UBL' ? 'uit UBL' : 'uit factuur'}</span>}
                   </div>
                 )}
                 {vendorId === null && aiLeverancierNaam && (
@@ -2050,6 +2070,7 @@ export function BoekvoorstelPanel({
             </div>
           )}
         </div>
+        </HerkomstBlokProvider>
       )}
       {nieuweCrediteurOpen && (
         <CrediteurPaneel
@@ -2095,8 +2116,9 @@ export function BoekvoorstelPanel({
           onSluit={() => setCrediteurBewerkenOpen(false)}
         />
       )}
+      <HerkomstBlokProvider tonen={herkomstTonen.kopgegevens}>
       <div className="panel">
-        <h2>Kopgegevens</h2>
+        <HerkomstBlokKop titel="Kopgegevens" blok="kopgegevens" tonen={herkomstTonen.kopgegevens} onWissel={wisselHerkomst} verborgen={isReadOnly} />
         {isReadOnly ? (
           <div className="grid2">
             <StatischVeld label="Crediteur" waarde={optieWeergave(vendorOpties, vendorId)} />
@@ -2154,13 +2176,13 @@ export function BoekvoorstelPanel({
                   <KopOmschrijvingChip herkomst={omschrijvingChip} />
                   {/* FV-05 (25-09): bijlageverwijzing ("conform bijgevoegd overzicht") uit de automatische tekst gestript. */}
                   {omschrijvingServer?.ingekort && omschrijvingChip !== 'handmatig' && (
-                    <span
-                      className="chip stil"
+                    <HerkomstChip
+                      klasse="stil"
                       data-testid="kop-omschrijving-ingekort-chip"
                       title="Een verwijzing naar een bijlage (‘conform bijgevoegd overzicht’, ‘zie bijlage’) is uit de automatische omschrijving gelaten — die zegt niets over de boeking. Typ zelf een tekst als je die toch wilt."
                     >
                       ingekort
-                    </span>
+                    </HerkomstChip>
                   )}
                 </div>
               )}
@@ -2272,13 +2294,13 @@ export function BoekvoorstelPanel({
               )}
               {intakeKanaal === 'facturen_kempengroep' && (
                 <div style={{ marginTop: 4 }}>
-                  <span
-                    className="chip"
+                  <HerkomstChip
+                    klasse=""
                     data-testid="chip-kanaal-kempengroep"
                     title="Binnengekomen op facturen@kempengroep.nl (direct gelezen, sinds 23-09 geen doorstuur meer) — verwerking identiek aan facturen@ak-nijenhuis.nl."
                   >
                     via facturen@kempengroep.nl
-                  </span>
+                  </HerkomstChip>
                 </div>
               )}
             </div>
@@ -2305,14 +2327,13 @@ export function BoekvoorstelPanel({
                     ))}
                 </Select>
                 {afdelingPrefill && afdelingId && (
-                  <div style={{ marginTop: 4 }}>
-                    <span
-                      className="chip geheugen"
-                      title="Vorige keuze voor deze leverancier — een voorstel, opslaan maakt het uw keuze"
-                    >
-                      🧠 vorige keuze{afdelingPrefill.leverancier ? ` bij ${afdelingPrefill.leverancier}` : ''}
-                    </span>
-                  </div>
+                  <HerkomstChip
+                    klasse="geheugen"
+                    omhulling="div"
+                    title="Vorige keuze voor deze leverancier — een voorstel, opslaan maakt het uw keuze"
+                  >
+                    🧠 vorige keuze{afdelingPrefill.leverancier ? ` bij ${afdelingPrefill.leverancier}` : ''}
+                  </HerkomstChip>
                 )}
                 {!afdelingId && (
                   <div className="hint" style={{ marginTop: 4, color: 'var(--red)' }}>
@@ -2349,15 +2370,14 @@ export function BoekvoorstelPanel({
                     totaalBron === 'pinbon' && bon !== null && totaalAlsGetal !== null && Math.abs(bon - totaalAlsGetal) < 0.005
                   if (groen) {
                     return (
-                      <div style={{ marginTop: 4 }}>
-                        <span
-                          className="chip ok"
-                          data-testid="totaal-pinbon-chip"
-                          title="Totaal overgenomen van de meegefotografeerde pinbon/kassabon: het bontotaal is gelijk aan de som van de factuurregels (binnen 5 cent) — code, geen gok."
-                        >
-                          uit pinbon
-                        </span>
-                      </div>
+                      <HerkomstChip
+                        klasse="ok"
+                        omhulling="div"
+                        data-testid="totaal-pinbon-chip"
+                        title="Totaal overgenomen van de meegefotografeerde pinbon/kassabon: het bontotaal is gelijk aan de som van de factuurregels (binnen 5 cent) — code, geen gok."
+                      >
+                        uit pinbon
+                      </HerkomstChip>
                     )
                   }
                   if (totaalBron === 'pinbon') return null // mens heeft het veld gewijzigd — geen chip meer
@@ -2380,9 +2400,11 @@ export function BoekvoorstelPanel({
           </div>
         )}
       </div>
+      </HerkomstBlokProvider>
 
+      <HerkomstBlokProvider tonen={herkomstTonen.regels}>
       <div className="panel">
-        <h2>Boekingsregels</h2>
+        <HerkomstBlokKop titel="Boekingsregels" blok="regels" tonen={herkomstTonen.regels} onWissel={wisselHerkomst} verborgen={isReadOnly} />
         {!isReadOnly && !grootboekLaden && grootboekOpties.length === 0 && !grootboekFout && (
           <LegeCacheBanner naam="het grootboekschema" bezig={synchroniserenBezig} onSynchroniseren={() => void nuSynchroniseren()} />
         )}
@@ -2429,13 +2451,14 @@ export function BoekvoorstelPanel({
               </span>
             )}
             {samenvoegenNietMogelijkReden !== null && (
-              <span
-                className="chip stil"
+              <HerkomstChip
+                klasse="stil"
+                altijdTonen
                 data-testid="samenvoegen-niet-mogelijk-chip"
                 title="Het vinkje 'Splitsen per regel' ontbreekt omdat de module uit deze regels geen samengevoegde boekingsregel kan berekenen. Vul de ontbrekende bedragen/btw-codes aan of boek de regels los."
               >
                 samenvoegen niet mogelijk: {samenvoegenNietMogelijkReden}
-              </span>
+              </HerkomstChip>
             )}
           </div>
         )}
@@ -2539,11 +2562,9 @@ export function BoekvoorstelPanel({
                         // oranje historie/conflict/"AI-voorstel — bevestig". Weg zodra de mens het veld aanraakt.
                         const gbChip = bepaalGbChip(regel.gbBron, regel.gbDetail, regel.ledgerId, regel.handmatigeVelden.ledgerId)
                         return gbChip ? (
-                          <div className="regel-herkomst">
-                            <span className={`chip ${gbChip.klasse}`} title={gbChip.titel} data-testid="regel-gb-chip">
-                              {gbChip.tekst}
-                            </span>
-                          </div>
+                          <HerkomstChip klasse={gbChip.klasse} omhulling="regel" title={gbChip.titel} data-testid="regel-gb-chip">
+                            {gbChip.tekst}
+                          </HerkomstChip>
                         ) : null
                       })()}
                       <OverstapChip vertaling={regel.overstap?.grootboek} veld="grootboek" huidig={regel.ledgerId} handmatig={regel.handmatigeVelden.ledgerId} />
@@ -2570,15 +2591,15 @@ export function BoekvoorstelPanel({
                   {!btwPlichtig ? (
                     // 22-09 (BUG Peter, casus VGG / Lacy Lion): geen keuzelijst in een niet-btw-plichtige administratie —
                     // btw bestaat hier niet; de regel staat bruto in de kosten mét de "geen btw"-code (of leeg).
-                    <div className="regel-herkomst">
-                      <span
-                        className="chip handmatig"
-                        data-testid="regel-btw-niet-plichtig-chip"
-                        title="Deze administratie is niet btw-plichtig: Reeleezee wikkelt geen btw af en boekt alleen het nettobedrag op de crediteurpost. De regel staat daarom op het factuurbedrag incl. btw met btw 0,00; de btw-code is 'geen btw' (of leeg als Reeleezee er geen kent)."
-                      >
-                        administratie niet btw-plichtig — btw zit in de kosten
-                      </span>
-                    </div>
+                    <HerkomstChip
+                      klasse="handmatig"
+                      altijdTonen
+                      omhulling="regel"
+                      data-testid="regel-btw-niet-plichtig-chip"
+                      title="Deze administratie is niet btw-plichtig: Reeleezee wikkelt geen btw af en boekt alleen het nettobedrag op de crediteurpost. De regel staat daarom op het factuurbedrag incl. btw met btw 0,00; de btw-code is 'geen btw' (of leeg als Reeleezee er geen kent)."
+                    >
+                      administratie niet btw-plichtig — btw zit in de kosten
+                    </HerkomstChip>
                   ) : isReadOnly ? (
                     optieWeergave(taxrateOpties, regel.taxrateId)
                   ) : (
@@ -2601,28 +2622,27 @@ export function BoekvoorstelPanel({
                         // (norm C9), alleen zolang de mens het veld niet aanraakt.
                         const btwChip = bepaalBtwHerkomstChip(regel.btwBron, regel.taxrateId, regel.handmatigeVelden.taxrateId, regel.btwDetail)
                         return btwChip ? (
-                          <div className="regel-herkomst">
-                            <span
-                              className={`chip ${btwChip.klasse}`}
-                              title={btwChip.titel}
-                              data-testid="regel-btw-standaard-chip"
-                              data-bron={regel.btwBron ?? undefined}
-                            >
-                              {btwChip.tekst}
-                            </span>
-                          </div>
+                          <HerkomstChip
+                            klasse={btwChip.klasse}
+                            omhulling="regel"
+                            title={btwChip.titel}
+                            data-testid="regel-btw-standaard-chip"
+                            data-bron={regel.btwBron ?? undefined}
+                          >
+                            {btwChip.tekst}
+                          </HerkomstChip>
                         ) : null
                       })()}
                       {regel.btwInKosten && (
-                        <div className="regel-herkomst">
-                          <span
-                            className="chip handmatig"
-                            data-testid="regel-btw-in-kosten-chip"
-                            title="De btw van de factuur is niet aftrekbaar en zit in de kosten: netto = factuurbedrag incl. btw, btw-bedrag 0,00. Kies je een %-tarief, dan wordt het bruto weer gesplitst in netto en btw."
-                          >
-                            btw in kosten (niet aftrekbaar)
-                          </span>
-                        </div>
+                        <HerkomstChip
+                          klasse="handmatig"
+                          altijdTonen
+                          omhulling="regel"
+                          data-testid="regel-btw-in-kosten-chip"
+                          title="De btw van de factuur is niet aftrekbaar en zit in de kosten: netto = factuurbedrag incl. btw, btw-bedrag 0,00. Kies je een %-tarief, dan wordt het bruto weer gesplitst in netto en btw."
+                        >
+                          btw in kosten (niet aftrekbaar)
+                        </HerkomstChip>
                       )}
                       {regel.btwHerrekendNetto && (
                         <div className="regel-herkomst">
@@ -2648,14 +2668,13 @@ export function BoekvoorstelPanel({
                       )}
                       <OverstapChip vertaling={regel.overstap?.btw} veld="btw" huidig={regel.taxrateId} handmatig={regel.handmatigeVelden.taxrateId} />
                       {regel.btwBron === 'factuur' && regel.taxrateId && !regel.handmatigeVelden.taxrateId && (
-                        <div className="regel-herkomst">
-                          <span
-                            className="chip ok"
-                            title="Door code afgeleid uit netto- en btw-bedrag van deze factuurregel (±1 cent) tegen de RLZ-tarieven van deze administratie — geen AI, geen geheugen. De harde checks blijven de poort."
-                          >
-                            uit factuur{percentageMap[regel.taxrateId] !== undefined ? ` (${Math.round(percentageMap[regel.taxrateId] * 100)}%)` : ''}
-                          </span>
-                        </div>
+                        <HerkomstChip
+                          klasse="ok"
+                          omhulling="regel"
+                          title="Door code afgeleid uit netto- en btw-bedrag van deze factuurregel (±1 cent) tegen de RLZ-tarieven van deze administratie — geen AI, geen geheugen. De harde checks blijven de poort."
+                        >
+                          uit factuur{percentageMap[regel.taxrateId] !== undefined ? ` (${Math.round(percentageMap[regel.taxrateId] * 100)}%)` : ''}
+                        </HerkomstChip>
                       )}
                       {verlegdVermelding &&
                         regel.taxrateId === null &&
@@ -2712,11 +2731,9 @@ export function BoekvoorstelPanel({
                           // oranje "nog niet bevestigd", of de uitleg-chip bij meerduidig. Weg zodra de mens het veld aanraakt.
                           const projectChip = bepaalProjectFactuurChip(regel.projectBron, regel.projectDetail, regel.projectId, regel.handmatigeVelden.projectId)
                           return projectChip ? (
-                            <div className="regel-herkomst">
-                              <span className={`chip ${projectChip.klasse}`} title={projectChip.titel} data-testid="regel-project-factuur-chip">
-                                {projectChip.tekst}
-                              </span>
-                            </div>
+                            <HerkomstChip klasse={projectChip.klasse} omhulling="regel" title={projectChip.titel} data-testid="regel-project-factuur-chip">
+                              {projectChip.tekst}
+                            </HerkomstChip>
                           ) : null
                         })()}
                         <OverstapChip vertaling={regel.overstap?.project} veld="project" huidig={regel.projectId} handmatig={regel.handmatigeVelden.projectId} />
@@ -2893,6 +2910,7 @@ export function BoekvoorstelPanel({
           </div>
         )}
       </div>
+      </HerkomstBlokProvider>
 
       {!isReadOnly &&
         (() => {

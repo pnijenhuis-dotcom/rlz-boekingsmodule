@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
 import { KOLOM_PX, minimaleTabelbreedte } from './boekingsregelsKolommen'
+import { toonHerkomst } from './testHerkomst'
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
 const DOCUMENT_ID = 'bbbbbbbb-0000-0000-0000-000000000002'
@@ -1021,6 +1022,7 @@ describe('BoekvoorstelPanel', () => {
     expect(screen.getAllByLabelText('Btw-code', { exact: false })[0]).toHaveValue('NL Hoog 21%')
     // Eén (lege) regel zonder omschrijving → leverancier-niveau: regel_omschrijving null, in de body.
     expect(geheugenAanroepen).toEqual([{ vendor_id: VENDOR_ID, regel_omschrijving: null }])
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     const chips = screen.getAllByText('Geheugen 90%')
     expect(chips).toHaveLength(2)
     for (const chip of chips) expect(chip).toHaveClass('chip', 'ok')
@@ -1073,6 +1075,7 @@ describe('BoekvoorstelPanel', () => {
     // Gesplitste weergave → regel-niveau: de omschrijving reist mee in de body, niet in de URL.
     expect(geheugenAanroepen).toEqual([{ vendor_id: VENDOR_ID, regel_omschrijving: 'Steigerhuur wk 23' }])
     // De btw-code volgt het geheugen wél → rustige chip.
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(screen.getByText('Geheugen 90%')).toHaveClass('chip', 'ok')
   })
 
@@ -1176,6 +1179,7 @@ describe('BoekvoorstelPanel', () => {
 
     const [grootboekVeld] = await waitFor(() => screen.getAllByLabelText('Grootboek', { exact: false }))
     await waitFor(() => expect(grootboekVeld).toHaveValue('4699 · Diverse kosten'))
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(screen.getByText('Geheugen 90%')).toBeInTheDocument()
 
     await gebruiker.click(grootboekVeld)
@@ -1306,6 +1310,7 @@ describe('BoekvoorstelPanel — btw uit de scan (feedbackronde 26-08 punt 3)', (
       <BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="te_controleren" onGeboekt={() => {}} onHersteld={() => {}} />,
     )
     await waitFor(() => expect(screen.getAllByLabelText('Btw-code', { exact: false })[0]).toHaveValue('21% · NL, Hoog Tarief'))
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     const chip = screen.getByText('uit factuur (21%)')
     expect(chip).toHaveClass('chip', 'ok')
   })
@@ -1522,6 +1527,7 @@ describe('BoekvoorstelPanel — afdeling (blok A 28-08)', () => {
     renderPanel()
     const veld = await screen.findByLabelText('Afdeling')
     expect(veld).toHaveValue('buiten')
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(screen.getByText(/vorige keuze bij Van Happen Containers/)).toBeInTheDocument()
     await gebruiker.selectOptions(veld, 'alg')
     expect(screen.queryByText(/vorige keuze bij/)).toBeNull()

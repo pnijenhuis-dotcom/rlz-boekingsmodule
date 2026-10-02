@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
+import { toonHerkomst } from './testHerkomst'
 
 /** Regel-niveau voorstel-chips op het controlescherm (medewerker-wensen 04-09, mockup
  * projectverdeling-en-regelvoorstellen.html blok 2 + 3): grootboek per regel uit het regel-geheugen (groen)
@@ -146,6 +147,7 @@ describe('BoekvoorstelPanel — prefill-autosave bij openen (blok A10 07-09)', (
     renderPanel(AI_VOORSTEL_AUTOSAVE)
     await waitFor(() => expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toHaveValue('4110 · Automatisering'))
     // Regel-zekerheidschip én de herkomst-chip "uit factuur" staan er nog — het voorstel is machinaal opgeslagen.
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(screen.getByText('AI 93%')).toBeInTheDocument()
     expect(screen.getByText(/uit factuur/)).toBeInTheDocument()
   })
@@ -184,6 +186,7 @@ describe('BoekvoorstelPanel — regel-GB-voorstel (blok D 04-09, Derks-casus)', 
     expect(gbVelden[2]).toHaveValue('')
 
     const chips = screen.getAllByTestId('regel-gb-chip')
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(chips).toHaveLength(2)
     expect(chips[0]).toHaveTextContent('uit geheugen')
     expect(chips[0]).toHaveClass('chip', 'ok')
@@ -218,6 +221,7 @@ describe('BoekvoorstelPanel — regel-GB-voorstel (blok D 04-09, Derks-casus)', 
       project: { waarde: null, confidence: 0, telling: 0, oranje: true, reden: 'geen observaties', app_bevestigd: false },
     })
     renderPanel()
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(await screen.findByTestId('regel-gb-chip')).toHaveTextContent('uit geheugen')
     // btw: engine vult 'm mét geheugen-chip; grootboek: géén "Geheugen: 4112"-afwijkingschip naast de regel-chip.
     await waitFor(() => expect(screen.getAllByLabelText('Btw-code', { exact: false })[0]).toHaveValue('21% · NL, Hoog Tarief'))
@@ -244,6 +248,7 @@ describe('BoekvoorstelPanel — btw-default administratie (blok E 04-09, mockup 
     const btwVelden = await screen.findAllByLabelText('Btw-code', { exact: false })
     await waitFor(() => expect(btwVelden[0]).toHaveValue('0% · NL, BTW verlegd (hoog)'))
     expect(btwVelden[1]).toHaveValue('21% · NL, Hoog Tarief')
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     const chip = screen.getByTestId('regel-btw-standaard-chip')
     expect(chip).toHaveTextContent('standaard administratie')
     expect(chip).toHaveClass('chip', 'handmatig')
@@ -254,6 +259,7 @@ describe('BoekvoorstelPanel — btw-default administratie (blok E 04-09, mockup 
     installFetchMock([regel({ taxrate_id: TAXRATE_VERLEGD, btw_bron: 'standaard', netto_bedrag: '1000.00', btw_bedrag: '0.00' })])
     const gebruiker = userEvent.setup()
     renderPanel()
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(await screen.findByTestId('regel-btw-standaard-chip')).toBeInTheDocument()
     await gebruiker.click(screen.getAllByLabelText('Btw-code', { exact: false })[0])
     await gebruiker.click(await screen.findByRole('option', { name: /NL, Hoog Tarief/ }))
@@ -319,6 +325,7 @@ describe('BoekvoorstelPanel — overstap-vertaling van een open voorstel (Odoo-s
   it('zonder spoor (RLZ-administratie of gewoon voorstel) geen overstap-chips', async () => {
     installFetchMock([regel({ ledger_id: GB_4110, gb_bron: 'geheugen', gb_voorstel_detail: '3× bevestigd' })])
     renderPanel()
+    await toonHerkomst() // 02-10: herkomst-chips staan achter "Herkomst tonen"
     expect(await screen.findByTestId('regel-gb-chip')).toBeInTheDocument()
     expect(screen.queryByTestId('regel-overstap-chip-grootboek')).toBeNull()
     expect(screen.queryByTestId('regel-overstap-chip-btw')).toBeNull()
