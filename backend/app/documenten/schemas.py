@@ -902,6 +902,14 @@ class BoekvoorstelInput(StrikteInvoer):
     # álle regels; de server schrijft daar één tijdlijnregel "kop → regels" voor. Sleutels `project` | `btw`, waarde = het
     # aantal regels; optioneel `project_naam` / `btw_code` (tekst) voor de leesbare regel. None = niet meegegeven.
     kop_doorgezet: KopDoorgezetInput | None = None
+    # Punt 5 "Boeken prettig 1" (02-10): "Verdelen over projecten" maakte de projecten van `regels` regels leeg → één
+    # tijdlijnregel. None = niet meegegeven.
+    verdelen_leeggemaakt: VerdelenLeeggemaaktInput | None = None
+
+
+class VerdelenLeeggemaaktInput(StrikteInvoer):
+    regels: int = Field(ge=1, le=500)
+    sleutel: str | None = Field(default=None, max_length=40)
 
 
 class KopDoorgezetInput(StrikteInvoer):

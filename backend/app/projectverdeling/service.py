@@ -151,6 +151,8 @@ def _live(
     prefill: bool,
     boek_cyclus: int | None,
     vandaag: date | None = None,
+    periode_herkomst: str | None = None,
+    periode_herkomst_tekst: str | None = None,
 ) -> pv.ProjectverdelingData:
     vandaag = vandaag or vandaag_nl()
     basis = pv.basisbedrag_van(regels)
@@ -187,7 +189,54 @@ def _live(
         omzet_cache_leeg=bool(selectie and selectie.cache_leeg),
         aantal_projecten_met_omzet=len(standen),
         pro_rato_peildatum=vandaag,
+        periode_herkomst=(
+            (periode_herkomst or (pv.PERIODE_OPGESLAGEN if opgeslagen else None)) if periode is not None else None
+        ),
+        periode_herkomst_tekst=periode_herkomst_tekst if periode is not None else None,
+        regels_zonder_project=sum(1 for pid, _ in regels if pid is None),
+        regels_totaal=len(regels),
     )
+
+
+def automatische_periode(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    sleutel: str,
+    factuurdatum: date | None,
+    vandaag: date,
+) -> tuple[pv.Periode, str, str | None]:
+    """Punt 5 "Boeken prettig 1" (besluit Peter 02-10, herziet "huidige/vorige maand"): de omzetperiode van een
+    AUTOMATISCHE verdeling is de MAAND VAN DE FACTUURDATUM. Deterministisch, nooit stil:
+    - sleutel `omzet_jaar` → het kalenderjaar van de factuurdatum (mits geldig: niet in de toekomst, ≥ 1 afgesloten
+      maand), anders het vorige jaar;
+    - anders (`omzet_maand`, óók `vaste_regels` — vaste regels zijn mens-werk, de automaat verdeelt pro rato) → de
+      factuurmaand als die omzet heeft; heeft die geen omzet (of ontbreekt de factuurdatum / ligt de maand in de
+      toekomst), dan de bestaande terugval "vorige afgesloten maand" mét een zichtbare reden.
+    Retourneert (periode, herkomst, herkomst_tekst)."""
+    if sleutel == SLEUTEL_OMZET_JAAR:
+        jaar = (factuurdatum or vandaag).year
+        kandidaat = pv.Periode.jaar(jaar)
+        try:
+            pv.valideer_periode(kandidaat, vandaag)
+        except pv.PeriodeFout:
+            kandidaat = pv.Periode.jaar(jaar - 1)
+            return kandidaat, pv.PERIODE_TERUGVAL, f"jaar {jaar} heeft nog geen afgesloten maand — vorig jaar genomen"
+        return kandidaat, pv.PERIODE_FACTUURMAAND, "jaar van de factuurdatum"
+    terugval = pv.default_periode(vandaag)
+    if factuurdatum is None:
+        return terugval, pv.PERIODE_TERUGVAL, "geen factuurdatum — vorige afgesloten maand genomen"
+    factuurmaand = pv.Periode.maand(factuurdatum.replace(day=1))
+    if factuurmaand.start > vandaag:
+        tekst = f"factuurmaand {pv.periode_label(factuurmaand)} ligt in de toekomst — vorige afgesloten maand genomen"
+        return terugval, pv.PERIODE_TERUGVAL, tekst
+    selectie = omzet_per_project(session, administratie_id=administratie_id, periode=factuurmaand, vandaag=vandaag)
+    if selectie.standen or selectie.cache_leeg or factuurmaand == terugval:
+        # Lege cache = de cijfers-sync heeft nog nooit gedraaid: dan is élke maand leeg — de factuurmaand blijft de
+        # bedoelde periode en de blokkade (⟳ projectcijfers) zegt wat er aan de hand is.
+        return factuurmaand, pv.PERIODE_FACTUURMAAND, "maand van de factuurdatum"
+    tekst = f"geen omzet in de factuurmaand {pv.periode_label(factuurmaand)} — vorige afgesloten maand genomen"
+    return terugval, pv.PERIODE_TERUGVAL, tekst
 
 
 def _bevroren(
@@ -264,28 +313,45 @@ def lees(
     boek_cyclus: int,
     drempel_pct: Decimal,
     vandaag: date | None = None,
+    factuurdatum: date | None = None,
 ) -> pv.ProjectverdelingData | None:
     """De verdeling zoals het boekvoorstel 'm draagt: bevroren (geboekt, zelfde boek_cyclus), live herrekend
-    (voorstel — óók een bevroren rij van een vórige cyclus ná tegenboeken-én-opnieuw-boeken), de
-    opt-in-prefill (④: alleen de restant-regel, niets opgeslagen) of None (geen verdeling van toepassing)."""
+    (voorstel — óók een bevroren rij van een vórige cyclus ná tegenboeken-én-opnieuw-boeken), de automatische
+    prefill of None (geen verdeling van toepassing).
+
+    Punt 5 "Boeken prettig 1" (Peter 02-10 "wordt de kosten verdelen voor overhead dan gefixt? daar lopen we nu echt
+    tegenaan"): onder PROJECTPLICHT staat de verdeling bij openen al KLAAR voor élke regel zonder project (= overhead)
+    volgens de standaardsleutel van de administratie (`standaard_sleutel`, Universal = omzetsleutel uit de historie —
+    nooit hardcoded) over de omzet van de MAAND VAN DE FACTUURDATUM (`automatische_periode`) — zonder leverancier-
+    opt-in. Buiten projectplicht blijft de opt-in-prefill (④) het pad, nu óók op de factuurmaand. Niets wordt
+    opgeslagen: de live stand is wat de checks en de boekmotor zien (boeken kan direct); een mens kan 'm altijd
+    aanpassen (bestaand)."""
     vandaag = vandaag or vandaag_nl()
     row = _row(session, document_id)
     if row is None:
-        if not _opt_in_pro_rato(session, administratie_id=administratie_id, vendor_id=vendor_id):
+        zonder_project = any(pid is None for pid, _ in regels)
+        automatisch = project_verplicht and zonder_project
+        if not automatisch and not _opt_in_pro_rato(session, administratie_id=administratie_id, vendor_id=vendor_id):
             return None
         if not (project_verplicht or _heeft_actieve_projecten(session, administratie_id)):
             return None
+        sleutel = standaard_sleutel(session, administratie_id=administratie_id, vandaag=vandaag)
+        periode, herkomst, herkomst_tekst = automatische_periode(
+            session, administratie_id=administratie_id, sleutel=sleutel, factuurdatum=factuurdatum, vandaag=vandaag
+        )
         return _live(
             session,
             administratie_id=administratie_id,
             regels=regels,
             vaste=[],
-            periode=pv.default_periode(vandaag),
+            periode=periode,
             status=pv.STATUS_VOORSTEL,
             opgeslagen=False,
             prefill=True,
             boek_cyclus=boek_cyclus,
             vandaag=vandaag,
+            periode_herkomst=herkomst,
+            periode_herkomst_tekst=herkomst_tekst,
         )
     if row.status == pv.STATUS_GEBOEKT and (row.boek_cyclus is None or row.boek_cyclus >= boek_cyclus):
         return _bevroren(session, administratie_id=administratie_id, row=row, drempel=drempel_pct)
@@ -337,6 +403,7 @@ def verrijk_boekvoorstel(
         project_verplicht=project_verplicht,
         boek_cyclus=data.boek_cyclus,
         drempel_pct=drempel_voor(session, administratie_id),
+        factuurdatum=data.factuurdatum,
     )
     return replace(data, projectverdeling=verdeling)
 
@@ -379,6 +446,19 @@ def check(
                 signaal=True,
             )
         return CheckResultaat(CHECK_NAAM, True, "Geen projectverdeling van toepassing")
+    if data.prefill and not data.opgeslagen and not data.compleet:
+        # Punt 5 02-10: de AUTOMATISCHE verdeling kan niet (geen omzet / cijfers-sync nooit gedraaid) — één oorzaak,
+        # één rode rij: "Verplichte velden" blokkeert (verwijst naar de verdeling), deze rij benoemt de reden + actie.
+        n = regels_zonder_project
+        regels = "1 regel" if n == 1 else f"{n} regels"
+        return CheckResultaat(
+            CHECK_NAAM,
+            True,
+            f"Automatische verdeling niet mogelijk voor {regels} zonder project — "
+            f"{data.blokkade or 'onbekende reden'}: vul de projectverdeling aan onder de boekingsregels óf kies per "
+            "regel een project",
+            signaal=True,
+        )
     if not data.compleet:
         return CheckResultaat(CHECK_NAAM, False, data.blokkade or "De projectverdeling sluit niet op 100 %")
     return CheckResultaat(CHECK_NAAM, True, f"Verdeeld: {samenvatting(data)}")

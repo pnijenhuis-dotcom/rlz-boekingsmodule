@@ -216,7 +216,9 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
   // FV-12 (25-09): openen = de STANDAARD-verdeelsleutel van de administratie (server: geboekte verdelingen laatste 12
   // maanden, default omzet per maand; Universal = omzetsleutel — nooit hardcoded). 'omzet_jaar' = het lopende jaar zodra
   // er een afgesloten maand is, anders het vorige jaar; 'vaste_regels' = pro rato uit + één lege vaste regel.
-  const openMetStandaard = useCallback((sleutel: string | null | undefined) => {
+  // Punt 5 (02-10): de periode van de automatische verdeling (maand van de factuurdatum) komt van de server mee —
+  // die wint van de lokale "vorige maand"-default.
+  const openMetStandaard = useCallback((sleutel: string | null | undefined, serverPeriode?: string | null) => {
     setGeopend(true)
     if (sleutel === 'vaste_regels') {
       setProRato(false)
@@ -224,14 +226,14 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
       return
     }
     setProRato(true)
-    setPeriode(sleutel === 'omzet_jaar' ? jaarPeriode() : defaultPeriode())
+    setPeriode(sleutel === 'omzet_jaar' ? jaarPeriode() : (serverPeriode ?? defaultPeriode()))
   }, [])
 
   // B1 (04-09): de lege stand van de project-kolom biedt "Verdelen over projecten…" aan — zelfde actie als de
   // tekstknop hieronder (standaardsleutel als startpunt), plus in beeld scrollen.
   useEffect(() => {
     if (openVerzoek === 0 || !bewerkbaar) return
-    openMetStandaard(dto?.standaard_sleutel)
+    openMetStandaard(dto?.standaard_sleutel, dto?.pro_rato_periode)
     blokRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- alleen op een nieuw verzoek, niet op elke dto-verversing
   }, [openVerzoek, bewerkbaar])
@@ -307,18 +309,29 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
   // B1: zonder projectplicht én zonder actieve projecten heeft verdelen geen zin — geen blok.
   if (dto.beschikbaar === false && dto.status === 'geen') return null
 
+  // Punt 5 (02-10): alle regels dragen al een project → er is niets te verdelen; de knop "Verdelen over projecten" bij
+  // de boekingsregels maakt ze leeg en verdeelt het hele bedrag — dat staat erbij i.p.v. een stille "€ 0,00 · 100 %".
+  const nietsTeVerdelen = (dto.regels_totaal ?? 0) > 0 && (dto.regels_zonder_project ?? 0) === 0
+  const nietsTeVerdelenTekst =
+    'Alle regels dragen al een project — er is niets te verdelen. "Verdelen over projecten" bij de boekingsregels maakt de projecten van de regels leeg en verdeelt het hele bedrag.'
+
   const zichtbaar = geopend || dto.status === 'voorstel' || dto.status === 'geboekt'
   if (!zichtbaar) {
     if (!bewerkbaar) return null
     return (
       <div className="projectverdeling-blok" data-testid="projectverdeling-blok" ref={blokRef}>
-        <button type="button" className="linkbtn" onClick={() => openMetStandaard(dto.standaard_sleutel)}>
+        <button type="button" className="linkbtn" onClick={() => openMetStandaard(dto.standaard_sleutel, dto.pro_rato_periode)}>
           Verdelen over projecten…
         </button>
         {dto.standaard_sleutel && (
           <span className="pv-hint" style={{ marginLeft: 8 }} data-testid="pv-standaard-sleutel">
             standaard voor deze administratie: {sleutelLabel(dto.standaard_sleutel)}
           </span>
+        )}
+        {nietsTeVerdelen && (
+          <div className="pv-hint" data-testid="pv-niets-te-verdelen" style={{ marginTop: 4 }}>
+            {nietsTeVerdelenTekst}
+          </div>
         )}
       </div>
     )
@@ -361,7 +374,18 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
     <div className="panel projectverdeling-blok" data-testid="projectverdeling-blok" ref={blokRef}>
       <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         Projectverdeling
-        {dto.prefill && !dto.opgeslagen && <span className="chip geheugen">voorstel — pro rato per leverancier aan</span>}
+        {dto.prefill && !dto.opgeslagen && (
+          // Punt 5 (02-10): automatisch klaargezet voor de regels zonder project — sleutel van de administratie, maand van
+          // de factuurdatum; een terugval (geen omzet in de factuurmaand) is oranje en zegt waarom.
+          <span
+            className={`chip ${dto.periode_herkomst === 'vorige_maand_terugval' ? 'afwijking' : 'geheugen'}`}
+            data-testid="pv-automatisch"
+            title="De module zet deze verdeling automatisch klaar voor de regels zonder project (overhead). Boeken kan direct; aanpassen mag altijd."
+          >
+            automatisch — {sleutelLabel(dto.standaard_sleutel)}
+            {dto.periode_herkomst_tekst ? ` · ${dto.periode_herkomst_tekst}` : ''}
+          </span>
+        )}
         {opslaanBezig && <span className="pv-hint">opslaan…</span>}
       </h2>
       <div className="tabel-scroll">
@@ -520,6 +544,11 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
         </div>
       )}
       <RestantBalk dto={dto} />
+      {nietsTeVerdelen && !alleenLezen && (
+        <p className="pv-hint" data-testid="pv-niets-te-verdelen">
+          {nietsTeVerdelenTekst}
+        </p>
+      )}
       {dto.blokkade && !alleenLezen && (
         <p className="pv-blokkade" data-testid="pv-blokkade">
           {dto.blokkade}

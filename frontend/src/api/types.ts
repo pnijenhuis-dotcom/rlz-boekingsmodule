@@ -562,6 +562,13 @@ export interface ProjectverdelingDto {
   blokkade?: string | null
   boek_cyclus?: number | null
   hercontrole?: ProjectverdelingHercontroleDto | null
+  /** Punt 5 "Boeken prettig 1" (02-10): herkomst van de periode van een automatische verdeling —
+   * 'factuurmaand' (maand van de factuurdatum) | 'vorige_maand_terugval' (zichtbare terugval) | 'opgeslagen'. */
+  periode_herkomst?: 'factuurmaand' | 'vorige_maand_terugval' | 'opgeslagen' | null
+  periode_herkomst_tekst?: string | null
+  /** Tellers voor de uitleg "alle regels dragen al een project — niets te verdelen". */
+  regels_zonder_project?: number
+  regels_totaal?: number
 }
 
 export interface ProjectverdelingInputDto {

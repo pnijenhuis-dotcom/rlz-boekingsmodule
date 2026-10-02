@@ -345,6 +345,15 @@ def _regels_zonder_project(voorstel: BoekvoorstelData) -> int:
     return sum(1 for r in voorstel.regels if r.project_id is None)
 
 
+def _verdeling_reden(voorstel: BoekvoorstelData) -> str | None:
+    """Punt 5 (02-10): waarom de (automatische) projectverdeling de regels zonder project NIET dekt — de blokkade-zin
+    van de verdeling, voor de melding van "Verplichte velden". None = er is geen verdeling (oude tekst)."""
+    verdeling = voorstel.projectverdeling
+    if verdeling is None or verdeling.dekt_regels_zonder_project or not verdeling.actief:
+        return None
+    return verdeling.blokkade
+
+
 def _als_decimal(waarde: str | None) -> Decimal | None:
     if not waarde:
         return None
@@ -947,6 +956,9 @@ def _afdeling_velden(
 KOP_OMSCHRIJVING_SLEUTEL = "kop_omschrijving"
 #: FV-07 (25-09): tijdlijn-notitie "kop → regels: project ‹naam› op N regels" / "btw ‹code› op N regels".
 KOP_DOORGEZET_SLEUTEL = "kop_doorgezet"
+# Punt 5 "Boeken prettig 1" (02-10): "Verdelen over projecten" overrult — de regelprojecten zijn leeggemaakt en het
+# hele bedrag loopt via de verdeling; één tijdlijnregel per klik (mens-actor), nooit op een autosave.
+VERDELEN_LEEGGEMAAKT_SLEUTEL = "verdelen_leeggemaakt"
 
 
 def _laatste_kop_omschrijving_notitie(gebeurtenissen: list[DocumentGebeurtenis]) -> dict | None:
@@ -1988,8 +2000,13 @@ def sla_boekvoorstel_op(
     periode: tuple[int, int, int] | None = None,
     betaalstatus: str | None = None,
     kop_doorgezet: dict | None = None,
+    verdelen_leeggemaakt: dict | None = None,
 ) -> BoekvoorstelData:
-    """`kop_doorgezet` (FV-07 feedbackrun A 25-09) = {"project": n, "btw": n, "project_naam", "btw_code"}: de mens koos
+    """`verdelen_leeggemaakt` (punt 5 "Boeken prettig 1", 02-10) = {"regels": n, "sleutel": …}: de mens klikte "Verdelen
+    over projecten" terwijl n regels al een project droegen — de client maakte die projecten leeg zodat het HELE bedrag
+    via de verdeling loopt; de server schrijft één tijdlijnregel `verdelen_leeggemaakt` (nooit op een autosave).
+
+    `kop_doorgezet` (FV-07 feedbackrun A 25-09) = {"project": n, "btw": n, "project_naam", "btw_code"}: de mens koos
     project en/of btw-code op factuurniveau en de client zette die door naar álle regels — de server schrijft één
     tijdlijnregel `kop_doorgezet` (nooit op een autosave); de regels zelf reizen gewoon als `regels` mee.
 
@@ -2187,6 +2204,21 @@ def sla_boekvoorstel_op(
                     detail={
                         KOP_DOORGEZET_SLEUTEL: {
                             k: v for k, v in kop_doorgezet.items() if k in ("project", "btw", "project_naam", "btw_code") and v
+                        }
+                    },
+                )
+            )
+
+        if verdelen_leeggemaakt and not autosave and verdelen_leeggemaakt.get("regels"):
+            session.add(
+                DocumentGebeurtenis(
+                    document_id=document_id,
+                    van_status=document.status,
+                    naar_status=document.status,
+                    actor_id=actor_id,
+                    detail={
+                        VERDELEN_LEEGGEMAAKT_SLEUTEL: {
+                            k: v for k, v in verdelen_leeggemaakt.items() if k in ("regels", "sleutel") and v
                         }
                     },
                 )
@@ -2547,6 +2579,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 regels=regels,
                 project_verplicht=_project_verplicht_per_regel(project_verplicht, voorstel),
                 btw_plichtig=btw_plichtig,
+                verdeling_reden=_verdeling_reden(voorstel),
             ),
             _afdeling_check(administratie_id=administratie_id, voorstel=voorstel),
             check_betaalstatus_declaraties(kanaal=voorstel.intake_kanaal, betaalstatus=voorstel.betaalstatus),
@@ -2829,6 +2862,7 @@ def voer_checks_uit(
         eigen_rlz_document_id=rlz_herboeking_id(document_id, voorstel.boek_cyclus),
         uitgezonderde_rlz_document_ids=keten,
         project_verplicht=_project_verplicht_per_regel(project_verplicht, voorstel),
+        verdeling_reden=_verdeling_reden(voorstel),
         factuur_iban=factuur_iban,
         # Live set ∪ seed-uitkomst van de verse run: een akkoord ná het cachen telt direct mee (21-09).
         vertrouwde_ibans=vertrouwd_live | set(ext.vertrouwde_ibans),

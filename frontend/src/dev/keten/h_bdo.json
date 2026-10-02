@@ -332,7 +332,7 @@
    {
     "naam": "Verplichte velden",
     "ok": false,
-    "melding": "Ontbrekend: grootboekrekening (regel 1), project (regel 1) — kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
+    "melding": "Ontbrekend: grootboekrekening (regel 1), project (regel 1) — niet gedekt door de projectverdeling (Geen omzetcijfers bekend voor juli 2026 — ververs de projectcijfers (⟳) of vul vaste regels in): vul de projectverdeling aan onder de boekingsregels óf kies per regel een project",
     "signaal": false,
     "acties": []
    },
@@ -353,7 +353,7 @@
    {
     "naam": "Projectverdeling",
     "ok": true,
-    "melding": "Geen projectverdeling — 1 regel zonder project: kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
+    "melding": "Automatische verdeling niet mogelijk voor 1 regel zonder project — Geen omzetcijfers bekend voor juli 2026 — ververs de projectcijfers (⟳) of vul vaste regels in: vul de projectverdeling aan onder de boekingsregels óf kies per regel een project",
     "signaal": true,
     "acties": []
    },

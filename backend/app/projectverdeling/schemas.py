@@ -80,6 +80,15 @@ class ProjectverdelingDto(BaseModel):
     blokkade: str | None = None
     boek_cyclus: int | None = None
     hercontrole: HercontroleDto | None = None
+    #: Punt 5 "Boeken prettig 1" (02-10): herkomst van de periode van een automatische verdeling —
+    #: 'factuurmaand' | 'vorige_maand_terugval' | 'opgeslagen' + leesbare tekst ("maand van de factuurdatum",
+    #: "geen omzet in de factuurmaand juni 2026 — vorige afgesloten maand genomen").
+    periode_herkomst: str | None = None
+    periode_herkomst_tekst: str | None = None
+    #: Tellers voor de uitleg in het blok: 0 regels zonder project = "alle regels dragen al een project — niets te
+    #: verdelen; ‹Verdelen over projecten› maakt ze leeg en verdeelt het hele bedrag".
+    regels_zonder_project: int = 0
+    regels_totaal: int = 0
 
 
 class VasteRegelInput(StrikteInvoer):

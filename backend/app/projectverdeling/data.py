@@ -104,6 +104,15 @@ class ProjectverdelingData:
     aantal_projecten_met_omzet: int = field(default=0)
     #: peildatum van de omzetstand (live = vandaag, bevroren = boekmoment) — bepaalt de dekking van een jaarperiode
     pro_rato_peildatum: date | None = None
+    #: Punt 5 "Boeken prettig 1" (02-10): waar de periode van een AUTOMATISCHE verdeling vandaan komt —
+    #: PERIODE_FACTUURMAAND (maand van de factuurdatum, besluit 02-10), PERIODE_TERUGVAL (vorige afgesloten maand omdat
+    #: de factuurmaand geen omzet heeft / ontbreekt / in de toekomst ligt — nooit stil, zie `periode_herkomst_tekst`),
+    #: PERIODE_OPGESLAGEN (keuze van de mens). None = geen pro rato.
+    periode_herkomst: str | None = None
+    periode_herkomst_tekst: str | None = None
+    #: Tellers voor de uitleg in het blok ("alle regels dragen al een project — niets te verdelen").
+    regels_zonder_project: int = 0
+    regels_totaal: int = 0
 
     @property
     def pro_rato_periode_label(self) -> str | None:
@@ -125,6 +134,10 @@ class ProjectverdelingData:
 
 SOORT_MAAND = "maand"
 SOORT_JAAR = "jaar"
+
+PERIODE_FACTUURMAAND = "factuurmaand"
+PERIODE_TERUGVAL = "vorige_maand_terugval"
+PERIODE_OPGESLAGEN = "opgeslagen"
 
 _PERIODE_CODE = re.compile(r"^(\d{4})(?:-(\d{2})(?:-01)?)?$")
 

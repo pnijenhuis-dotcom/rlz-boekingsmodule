@@ -1421,6 +1421,27 @@ export function BoekvoorstelPanel({
   const [kopProjectId, setKopProjectId] = useState<string | null>(null)
   const [kopTaxrateId, setKopTaxrateId] = useState<string | null>(null)
   const kopDoorgezetRef = useRef<{ project?: number; btw?: number; project_naam?: string; btw_code?: string } | null>(null)
+  // Punt 5 "Boeken prettig 1" (02-10): "Verdelen over projecten" OVERRULT — dragen regels al een project, dan worden die
+  // projecten leeggemaakt zodat het hele bedrag via de verdeling loopt; de eerstvolgende PUT draagt `verdelen_leeggemaakt`
+  // (server-tijdlijnregel). Daarna opent het Projectverdeling-blok (bestaand `onVerdelenGevraagd`). Nooit meer
+  // "€ 0,00 · verdeeld 100 %" zonder uitleg.
+  const verdelenLeeggemaaktRef = useRef<{ regels: number } | null>(null)
+  const verdelenGevraagd = () => {
+    const metProject = regels.filter((r) => r.projectId !== null).length
+    if (metProject > 0) {
+      setRegels((huidig) =>
+        huidig.map((r) =>
+          r.projectId === null
+            ? r
+            : { ...r, projectId: null, projectBron: null, projectDetail: null, aiZekerheid: null, handmatigeVelden: { ...r.handmatigeVelden, projectId: true } },
+        ),
+      )
+      setKopProjectId(null)
+      verdelenLeeggemaaktRef.current = { regels: metProject }
+      veranderInvoer()
+    }
+    onVerdelenGevraagd?.()
+  }
   const zetKopVeld = (veld: 'projectId' | 'taxrateId', id: string | null) => {
     if (veld === 'projectId') setKopProjectId(id)
     else setKopTaxrateId(id)
@@ -1557,10 +1578,13 @@ export function BoekvoorstelPanel({
             })),
             // FV-07 (25-09): één keer mee ná een kop-niveau doorzet (server schrijft de tijdlijnregel).
             ...(kopDoorgezetRef.current ? { kop_doorgezet: kopDoorgezetRef.current } : {}),
+            // Punt 5 (02-10): één keer mee ná "Verdelen over projecten" op regels mét project (tijdlijnregel).
+            ...(verdelenLeeggemaaktRef.current ? { verdelen_leeggemaakt: verdelenLeeggemaaktRef.current } : {}),
           }),
         },
       )
       kopDoorgezetRef.current = null
+      verdelenLeeggemaaktRef.current = null
       if (wijzigingsVersieRef.current === versieBijStart) {
         setCheckRapport(resultaat.checks)
         setChecksActueel(true)
@@ -2862,7 +2886,17 @@ export function BoekvoorstelPanel({
             {/* FV-12 (25-09): "Verdelen" bij het regelblok — opent het Projectverdeling-blok mét de standaardsleutel van de
                 administratie (Universal = omzetsleutel, besluit 21-09; server-afleiding, nooit hardcoded). */}
             {projectVerplicht && onVerdelenGevraagd && (
-              <button type="button" className="btn secondary" onClick={onVerdelenGevraagd} data-testid="verdelen-knop">
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={verdelenGevraagd}
+                data-testid="verdelen-knop"
+                title={
+                  regels.some((r) => r.projectId !== null)
+                    ? 'Maakt het project van de regels leeg en verdeelt het hele bedrag over de projecten (standaardsleutel van de administratie). Dat staat in de tijdlijn; per regel blijft een project kiesbaar.'
+                    : 'Verdeelt de regels zonder project over de projecten (standaardsleutel van de administratie).'
+                }
+              >
                 Verdelen over projecten
               </button>
             )}
@@ -2893,12 +2927,12 @@ export function BoekvoorstelPanel({
             {verdelingDektRegels ? (
               // B3-dekking: de opgeslagen verdeling geeft deze regels hun project(en) — geen actie meer nodig.
               <>— gedekt door de projectverdeling ✓</>
-            ) : regels.some((r) => r.projectBron !== null) ? (
+            ) : regels.some((r) => r.projectBron !== null && r.projectBron !== 'geheugen') ? (
               <>— kies per regel een project (de factuur noemt een projectnummer)</>
             ) : (
               <>
                 — kies per regel een project óf{' '}
-                <button type="button" className="linkbtn" onClick={onVerdelenGevraagd}>
+                <button type="button" className="linkbtn" onClick={verdelenGevraagd}>
                   Verdelen over projecten…
                 </button>
               </>

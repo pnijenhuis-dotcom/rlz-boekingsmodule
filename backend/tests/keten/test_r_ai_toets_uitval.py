@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import date
 
 import pytest
 from sqlalchemy import Engine, text
@@ -24,6 +25,7 @@ from tests.keten import casussen
 from tests.keten.casussen import Casus
 from tests.keten.conftest import GB_ADVIES, PROJECT_26049, TAXRATE_HOOG, Keten
 from tests.keten.pdf import maak_pdf
+from tests.projectverdeling.conftest import seed_omzet
 
 BASIS = Casus(casussen.H_BDO)
 BASIS_NUMMER = "6088744"
@@ -90,6 +92,15 @@ def optin_bdo(keten: Keten, monkeypatch: pytest.MonkeyPatch) -> None:
     autoboeken.zet_leverancier_autoboeken(
         administratie_id=keten.administratie_id, vendor_id=keten.vendors["bdo"], actor_id=keten.actor, ingeschakeld=True
     )
+
+
+@pytest.fixture(autouse=True)
+def omzet_factuurmaand(keten: Keten, admin_engine: Engine) -> None:
+    """Punt 4 + 5 "Boeken prettig 1" (02-10): het geheugen vult het PROJECT niet meer — een vierde exemplaar zonder
+    factuurverwijzing is overhead en boekt alleen automatisch als de AUTOMATISCHE projectverdeling (omzet van de maand
+    van de factuurdatum, juli 2026) compleet is. Zonder omzetcijfers blokkeert de harde check en weigert het autoboekpad
+    zichtbaar (guard: tests/documenten/test_project_bronvolgorde.py)."""
+    seed_omzet(admin_engine, keten.administratie_id, PROJECT_26049, "10000.00", date(2026, 7, 10))
 
 
 class TestUitvalDoorlopen:

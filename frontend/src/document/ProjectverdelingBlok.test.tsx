@@ -131,15 +131,36 @@ afterEach(() => {
 })
 
 describe('ProjectverdelingBlok', () => {
-  it('toont de prefill (opt-in per leverancier): restant pro rato, 3 projecten mét omzet, 100 %-stand', async () => {
-    installFetchMock({ get: PREFILL })
+  it('toont de automatische prefill (punt 5 02-10): restant pro rato op de factuurmaand, 3 projecten mét omzet, 100 %-stand', async () => {
+    installFetchMock({
+      get: { ...PREFILL, standaard_sleutel: 'omzet_maand', periode_herkomst: 'factuurmaand', periode_herkomst_tekst: 'maand van de factuurdatum', regels_zonder_project: 1, regels_totaal: 1 },
+    })
     renderBlok()
     expect(await screen.findByText(/Restant — pro rato omzet juli 2026/)).toBeInTheDocument()
     expect(screen.getByText(/3 projecten mét omzet · omzetloos telt niet mee · OVH uitgesloten/)).toBeInTheDocument()
-    expect(screen.getByText(/voorstel — pro rato per leverancier aan/)).toBeInTheDocument()
+    expect(screen.getByTestId('pv-automatisch')).toHaveTextContent('automatisch — pro rato omzet (maand) · maand van de factuurdatum')
+    expect(screen.getByTestId('pv-automatisch')).toHaveClass('geheugen')
+    expect(screen.queryByTestId('pv-niets-te-verdelen')).not.toBeInTheDocument()
     expect(screen.getByTestId('pv-restant-balk')).toHaveTextContent('verdeeld 100% ✓')
     expect(screen.queryByText('omzetstanden vastgelegd')).not.toBeInTheDocument()
     expect(screen.queryByTestId('pv-vaste-regel')).not.toBeInTheDocument()
+  })
+
+  it('punt 5 (02-10): een terugval op de vorige maand is oranje en zegt waarom', async () => {
+    installFetchMock({
+      get: { ...PREFILL, periode_herkomst: 'vorige_maand_terugval', periode_herkomst_tekst: 'geen omzet in de factuurmaand mei 2026 — vorige afgesloten maand genomen', regels_zonder_project: 1, regels_totaal: 1 },
+    })
+    renderBlok()
+    const chip = await screen.findByTestId('pv-automatisch')
+    expect(chip).toHaveClass('afwijking')
+    expect(chip).toHaveTextContent('geen omzet in de factuurmaand mei 2026')
+  })
+
+  it('punt 5 (02-10): alle regels dragen al een project → uitleg i.p.v. een stille "€ 0,00 · 100 %"', async () => {
+    installFetchMock({ get: { document_id: DOC, status: 'geen', opgeslagen: false, beschikbaar: true, regels_zonder_project: 0, regels_totaal: 2 } })
+    renderBlok()
+    await screen.findByRole('button', { name: 'Verdelen over projecten…' })
+    expect(screen.getByTestId('pv-niets-te-verdelen')).toHaveTextContent('Alle regels dragen al een project — er is niets te verdelen')
   })
 
   it('"Verdeling tonen ▸" klapt de pro-rato-preview uit met percentages, bedragen en de som-regel', async () => {
@@ -210,6 +231,20 @@ describe('ProjectverdelingBlok', () => {
     await waitFor(() => expect(puts.length).toBe(1), { timeout: 3000 })
     expect(puts[0]).toEqual({ vaste_regels: [], pro_rato_periode: defaultPeriode() })
     expect(await screen.findByText(/Restant — pro rato omzet/)).toBeInTheDocument()
+  })
+
+  it('punt 5 (02-10): openVerzoek neemt de server-periode (factuurmaand) over i.p.v. de lokale vorige maand', async () => {
+    const puts: unknown[] = []
+    installFetchMock({ get: { document_id: DOC, status: 'geen', opgeslagen: false, beschikbaar: true, pro_rato_periode: '2026-05' }, puts, putAntwoord: PREFILL })
+    const { rerender } = render(
+      <ProjectverdelingBlok administratieId={ADM} documentId={DOC} status="te_controleren" soort="inkoopfactuur" boekvoorstelVersie={0} openVerzoek={0} />,
+    )
+    await screen.findByRole('button', { name: 'Verdelen over projecten…' })
+    rerender(
+      <ProjectverdelingBlok administratieId={ADM} documentId={DOC} status="te_controleren" soort="inkoopfactuur" boekvoorstelVersie={0} openVerzoek={1} />,
+    )
+    await waitFor(() => expect(puts.length).toBe(1), { timeout: 3000 })
+    expect(puts[0]).toEqual({ vaste_regels: [], pro_rato_periode: '2026-05' })
   })
 
   it('FV-12 (25-09): de knop opent met de standaardsleutel van de administratie (omzet_jaar) en toont "Anders…"', async () => {

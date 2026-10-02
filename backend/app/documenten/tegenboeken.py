@@ -407,7 +407,12 @@ def _harde_checks_op_tegenboeking(
         regels=regels,
         eigen_rlz_document_id=rlz_tegenboeking_id(document_id, voorstel.boek_cyclus),
         uitgezonderde_rlz_document_ids=keten,
-        project_verplicht=project_verplicht,
+        # Punt 5 "Boeken prettig 1" (02-10): een bevroren projectverdeling dekt de regels zonder project — exact de
+        # dekkingsregel van het boekpad (`boekvoorstel._project_verplicht_per_regel`); de tegenboek-spiegel splitst
+        # die regels per project (tegenboek_lines). Vóór 02-10 blokkeerde de tegenboeking van zo'n overhead-boeking
+        # op "project ontbreekt" terwijl de boeking zelf wél mocht.
+        project_verplicht=project_verplicht
+        and not (voorstel.projectverdeling is not None and voorstel.projectverdeling.dekt_regels_zonder_project),
     )
 
 

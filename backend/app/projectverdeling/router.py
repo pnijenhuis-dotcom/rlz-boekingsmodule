@@ -34,6 +34,8 @@ def naar_dto(
     *,
     beschikbaar: bool = True,
     standaard_sleutel: str | None = None,
+    regels_zonder_project: int = 0,
+    regels_totaal: int = 0,
 ) -> schemas.ProjectverdelingDto:
     if data is None:
         return schemas.ProjectverdelingDto(
@@ -42,6 +44,8 @@ def naar_dto(
             opgeslagen=False,
             beschikbaar=beschikbaar,
             standaard_sleutel=standaard_sleutel,
+            regels_zonder_project=regels_zonder_project,
+            regels_totaal=regels_totaal,
         )
     return schemas.ProjectverdelingDto(
         document_id=document_id,
@@ -69,6 +73,10 @@ def naar_dto(
         compleet=data.compleet,
         blokkade=data.blokkade,
         boek_cyclus=data.boek_cyclus,
+        periode_herkomst=data.periode_herkomst,
+        periode_herkomst_tekst=data.periode_herkomst_tekst,
+        regels_zonder_project=data.regels_zonder_project,
+        regels_totaal=data.regels_totaal,
         hercontrole=(
             schemas.HercontroleDto(
                 op=data.hercontrole.op,  # type: ignore[arg-type]
@@ -101,6 +109,9 @@ def _lees(administratie_id: uuid.UUID, document_id: uuid.UUID) -> schemas.Projec
         beschikbaar=service.is_beschikbaar(administratie_id=administratie_id),
         # FV-12 (25-09): de standaard-verdeelsleutel van de administratie voor de knop "Verdelen".
         standaard_sleutel=service.standaard_sleutel_voor(administratie_id=administratie_id),
+        # Punt 5 (02-10): tellers voor de uitleg "alle regels dragen al een project — niets te verdelen".
+        regels_zonder_project=sum(1 for r in voorstel.regels if r.project_id is None),
+        regels_totaal=len(voorstel.regels),
     )
 
 

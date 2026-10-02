@@ -106,10 +106,15 @@ def check_verplichte_velden(
     regels: list[CheckRegel],
     project_verplicht: bool = False,
     btw_plichtig: bool = True,
+    verdeling_reden: str | None = None,
 ) -> CheckResultaat:
     """`btw_plichtig=False` (Peter 22-09, casus VGG / Lacy Lion): in een niet-btw-plichtige administratie is een LEGE
     btw-code toegestaan (RLZ kent er mogelijk geen "geen btw"-code; de PUT gaat dan zonder `TaxRate` mét TaxAmount 0) —
-    de harde check "Btw in niet-btw-plichtige administratie" blijft de poort op btw-bedrag en tarief."""
+    de harde check "Btw in niet-btw-plichtige administratie" blijft de poort op btw-bedrag en tarief.
+
+    `verdeling_reden` (punt 5 "Boeken prettig 1", 02-10): onder projectplicht is een regel zonder project overhead die
+    de AUTOMATISCHE projectverdeling dekt; kan die verdeling niet (geen omzet, cijfers-sync nooit gedraaid), dan
+    verwijst de melding naar de verdeling mét die reden i.p.v. kaal een project af te dwingen."""
     ontbrekend: list[str] = []
     if vendor_id is None:
         ontbrekend.append("crediteur")
@@ -139,7 +144,13 @@ def check_verplichte_velden(
 
     if ontbrekend:
         melding = f"Ontbrekend: {', '.join(ontbrekend)}"
-        if per_veld["project"]:
+        if per_veld["project"] and verdeling_reden:
+            # Punt 5 (02-10): de verdeling is de weg voor overhead — zeg waarom die nu niet kan.
+            melding += (
+                f" — niet gedekt door de projectverdeling ({verdeling_reden}): vul de projectverdeling aan onder "
+                "de boekingsregels óf kies per regel een project"
+            )
+        elif per_veld["project"]:
             # B3 (04-09): handelingsperspectief — één project per regel óf de projectverdeling
             # (vaste regels en/of pro rato omzet) die élke regel zonder project een project geeft.
             melding += ' — kies per regel een project óf gebruik "Verdelen over projecten…" onder de boekingsregels'
@@ -856,6 +867,7 @@ def voer_harde_checks_uit(
     duplicaat_over_crediteuren_resultaat: CheckResultaat | None = None,
     btw_plichtig: bool = True,
     geen_btw_taxrate_id: uuid.UUID | None = None,
+    verdeling_reden: str | None = None,
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
     consistent dezelfde vier rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
@@ -889,6 +901,7 @@ def voer_harde_checks_uit(
                 regels=regels,
                 project_verplicht=project_verplicht,
                 btw_plichtig=btw_plichtig,
+                verdeling_reden=verdeling_reden,
             ),
             check_regeltelling(
                 totaalbedrag=totaalbedrag, regels=regels, totaal_excl=totaal_excl, factuur_btw=factuur_btw

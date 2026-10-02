@@ -124,7 +124,29 @@ describe('BoekvoorstelPanel — kop → regels (FV-07) en Verdelen-knop (FV-12),
     expect(putBodies.some((b) => JSON.stringify((b as { kop_doorgezet?: unknown }).kop_doorgezet ?? null).includes('"project":3'))).toBe(true)
     const knop = screen.getByTestId('verdelen-knop')
     expect(knop).toHaveClass('btn')
+    // Punt 5 (02-10): de knop OVERRULT — de drie regelprojecten worden leeggemaakt, de PUT draagt `verdelen_leeggemaakt`
+    // (tijdlijnregel) en daarna opent het blok.
+    const puts_voor = putBodies.length
     await gebruiker.click(knop)
     expect(onVerdelen).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(putBodies.length).toBeGreaterThan(puts_voor), { timeout: 4000 })
+    const metVlag = putBodies.filter((b) => (b as { verdelen_leeggemaakt?: unknown }).verdelen_leeggemaakt)
+    expect(metVlag.length).toBe(1)
+    expect((metVlag[0] as { verdelen_leeggemaakt: unknown }).verdelen_leeggemaakt).toEqual({ regels: 3 })
+    const na = putBodies[putBodies.length - 1] as { regels: { project_id: string | null }[] }
+    expect(na.regels.map((r) => r.project_id)).toEqual([null, null, null])
+  })
+
+  it('punt 5 (02-10): zonder regelprojecten opent "Verdelen over projecten" alleen het blok (geen leeg-PUT)', async () => {
+    const gebruiker = userEvent.setup()
+    const putBodies: unknown[] = []
+    installFetchMock(putBodies)
+    const onVerdelen = vi.fn()
+    renderPanel(onVerdelen)
+    const knop = await screen.findByTestId('verdelen-knop')
+    await gebruiker.click(knop)
+    expect(onVerdelen).toHaveBeenCalledTimes(1)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(putBodies.some((b) => (b as { verdelen_leeggemaakt?: unknown }).verdelen_leeggemaakt)).toBe(false)
   })
 })

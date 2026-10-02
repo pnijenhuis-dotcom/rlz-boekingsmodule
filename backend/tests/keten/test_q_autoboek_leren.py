@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import date
 
 import pytest
 from sqlalchemy import Engine, text
@@ -27,6 +28,7 @@ from tests.keten import casussen
 from tests.keten.casussen import Casus
 from tests.keten.conftest import GB_ADVIES, PROJECT_26049, TAXRATE_HOOG, Keten
 from tests.keten.pdf import maak_pdf
+from tests.projectverdeling.conftest import seed_omzet
 
 BASIS = Casus(casussen.H_BDO)
 BASIS_NUMMER = "6088744"
@@ -113,6 +115,15 @@ def leren_aan(keten: Keten, beheer_headers: dict[str, str], drempel_3: int) -> N
     assert r.json() == {"ingeschakeld": True, "toegestaan": True, "reden_niet_toegestaan": None}
 
 
+@pytest.fixture(autouse=True)
+def omzet_factuurmaand(keten: Keten, admin_engine: Engine) -> None:
+    """Punt 4 + 5 "Boeken prettig 1" (02-10): het geheugen vult het PROJECT niet meer — een vierde exemplaar zonder
+    factuurverwijzing is overhead en boekt alleen automatisch als de AUTOMATISCHE projectverdeling (omzet van de maand
+    van de factuurdatum, juli 2026) compleet is. Zonder omzetcijfers blokkeert de harde check en weigert het autoboekpad
+    zichtbaar (guard: tests/documenten/test_project_bronvolgorde.py)."""
+    seed_omzet(admin_engine, keten.administratie_id, PROJECT_26049, "10000.00", date(2026, 7, 10))
+
+
 class TestLerenEnBoeken:
     def test_drie_identieke_mens_boekingen_activeren_en_het_vierde_exemplaar_boekt_automatisch(
         self, keten: Keten, leren_aan: None, beheer_headers: dict[str, str], admin_engine: Engine
@@ -141,10 +152,18 @@ class TestLerenEnBoeken:
         bdo = next(r for r in lijst["leveranciers"] if r["vendor_id"] == str(keten.vendors["bdo"]))
         assert (bdo["stand"], bdo["reeks"], bdo["drempel"], bdo["bron"]) == ("boekt_automatisch", 3, 3, "systeem")
 
-        # Vierde exemplaar: intake → autoboekpad (harde checks, geheugen app-bevestigd incl. project, geen signaal)
-        # → geboekt.
+        # Vierde exemplaar: intake → autoboekpad (harde checks, geheugen app-bevestigd voor GB/btw; het project komt
+        # sinds 02-10 NIET uit het geheugen — de regel is overhead en loopt via de automatische projectverdeling op de
+        # factuurmaand) → geboekt mét bevroren verdeling.
         vijfde = _intake(keten, 3)
         assert keten.status(vijfde) == DocumentStatus.GEBOEKT
+        with admin_engine.connect() as conn:
+            verdeling = conn.execute(
+                text("SELECT status, pro_rato_periode FROM boekhouding.projectverdeling WHERE document_id = :id"),
+                {"id": vijfde},
+            ).one()
+        assert (verdeling[0], str(verdeling[1])) == ("geboekt", "2026-07-01")
+        assert all(line.get("Project", {}).get("id") == str(PROJECT_26049) for line in keten.rlz.puts[-1]["lines"])
         geboekt = next(r for r in keten.tijdlijn(vijfde) if "rlz_boekstuknummer" in (r or {}))
         assert geboekt["automatisch_geboekt"] is True and geboekt["bron"] == "leverancier_opt_in"
         assert _audit(admin_engine, "automatisch_geboekt") == 1

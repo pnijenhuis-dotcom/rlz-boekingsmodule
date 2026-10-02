@@ -1176,6 +1176,10 @@ def boekvoorstel_opslaan(
             omschrijving=invoer.omschrijving,
             # FV-07 (25-09): kop-niveau project/btw doorgezet naar álle regels → tijdlijnregel.
             kop_doorgezet=invoer.kop_doorgezet.model_dump() if invoer.kop_doorgezet is not None else None,
+            # Punt 5 (02-10): "Verdelen over projecten" overrult de regelprojecten → tijdlijnregel.
+            verdelen_leeggemaakt=(
+                invoer.verdelen_leeggemaakt.model_dump() if invoer.verdelen_leeggemaakt is not None else None
+            ),
             periode=(
                 (invoer.periode.jaar, invoer.periode.week_van, invoer.periode.week_tot or invoer.periode.week_van)
                 if invoer.periode is not None

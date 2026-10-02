@@ -20,7 +20,7 @@ from app.projectverdeling import data as pv
 from app.projectverdeling import hercontrole, service
 from app.projectverdeling.omzet import omzet_per_project
 from tests.documenten.fake_rlz_client import FakeBoekClient
-from tests.projectverdeling.conftest import PERIODE, na_boekmaand, seed_omzet
+from tests.projectverdeling.conftest import PERIODE, maak_project, na_boekmaand, seed_omzet
 
 AANGIFTE_Q3_INGEDIEND = {"Status": 2, "StartDate": "2026-07-01T00:00:00", "Date": "2026-09-30T00:00:00"}
 
@@ -185,11 +185,13 @@ class TestVoorstelEnPrefill:
                 text("UPDATE platform.administratie SET project_verplicht = true WHERE id = :id"),
                 {"id": administratie_id},
             )
+        # Punt 5 02-10: onder projectplicht staat de verdeling automatisch klaar (juli = factuurmaand mét omzet) —
+        # "Verplichte velden" eist dan geen project meer, ook vóór een mens iets opslaat.
         rapport_zonder = boekvoorstel.voer_checks_uit(
             administratie_id=administratie_id, document_id=document_zonder_project, client=FakeBoekClient()
         )
         verplicht = next(r for r in rapport_zonder.resultaten if r.naam == "Verplichte velden")
-        assert not verplicht.ok and "project (regel 1)" in verplicht.melding
+        assert verplicht.ok, verplicht.melding
 
         service.sla_op(
             administratie_id=administratie_id,
@@ -500,14 +502,14 @@ class TestB3DekkingOpgeslagenVerdeling:
     def test_a_een_regel_zonder_kolomproject_met_geldige_verdeling_boekt(
         self, administratie_id, gescoopte_gebruiker, beheerder_id, document_zonder_project, projecten, admin_engine, monkeypatch
     ) -> None:
-        # Vóór de verdeling: blokkade mét handelingsperspectief; "Projectverdeling" zegt niet vals "niet van toepassing".
+        # Punt 5 02-10: vóór de mens iets doet staat de AUTOMATISCHE verdeling al klaar (projectplicht, geen opt-in;
+        # factuurmaand juli = 3 projecten mét omzet) — beide checks groen, boeken kan direct.
         voor = _checks(administratie_id, document_zonder_project)
-        assert not voor["Verplichte velden"].ok and "project (regel 1)" in voor["Verplichte velden"].melding
-        assert voor["Projectverdeling"].ok and voor["Projectverdeling"].signaal
-        assert "1 regel zonder project" in voor["Projectverdeling"].melding
-        assert "Verdelen over projecten…" in voor["Projectverdeling"].melding
+        assert voor["Verplichte velden"].ok, voor["Verplichte velden"].melding
+        assert voor["Projectverdeling"].ok and not voor["Projectverdeling"].signaal
+        assert voor["Projectverdeling"].melding == "Verdeeld: € 2000,00 over 3 projecten, pro rato omzet juli 2026"
 
-        # Geen leverancier-opt-in — de mens slaat een pro-rato-verdeling op (juli: 3 projecten mét omzet).
+        # De mens slaat dezelfde pro-rato-verdeling expliciet op (bestaand pad) — zelfde uitkomst.
         service.sla_op(
             administratie_id=administratie_id,
             document_id=document_zonder_project,
@@ -595,9 +597,10 @@ class TestB3DekkingOpgeslagenVerdeling:
                 regel(netto_bedrag=Decimal("1500.00"), btw_bedrag=Decimal("315.00")),
             ],
         )
+        # Punt 5 02-10: regel 2 (zonder project) is automatisch gedekt — regel 1 houdt zijn kolom-project.
         voor = _checks(administratie_id, document_zonder_project)
-        assert "project (regel 2)" in voor["Verplichte velden"].melding
-        assert "project (regel 1)" not in voor["Verplichte velden"].melding
+        assert voor["Verplichte velden"].ok, voor["Verplichte velden"].melding
+        assert voor["Projectverdeling"].melding == "Verdeeld: € 1500,00 over 3 projecten, pro rato omzet juli 2026"
         service.sla_op(
             administratie_id=administratie_id,
             document_id=document_zonder_project,
@@ -646,3 +649,170 @@ class TestB3DekkingOpgeslagenVerdeling:
         assert per_naam["Verplichte velden"].ok
         assert per_naam["Projectverdeling"].ok and not per_naam["Projectverdeling"].signaal
         assert per_naam["Projectverdeling"].melding == "Geen projectverdeling van toepassing"
+
+
+class TestOverheadAutomatisch:
+    """Punt 5 "Boeken prettig 1" (Peter 02-10): regels zonder project op een kostenrekening = overhead — onder
+    projectplicht staat de verdeling bij openen klaar volgens de standaardsleutel, sleutelmaand = MAAND VAN DE
+    FACTUURDATUM, zonder leverancier-opt-in; "Verdelen over projecten" overrult mét tijdlijnregel."""
+
+    @pytest.fixture(autouse=True)
+    def _projectplicht(self, administratie_id, admin_engine) -> None:
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET project_verplicht = true WHERE id = :id"),
+                {"id": administratie_id},
+            )
+
+    def test_verdeling_staat_klaar_bij_openen_zonder_opt_in_op_de_factuurmaand(
+        self, administratie_id, document_zonder_project, projecten, monkeypatch
+    ) -> None:
+        # Vandaag = oktober: de oude regel zou "vorige afgesloten maand" (september, geen omzet) nemen; de
+        # factuurdatum 31-07 → juli, de maand mét omzet.
+        pin_vandaag(monkeypatch, date(2026, 10, 2))
+        data = boekvoorstel.haal_boekvoorstel_op(
+            administratie_id=administratie_id, document_id=document_zonder_project
+        ).projectverdeling
+        assert data is not None and data.prefill and not data.opgeslagen
+        assert data.pro_rato_periode == pv.Periode.maand(PERIODE)
+        assert data.periode_herkomst == pv.PERIODE_FACTUURMAAND
+        assert data.periode_herkomst_tekst == "maand van de factuurdatum"
+        assert data.compleet and data.pro_rato_bedrag == Decimal("2000.00")
+        assert data.regels_zonder_project == 1 and data.regels_totaal == 1
+        assert data.dekt_regels_zonder_project
+
+    def test_boeken_kan_direct_zonder_klik_op_verdelen(
+        self, administratie_id, gescoopte_gebruiker, beheerder_id, document_zonder_project, projecten, admin_engine, monkeypatch
+    ) -> None:
+        beheer_service.zet_boeken_ingeschakeld(actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True)
+        fake = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake)
+        boeken.boek_document(
+            administratie_id=administratie_id, document_id=document_zonder_project, actor_id=gescoopte_gebruiker
+        )
+        assert _status(admin_engine, document_zonder_project) == DocumentStatus.GEBOEKT.value
+        assert len(fake.puts) == 1 and len(fake.puts[0]["lines"]) == 3  # gesplitst per project (juli-omzet)
+        rij = _rij(admin_engine, document_zonder_project)
+        assert rij["status"] == "geboekt" and rij["pro_rato_bedrag"] == Decimal("2000.00")
+
+    def test_factuurmaand_zonder_omzet_valt_zichtbaar_terug_op_de_vorige_maand(
+        self, administratie_id, gescoopte_gebruiker, document_zonder_project, projecten, vendor_id, monkeypatch
+    ) -> None:
+        from tests.projectverdeling.conftest import regel
+
+        pin_vandaag(monkeypatch, date(2026, 8, 12))  # vorige afgesloten maand = juli (mét omzet)
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=document_zonder_project,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=vendor_id,
+            referentie="FB-2026-0531",
+            factuurdatum=date(2026, 5, 31),  # mei: geen omzet in de cache
+            totaalbedrag=Decimal("2420.00"),
+            regels=[regel()],
+        )
+        data = boekvoorstel.haal_boekvoorstel_op(
+            administratie_id=administratie_id, document_id=document_zonder_project
+        ).projectverdeling
+        assert data is not None and data.prefill
+        assert data.pro_rato_periode == pv.Periode.maand(PERIODE)
+        assert data.periode_herkomst == pv.PERIODE_TERUGVAL
+        assert "geen omzet in de factuurmaand mei 2026" in (data.periode_herkomst_tekst or "")
+        assert data.compleet
+
+    def test_afwezig_pad_zonder_omzetcijfers_is_zichtbaar_en_blokkeert_met_verwijzing(
+        self, administratie_id, document_zonder_project, admin_engine
+    ) -> None:
+        # Guard afwezig-pad: wél projecten (projectplicht) maar de cijfers-sync heeft nooit gedraaid → de automaat
+        # kan niet; "Verplichte velden" blokkeert mét verwijzing naar de verdeling, "Projectverdeling" benoemt de actie.
+        maak_project(admin_engine, administratie_id, "26120 Eindhoven (BAM)")
+        per_naam = _checks(administratie_id, document_zonder_project)
+        verplicht = per_naam["Verplichte velden"]
+        assert not verplicht.ok and "project (regel 1)" in verplicht.melding
+        assert "niet gedekt door de projectverdeling" in verplicht.melding
+        assert "Geen omzetcijfers bekend" in verplicht.melding
+        verdeling = per_naam["Projectverdeling"]
+        assert verdeling.ok and verdeling.signaal
+        assert verdeling.melding.startswith("Automatische verdeling niet mogelijk voor 1 regel zonder project")
+
+    def test_alle_regels_met_project_geeft_geen_automatische_verdeling(
+        self, administratie_id, gescoopte_gebruiker, document_zonder_project, projecten, vendor_id
+    ) -> None:
+        from tests.projectverdeling.conftest import regel
+
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=document_zonder_project,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=vendor_id,
+            referentie="FB-2026-0731",
+            factuurdatum=date(2026, 7, 31),
+            totaalbedrag=Decimal("2420.00"),
+            regels=[regel(project_id=projecten["tilburg"])],
+        )
+        assert (
+            boekvoorstel.haal_boekvoorstel_op(
+                administratie_id=administratie_id, document_id=document_zonder_project
+            ).projectverdeling
+            is None
+        )
+
+    def test_buiten_projectplicht_blijft_de_opt_in_het_pad(
+        self, administratie_id, document_zonder_project, projecten, admin_engine
+    ) -> None:
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET project_verplicht = false WHERE id = :id"),
+                {"id": administratie_id},
+            )
+        assert (
+            boekvoorstel.haal_boekvoorstel_op(
+                administratie_id=administratie_id, document_id=document_zonder_project
+            ).projectverdeling
+            is None
+        )
+
+    def test_verdelen_overrult_regelprojecten_met_tijdlijnregel(
+        self, administratie_id, gescoopte_gebruiker, document_zonder_project, projecten, vendor_id, admin_engine
+    ) -> None:
+        from tests.projectverdeling.conftest import regel
+
+        # De client maakte de regelprojecten leeg en meldt dat als `verdelen_leeggemaakt` (nooit op een autosave).
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=document_zonder_project,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=vendor_id,
+            referentie="FB-2026-0731",
+            factuurdatum=date(2026, 7, 31),
+            totaalbedrag=Decimal("2420.00"),
+            regels=[regel(), regel(netto_bedrag=Decimal("0.00"), btw_bedrag=Decimal("0.00"))],
+            verdelen_leeggemaakt={"regels": 2, "sleutel": "omzet_maand"},
+        )
+        with admin_engine.connect() as conn:
+            details = (
+                conn.execute(
+                    text(
+                        "SELECT detail FROM boekhouding.document_gebeurtenis WHERE document_id = :id "
+                        "AND detail ? 'verdelen_leeggemaakt'"
+                    ),
+                    {"id": document_zonder_project},
+                )
+                .scalars()
+                .all()
+            )
+        assert details == [{"verdelen_leeggemaakt": {"regels": 2, "sleutel": "omzet_maand"}}]
+        data = boekvoorstel.haal_boekvoorstel_op(
+            administratie_id=administratie_id, document_id=document_zonder_project
+        ).projectverdeling
+        assert data is not None and data.prefill and data.pro_rato_bedrag == Decimal("2000.00")
+
+    def test_dto_draagt_herkomst_en_tellers(
+        self, administratie_id, document_zonder_project, projecten, monkeypatch
+    ) -> None:
+        from app.projectverdeling.router import _lees
+
+        pin_vandaag(monkeypatch, date(2026, 10, 2))
+        dto = _lees(administratie_id, document_zonder_project)
+        assert dto.periode_herkomst == "factuurmaand" and dto.periode_herkomst_tekst == "maand van de factuurdatum"
+        assert dto.regels_zonder_project == 1 and dto.regels_totaal == 1 and dto.prefill

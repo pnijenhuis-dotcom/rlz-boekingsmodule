@@ -54,6 +54,7 @@ import { isMiniVoorraadNotitie, miniVoorraadMelding, miniVoorraadTijdlijnTekst }
 import { isPrefillAutosaveNotitie, prefillAutosaveTijdlijnTekst } from './prefillAutosaveTijdlijn'
 import { isKopOmschrijvingNotitie, kopOmschrijvingTijdlijnTekst } from './kopOmschrijvingTijdlijn'
 import { isKopDoorgezetNotitie, kopDoorgezetTijdlijnTekst } from './kopDoorgezetTijdlijn'
+import { isVerdelenLeeggemaaktNotitie, verdelenLeeggemaaktTijdlijnTekst } from './verdelenLeeggemaaktTijdlijn'
 import { btwHerrekendTijdlijnTekst, isBtwHerrekendNotitie } from './btwHerrekendTijdlijn'
 import { accorderingHerberekendTekst } from './accorderingHerberekendTijdlijn'
 import { accorderingOvergeslagenTijdlijnTekst, isAccorderingOvergeslagenNotitie } from './accorderingOvergeslagenTijdlijn'
@@ -1606,6 +1607,12 @@ export function DocumentDetailScreen() {
                       {g.detail && isKopDoorgezetNotitie(g.detail) && (
                         <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-kop-doorgezet">
                           {kopDoorgezetTijdlijnTekst(g.detail)}
+                        </div>
+                      )}
+                      {/* Punt 5 (02-10): "Verdelen over projecten" maakte de regelprojecten leeg. */}
+                      {g.detail && isVerdelenLeeggemaaktNotitie(g.detail) && (
+                        <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-verdelen-leeggemaakt">
+                          {verdelenLeeggemaaktTijdlijnTekst(g.detail)}
                         </div>
                       )}
                       {/* Blok 4 bundel 08-09: intercompany-leverancier → klant-accordering overgeslagen (leveranciersregel). */}
