@@ -143,3 +143,9 @@
   (set-hash), zodat boeken direct ná een akkoord binnen de 15 min slaagt zonder `boeken_mislukt`-retry of autoboek-markering. Retry
   ná boeken_mislukt en het autoboek-pad blijven ALTIJD vers (`boeken.extern_checks_modus`); een storing wordt nooit gecachet.
   Regel voor élke volgende cache in dit domein: eerst de lijst "welke handelingen maken dit ongeldig", dan pas de tijdsgeldigheid.
+
+## Verwijsregels uit CLAUDE.md — WOORDELIJK verplaatst 02-10-2026 avond (run D 02-10 blok G; CLAUDE.md < 85k tekens)
+
+> De volledige regelalinea's hierboven blijven canoniek; dit zijn de letterlijke verwijsregels zoals ze tot 02-10 avond in CLAUDE.md stonden (per punt staat in CLAUDE.md nu één regel + verwijzing).
+
+- (CLAUDE.md blok "Automatisch boeken, autoboek-kandidaten", regel 5) Harde checks — het externe deel (IBAN-seed, duplicaatquery's) wordt per document gecachet op vingerafdruk en bij boeken hergebruikt (≤ 15 min); retry ná boeken_mislukt en het autoboek-pad toetsen altijd vers (Peter 18-09) — zie BESLISSINGEN "BOEKEN SNELLER — CHECKS-CACHE + ACHTERGROND-SCHRIJVER (Peter 18-09)". Aangescherpt 21-09: extern gecachet = alleen RLZ-roundtrips; álle lokale toetsen (IBAN-set, duplicaat module, btw) draaien vers, ook op het boekmoment — zie BESLISSINGEN "CHECKS-CACHE — INVALIDATIE OP DE BRON (IBAN-akkoord) 21-09".

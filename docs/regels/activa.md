@@ -126,3 +126,13 @@
   gouden-set-casus ag (`DepreciationAccount` = 4708). STAP-0 deel 2 (schrijvend, testadministratie `faae29c5` ná dearchiveren) en herstel
   BLOw 23619 € 935,00 / 06052 € 680,00 / MK22507863 € 1.078,10 (23-09) blijven klikpunten Peter (recept in het rapport); meetlat
   dispatch-onderdeel `activa-conventie`. Werkt in productie: niet gemeten.
+
+## Verwijsregels uit CLAUDE.md — WOORDELIJK verplaatst 02-10-2026 avond (run D 02-10 blok G; CLAUDE.md < 85k tekens)
+
+> De volledige regelalinea's hierboven blijven canoniek; dit zijn de letterlijke verwijsregels zoals ze tot 02-10 avond in CLAUDE.md stonden (per punt staat in CLAUDE.md nu één regel + verwijzing).
+
+- (CLAUDE.md blok "Activa / MVA", regel 3) Gemeten 22-09: sync (344/75, grens, probe) + blok `activa` (75 getoetst, 22 in `meten`) + kaart-route werken in productie JA; kaart/aanmaken niet gemeten (geen MVA-factuur in de module = klikpunt); een lees-only reconciliatie schrijft óók geen probe-stand (bijvangst gefixt), meetlat `db-lezen activa-stand`; gemeten 23-09: probe-fix JA (75/75 ongewijzigd ná lees-only run), kaart gebruikt op BLOw maar activum in RLZ NEE (geen afschrijvingsrekening → BUG-opdracht 24-09) — zie BESLISSINGEN "ACTIVA / MVA — FASE 1 GEBOUWD (Peter 21-09)".
+
+- (CLAUDE.md blok "Activa / MVA", regel 4) BUG 24-09 gebouwd (23-09 avond): afschrijvingsrekening voorgevuld koppeling > instelling > conventie code + 1 "Afschrijving…" (chip), zonder rekening 422 + verplichte combobox (nooit meer `gepland` zonder), `activum_aanmaken_mislukt_mens` direct in `actie` mét "Opnieuw aanmaken" op de rij; `PUT FixedAssets/{id}` → 404 `NotFound_FixedAsset` = nette reden op de kaart, STAP-0 deel 1 lees-only (échte activum: DepreciationAccount = 4xxx KOSTEN, eerste mutatie Type 6) → deel 2 schrijvend + herstel BLOw = klikpunt Peter; dispatch-onderdeel `activa-kaart` — zie BESLISSINGEN "ACTIVA / MVA — FASE 1 GEBOUWD (Peter 21-09)".
+
+- (CLAUDE.md blok "Activa / MVA", regel 5) Afschrijvingsrekening = KOSTENrekening mét dezelfde omschrijving (besluit Peter 24-09 07:5x, herziet regel 4 "code + 1"): 4xxx soort 2 waarvan de genormaliseerde naam ná "Afschrijving(en)/Afschrijvingskosten" gelijk is aan de activarekening (0107 Kantoorinventaris → "Afschrijving kantoorinventaris"), precies één treffer anders combobox verplicht; combobox = kostenrekeningen; STAP-0 deel 2 + herstel BLOw = klikpunten; dispatch-onderdeel `activa-conventie` — zie BESLISSINGEN "ACTIVA — AFSCHRIJVINGSREKENING = KOSTENREKENING MÉT DEZELFDE OMSCHRIJVING (Peter 24-09)".

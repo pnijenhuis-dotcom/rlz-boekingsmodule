@@ -289,3 +289,9 @@
   spiegel-regel per project), verdeelsleutels per bron-administratie (naam + versie,
   append-only, één klik toepassen, herleidbaar op de run + audit). Verdeelhulp-UI voor gewone
   regel-splitsing zonder doorbelasting = parkeerpost.
+
+## Verwijsregels uit CLAUDE.md — WOORDELIJK verplaatst 02-10-2026 avond (run D 02-10 blok G; CLAUDE.md < 85k tekens)
+
+> De volledige regelalinea's hierboven blijven canoniek; dit zijn de letterlijke verwijsregels zoals ze tot 02-10 avond in CLAUDE.md stonden (per punt staat in CLAUDE.md nu één regel + verwijzing).
+
+- (CLAUDE.md blok "Kempen-doorbelasting en intercompany", regel 5) Btw in de RLZ-vorm (Peter 24-09 "3. ja", Lusso 261004; STAP-0 166/166): document-btw per tarief = ROUND_HALF_UP(Σ netto × tarief), RLZ herrekent élke regel-`TaxAmount` en de grootste regel draagt het verschil → `geld.btw_rlz_vorm` in motor, spiegel-alsnog, preview, factuur-toets en webhook; data-stap `doorbelasting-bedragen-gelijktrekken` (alleen onze DB, dry-run default, echte run ná Peters ja); bevindingen `doorbelasting_bedrag_afwijking` (actie) + `doorbelasting_factuur_pdf_ontbreekt` (meten, knop "Factuur-PDF herstellen"); gewoon inkooppad alleen geteld (10/49 1-ct-gat, `corrigeer_btw_centen` werkt niet tegen RLZ); dispatch-onderdeel `doorbelasting-btw` — zie BESLISSINGEN "DOORBELASTING — BTW PER TARIEF OVER HET SUBTOTAAL (RLZ-VORM) + DATA-STAP + FACTUUR-PDF-HERSTEL (Peter 24-09)".

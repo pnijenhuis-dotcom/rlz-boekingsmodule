@@ -187,3 +187,9 @@
   vendor/voorkeur-cluster, KvK- óf btw-nummer). Guard `tests/unit/test_leverancier_iban_invalidatie_guard.py`: élke module die een
   `LeverancierIban(`-rij construeert (leverancier_iban, iban_accordering, crediteuren/service) draagt de invalidatie; een nieuwe
   schrijver moet daar bewust worden toegevoegd.
+
+## Verwijsregels uit CLAUDE.md — WOORDELIJK verplaatst 02-10-2026 avond (run D 02-10 blok G; CLAUDE.md < 85k tekens)
+
+> De volledige regelalinea's hierboven blijven canoniek; dit zijn de letterlijke verwijsregels zoals ze tot 02-10 avond in CLAUDE.md stonden (per punt staat in CLAUDE.md nu één regel + verwijzing).
+
+- (CLAUDE.md blok "Duplicaten en crediteuren", regel 4) Crediteur-naamclusters (Peter 25-09, FV-21): één naam-normalisatie (`app/crediteuren/naam.py`, "holding" blijft onderscheidend) voor dubbelen-motor én extractie-match; een cluster uitsluitend op naam = ORANJE "gelijkende naam — bevestig" (nooit automatisch samengevoegd, KvK-conflict = geen dubbel), ná bevestiging koppelt een afwijkende schrijfwijze aan de voorkeur; lees-only CLI `crediteuren-naamclusters`, dispatch-onderdeel `crediteuren-naamclusters` — zie BESLISSINGEN "CREDITEUR-NAAMCLUSTERS — GELIJKENDE NAAM IS ORANJE, NOOIT AUTOMATISCH SAMENGEVOEGD (Peter 25-09)".
