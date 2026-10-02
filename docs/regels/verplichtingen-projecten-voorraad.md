@@ -398,6 +398,56 @@
   `tests/documenten/test_project_rekeningtype.py`, gouden set ag (`test_ag_balansregel_zonder_project_geen_projecteis`), vitest
   `BoekvoorstelPanel.balans.test.tsx`. Werkt in productie: niet gemeten.
 
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 11 — DOEL: docs/regels/verplichtingen-projecten-voorraad.md -->
+- **Dubbel projectnummer — diagnose 26149, poort dichtgezet, nazorg-CLI `project-dubbel-samenvoegen` (punt 11 run A, Peter 02-10
+  "per abuis is 2x projectnummer 26149 gemaakt, moet gecheckt en voorkomen worden"; geen migratie; BESLISSINGEN "RUN A 02-10 — BOEKEN,
+  PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 11):** (1) **Diagnose (leesreplica 02-10, Universal Steigerbouw `3ee6edf0`):**
+  `0b394b0d…` "26149" (uuid4 — rechtstreeks in de RLZ-UI aangemaakt, `Description` "26149 Poeldijk, Anjerstraat 24 woningen (Weboma)",
+  géén module-audit, 0 koppelingen) náást `42b27746…` "26149 Poeldijk, Anjerstraat 245 (Weboma)" (uuid5 = projectenmodule, audit
+  `project_aangemaakt_in_rlz` Haci 18-09 15:23 NL, 15 s later de eerste planning-reservering; nu 18 planningregels, 5 reserveringen,
+  2 meerwerkmeldingen, specificatie). Beide `BeginDate` 18-09; de 0160-poort (gecommit 18-09 14:27) zocht live in RLZ op
+  `startswith(Name,'26149 ')` — mét spatie — en zag een project dat alléén het nummer als naam draagt daardoor NIET; de cache had het
+  RLZ-UI-project nog niet (dag-sync 07:00). Geen enkele module-route maakte dus twee records: één kwam uit de RLZ-UI, de poort was
+  blind voor de kale naam. (2) **Poort gedicht:** `nummer.rlz_prefixen` = het kale nummer ("26149", "Afgesloten 26149") — de
+  RLZ-`startswith` is ruimer, de exacte toets ("261490" ≠ 26149) doet `cijfer_prefix` lokaal zoals voor de cache-kant al gold; route A
+  (`motor.maak_pand_project_aan`, pandprojecten) loopt óók door `vereis_nummer_vrij` zodra de naam een cijfer-prefix draagt (tot 02-10
+  alleen de exacte-naamtoets). RLZ-sync en Odoo-sync kunnen een dubbel buiten de module om niet tegenhouden — daar blijft de
+  reconciliatie-soort `project_nummer_dubbel` de bewaking. (3) **Nazorg-CLI** `project-dubbel-samenvoegen --administratie <id|naam>
+  --nummer N [--dry-run] [--uitvoeren] [--actor UUID|e-mail]` (`app/projecten/samenvoegen.py`): dry-run is de default en staat in de
+  nameting-allowlist (uitsluitend mét `--dry-run`; `--uitvoeren` = job-executie ná Peters "ja"). BLIJVER = het OUDSTE project MÉT
+  koppelingen (leeftijd = module-audit, anders RLZ `BeginDate`, anders onbekend = jongst; geen enkel project koppelingen → het
+  oudste; gelijk → meeste koppelingen → via de module aangemaakt → langste naam → kleinste id — deterministisch). Élke andere
+  kandidaat is verliezer: alle koppelingen gaan naar de blijver volgens het `REGISTER` (weekstaten, meerwerk, planning-toewijzingen/
+  -reserveringen/-signaalafhandelingen/-conflictakkoorden (JSON-lijst), werkopdrachten, uren-projecttoewijzingen, specificatie,
+  werkstempels, projectdocumenten, staffels, prijsafspraken, ontledingsregels, leverancier-werknummers, niet-afsluiten-besluiten,
+  verplichtingen, boekingsgeheugen, vaste bankregels, materiaalbestellingen/-transporten/-matches, panden; boekingsregels alleen van
+  OPEN documenten mét tijdlijnregel `project_dubbel_samengevoegd`; projectverdelingen alleen in stand `voorstel`) mét één audit
+  `project_dubbel_omgehangen` (oud→nieuw) per rij + één `project_dubbel_samengevoegd` per verliezer. Een rij die bij de blijver al
+  bestaat (zelfde unieke sleutel) BLIJFT STAAN en wordt gemeld — nooit verwijderd. RLZ-factuurregel-cache, bankboekingen,
+  doorbelastingsregels (boekingen in RLZ op de verliezer) en append-only logs (mini-voorraad, projectaanvraag-register) worden alleen
+  GERAPPORTEERD: herboeken is mens-werk. Daarna gaat de verliezer op afgesloten via de BESTAANDE 0160-flow (`status.sluit_project_af`:
+  RLZ `IsActive:false`/Odoo archived mét terugleesverificatie, bron wint; weigert de bron, dan zegt de uitkomst dat luid en blijft de
+  run herhaalbaar) mét reden "dubbel projectnummer N — samengevoegd in ‹blijver›"; `dubbele_nummers` telt zo'n verliezer niet meer,
+  zodat `project_nummer_dubbel` sluit. Idempotent ("al samengevoegd"). De systeem-actor passeert de rolpoort (`rolpoort=False`,
+  alleen hier): de job-executie zélf is de poort. **Guards** `tests/projecten/test_samenvoegen.py`: kale RLZ-naam = 409 (cache én
+  RLZ), route-A-poort, FK-dekking (élke `project_id`/`project_ids`/`rlz_project_id`-kolom in `Base.metadata` staat in het REGISTER —
+  nieuwe tabel zonder regel = rood), blijver-keuze, dry-run schrijft niets, uitvoeren mét audit/conflict/afsluiten/idempotentie,
+  bron-weigert zichtbaar, élke CLI-vorm uit het meetrecept (naam/id, zonder vlag, --dry-run, --uitvoeren, --actor, foutvormen);
+  `test_nameting_workflow` (onderdeel `project-dubbel`: dry-run + `projecten-dubbele-nummers`, nooit `--uitvoeren`). Werkt in
+  productie: niet gemeten — dispatch-onderdeel `project-dubbel`; echte run = klikpunt Peter ("ja" via Cowork).
+
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 13 — DOEL: docs/regels/verplichtingen-projecten-voorraad.md -->
+- **Zoekveld Inzicht › Projecten — zoekterm in de URL, teller "N van M" (punt 13 run A, Peter 02-10; Cowork 02-10: "typen + Enter gaf
+  geen filter, lijst bleef 240"; geen migratie, geen instelling; BESLISSINGEN "RUN A 02-10 — BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS
+  (Peter 02-10)" punt 13):** het zoeken op beide projectlijsten (kantoorbreed `GET /projecten/kantoorbreed?q=`, per administratie
+  `GET /projecten/{aid}?zoek=`) is en blijft SERVER-SIDE (de lijst is gepagineerd; client-side filteren zou alleen de pagina raken) op
+  nummer (cijfer-prefix in de naam), naam, opdrachtgever en werknummer, 250 ms ná de laatste toets; Enter filtert niet "harder" en
+  breekt niets. De zoekterm volgt de klantenlijst-conventie van 18-09: `?zoek=` in de URL is de deeplink (wint bij openen en vult het
+  veld), het veld is de bron tijdens het typen en de URL volgt ná de debounce (`replace`, geen history-vervuiling; leeg veld = parameter
+  weg). De tab "Projecten (N)" op de kantoorbrede lijst toont bij een zoekterm "N van M" (N = `totaal` van de selectie, M =
+  `tellers.projecten`) — een teller die niet meebeweegt leest als "filtert niet". Guards: vitest `ProjectenKantoorbreedScreen.test.tsx`
+  ("punt 13" ×2), `ProjectenScreens.test.tsx` (zoekveld ×2); backend ongewijzigd (`tests/projecten/test_kantoorbreed.py` dekt `q`).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)

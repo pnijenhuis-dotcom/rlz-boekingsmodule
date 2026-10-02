@@ -386,6 +386,54 @@
   Peter koos), `planning-v3-dag-eerst.html` = historie mét v4-banner. Veld-app-planningweergave ongewijzigd (leest dezelfde
   data); geen automatische ploegtoewijzing; geen verwijderen van veldwerkers vanuit het paneel.
 
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 10 — DOEL: docs/regels/uren-planning-veldwerkers.md -->
+- **Meerwerkbon ↔ projectpagina, één routefunctie voor projectlinks (punt 10 run A, Peter 02-10 "als ik dan op het meerwerk regel
+  klik zie ik de 'meerwerk bon', ik wil vanuit daar direct door kunnen klikken naar het project"; geen migratie; BESLISSINGEN "RUN A
+  02-10 — BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 10):** (1) `frontend/src/projecten/projectPad.ts` is DE ENE
+  bron voor "open dit project" (`projectPad(administratieId, projectId, { meerwerkId? })`, `projectResultaatPad`) én "open deze
+  meerwerkbon" (`meerwerkBonPad` = `/meerwerk?administratie=…&tab=meerwerk&meerwerk=<id>`) — patroon `documentPad` (23-09); guard
+  `projectPad.guard.test.ts` weigert een letterlijke `` `/projecten/${ ``-link buiten dat bestand (de API-lagen `projectenApi.ts` en
+  `document/projectverdelingApi.ts` zijn endpoints, geen links). (2) Beoordelen › Meerwerk: projectnummer/-naam in de rij én in de bon
+  (het beoordeel-zijpaneel) is een `linkbtn` naar de projectpagina mét `?meerwerk=<id>`; de rijklik blijft de bon. De projectpagina
+  toont bij `?meerwerk=` een `linkbtn` "← Terug naar de meerwerkbon"; Beoordelen › Meerwerk opent bij `?meerwerk=<id>` die bon direct,
+  zet het statusfilter op haar status en haalt de parameter uit de URL (sluiten opent niet opnieuw). (3) Veld-app (uitvoerder): de
+  meerwerkregels staan al op de projectkaart (project-eerst 18-09); de losse bon-weergave (vraag van het kantoor) draagt een
+  projectlink "🏗 Project ‹naam› →" terug naar de kaart, tikdoel ≥ 48 px (`.acc-veld .acc-projectlink`); web-laag, geen native
+  wijziging. Guards: vitest `projectPad.guard.test.ts`, `MeerwerkScreen.test.tsx` (links + deeplink), `ProjectDetailScreen.test.tsx`
+  (terugweg), `uren/UrenFlow.meerwerkProjectlink.test.tsx`. Werkt in productie: niet gemeten.
+
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 12 — DOEL: docs/regels/uren-planning-veldwerkers.md -->
+- **Blok "Meerwerk" op de projectpagina = dezelfde lijst als Beoordelen, gefilterd op het project (punt 12 run A, Peter 02-10 "als ik dan
+  op projectniveau ben wil ik daar ook alle meerwerk statussen (def en concept) kunnen zien"; geen migratie; BESLISSINGEN "RUN A 02-10 —
+  BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 12):** `GET /uren/kantoor/meerwerk?administratie_id=…&project_id=…` is
+  de bestaande route mét een optionele filterparameter (`service.meerwerk_lijst(project_id=)`): zelfde DTO, zelfde rolpoort (module-
+  recht + scope, ook service-side), volgorde `gemeld_op desc, id desc` (nieuwste bovenaan) — er bestaat geen tweede statusdefinitie:
+  `meerwerk/meerwerkStatus.tsx` (`meerwerkStatusBadge`, `MEERWERK_STATUS_LABEL`, `MEERWERK_STATUS_VOLGORDE`) is de ene badge-/labelbron
+  voor Beoordelen › Meerwerk én `projecten/ProjectMeerwerkPaneel.tsx`. Het blok (ná "Weekstaten & planning") toont ÁLLE meldingen van
+  het project mét status — de vier statussen van het model: `gemeld` (= door de uitvoerder ingediend, te beoordelen), `goedgekeurd` (nog
+  doorbelasten), `doorbelast` (= gefactureerd, mét verkoopfactuur-referentie), `afgewezen` (eigen rekening, reden zichtbaar); een
+  "concept" bestaat server-side niet (de app verstuurt een melding direct) —, tellers per status in de kop, omschrijving voluit, "Bon
+  openen →" per rij (`meerwerkBonPad`, punt 10), tabel in `.tabel-scroll`; 403 = één zin over het module-recht (nooit een valse lege
+  lijst), leeg = context + "Beoordelen › Meerwerk →". Guards: pytest `tests/uren/test_meerwerk_project_02_10.py` (filter, volgorde,
+  alle statussen, zelfde DTO-sleutels, recht/scope 403 mét project_id, onbekend project = lege lijst), vitest
+  `ProjectMeerwerkPaneel.test.tsx`. Werkt in productie: niet gemeten.
+
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 15 — DOEL: docs/regels/uren-planning-veldwerkers.md -->
+- **Dossier-upload: een getypte datum heeft drie vormen en één parser, foutmelding in gewone taal (punt 15 run A, Peter 02-10 "kvk
+  uittreksel upload geeft melding geldig_tot: Input should be a valid date or datetime, invalid date separator"; geen migratie;
+  BESLISSINGEN "RUN A 02-10 — BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 15):** het veld `geldig_tot` van de
+  dossier-upload (veld-app `POST /uren/dossier/upload`, kantoor `POST /uren/kantoor/dossier/{adm}/{gebruiker}/upload`) accepteert
+  `jjjj-mm-dd`, `dd-mm-jjjj` en `dd/mm/jjjj` via dé ene parser `app/tijd.py::parse_datum_nl` (dag/maand één of twee cijfers; leeg =
+  afwezig → de bestaande "verplicht voor dit type"-regel van de service); elke andere vorm of een niet-bestaande dag = 422 mét één
+  platte melding "Geldig tot: '‹invoer›' is geen geldige datum — schrijf de datum als 31-12-2026" — nooit meer Pydantics Engelse
+  scheidingsteken-tekst. De frontend normaliseert vóór verzenden met één helper `ui/datum.ts::naarIsoDatum` (geldige ISO door, anders
+  de soepele DatePicker-parser incl. `.`/ddmmjjjj; onherkenbaar = dezelfde melding zonder request), aangeroepen in de twee API-functies
+  die beide schermen delen (`urenApi.uploadDossierDocument`, `meerwerkApi.uploadDossierDocument`) — nooit twee implementaties, geen
+  normalisatie in JSX. Een nieuw formulier-datumveld voor mens-invoer gebruikt dezelfde twee helpers. Guards
+  `tests/unit/test_datum_nl_parser.py`, `tests/uren/test_dossier_datum_vormen.py` (drie vormen, ongeldig, afwezig-pad, kantoorroute),
+  vitest `ui/datum.naarIso.test.ts`, `uren/urenApi.dossierUpload.test.ts`, `meerwerk/meerwerkApi.dossierUpload.test.ts`. Werkt in
+  productie: niet gemeten (klikpunt Peter: KvK-uittreksel uploaden mét getypte datum ná deploy).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-signaal "geplande week zonder weekstaat" (CLAUDE.md `ed6d176` r. 675–682)

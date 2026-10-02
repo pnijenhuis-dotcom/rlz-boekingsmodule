@@ -414,6 +414,76 @@
   vitest `BoekvoorstelPanel.samenvoegen23.test.tsx`. Werkt in productie: niet gemeten (klikpunt Peter: f00117f4 openen ná deploy
   → vinkje "Splitsen per regel" boven de twee regels; uitvinken = één regel 751,15 / 157,74).
 
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 7 — DOEL: docs/regels/werkvoorraad-controlescherm.md -->
+- **"Uit de e-mail" = gewone inklapregel + boekingsregels zonder horizontale scroll via de compacte regelweergave (punt 7 run A, Peter
+  02-10 "waarom is controles uit de mail zo groot, maak die hetzelfde als de rest" + waarneming Cowork "de tabel scrolt horizontaal —
+  OMSCHRIJVING en het ×-knopje vallen buiten beeld op 1455 px"; geen migratie; BESLISSINGEN "RUN A 02-10 — BOEKEN, PROJECTEN, MELDINGEN,
+  KLEINE BUGS (Peter 02-10)" punt 7):** (1) het blok "Uit de e-mail" op het controlescherm is geen eigen paneel mét kapitale `<h2>`-kop
+  meer maar exact dezelfde inklapregel als Extractie-details / Opmerkingen / Tijdlijn (`details > summary + .inklap-inhoud`, direct kind
+  van `.inklap-rijen`; summary "Uit de e-mail · afzender · onderwerp"; inhoud ongewijzigd: afzender, onderwerp, ontvangen (+ postvak/
+  .eml-upload, chip "uit Spam"), begeleidend schrijven). (2) **Meten vóór fixen** (probe `data-regeltabel` op `<body>` in het
+  controlescherm-harnas, patroon C9): op 1280/1385/1455 px is de formulier-pane bij de splitter-default 42/58 530/591/632 px en de
+  tabel-container 488/549/590 px, terwijl de kolomminima van 27-08/08-09 optellen tot 738 px (906 mét projectplicht) — de tabel scrolde
+  148–418 px horizontaal. De kolomminima blijven (smallere kolommen = de implosie van 27-08 terug). (3) **Compacte regelweergave**
+  (`document/compacteRegels.ts`): is de `.tabel-scroll`-container smaller dan de som van de kolomminima (`minimaleTabelbreedte`), dan
+  krijgt de tabel klasse `compact` en geen inline min-width; élke regel wordt één blok — omschrijving bovenaan over de volle breedte,
+  ×-knop rechtsboven, velden eronder in een wrap-raster mét een label per veld uit `data-label` (Grootboek · Btw-code · Project ·
+  Netto/Bruto · Btw-bedrag), de kopregel toont alleen de Netto/Bruto-schakelaar ("Bedragen: Netto"). Boven de som staat de tabel exact
+  als vóór 02-10 (`<colgroup>`-minima, inline min-width, `.tabel-scroll` als vangnet — ook zonder ResizeObserver). Deterministisch op de
+  containerbreedte (ResizeObserver op het element als state/callback-ref — een ref-object triggert het effect niet omdat de tabel pas ná
+  het boekvoorstel mount), geen instelling, geen server-state. (4) `overflow_sweep.sh` meet het controlescherm-harnas (harness.html,
+  ?project=1, ?crediteurpaneel=1) sinds 02-10 óók op 1455/1385/1280 px (`EXTRA_BREEDTES_CONTROLESCHERM`); een nieuwe harnasbreedte waarop
+  Peter werkt hoort daar bij. Guards: vitest `DocumentDetailScreen.test.tsx` ("zelfde vorm als Opmerkingen, geen h2"),
+  `BoekvoorstelPanel.compact.test.tsx`, `compacteRegels.test.ts`; keten-aanraking `tests/keten/test_al_postvak_kempengroep_kanaal.py`
+  (velden van `herkomst_mail`); keten-sweep 6 detail-baselines gewild ververst. Werkt in productie: niet gemeten (klikpunt Peter:
+  f00117f4 op 1455 px ná deploy).
+
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 8 — DOEL: docs/regels/werkvoorraad-controlescherm.md -->
+- **Grootboek uit het leverancier-geheugen alleen bij ≥ 90 % zekerheid — de inhoud (omschrijving) wint (punt 8 run A, Peter 02-10,
+  casus Universal Steigerbouw f00117f4 RLZ-2080142625: 7005 Inhuur steiger "Geheugen 71 %" op twee regels brandstof diesel; geen
+  migratie, geen instelling; BESLISSINGEN "RUN A 02-10 — BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 8):**
+  **Winnaarsvolgorde grootboekrekening (één plek, bindend — `regel_prefill.py` moduledocstring):** (1) opgeslagen keuze van de
+  mens; (2) deterministisch uit factuur/template (UBL-/template-regel zet `ledger_id`); (3) REGEL-GEHEUGEN op de genormaliseerde
+  omschrijving (`regel_gb.bepaal_regel_gb`: groen / seed / conflict — de deterministische omschrijvingsroute; wijst die een
+  rekening aan, dan komt het leverancier-geheugen er nooit overheen); (4) AI-classificatie tegen de historische grootboeken
+  (oranje); (5) LEVERANCIER-GEHEUGEN (kop-niveau-engine, chip "Geheugen N %") UITSLUITEND bij een gewogen zekerheid ≥
+  `GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID` (90 %, constante in code) óf een recency-consensus (laatste drie mens-boekingen identiek —
+  besluit 10-09 blijft); (6) leeg = de mens kiest. Onder de drempel blijft het veld LEEG mét herkomst-info: `gb_bron =
+  leverancier_geheugen_niet_ingevuld` + `gb_voorstel_detail` ("historie van deze leverancier wijst naar een grootboek met N %
+  zekerheid (‹engine-reden›) — niet ingevuld: onder de drempel van 90 %. Kies zelf; boeken leert het regel-geheugen deze
+  omschrijving"), in het controlescherm de oranje AFWIJKINGS-chip "voorstel uit historie — niet ingevuld (N %)" onder het lege veld
+  (altijd zichtbaar, weg zodra de mens kiest; de kop-niveau-chip "Geheugen: ‹rekening› — niet ingevuld (N %)" zegt hetzelfde als de
+  server geen `gb_bron` meegaf). Niets gevuld = geen autosave-trigger; het snapshot bewaart de bron zodat de chip ná het persisteren
+  terugkomt; zo'n regel blijft OPEN voor de AI-classificatie. De btw uit het leverancier-geheugen is ongewijzigd (eigen
+  winnaarsvolgorde); het project komt al sinds punt 4 nooit uit het geheugen. De harde check "Verplichte velden" blijft de poort —
+  ook voor het autoboek-pad (`_geheugen_veld_geblokkeerd` weigert oranje/gesplitst, pure guard-test). Frontend-spiegel
+  `geheugenVoorstel.ts::bepaalPrefill` + `geheugenGrootboekZeker` hanteert exact dezelfde drempel (client-side vulling nooit
+  ruimer dan de server). Guards: `tests/documenten/test_regel_prefill_geheugen_zekerheid_02_10.py`, aangepast
+  `test_regel_gb_voorstel.py` (gesplitste 86 % → leeg), gouden set `test_s_geheugen_recency.py::test_A_A_B_blijft_oranje`, vitest
+  `geheugenVoorstel.test.ts`, `regelVoorstelChips.test.ts`, `BoekvoorstelPanel.regelvoorstel.test.tsx`, `BoekvoorstelPanel.test.tsx`.
+  Werkt in productie: niet gemeten (klikpunt Peter: f00117f4 openen ná deploy → grootboek leeg mét "voorstel uit historie — niet
+  ingevuld (71 %)"; meetlat `db-lezen`: prefill-snapshots mét `gb_bron = leverancier_geheugen_niet_ingevuld`).
+
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 9 — DOEL: docs/regels/werkvoorraad-controlescherm.md -->
+- **Verplaatsen = dezelfde doorloop als ná boeken — het volgende document in de BRON, nooit de doeladministratie (punt 9 run A, Peter
+  02-10 letterlijk: "als ik vanuit steigerbouw een factuur verplaats naar bijvoorbeeld nederland, dan eindig ik daarna in de werkvoorraad
+  van nederland. Dat is irritant. Ik ben bezig in steigerbouw, verplaatsen moet dan verplaatsen en door naar volgende document in
+  steigerbouw"; geen migratie; BESLISSINGEN "RUN A 02-10 — BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 9):**
+  `POST …/documenten/{id}/verplaats` neemt optioneel `lijst_volgorde` (exact het veld van `BoekInput`: de getoonde, gefilterde en
+  gesorteerde lijst van de BRON, max 2000) en antwoordt ná de verhuizing mét `volgende_document_id` + `volgende_document_soort`, gekozen
+  door dezelfde helper als het 202-antwoord van `POST …/boeken` (`boek_wachtrij.kies_volgend_document`: positie in de getoonde
+  lijstvolgorde, cyclisch, alleen verwerkbare statussen, statussen vers uit de database; het huidige document behoudt zijn positie óók nu
+  het niet meer in de bron staat; zonder lijst = backend-volgorde nieuwste eerst; niets verwerkbaars = null). Het controlescherm volgt
+  ná "Verplaatsen" exact het `wordt_geboekt`-pad van `naVerwerking` (`uitkomst: 'verplaatst'`): toast "Verplaatst naar ‹doel› —
+  extractie draait opnieuw · je gaat door naar de volgende" en direct het server-gekozen volgende document in de bron mét de
+  lijstcontext (actief filter), zonder lijst-fetch; geen volgende → de documentenlijst van de BRON mét dat filter. De
+  doeladministratie wordt nooit geopend (vóór 02-10 navigeerde het scherm naar het verplaatste document in het doel). Tijdlijn, audit,
+  poorten (409/403/404) en de RLS-functie van het verplaatsen zijn ongewijzigd. Guards: `tests/documenten/test_verplaatsen.py::TestHttp::
+  test_endpoint_geeft_het_volgende_document_in_de_bron_terug_nooit_het_doel`, gouden-set-casus t (`test_t_verplaatsen_rls.py`: antwoord
+  draagt een bron-document of null, nooit het verplaatste), vitest `DocumentDetailScreen.test.tsx` ("door naar het volgende document in
+  de BRON-lijst", "zonder volgend document → lijst van de BRON") + `VerplaatsModal.test.tsx` (`lijst_volgorde` reist mee). Werkt in
+  productie: niet gemeten (klikpunt Peter: verplaatsen vanuit Universal Steigerbouw ná deploy → volgende Steigerbouw-document).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Na boeken direct door, lijstcontext, sneltoetsen, actiebalk, boekingsregels-kolommen (CLAUDE.md `ed6d176` r. 271–294)

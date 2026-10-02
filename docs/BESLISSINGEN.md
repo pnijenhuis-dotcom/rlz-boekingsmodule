@@ -13548,3 +13548,220 @@ secretAccessor op de 18 secrets, melding per prefix "versie 1 gezet (n tekens)".
 Cloud Logging teruggelezen en in het rapport geplakt onder "Gemeten") + `gcloud secrets versions list` in de owner-sessie = 18/18 versie 1
 ENABLED; de nameting-workflow kan dit niet meten (`nameting@` zonder secrets-rechten — bewust). Rapport
 `docs/rapporten/2026-09-29-credential-naar-secretmanager.md`.
+
+## RUN A 02-10 — BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10) — punten 7–17 van de lijst 02-10 (ná "Boeken prettig 1" 1–6; vóór run B planning/veld-app en run C verhuur); migratie 0175 (punt 17); herziet FV-02/10-09 "geheugen vult de grootboekrekening altijd" (punt 8), de mail-terugval van de accordeur-meldingen 15/16-08 (punt 14) en de dead-letter-regel 8 pogingen voor een 409 (punt 17)
+
+**Status: GEBOUWD + GETEST 02-10-2026 (handmatige CC-sessie; opdracht `opdrachten/gedaan/2026-10-02-run-A-boeken-projecten-meldingen-kleine-bugs.md`,
+rapport `docs/rapporten/2026-10-02-run-a.md`; tien fork-agenten in eigen worktrees, één commit per punt in Peters volgorde 7 → 17).
+Canonieke regeltekst (alinea's 02-10 run A): `docs/regels/werkvoorraad-controlescherm.md` (7, 8, 9), `docs/regels/uren-planning-veldwerkers.md`
+(10, 12, 15), `docs/regels/verplichtingen-projecten-voorraad.md` (11, 13), `docs/regels/accordering-native-app.md` + `docs/regels/reconciliatie.md`
+(14), `docs/regels/auth-toegang.md` (16), `docs/regels/reconciliatie.md` (17). Werkt in productie: niet gemeten — meetlatten per punt in het rapport;
+dispatch-onderdelen `project-dubbel` (dry-run 26149, punt 11) en `webhook-wacht` (punt 17), query `accordeur-meldingen` (punt 14); de ÉCHTE run van
+`project-dubbel-samenvoegen --uitvoeren` uitsluitend ná Peters "ja" via Cowork; vervolg-opdracht `opdrachten/inbox/2026-10-03-nameting-run-a.md`.**
+
+**Aanleiding (Peter 02-10, `docs/gesprekken/2026-10-02.md`, `docs/feedback/2026-10-02-controlescherm-feedback-peter.md`; regel Peter 30-09 "alles wat
+werkt moet af en af blijven; hou het simpel" — kleine afgebakende fixes, geen bijvangst, geen nieuwe instellingen).** Beslispunten voor Peter staan per
+punt hieronder (7: compacte regelweergave i.p.v. smallere kolommen; 8: recency-consensus blijft "zeker"; 11: welke van 26053/26064/26084 blijft; 17:
+accordering §3c en 7-dagen-cadans).
+
+### Punt 7 — "Uit de e-mail" als gewone inklapregel; boekingsregels zonder horizontale scroll (compacte regelweergave)
+
+**Besluit Peter 02-10:** "waarom is controles uit de mail zo groot, maak die hetzelfde als de rest"; waarneming Cowork: de regel-tabel
+scrolt horizontaal op 1455 px (OMSCHRIJVING en ×-knop buiten beeld — overflow-les 18-09 geschonden). Geen migratie, geen instelling.
+
+**Gebouwd:** (a) `UitDeEmail` = `details > summary + .inklap-inhoud` in `.inklap-rijen`, identiek aan Extractie-details/Opmerkingen/Tijdlijn
+(geen `.panel`, geen `<h2>`). (b) Gemeten vóór fixen (harnas-probe `data-regeltabel`): formulier-pane 530/591/632 px en tabel-container
+488/549/590 px op 1280/1385/1455 px tegenover kolomminima-som 738 (906 mét project) → scroll 148–418 px. **Afwijking van de opdrachttekst
+("kolombreedtes zó dat alles past op 1280 px"):** dat kan niet zonder de kolomminima van 27-08/08-09 te breken (906 px in 488 px); gekozen
+voor een compacte regelweergave (`document/compacteRegels.ts`): container < som → klasse `compact`, geen inline min-width, élke regel één
+blok (omschrijving boven, ×-knop rechtsboven, velden in een wrap-raster mét `data-label`), kopregel = alleen "Bedragen: Netto|Bruto". Boven
+de som exact de tabel van vóór 02-10; zonder ResizeObserver blijft `.tabel-scroll` het vangnet. `overflow_sweep.sh` meet harness.html
+voortaan óók op 1455/1385/1280 (42/42 groen). Keten-sweep: 6 detail-baselines gewild ververst (op 1440 is de pane 581 px → compact).
+
+**Herziet:** niets inhoudelijks — de kolomminima (27-08 punt 4, 08-09 blok 4d) en "te smal paneel = scroll bínnen .tabel-scroll" blijven de
+regel voor browsers zonder ResizeObserver; mét ResizeObserver is de compacte weergave de eerste trap vóór de scroll.
+
+**Tests:** vitest `DocumentDetailScreen.test.tsx` (+1), `BoekvoorstelPanel.compact.test.tsx` (3), `compacteRegels.test.ts` (3); backend
+keten `test_al_postvak_kempengroep_kanaal.py` (velden `herkomst_mail`) + `test_keten_guard`. **Werkt in productie: niet gemeten** (klikpunt
+Peter: f00117f4 op 1455 px ná deploy).
+
+### Punt 8 — grootboek-geheugen per leverancier wint niet meer van de inhoud (casus f00117f4: 7005 Inhuur steiger, "Geheugen 71 %" op brandstof diesel)
+
+**Aanleiding (Cowork-waarneming 02-10 op f00117f4):** het leverancier-geheugen (kop-niveau-engine) zette 7005 Inhuur steiger met een
+gesplitste stem van 71 % op twee brandstofregels — het geheugen won van de inhoud. **Pre-feature-check:** "STALE CHECK BIJ GEHEUGEN-PREFILL"
+(A10 07-09: server vult élke engine-waarde, ook oranje), "BOEKINGSGEHEUGEN — RECENCY WINT" (10-09), "MEDEWERKER-WENSEN 04-09 — BLOK D"
+(regel-geheugen op de omschrijving), "PROJECT-BRONVOLGORDE … (Peter 25-09)" + punt 4 02-10 (patroon: geheugen = laatste bron, zichtbaar
+zonder te vullen). **UX-review:** geen nieuw scherm; één oranje uitleg-chip onder een leeg veld (bestaand chip-patroon "niet ingevuld" van
+project-FV-02) — past in de IA.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Winnaarsvolgorde grootboek | mens > factuur/template deterministisch > regel-geheugen op de omschrijving (deterministische omschrijvingsroute, wint altijd) > AI-classificatie > leverancier-geheugen UITSLUITEND bij zekerheid ≥ 90 % (`GEHEUGEN_GROOTBOEK_MIN_ZEKERHEID`, constante — geen instelling) óf recency-consensus (10-09 blijft) > leeg. HERZIET A10 07-09 "élke engine-waarde, ook oranje, wordt server-side gevuld" voor het GROOTBOEK (btw ongewijzigd). | GEBOUWD 02-10 | `app/documenten/regel_prefill.py` (docstring + `geheugen_grootboek_zeker`, `_met_leverancier_geheugen`) |
+| Leeg mét herkomst-info | `gb_bron = leverancier_geheugen_niet_ingevuld` + detail "… N % zekerheid (reden) — niet ingevuld: onder de drempel van 90 %"; oranje afwijkings-chip "voorstel uit historie — niet ingevuld (N %)" zolang het veld leeg is; kop-niveau-chip bij leeg veld "Geheugen: ‹rekening› — niet ingevuld (N %)"; geen autosave-trigger, wél in het snapshot (chip komt terug), regel blijft open voor AI-classificatie. | GEBOUWD 02-10 | `regel_gb.BRON_LEVERANCIER_GEHEUGEN_NIET_INGEVULD`, `boekvoorstel._opgeslagen_regel_data`, `regelVoorstelChips.ts`, `BoekvoorstelPanel.tsx` |
+| Frontend-spiegel | `bepaalPrefill` vult `ledgerId` alleen als `geheugenGrootboekZeker` (zelfde drempel) — de browser vult nooit ruimer dan de server. | GEBOUWD 02-10 | `frontend/src/document/geheugenVoorstel.ts` |
+| Autoboek-pad | Ongewijzigd gedrag, nu geguard: oranje/gesplitst leverancier-geheugen = weigeren (`_geheugen_veld_geblokkeerd`), harde check "Verplichte velden" blokkeert een lege regel. | GUARD 02-10 | `tests/documenten/test_regel_prefill_geheugen_zekerheid_02_10.py::TestAutoboekPoort` |
+| Tests | 12 pure tests (drempel/recency/seed/mens/omschrijvingsroute/snapshot/autoboek), 2 bestaande asserts omgekeerd in `test_regel_gb_voorstel.py` (86 % gesplitst → leeg), gouden set casus s uitgebreid, vitest +5 en 55 %-test herschreven. | GROEN 02-10 | zie rapport |
+
+**Beslispunt Peter:** recency-consensus (drie identieke mens-boekingen) telt als zeker óók onder de 90 % gewogen aandeel — bewust, anders
+draait punt 8 het besluit van 10-09 stil terug. Hard 90 % ook daar = één regel in `geheugen_grootboek_zeker` + `geheugenGrootboekZeker`.
+
+**Werkt in productie: niet gemeten** — klikpunt Peter: f00117f4 openen ná deploy → grootboek leeg mét "voorstel uit historie — niet ingevuld
+(71 %)"; meetlat: prefill-snapshots mét `gb_bron = leverancier_geheugen_niet_ingevuld` (db-lezen).
+
+### Punt 9 — Verplaatsen: zelfde doorloop als ná boeken, nooit naar de doeladministratie
+
+**Besluit Peter 02-10 (letterlijk):** "als ik vanuit steigerbouw een factuur verplaats naar bijvoorbeeld nederland, dan eindig ik daarna in de
+werkvoorraad van nederland. Dat is irritant. Ik ben bezig in steigerbouw, verplaatsen moet dan verplaatsen en door naar volgende document in
+steigerbouw." **Herziet** de navigatie van het addendum kantoor-run 27-08 punt 5 ("het document is in de bron-scope niet meer zichtbaar: door
+naar het doel").
+
+**Gebouwd (geen migratie, geen instelling):** de verplaats-route neemt `lijst_volgorde` (zelfde veld als `BoekInput`) en antwoordt mét
+`volgende_document_id`/`volgende_document_soort` uit de BRON via de bestaande `boek_wachtrij.kies_volgend_document` (één helper; aanscherping: het
+huidige document behoudt zijn positie ook als het niet meer in de administratie staat). Frontend: `VerplaatsModal` krijgt de getoonde
+lijstvolgorde mee, `DocumentDetailScreen.onVerplaatst` → `naVerwerking({uitkomst: 'verplaatst', …})` = het `wordt_geboekt`-doorlooppad (volgende
+document in de bron mét filter, anders de bron-lijst). Tijdlijn/audit/poorten ongewijzigd.
+
+**Tests:** backend route-test (A, X, B + doel-document: X → B, B → cyclisch A, A zonder lijst → null; het doel nooit), gouden set casus t
+(bron-document of null), vitest detail-scherm (×2) + modal (×1). 33 + 44 pytest, 59 vitest, tsc schoon.
+
+**Meetlat:** klikpunt Peter (verplaatsen vanuit Universal Steigerbouw → volgende Steigerbouw-document) of request-log `POST …/verplaats` 200
+gevolgd door `GET /administraties/<bron>/documenten/<volgende>` van dezelfde client. **Werkt in productie: niet gemeten.**
+
+### Punt 10 — meerwerkbon ↔ projectpagina (kantoor én app), één routefunctie voor projectlinks
+
+**Besluit (Peter 02-10, letterlijk):** "als ik dan op het meerwerk regel klik zie ik de 'meerwerk bon', ik wil vanuit daar direct door
+kunnen klikken naar het project (doorlinken)." **Gebouwd 02-10 (blok A10, geen migratie):** `projecten/projectPad.ts` = de ene bron voor
+projectlinks (`projectPad`, `projectResultaatPad`) én de bon-link (`meerwerkBonPad` → `/meerwerk?…&tab=meerwerk&meerwerk=<id>`), patroon
+`documentPad` 23-09, guard op letterlijke `/projecten/${…}`-links, zeven bestaande linkplekken gemigreerd. Beoordelen › Meerwerk:
+projectnaam in rij + bon = link naar de projectpagina mét `?meerwerk=<id>`; de projectpagina toont dan "← Terug naar de meerwerkbon";
+`?meerwerk=<id>` op Beoordelen opent die bon direct (statusfilter volgt, parameter uit de URL). Veld-app: de meerwerkregels staan op de
+projectkaart (project-eerst); de bon-weergave (vraag van het kantoor) draagt een projectlink ≥ 48 px terug naar de kaart; geen native
+wijziging. Tests: vitest `projectPad.guard`, `MeerwerkScreen` (+2), `ProjectDetailScreen` (+2), `UrenFlow.meerwerkProjectlink` (1).
+Werkt in productie: niet gemeten (klikpunt Peter op Beoordelen › Meerwerk Universal ná deploy). Regeltekst:
+`docs/regels/uren-planning-veldwerkers.md` alinea "Meerwerkbon ↔ projectpagina" (02-10).
+
+### Punt 12 — blok "Meerwerk" op de projectpagina mét álle statussen
+
+**Besluit (Peter 02-10, letterlijk):** "als ik dan op projectniveau ben wil ik daar ook alle meerwerk statussen (def en concept) kunnen
+zien." **Gebouwd 02-10 (blok A10, geen migratie):** de bestaande route `GET /uren/kantoor/meerwerk` krijgt een optionele `project_id`
+(zelfde DTO, zelfde rolpoort, `gemeld_op desc, id desc`); `meerwerk/meerwerkStatus.tsx` is de ene badge-/labelbron voor Beoordelen én het
+nieuwe `projecten/ProjectMeerwerkPaneel.tsx` (tellers per status, tabel, "Bon openen →" = punt 10, 403 eerlijk, leeg = ingang). **Lezing van
+"def en concept":** het model kent vier statussen — `gemeld` (ingediend, te beoordelen), `goedgekeurd` (nog doorbelasten), `doorbelast`
+(gefactureerd), `afgewezen` (eigen rekening); een melding die de uitvoerder nog niet verstuurd heeft bestaat server-side niet, dus er is geen
+"concept" te tonen — alle vier worden getoond, de labels zeggen wat ze betekenen. Tests: pytest `tests/uren/test_meerwerk_project_02_10.py`
+(4), vitest `ProjectMeerwerkPaneel.test.tsx` (2). Werkt in productie: niet gemeten (klikpunt Peter: projectpagina 26149 ná deploy).
+Regeltekst: `docs/regels/uren-planning-veldwerkers.md` alinea "Blok Meerwerk op de projectpagina" (02-10).
+
+### Punt 11 — projectnummer 26149 dubbel: diagnose, poort gedicht, nazorg-CLI `project-dubbel-samenvoegen`
+
+**Peter 02-10 (letterlijk):** "per abuis is 2x projectnummer 26149 gemaakt, moet gecheckt en voorkomen worden".
+
+**Diagnose (lees-only, leesreplica 02-10 via `db_lezen.sh`, Universal Steigerbouw `3ee6edf0`):**
+
+| Record | Naam | Herkomst | Koppelingen |
+|---|---|---|---|
+| `0b394b0d-f0fc-4352-8e95-c1218f6b72eb` | "26149" (uuid4) | rechtstreeks in de RLZ-UI (Description "26149 Poeldijk, Anjerstraat 24 woningen (Weboma)", BeginDate 18-09, géén module-audit) | 0 |
+| `42b27746-432f-58d4-915c-fb71dc0a7395` | "26149 Poeldijk, Anjerstraat 245 (Weboma)" (uuid5) | projectenmodule — audit `project_aangemaakt_in_rlz` Haci 18-09 13:23:26 UTC, 15 s later `planning_gereserveerd` | 18 planning, 5 reserveringen, 2 meerwerk, 1 specificatie |
+
+Oorzaak: de 0160-poort (`aac27f9`, 18-09 14:27) toetste live in RLZ op `startswith(Name,'26149 ')` — mét spatie. Een project dat in de
+RLZ-UI alléén het nummer als naam kreeg valt daar niet onder, en de cache kende het nog niet (dag-sync 07:00). Geen module-route
+maakte twee records; de poort was blind voor de kale naam (zelfde blinde vlek als rij B4 19-09 voor "Afgesloten NNNNN").
+
+**Gebouwd:** (1) `nummer.rlz_prefixen` zonder spatie — RLZ-filter ruimer, exacte toets lokaal (`cijfer_prefix`, zoals voor de cache);
+(2) route A (`motor.maak_pand_project_aan`) door dezelfde nummerpoort als de naam een cijfer-prefix draagt; (3) nazorg-CLI
+`project-dubbel-samenvoegen --administratie … --nummer N [--dry-run|--uitvoeren] [--actor]` (`app/projecten/samenvoegen.py`; dry-run default,
+nameting-allowlist alleen mét `--dry-run`): blijver = oudste project mét koppelingen (deterministische tie-break), verliezer → alle koppelingen
+omgehangen volgens één `REGISTER` (30 tabel/kolom-paren; FK-dekking-guard over `Base.metadata`), audit per rij + per verliezer, tijdlijnregel op
+geraakte open documenten, conflicten (zelfde unieke sleutel bij de blijver) blijven staan en worden gemeld, RLZ-boekingen/append-only logs alleen
+gerapporteerd, verliezer daarna afgesloten via de 0160-flow (bron eerst, teruggelezen) mét reden "dubbel projectnummer N — samengevoegd in …";
+`dubbele_nummers` telt zo'n verliezer niet meer → `project_nummer_dubbel` sluit; idempotent. Systeem-actor passeert de rolpoort
+(`sluit_project_af(rolpoort=False)`, alleen hier). Nooit verwijderen, geen migratie.
+
+**Beslispunten (gekozen):** (a) "oudste mét boekingen" = module-audit → RLZ `BeginDate` → onbekend (jongst), bij gelijke leeftijd meeste
+koppelingen; in de 26149-casus wint `42b27746…` (18 planning e.d.), het kale RLZ-UI-project is de verliezer. (b) RLZ-factuurregels op een
+verliezer worden niet omgehangen (de factuur staat in RLZ op dat project — herboeken = mens); 26149 heeft er 0. (c) Een RLZ-UI-dubbel is niet
+te blokkeren — de reconciliatie-soort blijft de bewaking; het voorstel-"blijft" van `projecten-dubbele-nummers` (meeste activiteit) blijft als
+klikpunt-hint, de CLI kiest zelf deterministisch.
+
+**Tests:** `tests/projecten/test_samenvoegen.py` (12: kale RLZ-naam cache+RLZ, route A, FK-dekking, blijver-keuze, dry-run schrijft niets,
+uitvoeren mét audit/conflict/afsluiten/idempotentie, bron weigert zichtbaar, geen dubbel, CLI-vormen), `test_status_en_nummer.py` (prefix-asserts
+aangepast), `test_nameting_workflow.py::test_onderdeel_project_dubbel_alleen_op_verzoek_en_dry_run`.
+
+**Meetlat:** dispatch-onderdeel `project-dubbel` (dry-run 26149 + `projecten-dubbele-nummers`), echte run = `gcloud run jobs execute
+rlz-reconciliatie --args=-m,app.cli,project-dubbel-samenvoegen,--administratie,3ee6edf0-5cb8-4f98-bba1-16fb97ae6873,--nummer,26149,--uitvoeren`
+ná Peters "ja" via Cowork. **Werkt in productie: niet gemeten.** Open voor Peter: 26053, 26064, 26084 (zelfde CLI, per nummer één "ja").
+
+### Punt 13 — Zoekveld Inzicht › Projecten: typen filtert direct, `?zoek=` werkt, tab telt "N van M"
+Besluit: zoeken blijft server-side (gepagineerde lijst), zoekterm in de URL volgens de klantenlijst-conventie (18-09), de tab-teller
+beweegt mee ("N van M") zodat een filter altijd zichtbaar is. Oorzaak 02-10: de rijen filterden wél, maar de tab toonde het ongefilterde
+totaal (240) en `?zoek=` werd niet gelezen — zie regels-alinea in `verplichtingen-projecten-voorraad.md`. Geen backend-wijziging.
+Tests: vitest +4 (tegenproef zonder fix rood). Werkt in productie: niet gemeten (klikpunt: "26149" → "2 van N"; deeplink `?zoek=26149`).
+
+### Punt 14 — Accordeur-meldingen push-only, nooit meer e-mail (besluit Peter 02-10 "zet die mail uit … Geen mails meer")
+
+**Besluit:** de nieuwe-facturen-bundel ("Er staan N facturen voor u klaar", job `rlz-nieuwe-facturen` ~10 min) en de 09:00-herinnering
+(job `rlz-accordeur-herinneringen`) gaan uitsluitend als push; geen push-inschrijving of push mislukt = overgeslagen mét teller
+`overgeslagen_geen_push` (joblog, claim-rij, run-audit `accordeur_melding_run`, reconciliatie-dagteller) — nooit e-mail. De handmatige
+herinnering per document (kantoorknop) blijft push-anders-mail (bewuste mensactie); vraag-/planning-/uren-meldingen ongewijzigd. Geen
+opt-out, geen instelling, geen migratie. **Herziet** "push, anders e-mail" uit "ACCORDEUR-NOTIFICATIES" (15-08) en
+"NIEUWE-FACTUREN-BUNDELMELDING" (16-08) voor deze twee jobs.
+
+**Gebouwd:** `verzending.verstuur_push_only` (naast de ongewijzigde push-anders-mail-helper), `herinneringen.py`/`nieuwe_facturen.py`
+op push-only mét `overgeslagen_geen_push`, run-audit per job-run, teller `ACCORDEUR_MELDINGEN` + reden `GEEN_PUSH` (zacht, vaste
+categorie) in `automatiseringen.py`, CLI-regels zonder e-mail-teller, querybibliotheek `accordeur-meldingen` (platform, `dagen`
+optioneel). Een mislukte push is geen exit 1 meer maar overgeslagen (volgende run herkanst).
+
+**Tests:** `tests/berichten/test_push_only_02_10.py` (10, afwezig-pad beide jobs + push-fout + push ok + kantoorknop mailt wél +
+teller + CLI), `test_herinneringen.py`/`test_nieuwe_facturen.py`/`test_multi_administratie_wachtrij.py` herschreven naar push-only;
+gericht 273 groen.
+
+**Werkt in productie: niet gemeten** — meetlat `gh workflow run nameting -f onderdeel=query -f query="accordeur-meldingen"` (0 rijen
+`e-mail` ná deploy, run-audits aanwezig) + regel "Accordeur-meldingen push-only" in de reconciliatiemail van de eerstvolgende 06:30-run.
+
+### Punt 15 — KvK-uittreksel-upload: getypte datum, drie vormen, één parser, melding in gewone taal
+
+**Besluit Peter 02-10 (bug):** "kvk uittreksel upload geeft melding geldig_tot: Input should be a valid date or datetime, invalid date
+separator, expected `-`". **Gebouwd:** backend `app/tijd.py::parse_datum_nl` (jjjj-mm-dd / dd-mm-jjjj / dd/mm/jjjj, leeg = afwezig,
+anders `OngeldigeDatum` mét "‹Veld›: '‹invoer›' is geen geldige datum — schrijf de datum als 31-12-2026"), beide dossier-upload-routes
+lezen `geldig_tot` als tekst en geven bij een ongeldige waarde 422 mét die platte melding; frontend één helper `ui/datum.ts::naarIsoDatum`
+(ISO door, anders de bestaande soepele DatePicker-parser) in de twee gedeelde API-functies (`urenApi`/`meerwerkApi.uploadDossierDocument`)
+zodat kantoor (DossierModal) én app (UrenFlow) altijd ISO versturen en een onherkenbare datum de browser niet verlaat. Geen migratie, geen
+instelling. **Herziet:** niets — aanvulling op de dossier-regel 25-08 (blok A). **Tests:** `tests/unit/test_datum_nl_parser.py`,
+`tests/uren/test_dossier_datum_vormen.py`, vitest `datum.naarIso`, `urenApi.dossierUpload`, `meerwerkApi.dossierUpload`. **Meetlat:**
+klikpunt Peter ná deploy (upload mét getypte datum, kantoor én app); terugval Cloud Logging 0 × 422 "invalid date separator" op de
+upload-routes. Werkt in productie: niet gemeten.
+
+### Punt 16 — Passkey-refresh-TTL-test rood door de zomertijdwissel (testfix, code ongewijzigd)
+
+**Besluit/diagnose:** de flake van 25-09 → 25-10 (`tests/auth/test_kantoor_passkeys.py::test_registratie_en_passkey_login_met_bestaande_jwt_semantiek`,
+"30 dagen vooruit = 1 uur te kort") had GEEN code-oorzaak: `_issue_token_paar` rekent in UTC/absolute seconden en de kolommen zijn
+`timestamptz`. De test trok twee teruggelezen datetimes mét hetzelfde `ZoneInfo('Europe/Amsterdam')`-tzinfo van elkaar af, wat in Python
+een naïeve wandklok-aftrek is (29 d 23 h over de wissel van 25-10). **Gebouwd:** beide TTL-tests (ook de 7-dagen-zuster in
+`test_webauthn_cadans.py`) toetsen nu in UTC; nieuwe test `tests/auth/test_refresh_ttl_zomertijd.py` (11) mét vaste peildata rond
+beide wissels van 2026 × kantoor-/accordeur-TTL, inclusief de reproductie van de oude testfout en een pure-Python-reproductie.
+Geen migratie, geen gedragswijziging, bestaande tokens blijven geldig; overige TTL's in `app/auth`/`app/security` gecontroleerd
+(allemaal epoch/UTC). **Tests:** `tests/auth` 310 groen op `boekhouding_test_p4`. **Werkt in productie:** n.v.t. (testfix); de meetlat is de
+suite-poort — groen op 02-10 en per constructie in de wisselweken. Regel-alinea: `docs/regels/auth-toegang.md` 02-10 punt 16.
+
+### Punt 17 — webhook-outbox: 409 "nog niet koppelbaar" wacht mét cadans, nooit meer `mislukt` ná 8 pogingen (migratie 0175)
+
+**Besluit (Peter 02-10, opdracht run A):** een `409 niet_koppelbaar` van Vastly (koppelcontract §3c, voorstel-3c-409) mag nooit ná 8
+pogingen definitief `mislukt` worden. Gebouwd: eigen outbox-status **`wacht_op_ontvanger`** (CHECK 0025 → 0175; kolommen
+`wacht_op_ontvanger_sinds`, `wacht_pogingen`; partiële index dekt beide actieve statussen) mét cadans vanaf de eerste 409 — 1 u → 6 u →
+24 u → dagelijks, max **14 dagen** (`WACHT_CADANS`/`WACHT_MAX` in `webhook_afleveraar.py`, geen instelling) — daarna `mislukt` mét
+"ontvanger kon niet koppelen binnen 14 dagen: ‹reden›". 409-pogingen tellen niet mee voor de dead-letter-grens; nonce-replay-409
+(`{"fout":…}`) blijft gewone retry; 2xx ná wachten = afgeleverd. **Zichtbaar:** reconciliatieblok **`webhooks`** (laatste in `run.BLOKKEN`,
+`app/documenten/webhook_reconciliatie.py`) mét twee soorten — `webhook_wacht_op_ontvanger` in **`meten`** (het systeem herhaalt zelf; een
+actiemail over iets dat vanzelf oplost is ruis, Peter 02-10 "geen mails meer") en `webhook_niet_koppelbaar_verlopen` **direct `actie`**
+(`direct_actie_reden`: ná 14 dagen is een mens nodig — melden bij Vastly; bewijs = Vastly's eigen reden; explosie-rem blijft) — beide mét
+statuschip + handeling **"Nu opnieuw"** (`POST /reconciliatie/webhooks/{outbox_id}/nu-opnieuw`, `webhook_afleveraar.nu_opnieuw`: directe
+afleverronde buiten de cadans om, audit `webhook_nu_opnieuw`; verlopen rij → telling opnieuw). Er is géén outbox-scherm in de kantoor-UI
+(de opdrachttekst veronderstelde er een) — bewust niet gebouwd (geen bijvangst): de bevinding + `db-lezen webhook-outbox` v2 zijn de
+zichtbaarheid. Herzenden/redrive resetten de wacht-velden. **Contract (RLZ = eigenaar):** §3-notitie 02-10 in het koppelcontract (gedrag
+RLZ-kant; geen wire-wijziging, geen versiebump), OPEN_ITEMS r. 1475 "Antwoord RLZ 02-10" (punt 3 gebouwd), `registers/schema-versions.md`.
+**Beslispunten Peter (niet door CC genomen):** (1) accordering §3c voorstel-3c-409 → contractversie (v1.22; v1.21 is 02-10 door §2d bezet);
+(2) 7-dagen-cadans voor élke andere niet-2xx (nu ongewijzigd 8 pogingen/≤ 3600 s). De elf events van 01-10: `verwerkt`, niets herzonden.
+**Tests:** `tests/documenten/test_webhook_wacht_op_ontvanger.py` (15), gouden set casus an `TestNietKoppelbaarInDeKeten`, vitest
+`WebhookActies.test.tsx` (3), guards bijgewerkt (soort_stand-pin, blokkenlijsten, nameting-options). **Meetlat:** dispatch-onderdeel
+`webhook-wacht` (`reconciliatie-alles --alleen webhooks --lees-only` + request-log "Nu opnieuw"; verwacht ná deploy `WEBHOOKS   0 …`);
+werkt in productie: niet gemeten (aanwezig-pad pas bij de eerstvolgende niet-koppelbare `factuur_geboekt`).

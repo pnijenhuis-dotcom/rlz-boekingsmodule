@@ -219,6 +219,27 @@
   daar de oude tekst tot een nieuwe boekpoging; de reconciliatie-rij draagt de twee knoppen. Handelingen: 0 POSTs, 0 audits sinds de deploy →
   "niet gemeten (ongebruikt)", dispatch-onderdeel `extern-geboekt` + vervolg-opdracht poging 2.
 
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 14 — DOEL: docs/regels/accordering-native-app.md -->
+- **Accordeur-meldingen push-only — nooit meer e-mail (punt 14 run A, Peter 02-10 "zet die mail uit over hoeveel facturen er klaar
+  staan, wordt je echt gek van. Geen mails meer"; geen migratie; BESLISSINGEN "RUN A 02-10 — BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS
+  (Peter 02-10)" punt 14):** de twee AUTOMATISCHE accordeur-meldingen — de nieuwe-facturen-bundel "Er staan N facturen voor u klaar"
+  (job `rlz-nieuwe-facturen`, ~10 min, stille uren 20:00–08:00) en de 09:00-herinnering (job `rlz-accordeur-herinneringen`) — gaan
+  UITSLUITEND als push (`app/berichten/verzending.py::verstuur_push_only`). Geen push-inschrijving, alle subscripties vervallen of
+  élke push mislukt = overgeslagen mét teller `overgeslagen_geen_push` in de joblog (CLI-regel "(push-only, besluit 02-10): N push, …
+  K overgeslagen_geen_push (geen push-inschrijving/push mislukt — geen e-mail)"), een joblog-regel per overgeslagen accordeur (alleen
+  de gebruikers-id), claim-rij `overgeslagen` mét `detail.reden = geen_push` (bundel: volgende run herkanst; dagrij: één poging per
+  dag) en één administratie-loos run-audit `accordeur_melding_run` per job-run (`soort` nieuwe_facturen | dag_herinnering, alle
+  tellers) — NOOIT `mail.verzend_mail`. Een mislukte push is geen `mislukt`/exit 1 meer maar overgeslagen (aantoonbaar niets bezorgd).
+  **Herziet** "push, anders e-mail" uit "ACCORDEUR-NOTIFICATIES" (15-08) en "NIEUWE-FACTUREN-BUNDELMELDING" (16-08) uitsluitend voor
+  deze twee jobs. **Blijft push-anders-mail (bewuste mensactie / andere doelgroep):** de handmatige herinnering per document
+  (kantoorknop, `app/accordering/herinnering.py`, 16-08/0053), de vraag-meldingen (26-08 B5), de planning-meldingen (15-09) en de
+  uren-herinnering veld-app (18-09). Geen opt-out, geen instelling. Reconciliatie: dagteller "Accordeur-meldingen push-only (nieuwe
+  facturen + 09:00-herinnering; geen e-mail)" (`ACCORDEUR_MELDINGEN`, bron het run-audit; gedaan = push, overgeslagen `geen_push` =
+  vaste categorie altijd zichtbaar, `fout` = mislukt; ZACHT — geen LET-OP, want geen mail is de bedoeling) in de reconciliatiemail
+  en op Inzicht › Reconciliatie. Meetlat: querybibliotheek `accordeur-meldingen` (scope platform, `dagen` optioneel 14) — ná deploy
+  0 rijen kanaal `e-mail`. Guards: `tests/berichten/test_push_only_02_10.py` (afwezig-pad beide jobs, push-fout, push ok, kantoorknop
+  mailt wél, teller, CLI), `test_herinneringen.py`, `test_nieuwe_facturen.py`, `test_multi_administratie_wachtrij.py` herschreven.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Accordeur-app koude start + niet-geactiveerd account (CLAUDE.md `ed6d176` r. 690–699)

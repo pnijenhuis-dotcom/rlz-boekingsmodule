@@ -122,6 +122,22 @@
   (`tests/accordering/test_toegang_is_geen_laag_18_09.py`). Volledige regels (keuze-stap, preview, bulk-bevestiging, koppelknop in
   de keuzelijsten): `docs/regels/accordering-native-app.md` alinea "Toegang ≠ laag".
 
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 16 — DOEL: docs/regels/auth-toegang.md -->
+- **Refresh-TTL = absolute seconden (UTC), ook in de test (punt 16 run A, Peter 02-10; geen migratie; BESLISSINGEN "RUN A 02-10 —
+  BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 16):** de code rekende al goed — `_issue_token_paar` zet
+  `verloopt_op = datetime.now(UTC) + timedelta(seconds=ttl)`, `create_refresh_token` werkt op epoch-seconden en beide kolommen van
+  `platform.refresh_token` zijn `timestamptz`; de test `test_kantoor_passkeys::…jwt_semantiek` (en de 7-dagen-zuster in
+  `test_webauthn_cadans`) trok de teruggelezen datetimes naïef van elkaar af — psycopg geeft ze mét dezelfde `ZoneInfo('Europe/
+  Amsterdam')` terug en Python negeert bij aftrekken een gedeeld tzinfo (wandkloktijd) → 29 d 23 h over de wissel van 25-10,
+  rood van 25-09 t/m 25-10 zonder code-oorzaak. Regels: (1) een TTL/duur uit de database toets je in absolute seconden —
+  `a.astimezone(UTC) − b.astimezone(UTC)` of `EXTRACT(EPOCH FROM (a − b))` in SQL — nooit `aware − aware` op teruggelezen waarden;
+  (2) een verwachting rond een peilmoment tel je in UTC op (`peil.astimezone(UTC) + timedelta`), want `aware_nl + timedelta` is
+  in Python óók wandklok-rekenen; (3) TTL's in code blijven epoch-/UTC-seconden (`app/security/tokens.py::_issue`,
+  `datetime.now(UTC) + INVITE_TTL`), nooit kalenderdagen lokale tijd — gecontroleerd 02-10: geen andere TTL in `app/auth`/
+  `app/security` rekent lokaal. Test mét vaste peildata rond BEIDE wissels van 2026 (29-03, 25-10; 30 d ervoor en de dag erna,
+  plus 02-10) × kantoor-TTL (30 d) en accordeur-TTL (7 d): `tests/auth/test_refresh_ttl_zomertijd.py` (klok bevroren via
+  `monkeypatch` van `service.datetime`; geen freezegun in de suite).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Stack & platform — Auth (TOTP, accordeur-passkeys, herstel-link, e-mail wijzigen, activatie mobiel-first, pincode/app-lock, platformbesluit 0020, kantoor-passkeys) (CLAUDE.md `ed6d176` r. 95–155)

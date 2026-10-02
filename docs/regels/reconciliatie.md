@@ -195,6 +195,53 @@
   en de scheduler-run van 06:30 → blok `intake` mét `gecontroleerd` 2. Tests `tests/reconciliatie/test_intake_bewaking.py` (pure toets,
   cli_blok mét nep-lezer, FOUT-paden, spam-LET-OP, dagteller, route 202/502/404/401).
 
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 14 — DOEL: docs/regels/reconciliatie.md -->
+- **Dagteller "Accordeur-meldingen push-only" (punt 14 run A, Peter 02-10; geen migratie; BESLISSINGEN "RUN A 02-10 — BOEKEN,
+  PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 14):** teller `accordeur_meldingen` in `app/reconciliatie/automatiseringen.py`
+  (stand `altijd`, bron audit `accordeur_melding_run` van de jobs `nieuwe-facturen-melden` en `accordeur-herinneringen`): gedaan =
+  `verzonden_push`, overgeslagen `geen_push` (nieuwe reden-categorie, label "geen push-inschrijving of push mislukt (geen e-mail —
+  besluit 02-10)", vaste categorie → óók als 0 zichtbaar), `fout` = mislukt; `detail.geen_push_per_soort`. Bewust geen harde
+  voorwaarde/LET-OP: een accordeur zonder toestel krijgt sinds 02-10 niets, en dat is de bedoeling — de teller maakt het zichtbaar,
+  de bestaande koppelroute (telefoon/app koppelen) is de handeling. Volledige regel: `docs/regels/accordering-native-app.md` alinea
+  "Accordeur-meldingen push-only".
+
+<!-- toegevoegd 02-10-2026, opdracht "run-A" punt 17 — DOEL: docs/regels/reconciliatie.md -->
+- **Webhook-outbox: 409 `niet_koppelbaar` = wachten op de ontvanger, nooit een dead-letter (punt 17 run A, Peter 02-10; migratie 0175;
+  BESLISSINGEN "RUN A 02-10 — BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 17):** Vastly antwoordt sinds 24-09 op een
+  event dat het (nog) niet kan koppelen `409 {"resultaat":"niet_koppelbaar","reden": onbekende_administratie | onbekend_document |
+  referentie_conflict}` (koppelcontract §3c, voorstel-3c-409). Tot 02-10 viel dat onder de gewone retry (8 pogingen, exponentiële backoff
+  ≤ 3600 s) en stond het event ná ≈ 2 uur definitief `mislukt` — een verloren bericht voor iets dat alleen "nog niet" was. Regel: (1) een
+  409 mét `resultaat: niet_koppelbaar` is geen fout van ons: de outbox-rij krijgt de eigen status **`wacht_op_ontvanger`**
+  (`WebhookStatus.WACHT_OP_ONTVANGER`, CHECK-constraint 0175) mét een vaste cadans gerekend vanaf de EERSTE 409
+  (`wacht_op_ontvanger_sinds`): opnieuw ná 1 uur, ná 6 uur, ná 24 uur, daarna dagelijks (`webhook_afleveraar.WACHT_CADANS`,
+  `volgende_wacht_poging` — altijd strikt ná "nu", een late job-run doet nooit twee pogingen), hooguit **14 dagen** (`WACHT_MAX`); daarna
+  pas `mislukt` mét de letterlijke reden uit de body ("ontvanger kon niet koppelen binnen 14 dagen: ‹reden›", audit
+  `webhook_niet_koppelbaar_verlopen`). Geen instelling (Peter 30-09 "hou het simpel"). (2) 409-pogingen tellen in `wacht_pogingen` en
+  tellen NIET mee voor de dead-letter-grens van 8; een andere niet-2xx ná een 409 houdt het bestaande gedrag (8 pogingen, backoff). De
+  nonce-replay-409 (`{"fout": …}`, zonder `resultaat`) blijft de gewone retry. Een 2xx ná het wachten = gewoon `afgeleverd` (audit draagt
+  `wachtte_sinds`/`wacht_pogingen`). (3) Zichtbaar, nooit stil: reconciliatieblok **`webhooks`** (`app/documenten/webhook_reconciliatie.py`,
+  laatste blok in `run.BLOKKEN` en `cli._reconciliatie_alles`) maakt per administratie in eigen RLS-scope één bevinding per rij —
+  `webhook_wacht_op_ontvanger` (event, referentie, reden, sinds, volgende poging, pogingen; stand **`meten`**: het systeem herhaalt zelf,
+  een actiemail over iets dat vanzelf oplost is de ruis die Peter 02-10 "geen mails meer" niet wil) en `webhook_niet_koppelbaar_verlopen`
+  (ná 14 dagen; **direct in `actie`**, `direct_actie_reden` — hier is een mens nodig: melden bij Vastly; het bewijs is Vastly's eigen reden;
+  explosie-rem blijft). Beide rijen dragen de statuschip ("wacht op ontvanger · volgende poging … · reden") en de handeling **"Nu
+  opnieuw"** (`frontend/src/reconciliatie/WebhookActies.tsx`, `POST /reconciliatie/webhooks/{outbox_id}/nu-opnieuw`, élke kantoorrol →
+  `webhook_afleveraar.nu_opnieuw`: één directe afleverronde buiten de cadans om, audit `webhook_nu_opnieuw` mét actor; op een verlopen rij
+  begint de 14-dagen-telling opnieuw; 404 buiten scope, 409 als de rij niet wacht; aflevering uit = 200 mét die reden in `uitkomst`). Er
+  is geen outbox-scherm in de kantoor-UI — déze bevinding + `db-lezen webhook-outbox` (versie 2: `wacht_op_ontvanger_sinds`,
+  `wacht_pogingen`, `volgende_poging_op`, audit-acties `webhook_wacht_op_ontvanger`/`webhook_niet_koppelbaar_verlopen`/
+  `webhook_nu_opnieuw`) zijn de zichtbaarheid. `webhook-herzenden`/`webhook-redrive` zetten de wacht-velden terug; een wachtende rij
+  geldt bij herzenden als "al openstaand — niet herzonden". (4) Contract-eigenaar-antwoord: §3-notitie 02-10 in het koppelcontract (geen
+  wire-wijziging, geen versiebump — Vastly bouwt niets) + OPEN_ITEMS r. 1475 "Antwoord RLZ 02-10" + `registers/schema-versions.md`;
+  **beslispunten Peter, niet door CC genomen:** accordering van §3c (voorstel-3c-409 → contractversie; v1.21 is intussen door de §2d-bump
+  bezet) en de 7-dagen-cadans voor élke andere niet-2xx. De elf events van 01-10 zijn `verwerkt` — niets herzonden, geen data-stap.
+  Meetlat ná deploy: dispatch-onderdeel `webhook-wacht` (`reconciliatie-alles --alleen webhooks --lees-only` + request-log "Nu opnieuw";
+  verwacht direct ná deploy `WEBHOOKS   0 outbox-rij(en)`). Tests `tests/documenten/test_webhook_wacht_op_ontvanger.py` (cadans, 409 →
+  wacht zonder dead-letter, 2xx ná wachten, 14 dagen → mislukt mét reden en niet meer geprobeerd, nonce-replay ongewijzigd, 8 pogingen
+  ongeacht 409's, herzenden reset, nu_opnieuw (wacht/verlopen/weigering), blok + leesbare teksten + `--alleen webhooks --lees-only`
+  letterlijk, route 200/409/404/401 + aflevering-uit, db-lezen v2), gouden set casus **an** `TestNietKoppelbaarInDeKeten`, vitest
+  `WebhookActies.test.tsx`; blokkenlijst-guards (`test_rlz_dubbel`, `test_activa/test_reconciliatie`, `test_soort_stand`) bijgewerkt.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Synthetische bewaking + alerting (CLAUDE.md `ed6d176` r. 632–644)
