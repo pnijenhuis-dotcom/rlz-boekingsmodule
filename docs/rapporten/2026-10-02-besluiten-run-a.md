@@ -23,4 +23,7 @@ Opdracht `opdrachten/gedaan/2026-10-02-besluiten-run-a-verwerken-409-cadans-cont
 
 ## Poort
 
-Volgt ná de volledige backend-suite en vitest (apart commit).
+- Volledige backend-suite over de eindstand: **7876 groen / 1 skipped / 21 deselected / 0 rood** (57 min 33 s). Een eerste run mét `-p no:logging -x --maxfail=5` stopte ná 6972 tests op vijf setup-ERRORS (`caplog`-fixture weg door die vlag — eigen aanroepfout, geen code; de vijf zijn los groen) en is daarom volledig herhaald zonder die vlaggen.
+- Volledige vitest: **290 bestanden / 2170 tests groen**; `tsc -b` groen (pre-commit).
+- Doc-guards (CLAUDE.md-verwijzingen, regels-index, rapporten-index, gelezen regels, changelog-vorm) zitten in bovenstaande suites.
+- Keten-sweep (pixelvergelijking controlescherm/lijst) niet gedraaid: deze run raakt geen scherm uit de sweep (alleen `src/reconciliatie` en de webhook-outbox); `tests/keten` is aangeraakt (casus an) voor de keten-guard.
