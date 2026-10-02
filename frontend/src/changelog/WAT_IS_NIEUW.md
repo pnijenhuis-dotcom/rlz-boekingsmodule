@@ -6,6 +6,15 @@
   vorm). Geen AI.
 -->
 
+## 2026-10-02 — Planning: transport-icoon, kleur per project, dag kopiëren; veld-app uitvoerder: tab Planning
+
+<!-- run-b-02-10 -->
+
+- **Planning › Personeel: een vrachtwagen op de kaart als er die dag een transport gepland staat.** Staat voor een project op een dag een levering of retour in het tabblad Transport (niet geannuleerd), dan ziet u dat nu direct op de projectkaart in Personeel; de tooltip noemt tijd, soort en de stand ("nog niet bevestigd", "bevestigd", "definitief"). Klik op het icoon en u staat in Transport op precies die dag.
+- **Planning › Personeel: de werken zijn beter uit elkaar te houden.** Elk project heeft nu een eigen, vaste kleur (altijd dezelfde voor hetzelfde projectnummer), het projectnummer staat vet in die kleur op de rij en op elke kaart, de rijen zijn duidelijker gescheiden en een nog lege dag toont alleen een rustige "+" in plaats van tekst in elk vakje.
+- **Planning: een dag kopiëren met Cmd/Ctrl-C en Cmd/Ctrl-V.** Klik op een kaart in de Personeel-tab, druk Cmd/Ctrl-C, klik op een andere dag (een kaart of een lege cel van een project) en druk Cmd/Ctrl-V: het project mét dezelfde ploeg staat op die dag. Wie afwezig is wordt overgeslagen (dat staat in de melding), wie die dag al ergens anders staat wordt oranje gemarkeerd, wie er al stond blijft gewoon staan. "Ongedaan maken" zet precies de geplakte set terug. Liever zonder toetsenbord? In het ploegpaneel staat nu ook "Kopiëren naar…" met de andere dagen van de week.
+- **Veld-app voor uitvoerders: tab "Planning" in plaats van "Mijn uren".** Een uitvoerder ziet nu per dag alle projecten die het kantoor heeft ingepland: project, opdrachtgever en plaats, de ploeg, de werkopdracht en een vrachtwagen-icoon als er die dag een levering of retour gepland staat. Veeg naar links voor de dag ervoor, naar rechts voor de dag erna, of gebruik de pijlen en "vandaag". Tik op een project voor de projectkaart met "+ Uren" en "+ Meerwerk melden"; het weekoverzicht van uw eigen uren (week indienen, ingediend) staat als link onder de planning. Zonder verbinding ziet u de laatst geladen dag met de melding "offline — stand van …". Voor ZZP'ers en detacheerders verandert er niets. De app werkt dit zelf bij; er is geen nieuwe winkelversie nodig.
+
 ## 2026-10-02 — Opschoonrun A: controlescherm, projecten, meldingen en kleine bugs
 
 <!-- run-a-02-10 -->

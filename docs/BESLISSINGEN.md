@@ -13765,3 +13765,86 @@ RLZ-kant; geen wire-wijziging, geen versiebump), OPEN_ITEMS r. 1475 "Antwoord RL
 `WebhookActies.test.tsx` (3), guards bijgewerkt (soort_stand-pin, blokkenlijsten, nameting-options). **Meetlat:** dispatch-onderdeel
 `webhook-wacht` (`reconciliatie-alles --alleen webhooks --lees-only` + request-log "Nu opnieuw"; verwacht ná deploy `WEBHOOKS   0 …`);
 werkt in productie: niet gemeten (aanwezig-pad pas bij de eerstvolgende niet-koppelbare `factuur_geboekt`).
+
+## RUN B 02-10 — PLANNING: TRANSPORT-ICOON, ONDERSCHEID, DAG KOPIËREN; VELD-APP: PLANNINGSTAB UITVOERDER (Peter 02-10) — punten 24, 25, 20, 26 van de lijst 02-10 (ná run A); herziet "geen planningstab" uit VELD-APP UITVOERDER — FEEDBACK 18-09 uitsluitend voor de rol uitvoerder (punt 26); geen migratie
+
+**Status: GEBOUWD + GETEST 02-10-2026 (handmatige CC-sessie; opdracht `opdrachten/gedaan/2026-10-02-run-B-planning-en-veld-app.md`, rapport
+`docs/rapporten/2026-10-02-run-b.md`; drie fork-agenten in eigen worktrees, één commit per punt in Peters volgorde 24 → 25 → 20 → 26).
+Canonieke regeltekst: `docs/regels/uren-planning-veldwerkers.md` alinea's 02-10 run B (incl. de herziening van 18-09 blok D voor de rol
+uitvoerder). Planning v4 (28-09) blijft de norm: project × dag-matrix, ploeg-paneel als dé werkwijze, bulkroute voor élke kopie. Werkt in
+productie: niet gemeten — klikpunt Peter (week 41 plannen; uitvoerder-app ná OTA), meetlat `db-lezen planning-v4` (bron `kopie_dag`) en
+request-log `GET /uren/uitvoerder/dagplanning`; vervolg-opdracht `opdrachten/inbox/2026-10-03-nameting-run-b.md`.**
+
+**Aanleiding (Peter 02-10, `docs/feedback/2026-09-28-planning-steigerbouw-feedback-peter.md` sectie 02-10 + `docs/gesprekken/2026-10-02.md`):**
+"als er een transport gepland staat op een werk dan willen wij bij tabje personeel op dat werk een vrachtwagen icoontje zien" (24); "beter
+onderscheid maken in de vakjes werken, nu zien we soms door de bomen het bos niet meer" (25); "ingepland werk op maandag via ctrl-C / ctrl-V
+bijvoorbeeld naar vrijdag te kopiëren" (20); "het tabje mijn uren moeten we vervangen door tabje planning … links swipen een dag terug … rechts
+swipen in de toekomst" (26). Regel Peter 30-09: geen bijvangst, geen nieuwe instellingen, geen native schil-wijziging (23 = apart).
+
+### Punt 24 — transport-icoon op de projectkaart (Personeel-tab)
+
+**Besluit/aanleiding (Peter 02-10, letterlijk):** "als er een transport gepland staat op een werk dan willen wij bij tabje personeel op
+dat werk een vrachtwagen icoontje zien, zodat we weten dat daar een planning geleverd staat." **Gebouwd (geen migratie):** de
+planning-weekroute draagt `transporten` (project × dag, soort/tijdstip/status/samenvatting) uit `materiaal_transport` mét status ≠
+geannuleerd — één extra query in dezelfde route/sessie als het wachtrisico (`materiaal.service.transporten_week_kort_in_sessie`),
+lees-only; de projectkaart in de matrix toont bij ≥ 1 transport een vrachtwagen-icoon (inline SVG, teal = klikbaar, 24 px, aria-label)
+mét tooltip "transport gepland: 07:30 levering — Levering steiger 600 m² (bevestigd)"; klik = Transport-tab op die dag
+(`?tab=transport&dag=`, dagkolom gemarkeerd "vanuit Personeel" + in beeld). **Keuzes zonder Peter:** (a) de data reist mee in de
+planning-respons i.p.v. een tweede client-fetch van de transportweek — één request blijft het contract van v3/v4 (68 projecten);
+(b) geen icoon op een lege plancel (transport zonder ploeg = Transport-tab-domein: wachtrisico/te plannen); (c) `gereserveerd` leest
+in de tooltip als "nog niet bevestigd" (31-08-statusflow). **Tests:** backend 2 (`test_planning_transport_icoon_02_10.py`), vitest
+dagEerst +2, PlanningScreen +2. **Werkt in productie: niet gemeten** — klikpunt Peter: week 41 plannen mét een transport op de
+Transport-tab → icoon op de kaart in Personeel; request-log `GET /uren/kantoor/planning` 200 (veld `transporten` in de respons).
+
+### Punt 25 — onderscheid tussen de werk-vakjes
+
+**Besluit/aanleiding (Peter 02-10):** "beter onderscheid maken in de vakjes werken, nu zien we soms door de bomen het bos niet meer."
+**Gebouwd (geen migratie, geen instelling):** stabiele deterministische projectkleur per matrixrij (`planning/projectKleur.ts`: hash
+van het projectnummer → `--projectkleur-0…7`, tokens in beide modi, als tekst geauditeerd ≥ 4,5:1 op panel/panel-2/bg in
+`contrast.test.ts`; bewust zonder teal/groen), rijkop + kaarten dragen de tint als linkerrand, het projectnummer staat vet (800) in
+de tint en de rest van de naam normaal, rijen 2 px gescheiden, de lege plancel toont alleen een "+" (tekst pas bij hover/focus).
+**Keuzes zonder Peter:** (a) kleur op het NUMMER, niet op de hele kaartachtergrond — de kaartkleuren oranje (conflict), vandaag-tint
+en status-stip blijven betekenis dragen; (b) 8 tinten (zoals de avatar-set), geen pastelachtergronden (contrast in dark). **Tests:**
+`projectKleur.test.ts` (4), PlanningScreen +1, contrast +1, overflow-sweep planning 24/24. **Werkt in productie: niet gemeten** —
+klikpunt Peter: /planning Universal week 41 ("zie ik de werken uit elkaar?"); geen meetlat in data (puur presentatie).
+
+### Punt 20 — dagplanning kopiëren: Cmd/Ctrl-C → Cmd/Ctrl-V én "Kopiëren naar…" (bron `kopie_dag`)
+
+**Besluit (Peter 02-10, wens genoteerd 02-10 in de planning-feedback):** ingepland werk van een dag (kaart = project + ploeg, géén uren)
+naar een andere dag kopiëren met het toetsenbord — kaart/cel selecteren, Cmd/Ctrl-C, andere dagcel selecteren, Cmd/Ctrl-V — en voor wie
+geen toetsenbord gebruikt een knop "Kopiëren naar…" (één dag kiezen) in het ploeg-paneel. **Gebouwd op de bestaande bulkroute** mét
+nieuwe bron `kopie_dag` (`BULK_BRONNEN`; `KOPIE_BRONNEN` = volgende-week + dag): afwezig op de doeldag = overgeslagen mét reden (niet
+gepland), elders gepland = conflict (gepland + oranje), bestaand = samengevoegd, idempotent, ongedaan = exact de aangemaakte set terug,
+audit per (persoon, dag) mét bron; scope/rolpoort = de bestaande poort (nooit buiten de eigen administratie). Klembord = client-side
+app-state (geen systeemklembord), zichtbaar als regel mét "Wissen", blijft staan voor meerdere plakacties; plakken op de brondag =
+melding zonder request; sneltoetsen niet in invoervelden/comboboxen. Geen nieuwe route, migratie of instelling; `planning-v4.sql` v2 telt
+`kopie_dag` mee (meetlat = bestaand onderdeel `planning-v4`). Tests: `tests/uren/test_planning_kopie_dag_02_10.py` (4),
+`dagEerst.test.ts` (+4), `PlanningScreen.test.tsx` (+3). Werkt in productie: niet gemeten (klikpunt week 41; `db-lezen planning-v4`).
+
+### Punt 26 — veld-app rol uitvoerder: tab "Mijn uren" → tab "Planning" (dagplanning mét swipe) — HERZIET "geen planningstab" 18-09 blok D uitsluitend voor de uitvoerder
+
+**Besluit Peter 02-10 (letterlijk):** "het tabje mijn uren moeten we vervangen door tabje planning. Hierin moet de uitvoerder een lijst
+zien van alle geplande projecten van die dag (gaat dus mee met de agenda) en die moet met links swipen een dag terug kunnen kijken en met
+rechts swipen in de toekomst kunnen kijken." Herziening: "VELD-APP UITVOERDER — FEEDBACK 18-09" blok D ("geen planningstab/-route voor
+de rol uitvoerder") vervalt voor de rol uitvoerder; de weekweergave van de eigen planning (besluit B 22-08) blijft voor ZZP'er en
+detacheerder ongewijzigd en komt niet terug voor de uitvoerder — hij krijgt het WERK VAN DE DAG, niet zijn eigen planning.
+
+**Gebouwd (geen migratie, geen instelling, geen native schil-wijziging — web-laag via OTA):** backend `planning.dagplanning_uitvoerder` +
+`GET /uren/uitvoerder/dagplanning?datum=` (álle geplande projecten van de dag binnen de scope: toewijzingen ∪ reserveringen, ploeg mét
+naam/dagdeel, opdrachtgever/werknummer/plaats, werkopdracht, transport uit de Transport-tab status ≠ geannuleerd; set-based; alleen-lezen;
+rol ≠ uitvoerder 403); frontend allowlist `DAGPLANNING_TAB_ROLLEN = ['uitvoerder']`, tab Planning i.p.v. Mijn uren, `uren/DagPlanningView.tsx`
+(dagkop + pijlen ≥ 48 px + "vandaag", swipe links = terug / rechts = vooruit via pointer-events ≥ 40 px, projectkaarten mét
+vrachtwagen-icoon "transport gepland: ‹tijd› · ‹soort›", lege-dag-tekst, offline = laatst geladen dag uit localStorage mét chip, tekstlink
+"Mijn uren (weekoverzicht)"), projectkaart mét nieuwe knop "+ Uren" (weekstaat van dit project in de week van de gekozen dag) en terug
+"‹ Planning"; deep-link `?planning=JJJJ-Wnn` → maandag van die week.
+
+**Keuzes zonder Peter:** (a) lijst = álle geplande projecten in de scope (letterlijk de wens), niet alleen waar hij zelf op staat;
+(b) reservering zonder ploeg = "gereserveerd — ploeg volgt"; (c) het weekoverzicht "Mijn uren" blijft als tekstlink onder de dagplanning
+(week indienen / ingediend-lijst leven daar) — de TAB is vervangen, de flow niet verwijderd; (d) meerdere transporten op één project × dag
+→ het vroegste in de tooltip; (e) mockup `uren-uitvoerder-v3.html` niet bijgewerkt (geen bijvangst; beslispunt of er een scherm ⑦ komt).
+
+**Tests:** `tests/uren/test_planningstab_uitvoerder_02_10.py` (4) + gerichte uren-/rolpoort-suites 572 groen; vitest
+`UrenFlow.planningstab.test.tsx` (9), `rollen.planningtab.test.ts` (+2), `terugVan.test.ts` aangepast, `uxA`/`offline` navigeren via de
+nieuwe tab; `src/uren` + contrast + accordeurCss 70 groen; `tsc -b` groen. **Werkt in productie: niet gemeten** — klikpunt Peter in de
+uitvoerder-app ná OTA (tab Planning, vrachtwagen-icoon bij een transport, swipe, tik → kaart → "+ Uren"); meetlat zonder klik: request-log
+`GET /uren/uitvoerder/dagplanning` 200 ná de eerste app-start mét de nieuwe bundel.

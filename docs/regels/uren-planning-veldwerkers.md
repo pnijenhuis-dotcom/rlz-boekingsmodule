@@ -434,6 +434,103 @@
   vitest `ui/datum.naarIso.test.ts`, `uren/urenApi.dossierUpload.test.ts`, `meerwerk/meerwerkApi.dossierUpload.test.ts`. Werkt in
   productie: niet gemeten (klikpunt Peter: KvK-uittreksel uploaden mét getypte datum ná deploy).
 
+<!-- toegevoegd 02-10-2026, opdracht "run-B" punt 24 — DOEL: docs/regels/uren-planning-veldwerkers.md -->
+- **Transport-icoon op de projectkaart in de Personeel-tab (punt 24 run B, Peter 02-10 "als er een transport gepland staat op een
+  werk dan willen wij bij tabje personeel op dat werk een vrachtwagen icoontje zien, zodat we weten dat daar een planning geleverd
+  staat"; geen migratie; BESLISSINGEN "RUN B 02-10 — PLANNING: TRANSPORT-ICOON, ONDERSCHEID, DAG KOPIËREN; VELD-APP: PLANNINGSTAB
+  UITVOERDER (Peter 02-10)" punt 24):** de planning-weekroute `GET /uren/kantoor/planning` draagt sinds 02-10 `transporten` = álle
+  NIET-geannuleerde transporten van de administratie in die week (zelfde bron als de Transport-tab: `materiaal_transport`, status
+  ≠ `geannuleerd`; legacy `gepland` reist als `gereserveerd`), per project × dag mét `soort`, `tijdstip`, `status` en de bestaande
+  `samenvatting` (`materiaal.service.transporten_week_kort_in_sessie`, één query + de bestaande context-opbouw, set-based; gelezen
+  in dezelfde sessie als het wachtrisico-kruissignaal D5). ALLEEN LEZEN — geen status-flow, geen schrijfpad; wijzigen blijft de
+  Transport-tab. In de matrix (`DagEerstGrid`) draagt een projectkaart mét ≥ 1 transport op die dag een vrachtwagen-icoon (inline
+  SVG, `currentColor`, teal = klikbaar, 24 px klikvlak, `aria-label`) mét tooltip "transport gepland: ‹tijd› ‹levering|retour› —
+  ‹samenvatting› (‹stand›)" (meerdere transporten = één regel per transport, `dagEerst.transportTooltip`; `gereserveerd` leest als
+  "nog niet bevestigd"); klik = Transport-tab op díe dag (`?tab=transport&dag=JJJJ-MM-DD`: de dagkolom is gemarkeerd mét chip
+  "vanuit Personeel" en scrolt in beeld; een gewone tabwissel wist `dag`). Een cel zónder kaart toont geen icoon (het signaal hoort
+  bij "hier staat een ploeg én een levering") — een transport zonder planning blijft het wachtrisico-/te-plannen-domein van de
+  Transport-tab. Oudere responses zonder het veld werken ongewijzigd (default `[]`). Guards: `tests/uren/
+  test_planning_transport_icoon_02_10.py` (gepland + retour in de week, geannuleerd en week+1 niet; leeg = `[]`),
+  `planning/dagEerst.test.ts` (per cel + tooltip), `PlanningScreen.test.tsx` (icoon + tooltip + klik → Transport-tab mét
+  gemarkeerde dag; zonder transport geen icoon).
+
+<!-- toegevoegd 02-10-2026, opdracht "run-B" punt 25 — DOEL: docs/regels/uren-planning-veldwerkers.md -->
+- **Onderscheid tussen de werk-vakjes: stabiele projectkleur per rij, nummer vet, rustige lege plancel (punt 25 run B, Peter 02-10
+  "beter onderscheid maken in de vakjes werken, nu zien we soms door de bomen het bos niet meer"; geen migratie, geen instelling;
+  BESLISSINGEN "RUN B 02-10 — … (Peter 02-10)" punt 25):** élke projectrij in de matrix draagt een DETERMINISTISCHE accentkleur —
+  `planning/projectKleur.ts`: sleutel = het projectnummer (cijferprefix van de naam, óók ná het voorvoegsel "Afgesloten"), anders de
+  genormaliseerde naam; FNV-1a-hash (zelfde als `ui/Avatar.tsx`) mod 8 → `--projectkleur-N` — zuiver afgeleid, nergens opgeslagen,
+  dus in élke week, sessie en browser dezelfde tint voor hetzelfde project. Het palet staat als designpass-v2-tokens in `tokens.css`
+  voor BEIDE modi (licht: #3548a5 · #6941c6 · #a3468a · #b45309 · #0b6e8f · #5b6b12 · #8a3b2a · #4b5563; dark eigen, lichtere
+  hexen) en is als TEKST geauditeerd (≥ 4,5:1 op `panel`, `panel-2` én `bg`, beide modi, acht verschillende tinten, dark ≠ licht —
+  `styles/contrast.test.ts`); bewust zónder `--primary` (teal = actie) en `--ok` (groen = status): een identiteitskleur is geen
+  semantiek. Toepassing (`DagEerstGrid` zet `--pk` op de `<tr>`, `data-projectkleur=N`): rijkop mét 4 px linkerrand in de tint,
+  het PROJECTNUMMER vet (800) in de tint en de rest van de naam normaal (500), opdrachtgever in de lichtere subregel; élke kaart in
+  die rij een 3 px linkerrand in dezelfde tint en hetzelfde vette nummer (`<b class="plan-nr">` via `splitsProjectnummer`); rijen
+  gescheiden door een 2 px onderrand; de LEGE plancel is rustiger dan een geplande kaart — alleen een "+" (zwakke stippellijn), de
+  uitleg "sleep hierheen / + plannen" pas bij hover/focus/selectie (aria-label blijft volledig, klikgedrag ongewijzigd). Conflict
+  (oranje rand), vandaag-tint, urenstatus-stip en chips blijven zoals ze waren. Guards: `planning/projectKleur.test.ts` (splitsen,
+  sleutel, stabiliteit, alle acht tinten bereikt, buren verschillen), `PlanningScreen.test.tsx` (rij draagt `--pk` + index, nummer
+  vet in rijkop én kaart, lege cel "+" + verborgen tekst), contrast-test, overflow-sweep planning 24/24 (beide modi).
+
+<!-- toegevoegd 02-10-2026, opdracht "run-B" punt 20 — DOEL: docs/regels/uren-planning-veldwerkers.md -->
+- **Planning — dagplanning kopiëren met het toetsenbord en "Kopiëren naar…" (punt 20 run B, Peter 02-10 "mogelijkheid om ingepland
+  werk op maandag via ctrl-C / ctrl-V bijvoorbeeld naar vrijdag te kopiëren"; geen migratie; BESLISSINGEN "RUN B 02-10 — PLANNING:
+  TRANSPORT-ICOON, ONDERSCHEID, DAG KOPIËREN; VELD-APP: PLANNINGSTAB UITVOERDER (Peter 02-10)" punt 20):** in de Personeel-tab (dag-
+  weergave) is een kaart of lege matrixcel selecteerbaar met klik of toetsenbordfocus (zichtbare `.sel`-ring + `aria-pressed`);
+  **Cmd/Ctrl-C** onthoudt de geselecteerde kaart als client-side klembord (project + ploeg, géén uren — `dagEerst.klembordVanKaart`;
+  een lege of gereserveerde kaart heeft niets te kopiëren), zichtbaar als regel "📋 Gekopieerd: ‹project› · ‹dag› · N man — selecteer
+  een dag en druk Cmd/Ctrl-V" mét "Wissen"; **Cmd/Ctrl-V** op een geselecteerde kaart óf lege cel plakt het klembord op de DAG van die
+  selectie via de bestaande bulkroute `POST /uren/kantoor/planning/bulk` mét nieuwe bron **`kopie_dag`** (`BULK_BRONNEN`,
+  `KOPIE_BRONNEN` = `kopie_volgende_week` + `kopie_dag`): exact de regels van de kopie naar volgende week (28-09) — afwezig op de
+  doeldag = OVERGESLAGEN mét reden (niet gepland), elders gepland = conflict (gepland + oranje, nooit blokkerend), bestaande kaart =
+  samengevoegd, idempotent, audit per (persoon, dag) + `planning_bulk` mét de bron; toast "Gekopieerd naar ‹dag› · N persoon-dagen · K
+  conflicten · M afwezig overgeslagen · L al gepland" mét "Ongedaan maken" (= dezelfde set terug via bron `ongedaan`); plakken op de
+  brondag = leesbare melding zonder request; het klembord blijft staan zodat één kaart op meerdere dagen geplakt kan worden. De
+  sneltoetsen gelden NIET in invoervelden/comboboxen (`planBulkOngedaan.isKopieerToets`/`isPlakToets`, dezelfde guard als Cmd/Ctrl-Z).
+  Zonder toetsenbord: knop **"Kopiëren naar…"** in het ploeg-paneel → één dag kiezen uit de andere werkdagen → dezelfde route mét de
+  vinkjesstand van het paneel (patroon "Kopiëren naar ‹weekdag› volgende week"). Nooit buiten de eigen administratie-scope: bron- en
+  doeldag liggen in dezelfde administratie en de server toetst scope + rolpoort zoals bij élke bulk-aanroep. Meetlat: de
+  querybibliotheek `planning-v4.sql` (versie 2) telt óók bron `kopie_dag` — bestaand dispatch-onderdeel `planning-v4`. Guards:
+  `tests/uren/test_planning_kopie_dag_02_10.py` (bron, ma → vr, afwezig/conflict, route + scope 403), `planning/dagEerst.test.ts`
+  (helpers + toets-guards incl. combobox), `PlanningScreen.test.tsx` (Cmd-C/V-flow, zelfde dag, "Kopiëren naar…").
+
+<!-- toegevoegd 02-10-2026, opdracht "run-B" punt 26 — DOEL: docs/regels/uren-planning-veldwerkers.md -->
+- **Veld-app rol UITVOERDER — tab "Mijn uren" vervangen door tab "Planning" (dagplanning) (punt 26 run B, Peter 02-10 letterlijk:
+  "het tabje mijn uren moeten we vervangen door tabje planning. Hierin moet de uitvoerder een lijst zien van alle geplande projecten
+  van die dag (gaat dus mee met de agenda) en die moet met links swipen een dag terug kunnen kijken en met rechts swipen in de toekomst
+  kunnen kijken"; geen migratie, geen instelling, geen native schil-wijziging (web-laag via OTA); BESLISSINGEN "RUN B 02-10 — PLANNING:
+  TRANSPORT-ICOON, ONDERSCHEID, DAG KOPIËREN; VELD-APP: PLANNINGSTAB UITVOERDER (Peter 02-10)" punt 26). HERZIET "Veld-app uitvoerder —
+  feedback 18-09" blok D ("geen planningstab/-route voor de rol uitvoerder") UITSLUITEND voor de rol uitvoerder; ZZP'er en detacheerder
+  houden hun alleen-lezen WEEK-planningweergave (besluit B 22-08, `toontPlanningTab`) ongewijzigd.** (1) **Tab.** De uitvoerder-tabs
+  zijn Projecten · **Planning** · Te keuren; "Mijn uren" bestaat als tab niet meer. Allowlist `frontend/src/auth/rollen.ts::
+  DAGPLANNING_TAB_ROLLEN = ['uitvoerder']` + `toontDagplanningTab` (fail-closed, nooit een complement); `PLANNING_TAB_ROLLEN` blijft
+  ZZP'er + detacheerder. De deep-link `/accordeur?planning=JJJJ-Wnn` (bundelmelding 15-09) landt voor de uitvoerder op de dagplanning
+  van de maandag van die week. (2) **Inhoud = het werk van de dag, niet de eigen planning.** `GET /uren/uitvoerder/dagplanning?datum=`
+  (`planning.dagplanning_uitvoerder`, `vereis_veldrol`, rol ≠ uitvoerder = 403) geeft ÁLLE geplande projecten van die dag binnen de
+  administraties mét opt-in in zijn scope: toewijzingen ∪ reserveringen (planning v3) per project, ploeg mét naam en dagdeel
+  (uitvoerder eerst), opdrachtgever/werknummer/plaats (`project_specificatie.locatie_adres`), de geldende werkopdracht (dag-override
+  wint) en een **transport** uit de Transport-tab op dat project × dag (`materiaal_transport`, status ≠ geannuleerd; het vroegste) als
+  bron voor het vrachtwagen-icoon (zelfde aria-label "transport gepland: ‹tijd› · ‹soort›" als het kantoor-icoon van punt 24). Een
+  reservering zonder ploeg staat erin als "gereserveerd — ploeg volgt". Set-based (vier statements per administratie). ALLEEN-LEZEN:
+  plannen doet het kantoor, de veld-API heeft geen mutatiepad. (3) **Bediening.** Dagkop "‹weekdag dag maand› · vandaag" mét
+  pijlknoppen ≥ 48 px en tekstlink "vandaag" (alleen als de getoonde dag ≠ vandaag); **swipe links = dag terug, swipe rechts = dag
+  vooruit** (pointer-events; `DagPlanningView.swipeRichting`: ≥ 40 px horizontaal én groter dan de verticale verplaatsing, anders tik/
+  scroll; `touch-action: pan-y` — verticaal scrollen blijft van de browser). Lege dag = "Geen werk gepland op … — het kantoor plant in
+  de planning-agenda", nooit een leeg vlak. (4) **Tik op een project = de bestaande projectkaart** (`ProjectDetailView`, terug "‹
+  Planning") mét **"+ Uren"** (nieuw op de kaart: de weekstaat van dít project in de week van de gekozen dag — project én week al
+  ingevuld, project-eerst 18-09) en "+ Meerwerk melden". Het weekoverzicht van de eigen uren (weken → kaarten → "Week indienen",
+  Ingediend) blijft bereikbaar als tekstlink **"⏱ Mijn uren (weekoverzicht) ›"** onder de dagplanning — de tab is vervangen, de flow
+  niet verwijderd; Android-terug vanuit dat weekoverzicht = de Planning-tab. (5) **Offline** = de laatst geladen stand van die dag uit
+  `localStorage` (`uren-dagplanning:<datum>`, alleen bij een verbindingsfout — `urenOffline.isGeenVerbinding`) mét chip "● offline —
+  stand van HH:MM"; zonder cache een fout mét "Opnieuw proberen" — nooit stil leeg. (6) **Raakvlakken ≥ 48 px, geen tekst < 14 px
+  binnen `.acc-veld`** (guard `veldTekst.test.ts`); icoon in `--acc-accent` (informatie uit de Transport-tab), groen blijft status.
+  Keuring, weekstaten, conflictenpaneel en transport-statusflow ongewijzigd. Guards: `tests/uren/test_planningstab_uitvoerder_02_10.py`
+  (service + route: ploeg/transport/reservering/spec, andere dag leeg, geannuleerd transport telt niet, buiten scope niets, ZZP'er 403),
+  vitest `uren/UrenFlow.planningstab.test.tsx` (tab alleen uitvoerder, ZZP'er ongewijzigd, lijst, swipe/pijlen/vandaag, tik → kaart →
+  "+ Uren" → weekstaat, tekstlink Mijn uren, offline-chip, deep-link maandag), `auth/rollen.planningtab.test.ts`, `uren/terugVan.test.ts`.
+  Werkt in productie: niet gemeten (klikpunt Peter: uitvoerder-app ná OTA).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-signaal "geplande week zonder weekstaat" (CLAUDE.md `ed6d176` r. 675–682)
