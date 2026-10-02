@@ -865,11 +865,14 @@ def kantoor_week_afkeuren(
 @router.get("/kantoor/meerwerk", response_model=list[schemas.MeerwerkDto])
 def kantoor_meerwerk_lijst(
     administratie_id: uuid.UUID,
+    project_id: uuid.UUID | None = None,
     actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> list[schemas.MeerwerkDto]:
+    """Alle meldingen van de administratie; `project_id` = alleen dat project (blok "Meerwerk" op de
+    projectpagina, punt 12 run A 02-10) — zelfde DTO, zelfde statussen, nieuwste bovenaan."""
     try:
-        items = service.meerwerk_lijst(administratie_id=administratie_id, actor_id=actor.id)
+        items = service.meerwerk_lijst(administratie_id=administratie_id, actor_id=actor.id, project_id=project_id)
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
     return [_meerwerk_response(m) for m in items]

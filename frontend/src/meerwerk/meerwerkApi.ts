@@ -108,8 +108,12 @@ export function keurWeekstaatAfKantoor(administratieId: string, weekstaatId: str
   return apiPostJson(`/uren/kantoor/weekstaten/${administratieId}/${weekstaatId}/afkeuren`, { reden, correcties: [] })
 }
 
-export function haalMeerwerkLijst(administratieId: string): Promise<MeerwerkDto[]> {
-  return apiJson<MeerwerkDto[]>(`/uren/kantoor/meerwerk?administratie_id=${administratieId}`)
+/** Alle meldingen van de administratie; mét `projectId` alleen dat project (blok "Meerwerk" op de projectpagina, punt 12
+ * run A 02-10) — zelfde route, zelfde DTO, nieuwste bovenaan (server-volgorde). */
+export function haalMeerwerkLijst(administratieId: string, projectId?: string): Promise<MeerwerkDto[]> {
+  const p = new URLSearchParams({ administratie_id: administratieId })
+  if (projectId) p.set('project_id', projectId)
+  return apiJson<MeerwerkDto[]>(`/uren/kantoor/meerwerk?${p.toString()}`)
 }
 
 export function haalContractToets(administratieId: string, meerwerkId: string): Promise<StaffelRegelDto[]> {

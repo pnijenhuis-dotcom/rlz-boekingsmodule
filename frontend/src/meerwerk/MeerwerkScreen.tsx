@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError, apiFetch } from '../api/client'
 import { projectPad } from '../projecten/projectPad'
+import { meerwerkStatusBadge } from './meerwerkStatus'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import {
-  Badge,
   Button,
   Dialog,
   DialogContent,
@@ -48,18 +48,8 @@ const FILTER_LABELS: Record<Filter, string> = {
   afgewezen: 'Afgewezen',
 }
 
-function statusBadge(item: MeerwerkDto) {
-  switch (item.status) {
-    case 'gemeld':
-      return <Badge variant="paars">gemeld</Badge>
-    case 'goedgekeurd':
-      return <Badge variant="warn">nog doorbelasten</Badge>
-    case 'doorbelast':
-      return <Badge variant="ok">doorbelast{item.verkoopfactuur_referentie ? ` · ${item.verkoopfactuur_referentie}` : ''}</Badge>
-    case 'afgewezen':
-      return <Badge variant="danger">afgewezen · eigen rekening</Badge>
-  }
-}
+// Punt 12 run A (02-10): de statusbadge is één definitie (`meerwerkStatus.tsx`), gedeeld met de projectpagina.
+const statusBadge = meerwerkStatusBadge
 
 /** B2 (25-08): weeknummers overal in steigerbouw-datumweergaves. */
 function weekVan(iso: string): number {

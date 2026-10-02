@@ -1715,14 +1715,19 @@ class UrenStand:
     dossier_geblokkeerd: int = 0
 
 
-def meerwerk_lijst(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> list[MeerwerkData]:
+def meerwerk_lijst(
+    *, administratie_id: uuid.UUID, actor_id: uuid.UUID, project_id: uuid.UUID | None = None
+) -> list[MeerwerkData]:
     """Meerwerklijst voor het kantoor-deelscherm (alle statussen — niets verdwijnt stil;
-    filteren doet de UI). Module-recht server-side."""
+    filteren doet de UI). Module-recht server-side. `project_id` (punt 12 run A, 02-10) = dezelfde
+    lijst/definitie gefilterd op één project voor het blok "Meerwerk" op de projectpagina —
+    nieuwste bovenaan, géén tweede statusdefinitie."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _vereis_meerwerk_recht(session, actor_id)
-        rijen = session.scalars(
-            select(Meerwerk).where(Meerwerk.administratie_id == administratie_id).order_by(Meerwerk.gemeld_op.desc())
-        ).all()
+        query = select(Meerwerk).where(Meerwerk.administratie_id == administratie_id)
+        if project_id is not None:
+            query = query.where(Meerwerk.project_id == project_id)
+        rijen = session.scalars(query.order_by(Meerwerk.gemeld_op.desc(), Meerwerk.id.desc())).all()
         return [_meerwerk_data(session, m) for m in rijen]
 
 

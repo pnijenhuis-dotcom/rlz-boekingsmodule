@@ -8,6 +8,7 @@ import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { MateriaalstandPaneel } from '../planning/MateriaalstandPaneel'
 import { VerplichtingenPaneel, WeekstatenPaneel } from './ProjectDetailVerrijking'
+import { ProjectMeerwerkPaneel } from './ProjectMeerwerkPaneel'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
   bevestigWerknummer,
@@ -246,6 +247,8 @@ export function ProjectDetailScreen() {
       {/* C5 (07-09): verplichtingen mét verbruiksbalk + weekstaten-/planningstand (additieve detail-velden). */}
       <VerplichtingenPaneel administratieId={administratieId} verplichtingen={detail.verplichtingen ?? []} />
       <WeekstatenPaneel administratieId={administratieId} stand={detail.weekstaten_stand} />
+      {/* Punt 12 run A (02-10): álle meerwerkmeldingen van dit project mét status — zelfde bron als Beoordelen › Meerwerk. */}
+      <ProjectMeerwerkPaneel administratieId={administratieId} projectId={projectId} />
       <MateriaalstandPaneel administratieId={administratieId} projectId={projectId} />
       <WerknummersPaneel
         administratieId={administratieId}

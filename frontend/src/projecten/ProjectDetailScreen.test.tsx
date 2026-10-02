@@ -86,6 +86,7 @@ function installMock(state: { detail: ReturnType<typeof detail>; puts: Array<{ u
       }
       if (url.includes(`/projecten/${ADMINISTRATIE_ID}/${PROJECT_ID}`)) return Promise.resolve(jsonResponse(state.detail))
       if (url.includes('/materiaal/')) return Promise.resolve(jsonResponse({ detail: 'uit' }, 409))
+      if (url.startsWith('/uren/kantoor/meerwerk')) return Promise.resolve(jsonResponse([]))
       if (url.includes('/crediteuren')) return Promise.resolve(jsonResponse({ vendors: [] }))
       return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
     }),
