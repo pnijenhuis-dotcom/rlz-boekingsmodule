@@ -123,6 +123,11 @@ class ToetsUitkomst:
     teruggedraaid: bool = False
     bedrag: Decimal | None = None
     boekstuknummer: str | None = None
+    #: Run D 02-10 blok A: btw- en nettototaal zoals het pakket ze draagt (RLZ `TotalTaxAmount`/`TotalNetAmount`, Odoo
+    #: `amount_tax`/`amount_untaxed`) — zodat de reconciliatie een bedragverschil dat uitsluitend uit RLZ's btw-herrekening
+    #: per tarief komt (|Δ btw| < € 0,10, netto gelijk) kan herkennen. None = niet geleverd (dan geldt alleen de 0,05-regel).
+    btw_bedrag: Decimal | None = None
+    netto_bedrag: Decimal | None = None
     #: RLZ-GUID resp. Odoo move-id (als string) — de sleutel waarmee een mens het stuk in het pakket vindt
     extern_id: str | None = None
     #: RLZ `Status` (als string) resp. Odoo `state`

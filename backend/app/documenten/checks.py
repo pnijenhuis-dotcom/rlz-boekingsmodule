@@ -3,15 +3,18 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from app.documenten.regelsom import (
+    BTW_DOCUMENT_TOLERANTIE,
     REDEN_BTW_PER_REGEL_ONTBREEKT,
     REDEN_GEEN_REGELS,
     REDEN_NETTO_ONTBREEKT,
+    btw_past_bij_document,
     btw_uit_tarief,
+    btw_verschil_document,
     marge_voor,
     toets_regelsom,
     verklarende_percentages,
@@ -380,19 +383,28 @@ def check_btw_past_bij_tarief(
     tarieven: Mapping[uuid.UUID, TariefInfo],
     samengevoegd_n: int = 1,
     btw_plichtig: bool = True,
+    totaal_sluit: bool | None = None,
 ) -> CheckResultaat:
-    """HARDE check (opdracht Peter 18-09, casus Rituals 88-186308: 0 % · NL, Nul mét € 20,24 btw op € 96,36 — 11/11
-    groen, Boeken actief): per regel |btw − netto × percentage| ≤ marge, marge = 1 cent × aantal samengevoegde
-    factuurregels (min 1, max 5; `regelsom.marge_voor`). Vervangt de grijze hint "tarief geeft € … — factuur leidend"
-    (REGELRIJ-UI 25-08 (b), HERZIEN 18-09) volledig. Buiten de marge = ROOD mét twee acties: "Btw in kosten (0 %)"
-    (regel 2: netto := netto + btw, btw := 0 — de niet-aftrekbare btw zit in de kosten) en "Zet N %" (het ene RLZ-tarief
-    dat de factuur-btw binnen de marge verklaart; géén of meerdere kandidaten → alleen de eerste actie). Verlegd/
-    vrijgesteld/buitenland-tarief = verwacht 0,00 (daar staat immers geen btw op de factuur). Een regel zonder tarief,
-    netto of btw-bedrag telt hier niet (verplichte velden/regeltelling vangen dat); een tarief dat niet in de cache
-    staat is niet toetsbaar en wordt benoemd. Lokaal, geen RLZ-call — draait óók in de storings-tak en op het
-    autoboek-pad (rood = niet boeken). `btw_plichtig=False` (22-09): niet van toepassing — dáár toetst
-    `check_btw_niet_plichtig` (btw bestaat niet in die administratie; een tarief-uitkomst "verwacht € 322" zou de
-    mens de verkeerde kant op sturen)."""
+    """Check "Btw-bedrag past bij tarief" (opdracht Peter 18-09, casus Rituals 88-186308; HERZIEN run D 02-10 blok A,
+    besluit Peter 29-09, casus Lusso 260987: factuur-btw 913,27 op netto 4.349,18 — 21 % geeft 913,33, zes cent, en de
+    oude per-regel-marge van 1 ct blokkeerde het boeken: "de btw vermeld op factuur is altijd leidend (altijd, wettelijk
+    bepaald). dan moet er geen blokkade komen" en "als het verschil onder de € 0,10 cent is lekker boeken").
+
+    Sinds 02-10 toetst de check per DOCUMENT: |Σ factuur-btw − Σ tarief-btw| over de getoetste regels
+    (`regelsom.btw_verschil_document`) **< € 0,10 = GROEN zonder melding** (de factuur-btw blijft wat naar RLZ gaat —
+    geen netto-verschuiving, het netto is óók een factuurfeit); **≥ € 0,10 = ORANJE signaal** (ok=True, signaal=True)
+    mét de twee bestaande acties op élke regel die buiten de per-regel-marge valt (1 ct × samengevoegde factuurregels,
+    min 1, max 5; `regelsom.marge_voor`): "Btw in kosten (0 %)" (netto := netto + btw, btw := 0) en "Zet N %" (het ene
+    tarief dat de factuur-btw binnen de marge verklaart; géén of meerdere kandidaten → alleen de eerste actie). **Rood
+    uitsluitend als het factuurtotaal niet sluit** (`totaal_sluit=False`, uit de regeltelling-check — "nooit rood zolang
+    netto + btw = factuurtotaal"); zonder die kennis (None) nooit rood. Het autoboek-pad weigert op het oranje signaal
+    (`boeken.boek_document` → `AutoboekGeweigerdDoorSignaal`), een mens mag door.
+
+    Verlegd/vrijgesteld/buitenland-tarief = verwacht 0,00 (daar staat immers geen btw op de factuur). Een regel zonder
+    tarief, netto of btw-bedrag telt hier niet (verplichte velden/regeltelling vangen dat); een tarief dat niet in de
+    cache staat is niet toetsbaar en wordt benoemd. Lokaal, geen RLZ-call — draait óók in de storings-tak en op het
+    autoboek-pad. `btw_plichtig=False` (22-09): niet van toepassing — dáár toetst `check_btw_niet_plichtig` (btw
+    bestaat niet in die administratie; een tarief-uitkomst "verwacht € 322" zou de mens de verkeerde kant op sturen)."""
     if not btw_plichtig:
         return CheckResultaat(
             NAAM_BTW_TARIEF,
@@ -405,6 +417,8 @@ def check_btw_past_bij_tarief(
     acties: list[CheckActie] = []
     niet_toetsbaar: list[int] = []
     getoetst = 0
+    btw_per_regel: list[Decimal] = []
+    verwacht_per_regel: list[Decimal] = []
     for i, regel in enumerate(regels, start=1):
         if regel.taxrate_id is None or regel.netto_bedrag is None or regel.btw_bedrag is None:
             continue
@@ -416,6 +430,8 @@ def check_btw_past_bij_tarief(
         verwacht = (
             Decimal("0.00") if info.verwacht_nul else btw_uit_tarief(regel.netto_bedrag, info.percentage or Decimal(0))
         )
+        btw_per_regel.append(regel.btw_bedrag)
+        verwacht_per_regel.append(verwacht)
         if abs(regel.btw_bedrag - verwacht) <= marge:
             continue
         pct_tekst = _pct_tekst(Decimal(0) if info.verwacht_nul else info.percentage)
@@ -452,15 +468,6 @@ def check_btw_past_bij_tarief(
                 ]
                 opties.sort(key=lambda kt: (not kt[1].favoriet, kt[1].naam or "", str(kt[0])))
                 acties.append(CheckActie(ACTIE_ZET_TARIEF, f"Zet {_pct_tekst(p)} — regel {i}", i, opties[0][0]))
-    if fouten:
-        return CheckResultaat(
-            NAAM_BTW_TARIEF,
-            False,
-            f"Btw-bedrag past niet bij het tarief (marge {marge_ct} ct): " + "; ".join(fouten)
-            + ". Kies 'Btw in kosten (0 %)' als de btw niet aftrekbaar is (representatie, relatiegeschenken), of zet "
-            "het tarief dat op de factuur staat.",
-            acties=tuple(acties),
-        )
     if niet_toetsbaar and not getoetst:
         return CheckResultaat(
             NAAM_BTW_TARIEF,
@@ -473,8 +480,44 @@ def check_btw_past_bij_tarief(
     extra = ""
     if niet_toetsbaar:
         extra = f"; regel {', '.join(map(str, niet_toetsbaar))} niet toetsbaar (tarief zonder percentage)"
+    verschil = btw_verschil_document(btw_per_regel, verwacht_per_regel)
+    grens = f"€ {BTW_DOCUMENT_TOLERANTIE:.2f}".replace(".", ",")
+    if btw_past_bij_document(verschil):
+        # Run D 02-10 blok A: binnen de document-grens is de factuur-btw leidend — groen, geen melding, geen actie
+        # (ook als één regel buiten de oude per-regel-marge valt: het document als geheel sluit).
+        if verschil == 0:
+            return CheckResultaat(
+                NAAM_BTW_TARIEF,
+                True,
+                f"Btw-bedrag volgt het tarief op {getoetst} regel(s) (marge {marge_ct} ct){extra}",
+            )
+        return CheckResultaat(
+            NAAM_BTW_TARIEF,
+            True,
+            f"Btw-bedrag volgt het tarief op {getoetst} regel(s) — verschil € {abs(verschil)} per document, binnen "
+            f"{grens}: factuur-btw leidend{extra}",
+        )
+    # ≥ € 0,10: oranje signaal mét handelingen; rood uitsluitend als het factuurtotaal niet sluit.
+    kern = (
+        f"Btw-bedrag wijkt € {abs(verschil)} af van het tarief per document (grens {grens}; per regel marge "
+        f"{marge_ct} ct)"
+    )
+    detail = "; ".join(fouten) if fouten else f"verdeeld over {getoetst} regel(s), elk binnen de regelmarge"
+    if totaal_sluit is False:
+        return CheckResultaat(
+            NAAM_BTW_TARIEF,
+            False,
+            f"{kern} én netto + btw sluit niet op het factuurtotaal: {detail}. Kies 'Btw in kosten (0 %)' als de btw "
+            "niet aftrekbaar is (representatie, relatiegeschenken), of zet het tarief dat op de factuur staat.",
+            acties=tuple(acties),
+        )
     return CheckResultaat(
-        NAAM_BTW_TARIEF, True, f"Btw-bedrag volgt het tarief op {getoetst} regel(s) (marge {marge_ct} ct){extra}"
+        NAAM_BTW_TARIEF,
+        True,
+        f"{kern}: {detail}. Kies 'Btw in kosten (0 %)' als de btw niet aftrekbaar is (representatie, "
+        "relatiegeschenken), zet het tarief dat op de factuur staat, of boek met de factuur-btw (leidend).",
+        signaal=True,
+        acties=tuple(acties),
     )
 
 
@@ -893,6 +936,9 @@ def voer_harde_checks_uit(
             )
         ]
     )
+    regeltelling = check_regeltelling(
+        totaalbedrag=totaalbedrag, regels=regels, totaal_excl=totaal_excl, factuur_btw=factuur_btw
+    )
     return CheckRapport(
         (
             check_verplichte_velden(
@@ -905,12 +951,15 @@ def voer_harde_checks_uit(
                 btw_plichtig=btw_plichtig,
                 verdeling_reden=verdeling_reden,
             ),
-            check_regeltelling(
-                totaalbedrag=totaalbedrag, regels=regels, totaal_excl=totaal_excl, factuur_btw=factuur_btw
-            ),
+            regeltelling,
             # 18-09 (Peter, casus Rituals): btw-bedrag volgt het tarief — lokaal, direct ná de regeltelling.
+            # Run D 02-10 blok A: < € 0,10 per document groen, ≥ € 0,10 oranje; rood alleen als het totaal niet sluit.
             check_btw_past_bij_tarief(
-                regels=regels, tarieven=tarieven or {}, samengevoegd_n=samengevoegd_n, btw_plichtig=btw_plichtig
+                regels=regels,
+                tarieven=tarieven or {},
+                samengevoegd_n=samengevoegd_n,
+                btw_plichtig=btw_plichtig,
+                totaal_sluit=regeltelling.ok,
             ),
             *niet_plichtig,
             check_vervaldatum(factuurdatum=factuurdatum, vervaldatum=vervaldatum),

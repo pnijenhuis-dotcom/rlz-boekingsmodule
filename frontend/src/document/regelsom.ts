@@ -102,6 +102,25 @@ export function btwPastBijTarief(netto: number, btw: number, percentage: number,
   return Math.abs(naarCenten(btw) - naarCenten(btwUitTarief(netto, percentage))) <= naarCenten(margeVoor(samengevoegdN))
 }
 
+/**
+ * Run D 02-10 blok A (besluit Peter 29-09, casus Lusso 260987: factuur-btw 913,27 op netto 4.349,18, 21 % geeft 913,33):
+ * de document-grens van de check "Btw-bedrag past bij tarief" — |Σ factuur-btw − Σ tarief-btw| < € 0,10 is groen (factuur-
+ * btw leidend), ≥ € 0,10 oranje mét acties, nooit rood zolang netto + btw = factuurtotaal. Spiegel van
+ * `regelsom.py::BTW_DOCUMENT_TOLERANTIE`; de server blijft de poort.
+ */
+export const BTW_DOCUMENT_TOLERANTIE = 0.1
+
+/** Getekend verschil per document in euro: Σ(factuur-btw − tarief-btw) over de regels, op de cent (spiegel `btw_verschil_document`). */
+export function btwVerschilDocument(regels: ReadonlyArray<{ btw: number; verwacht: number }>): number {
+  const centen = regels.reduce((som, r) => som + (naarCenten(r.btw) - naarCenten(r.verwacht)), 0)
+  return vanCenten(centen)
+}
+
+/** |verschil per document| < € 0,10 (strikt): 0,09 groen, 0,10 oranje (spiegel `btw_past_bij_document`). */
+export function btwPastBijDocument(verschil: number): boolean {
+  return Math.abs(naarCenten(verschil)) < naarCenten(BTW_DOCUMENT_TOLERANTIE)
+}
+
 /** 0 %/geen btw op een regel mét factuur-btw: de niet-aftrekbare btw gaat in de kosten → [netto + btw, 0]. */
 export function zetBtwInKosten(netto: number, btw: number): [number, number] {
   return [vanCenten(naarCenten(netto) + naarCenten(btw)), 0]

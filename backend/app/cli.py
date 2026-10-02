@@ -1712,9 +1712,26 @@ def _auto_accepteer_afrondingen(
     for a, b in zip(afwijkingen, beoordeeld, strict=True):
         if not b.telt_mee:
             continue
-        verschil = reconciliatie.afrondingsverschil(a)
-        if verschil is None:
-            continue
+        # Run D 02-10 blok A: de btw-oorzaak (netto gelijk, RLZ boekt méér voorbelasting, |Δ btw| < 0,10) gaat vóór de
+        # generieke 0,05-regel en schrijft haar eigen audit-actie; "RLZ boekt minder" is hier nooit een acceptatie (eigen
+        # soort `btw_rlz_lager_dan_factuur` in meten).
+        btw_verschil = reconciliatie.btw_afrondingsverschil(a)
+        if btw_verschil is not None:
+            verschil, reden, audit_actie, regel_naam = (
+                btw_verschil,
+                reconciliatie.BTW_AFRONDING_REDEN,
+                reconciliatie.BTW_AFRONDING_AUDIT,
+                "run D 02-10 blok A",
+            )
+        else:
+            verschil = reconciliatie.afrondingsverschil(a)
+            if verschil is None:
+                continue
+            reden, audit_actie, regel_naam = (
+                reconciliatie.AFRONDING_REDEN,
+                "reconciliatie_auto_geaccepteerd",
+                "reconciliatie-nazorg 15-09",
+            )
         try:
             _, is_nieuw = acceptatie_service.auto_accepteer(
                 administratie_id=administratie_id,
@@ -1722,18 +1739,16 @@ def _auto_accepteer_afrondingen(
                 record_id=b.record_id,
                 soort=b.soort,
                 detail=b.detail,
-                reden=reconciliatie.AFRONDING_REDEN,
-                extra={"verschil": str(verschil), "regel": "reconciliatie-nazorg 15-09"},
+                reden=reden,
+                extra={"verschil": str(verschil), "regel": regel_naam},
+                audit_actie=audit_actie,
             )
         except Exception as exc:  # noqa: BLE001 — een mislukte auto-acceptatie laat de afwijking gewoon open staan
-            print(f"    ! automatisch accepteren mislukt ({reconciliatie.AFRONDING_REDEN}): {exc}", file=sys.stderr)
+            print(f"    ! automatisch accepteren mislukt ({reden}): {exc}", file=sys.stderr)
             continue
         if is_nieuw:
             nieuw += 1
-            print(
-                f"    · automatisch geaccepteerd ({reconciliatie.AFRONDING_REDEN}, verschil € {verschil}) "
-                f"[vaf:{b.vingerafdruk}]"
-            )
+            print(f"    · automatisch geaccepteerd ({reden}, verschil € {verschil}) [vaf:{b.vingerafdruk}]")
     if nieuw:
         verzamelaar.auto_geaccepteerd(nieuw)
     return nieuw
@@ -1846,7 +1861,9 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
         )
         for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
             regel = _regel(f"document={a.document_id} rlz_document={a.rlz_document_id}", b)
-            if verzamelaar is None and b.telt_mee and reconciliatie.is_afrondingsverschil(a):
+            if verzamelaar is None and b.telt_mee and reconciliatie.is_btw_afrondingsverschil(a):
+                regel += f" — {reconciliatie.BTW_AFRONDING_REDEN}: wordt in de dagelijkse run automatisch geaccepteerd"
+            elif verzamelaar is None and b.telt_mee and reconciliatie.is_afrondingsverschil(a):
                 regel += f" — {reconciliatie.AFRONDING_REDEN}: wordt in de dagelijkse run automatisch geaccepteerd"
             print(f"    - {regel}")
             _meld(

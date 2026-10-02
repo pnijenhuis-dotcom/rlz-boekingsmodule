@@ -64,9 +64,12 @@ class TestRegelsomFuncties:
 
 
 class TestCheckBtwPastBijTarief:
-    def test_rituals_0_procent_met_20_24_btw_is_rood_met_twee_acties(self) -> None:
+    # Run D 02-10 blok A (besluit Peter 29-09): ≥ € 0,10 per document is ORANJE (ok=True, signaal=True) mét de twee
+    # acties; rood uitsluitend als het factuurtotaal niet sluit (`totaal_sluit=False`). De 18-09-verwachting "rood" is
+    # per 02-10 "oranje" — de acties en teksten zijn ongewijzigd.
+    def test_rituals_0_procent_met_20_24_btw_is_oranje_met_twee_acties(self) -> None:
         r = check_btw_past_bij_tarief(regels=[_regel(NUL, "96.36", "20.24")], tarieven=TARIEVEN)
-        assert r.naam == NAAM_BTW_TARIEF and r.ok is False
+        assert r.naam == NAAM_BTW_TARIEF and r.ok is True and r.signaal is True
         assert "regel 1: 0 % · NL, Nul met btw € 20.24 op netto € 96.36 — verwacht € 0.00" in r.melding
         codes = [(a.code, a.regel, a.taxrate_id) for a in r.acties]
         assert codes == [(ACTIE_BTW_IN_KOSTEN, 1, NUL), (ACTIE_ZET_TARIEF, 1, HOOG)]
@@ -82,11 +85,13 @@ class TestCheckBtwPastBijTarief:
     def test_samengevoegd_6_regels_marge_5_cent(self) -> None:
         regels = [_regel(HOOG, "96.36", "20.21")]
         assert check_btw_past_bij_tarief(regels=regels, tarieven=TARIEVEN, samengevoegd_n=6).ok
-        assert not check_btw_past_bij_tarief(regels=regels, tarieven=TARIEVEN, samengevoegd_n=1).ok
+        # 02-10: drie cent op één regel is per document < € 0,10 → groen, geen signaal (factuur-btw leidend).
+        enkel = check_btw_past_bij_tarief(regels=regels, tarieven=TARIEVEN, samengevoegd_n=1)
+        assert enkel.ok and not enkel.signaal and "verschil € 0.03 per document" in enkel.melding
 
-    def test_21_procent_met_20_10_is_rood_zonder_zet_actie(self) -> None:
+    def test_21_procent_met_20_10_is_oranje_zonder_zet_actie(self) -> None:
         r = check_btw_past_bij_tarief(regels=[_regel(HOOG, "96.36", "20.10")], tarieven=TARIEVEN)
-        assert not r.ok
+        assert r.ok and r.signaal  # Δ 0,14 ≥ 0,10: oranje (02-10), nooit rood zolang het totaal sluit
         # 20,10 past bij géén tarief (21 % = 20,24; 9 % = 8,67) → alleen "btw in kosten".
         assert [a.code for a in r.acties] == [ACTIE_BTW_IN_KOSTEN]
         assert r.acties[0].taxrate_id == NUL  # favoriet-loos: de enige NL-0 %-code
@@ -94,7 +99,8 @@ class TestCheckBtwPastBijTarief:
     def test_verlegd_en_buitenland_verwachten_nul(self) -> None:
         assert check_btw_past_bij_tarief(regels=[_regel(VERLEGD, "100.00", "0.00")], tarieven=TARIEVEN).ok
         assert check_btw_past_bij_tarief(regels=[_regel(EU, "100.00", "0.00")], tarieven=TARIEVEN).ok
-        assert not check_btw_past_bij_tarief(regels=[_regel(VERLEGD, "100.00", "21.00")], tarieven=TARIEVEN).ok
+        verlegd_met_btw = check_btw_past_bij_tarief(regels=[_regel(VERLEGD, "100.00", "21.00")], tarieven=TARIEVEN)
+        assert verlegd_met_btw.ok and verlegd_met_btw.signaal  # 02-10: oranje mét acties, geen blokkade
 
     def test_zet_actie_kiest_favoriet_en_geen_verlegd_of_eu(self) -> None:
         r = check_btw_past_bij_tarief(regels=[_regel(LAAG, "96.36", "20.24")], tarieven=TARIEVEN)

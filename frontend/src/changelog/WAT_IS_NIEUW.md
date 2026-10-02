@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-10-02 — Run D: btw op de factuur is leidend, projecten uit de factuurtekst, afwijzen vanuit elk controlescherm, app 1.3 herstelt zijn opslag
+
+<!-- run-d-02-10 -->
+
+- **Btw op de factuur is leidend — een verschil onder € 0,10 blokkeert het boeken niet meer.** Wijkt het btw-bedrag van de factuur minder dan tien cent af van wat het tarief geeft (bijvoorbeeld € 913,27 waar 21 % € 913,33 geeft), dan is de controle "Btw-bedrag past bij tarief" gewoon groen en gaat de factuur-btw naar Reeleezee. Vanaf tien cent wordt de rij oranje mét de bekende knoppen "Btw in kosten (0 %)" en "Zet N %" — u kunt dan nog steeds boeken; alleen als netto + btw niet op het factuurtotaal sluit blijft de rij rood.
+- **Automatisch boeken** loopt bij zo'n klein verschil gewoon door; bij een oranje btw-rij boekt het systeem niet zelf en legt het zichtbaar vast dat een mens moet kijken.
+- **Reconciliatie:** wijkt het bedrag in Reeleezee minder dan tien cent af doordat Reeleezee de btw per tarief herrekent (netto gelijk) en boekt Reeleezee daarbij méér voorbelasting dan de factuur, dan accepteert het systeem dat automatisch met een eigen audit-spoor; boekt Reeleezee juist mínder voorbelasting, dan ziet u dat als bevinding "in meting" op Inzicht › Reconciliatie — nooit stil.
+
 ## 2026-10-02 — Koppeling Vastly: een bericht dat niet aankomt wordt zeven dagen opnieuw geprobeerd en daarna gemeld
 
 <!-- besluiten-run-a-02-10 -->
@@ -925,7 +933,6 @@
 - **Kill-switch werkt voor toestellen én passkeys.** "Kill-switch" en "Toegang intrekken" blokkeren een toestel per direct, met dezelfde bevestiging als voorheen. De gebruiker kan daarna alleen verder met een nieuwe uitnodiging of herstel-link.
 - **Activatiepagina zonder passkey-uitleg.** Opent een accordeur of veldwerker de uitnodigingslink op een pc, dan ziet hij een QR-code voor zijn telefoon en de tip om anders de activatiecode uit de mail in de app in te voeren. Op een telefoon gaat de link direct door naar de app. Voor kantoormedewerkers blijft de activatie (wachtwoord + tweede factor) precies zoals die was.
 
-
 ## 2026-09-08 — Basis eerst: UBL direct gevuld, lijst = kantoorwerk, duplicaten en verlegd-btw deterministisch
 
 <!-- herstelrun-basis-eerst-08-09 -->
@@ -994,7 +1001,6 @@
 - Accordeur-app: als het aanmaken van een passkey op een iPhone of iPad niet lukt, zegt de app nu wat je kunt doen (iCloud-sleutelhanger aanzetten, toegangscode instellen) in plaats van een technische Apple-melding.
 - Accordeur-app: de melding "Geen verbinding met de server" op het code-slot vertelt nu de oorzaak (geen antwoord binnen 10 seconden, netwerkfout, of een storing bij de server).
 - Accordeur-app: Instellingen › Toegang › Diagnose toont ook de laatste verbindingsfout met tijdstip — handig om aan het kantoor te laten zien; blijft op je toestel.
-
 
 ## 2026-09-07 — Niets blijft stil liggen: automatisering wacht niet op instellingen, controlemail telt mee
 

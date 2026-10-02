@@ -73,6 +73,17 @@
   pad en accordering-staande-goedkeuring blijven op de synchrone `boek_document` (één schrijfroute, geen 202-shortcut);
   de menselijke boekknop gaat via de achtergrond-schrijver (`boek_wachtrij.py`) mét dezelfde poorten vóór `wordt_geboekt`.
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "run-D-alles-in-een" blok A -->
+- **Autoboek-pad en het oranje btw-signaal (besluit Peter 29-09 "btw < € 0,10 nooit blokkeren"; geen migratie; BESLISSINGEN "RUN D 02-10 — BTW < € 0,10, PROJECTMATCH, AFWIJZEN, IC 12 RICHTINGEN, PO STAP-0, NATIVE 1.3 (Peter 02-10)" blok A):**
+  de check "Btw-bedrag past bij tarief" is sinds 02-10 per document < € 0,10 GROEN (autoboek loopt door — Lusso 260987 boekt
+  automatisch mét de factuur-btw 913,27) en ≥ € 0,10 ORANJE (`signaal`, geen blokkade voor een mens). Het automatische pad
+  (`automatisch_geboekt`-markering) boekt nooit op die oranje rij: `boeken.boek_document` werpt `AutoboekGeweigerdDoorSignaal`
+  mét de rijmelding + "mens beoordeelt (btw-verschil ≥ € 0,10 per document)" (`boeken.btw_signaal_rij`), `autoboeken.py` vangt
+  'm als zichtbare weigerreden (audit, zelfde except-tuple als de aangifteperiode-rij van 25-09). Daarmee zijn er nu TWEE
+  oranje rijen die het autoboek-pad in code poorten (aangifteperiode 25-09, btw-verschil 02-10); de overige oranje signalen
+  blijven het bestaande beslispunt. Guard `tests/documenten/test_btw_afronding_run_d.py::TestAutoboekPad`. Volledige regel:
+  `docs/regels/btw.md` alinea "Btw-verschil < € 0,10 nooit blokkeren".
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Automatisch boeken (checks-opsomming, per-leverancier-opt-in, autoboek-kandidaten-motor, automatisering-first) (CLAUDE.md `ed6d176` r. 438–480)

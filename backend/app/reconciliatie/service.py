@@ -190,6 +190,7 @@ def auto_accepteer(
     detail: str,
     reden: str,
     extra: dict | None = None,
+    audit_actie: str = "reconciliatie_auto_geaccepteerd",
 ) -> tuple[uuid.UUID, bool]:
     """Reconciliatie-nazorg 15-09: het SYSTEEM accepteert een afwijking die volgens een deterministische regel geen
     handeling vraagt (nu: `bedrag_wijkt_af` ≤ € 0,05 = btw-cent-afronding, `app/documenten/reconciliatie.py::
@@ -234,7 +235,8 @@ def auto_accepteer(
             module="boekhouding",
             tabel="reconciliatie_acceptatie",
             record_id=acceptatie.id,
-            actie="reconciliatie_auto_geaccepteerd",
+            # Run D 02-10 blok A: de btw-afrondingsregel schrijft haar eigen actie (`btw_afronding_rlz`) — meetbaar apart.
+            actie=audit_actie,
             correlatie_id=uuid.uuid4(),
             nieuwe_waarde={
                 "bron": bron_waarde,

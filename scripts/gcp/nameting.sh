@@ -136,6 +136,7 @@ via_gh_onderdeel() {
     project-bronvolgorde) echo project-bronvolgorde ;;  # 25-09 blok 3: geen CLI-commando — db-lezen project-prefill-herkomst (stil geheugen-pad = 0)
     aangifteperiode) echo aangifteperiode ;;  # 25-09 blok 4: geen CLI-commando — request-log bevestig-/letop-route + db-lezen aangifteperiode-bevestigingen + server_timing checks.aangifte
     crediteur-paneel) echo crediteur-paneel ;;  # 25-09 blok 5: geen CLI-commando — request-log POST/PUT crediteuren + db-lezen crediteur-mutaties
+    btw-afronding) echo btw-afronding ;;  # 02-10 run D blok A: geen CLI-commando — db-lezen btw-afronding (check groen mét verschil, acceptaties btw_afronding_rlz, btw_rlz_lager_dan_factuur) + job-log + request-log boeken
     btw-netto) echo btw-netto ;;  # 25-09 blok 6: geen CLI-commando — db-lezen btw-herrekend aanleiding=netto + request-log PUT boekvoorstel
     tabwissel) echo tabwissel ;;  # 25-09 blok 7: geen CLI-commando — request-log lijstroute/auth-administraties per minuut per client
     lijst-alles) echo lijst-alles ;;  # 25-09 blok 8: geen CLI-commando — request-log groep=alles + db-lezen documenten-open

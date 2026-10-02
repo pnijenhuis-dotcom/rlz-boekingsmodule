@@ -933,6 +933,9 @@ class OdooInkoopPort:
             geboekt=move.get("state") == "posted",
             teruggedraaid=teruggedraaid,
             bedrag=_cent(move.get("amount_total")),
+            # Run D 02-10 blok A: btw/netto van de move (zelfde velden als `_MOVE_VELDEN`); None als Odoo ze niet gaf.
+            btw_bedrag=_cent(move["amount_tax"]) if move.get("amount_tax") is not None else None,
+            netto_bedrag=_cent(move["amount_untaxed"]) if move.get("amount_untaxed") is not None else None,
             boekstuknummer=move.get("name") or None,
             extern_id=str(move.get("id")),
             extern_state=str(move.get("state")) if move.get("state") is not None else None,

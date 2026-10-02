@@ -18,7 +18,7 @@ from app.documenten import aangifteperiode, checks_extern, veldvoorstel_regels, 
 from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
 from app.documenten.boekstand import volgend_volgnummer
 from app.documenten.boekvoorstel import BoekvoorstelData, _laatste_veldvoorstel, haal_boekvoorstel_op, voer_checks_uit
-from app.documenten.checks import CheckRapport
+from app.documenten.checks import NAAM_BTW_TARIEF, CheckRapport
 from app.documenten.models import Boekvoorstel, Document, DocumentStatus, WebhookUitgaand
 from app.documenten.rlz_ids import rlz_herboeking_id  # noqa: F401 — re-export (tests, doorbelasting)
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, _standaard_opslag
@@ -63,6 +63,15 @@ class BoekenGeblokkeerdDoorChecks(BoekenFout):
     def __init__(self, rapport: CheckRapport) -> None:
         self.rapport = rapport
         super().__init__("Boeken geblokkeerd door harde checks")
+
+
+def btw_signaal_rij(rapport: CheckRapport):  # noqa: ANN201 — CheckResultaat | None (lazy import vermeden)
+    """De oranje rij "Btw-bedrag past bij tarief" (run D 02-10 blok A: verschil ≥ € 0,10 per document, totaal sluit),
+    of None. Puur op het rapport — één plek voor het autoboek-pad en tests."""
+    for r in rapport.resultaten:
+        if r.naam == NAAM_BTW_TARIEF and r.ok and r.signaal:
+            return r
+    return None
 
 
 class AutoboekGeweigerdDoorSignaal(BoekenFout):
@@ -534,6 +543,13 @@ def boek_document(
         if aangifte_onbevestigd and (extra_overgang_detail or {}).get(volumerem.AUTOMATISCH_MARKERING):
             raise AutoboekGeweigerdDoorSignaal(
                 rapport, f"oranje signaal — {aangifte_rij.melding} — mens beoordeelt (bewuste keuze vereist)"
+            )
+        # Run D 02-10 blok A (besluit Peter 29-09): btw-verschil ≥ € 0,10 per document is ORANJE (nooit rood zolang het
+        # totaal sluit) — een mens mag door (factuur-btw leidend), het automatische pad weigert zichtbaar mét reden.
+        btw_rij = btw_signaal_rij(rapport)
+        if btw_rij is not None and (extra_overgang_detail or {}).get(volumerem.AUTOMATISCH_MARKERING):
+            raise AutoboekGeweigerdDoorSignaal(
+                rapport, f"oranje signaal — {btw_rij.melding} — mens beoordeelt (btw-verschil ≥ € 0,10 per document)"
             )
 
         with scoped_session(administratie_id, actor_id=actor_id) as session:

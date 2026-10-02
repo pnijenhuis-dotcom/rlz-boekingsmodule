@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { btwPastBijTarief, btwUitTarief, brutoUitNetto, margeVoor, splitsBruto, zetBtwInKosten } from './regelsom'
+import {
+  BTW_DOCUMENT_TOLERANTIE,
+  btwPastBijDocument,
+  btwPastBijTarief,
+  btwUitTarief,
+  btwVerschilDocument,
+  brutoUitNetto,
+  margeVoor,
+  splitsBruto,
+  zetBtwInKosten,
+} from './regelsom'
 
 /** Spiegel van backend/tests/documenten/test_regelsom_btw_tarief.py (opdracht Peter 18-09, casus Rituals). */
 describe('regelsom — btw volgt het tarief (18-09)', () => {
@@ -25,6 +35,27 @@ describe('regelsom — btw volgt het tarief (18-09)', () => {
     expect(btwPastBijTarief(96.36, 20.21, 0.21)).toBe(false)
     expect(btwPastBijTarief(96.36, 20.1, 0.21)).toBe(false)
     expect(btwPastBijTarief(96.36, 20.24, 0)).toBe(false)
+  })
+})
+
+/** Spiegel van backend/tests/documenten/test_btw_afronding_run_d.py (run D 02-10 blok A, besluit Peter 29-09, casus Lusso). */
+describe('regelsom — btw-verschil per document < € 0,10 nooit blokkeren (02-10)', () => {
+  it('grens is tien cent, strikt', () => {
+    expect(BTW_DOCUMENT_TOLERANTIE).toBe(0.1)
+    expect(btwPastBijDocument(0.09)).toBe(true)
+    expect(btwPastBijDocument(-0.09)).toBe(true)
+    expect(btwPastBijDocument(0.1)).toBe(false)
+    expect(btwPastBijDocument(-0.1)).toBe(false)
+  })
+  it('Lusso: factuur-btw 913,27 tegen tarief 913,33 is zes cent → binnen de grens', () => {
+    const verschil = btwVerschilDocument([{ btw: 913.27, verwacht: btwUitTarief(4349.18, 0.21) }])
+    expect(btwUitTarief(4349.18, 0.21)).toBe(913.33)
+    expect(verschil).toBe(-0.06)
+    expect(btwPastBijDocument(verschil)).toBe(true)
+  })
+  it('getekende som: +6 ct en −6 ct heffen elkaar op; Rituals 20,24 op 0 % valt erbuiten', () => {
+    expect(btwVerschilDocument([{ btw: 21.06, verwacht: 21 }, { btw: 20.94, verwacht: 21 }])).toBe(0)
+    expect(btwPastBijDocument(btwVerschilDocument([{ btw: 20.24, verwacht: 0 }]))).toBe(false)
   })
 })
 

@@ -275,6 +275,34 @@
   geweigerd` zolang Vastly bereikbaar is) + `db-lezen webhook-outbox`. Werkt in productie: niet gemeten (aanwezig-pad pas bij een échte
   storing of 4xx).
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "run-D-alles-in-een" blok A -->
+- **Btw-afronding RLZ < 0,10 = automatisch geaccepteerd mét audit `btw_afronding_rlz`; RLZ boekt MINDER = soort
+  `btw_rlz_lager_dan_factuur` in `meten` (besluit Peter 29-09 "onder de € 0,10 lekker boeken … wel dan altijd in ons voordeel";
+  geen migratie; BESLISSINGEN "RUN D 02-10 — BTW < € 0,10, PROJECTMATCH, AFWIJZEN, IC 12 RICHTINGEN, PO STAP-0, NATIVE 1.3 (Peter 02-10)" blok A; VERBREDING van de ≤ € 0,05-regel van 15-09, uitsluitend voor déze oorzaak):** (1) de
+  documenten-reconciliatie leest sinds 02-10 náást het bedrag óók btw en netto van het externe stuk (`ToetsUitkomst.btw_bedrag`/
+  `netto_bedrag`: RLZ `TotalTaxAmount`/`TotalNetAmount` op PurchaseInvoices — api-verkenning: op ManualJournals is dat veld géén
+  btw, op DocumentType 1 wél; Odoo `amount_tax`/`amount_untaxed`) en Σ btw / Σ netto van de module-regels (`_Geboekt.btw_lokaal`/
+  `netto_lokaal`, scalar-subquery's op `boekvoorstel_regel`). (2) **Pure regel** `reconciliatie.btw_afronding_richting`: alle
+  vier bedragen bekend, netto gelijk op de cent (≤ 0,01) én 0 < |Δ btw| < € 0,10 → het verschil is uitsluitend RLZ's btw-
+  herrekening per tarief; `rlz_meer` (RLZ boekt méér voorbelasting dan de factuur = in ons voordeel) → de afwijking blijft
+  `bedrag_wijkt_af` mét context `btw_afronding=rlz_meer` + `btw_lokaal`/`btw_extern` en wordt in de vastgelegde run door het
+  systeem geaccepteerd (`cli._auto_accepteer_afrondingen`: reden "btw-afronding RLZ < 0,10 (netto gelijk, RLZ boekt niet minder
+  voorbelasting)", `extra.regel = run D 02-10 blok A`, **eigen audit-actie `btw_afronding_rlz`** via `service.auto_accepteer(…,
+  audit_actie=…)`, dagteller `auto_geaccepteerd` op het blok, lees-only run = markering "wordt in de dagelijkse run automatisch
+  geaccepteerd"); deze oorzaak gaat vóór de generieke 0,05-regel (die blijft voor verschillen zonder btw-gegevens — afwezig-pad,
+  guard). `rlz_minder` (RLZ boekt MINDER voorbelasting dan de factuur) → **geen acceptatie** maar de bevindingssoort
+  **`btw_rlz_lager_dan_factuur`** (blok `documenten`, `sinds` 02-10, code-default `meten` — regel 2: eerst tellen hoe vaak dit
+  voorkomt vóór er een handeling (storno + herboeken achter de aangiftepoort) aan hangt; nooit stil), detail "eigen=€… rlz=€… btw
+  eigen=€913,27 rlz=€913,21", leesbare tekst "RLZ boekt minder btw dan de factuur" (`teksten._documenten`, doe: geen handeling
+  nodig voor het boeken — factuur-btw leidend; wil je het exact, corrigeer in RLZ; meetfase). Geen btw-oorzaak aantoonbaar
+  (netto verschoven, Δ ≥ 0,10, bedragen ontbreken) = gewoon `bedrag_wijkt_af` (0,05-regel of actie). (3) Meetlat: querybibliotheek
+  `db-lezen btw-afronding --administratie … --param dagen=14` (soorten `check_groen_met_verschil` / `acceptatie_btw_afronding` /
+  `rlz_lager_dan_factuur`), job-log van de échte run op "btw-afronding RLZ", dispatch-onderdeel `btw-afronding` (vier plekken).
+  Guards: `tests/documenten/test_btw_afronding_run_d.py::TestReconciliatiePuur` + `::TestReconciliatieRun` (acceptatie mét audit
+  `btw_afronding_rlz` en zonder `reconciliatie_auto_geaccepteerd`, rlz_minder = bevinding in meten zonder acceptatie, afwezig-pad =
+  regel 15-09, lees-only markeert), `test_soort_stand.py` (registry), `test_auto_acceptatie_afronding.py` ongewijzigd groen. Werkt
+  in productie: niet gemeten (eerste échte run 03-10 06:30; onderdeel `btw-afronding`).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Synthetische bewaking + alerting (CLAUDE.md `ed6d176` r. 632–644)

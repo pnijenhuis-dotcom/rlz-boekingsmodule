@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop, bijlagen-factuur, project-dubbel, webhook-wacht\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop, bijlagen-factuur, project-dubbel, webhook-wacht, btw-afronding\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -790,3 +790,37 @@ def test_onderdeel_vastly_verkoop_alleen_op_verzoek_en_lees_only(tmp_path: Path)
     assert "vastly-verkoop-heraanbieden" in sh.split("ALLOWLIST=", 1)[1].split("\n", 1)[0]
     assert 'vastly-verkoop-heraanbieden) echo vastly-verkoop ;;' in sh
     assert 'if [[ "$CMD" == "vastly-verkoop-heraanbieden" ]]; then' in sh and "alleen mét --dry-run" in sh
+
+
+# --- run D 02-10 blok A: dispatch-onderdeel `btw-afronding` (vier plekken; lees-only; eigen oordeelregel) -------------
+def test_run_d_btw_afronding_onderdeel_alleen_op_verzoek_lees_only_met_eigen_oordeel(tmp_path: Path) -> None:
+    """Run D 02-10 blok A (besluit Peter 29-09 "btw < € 0,10 nooit blokkeren"): het meetrecept (querybibliotheek
+    `btw-afronding` per administratie + job-log "btw-afronding RLZ" + request-log boeken) is een dispatch-onderdeel mét
+    if-tak + options + via_gh_onderdeel + eigen rapport `nameting-btw-afronding-<dd-mm>.txt` — niet in 'alles', geen
+    schrijvend commando."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "btw-afronding" ]]; then' in meet
+    assert 'scripts/gcp/nameting.sh db-lezen btw-afronding --administratie "$ADM" --param dagen=14' in meet
+    assert 'textPayload:"btw-afronding RLZ"' in meet
+    assert 'UIT="verkenning/nameting-btw-afronding-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "btw-afronding"' not in meet, "niet in 'alles'"
+    tak = meet[meet.index('if [[ "$ONDERDEEL" == "btw-afronding" ]]; then') :]
+    tak = tak[: tak.index("\n          fi\n")]
+    assert "gcloud run jobs execute" not in tak and "--uitvoeren" not in tak, "lees-only: geen job-executie/schrijfvlag"
+    assert 'OORDEEL_BRON="verkenning/nameting-btw-afronding-$DATUM.txt"' in meet
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "btw-afronding",
+        {
+            "nameting-btw-afronding-14-09.txt": (
+                "kop\nOordeel: btw-afronding: check groen mét verschil 0,01–0,09 = 2 — JA — exit 0\n"
+            ),
+            "nameting-vgg-replay-14-09.txt": REPLAY,
+        },
+    )
+    assert oordeel.startswith("Oordeel: btw-afronding: check groen"), oordeel
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    assert re.search(r"^\s*" + re.escape("btw-afronding) echo btw-afronding ;;"), sh, flags=re.M)
+    sql = (REPO / "backend" / "app" / "lezen" / "queries" / "btw-afronding.sql").read_text(encoding="utf-8")
+    for woord in ("check_groen_met_verschil", "acceptatie_btw_afronding", "rlz_lager_dan_factuur", "btw_afronding_rlz"):
+        assert woord in sql, woord

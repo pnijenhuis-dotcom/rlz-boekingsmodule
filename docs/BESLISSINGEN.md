@@ -13856,3 +13856,55 @@ vrachtwagen-icoon "transport gepland: ‹tijd› · ‹soort›", lege-dag-tekst
 nieuwe tab; `src/uren` + contrast + accordeurCss 70 groen; `tsc -b` groen. **Werkt in productie: niet gemeten** — klikpunt Peter in de
 uitvoerder-app ná OTA (tab Planning, vrachtwagen-icoon bij een transport, swipe, tik → kaart → "+ Uren"); meetlat zonder klik: request-log
 `GET /uren/uitvoerder/dagplanning` 200 ná de eerste app-start mét de nieuwe bundel.
+
+## RUN D 02-10 — BTW < € 0,10, PROJECTMATCH, AFWIJZEN, IC 12 RICHTINGEN, PO STAP-0, NATIVE 1.3 (Peter 02-10) — opdracht `opdrachten/gedaan/2026-10-02-run-D-alles-in-een-btw-projectmatch-ic-po-stap0-native-1-3.md` (besluit Peter 02-10 20:1x "gooi alles maar in 1 run"); zeven blokken A–G, commit per blok; blok D/E lees-only, blok F bouwt alleen de AAB; rapport `docs/rapporten/2026-10-02-run-d.md`; nameting `opdrachten/inbox/2026-10-03-nameting-run-d.md`
+
+### Blok A — btw-verschil < € 0,10 nooit blokkeren: factuur-btw leidend, oranje ≥ 0,10, reconciliatie `btw_afronding_rlz` (besluit Peter 29-09, casus Lusso 260987)
+
+**Status: GEBOUWD + GETEST 02-10 avond (run D, agent A); geen migratie; werkt in productie: niet gemeten (nameting
+`2026-10-03-nameting-run-d.md`, dispatch-onderdeel `btw-afronding`).** Canonieke tekst: `docs/regels/btw.md` alinea "Btw-verschil
+< € 0,10 nooit blokkeren", `docs/regels/reconciliatie.md` alinea "Btw-afronding RLZ < 0,10", `docs/regels/autoboeken-ai.md` alinea
+"Autoboek-pad en het oranje btw-signaal".
+
+**Aanleiding (Peter 29-09, Kempen Facilities, Lusso 260987):** netto 4.349,18, factuur-btw 913,27; 21 % geeft 913,33 — zes cent, en
+de harde check "Btw-bedrag past bij tarief" (18-09, per-regel-marge 1 ct) blokkeerde het boeken. Peter letterlijk: "de btw vermeld
+op factuur is altijd leidend (altijd, wettelijk bepaald). dan moet er geen blokkade komen" en "als het verschil onder de € 0,10
+cent is lekker boeken en niet te druk om maken (wel dan altijd in ons voordeel uiteraard)".
+
+**Regels (bindend):**
+1. **Check per document:** |Σ factuur-btw − Σ tarief-btw| (`regelsom.btw_verschil_document`, getekend, op de cent) **< € 0,10 =
+   GROEN zonder melding**; **≥ € 0,10 = ORANJE** (`signaal`) mét de twee bestaande acties ("Btw in kosten (0 %)", "Zet N %") op élke
+   regel buiten de per-regel-marge (1 ct × samengevoegde regels, max 5 — ongewijzigd); **rood uitsluitend als netto + btw niet op
+   het factuurtotaal sluit** (`totaal_sluit` uit de regeltelling). HERZIET regel (3) van 18-09 ("harde check, rood = niet boeken").
+   De Rituals-stand (0 % mét 20,24, totaal sluit) is daarmee oranje mét acties, niet geblokkeerd.
+2. **De factuur-btw blijft wat naar RLZ gaat** — geen netto-verschuiving (het netto is óók een factuurfeit); de cent-fix
+   `corrigeer_btw_centen` (15-09) blijft.
+3. **Autoboek-pad:** groen = doorlopen (Lusso boekt automatisch); oranje = `AutoboekGeweigerdDoorSignaal` mét reden
+   "btw-verschil ≥ € 0,10 per document" (`boeken.btw_signaal_rij`), zichtbaar geauditeerd in `autoboeken._weiger`.
+4. **Reconciliatie:** bedragverschil dat uitsluitend RLZ's btw-herrekening per tarief is (netto gelijk, 0 < |Δ btw| < 0,10;
+   `ToetsUitkomst.btw_bedrag/netto_bedrag` uit RLZ `TotalTaxAmount`/`TotalNetAmount` resp. Odoo `amount_tax`/`amount_untaxed`,
+   module Σ regels): RLZ boekt MÉÉR voorbelasting = automatisch geaccepteerd mét **audit `btw_afronding_rlz`** (verbreding van de
+   0,05-regel, alleen voor deze oorzaak, gaat vóór); RLZ boekt MINDER = bevindingssoort **`btw_rlz_lager_dan_factuur`** (blok
+   documenten, `meten`) mét btw-bedragen — nooit stil, geen acceptatie. Zonder btw-gegevens (afwezig-pad) geldt de 0,05-regel.
+5. **Frontend-spiegel** `regelsom.ts::BTW_DOCUMENT_TOLERANTIE`/`btwVerschilDocument`/`btwPastBijDocument`; het scherm toont de
+   oranje rij mét actieknoppen (bestaand sinds 25-09).
+
+**Gebouwd:** `app/documenten/regelsom.py` (`BTW_DOCUMENT_TOLERANTIE`, `btw_verschil_document`, `btw_past_bij_document`),
+`checks.py::check_btw_past_bij_tarief` (+ `totaal_sluit`; `voer_harde_checks_uit` en de storings-tak in `boekvoorstel.py` geven de
+regeltelling-uitkomst mee), `boeken.py` (`btw_signaal_rij` + weigering op het autoboek-pad), `backends/port.py` (`ToetsUitkomst.
+btw_bedrag`/`netto_bedrag`), `backends/rlz_inkoop.py`, `odoo/inkoop.py`, `documenten/reconciliatie.py` (`btw_afronding_richting`,
+`btw_afrondingsverschil`, `_Geboekt.btw_lokaal/netto_lokaal`, soort-keuze in `beoordeel_uitkomst`), `reconciliatie/service.py`
+(`auto_accepteer(audit_actie=…)`), `cli.py` (`_auto_accepteer_afrondingen` + lees-only markering), `reconciliatie/soort_stand.py`
+(`btw_rlz_lager_dan_factuur`, meten, sinds 02-10), `reconciliatie/teksten.py`, `frontend/src/document/regelsom.ts`, querybibliotheek
+`app/lezen/queries/btw-afronding.sql`, nameting-onderdeel `btw-afronding` (nameting.yml vier plekken + nameting.sh).
+
+**Tests:** `tests/documenten/test_btw_afronding_run_d.py` (grens 0,09 groen / 0,10 oranje beide kanten, Lusso groen + autoboek door,
+oranje weigert autoboek + mens boekt, rood alleen zonder sluitend totaal, opheffende regels, verdeeld-over-regels; reconciliatie
+puur: rlz_meer/rlz_minder/afwezig-pad/geen-btw-oorzaak; run: acceptatie mét audit `btw_afronding_rlz` zonder
+`reconciliatie_auto_geaccepteerd`, rlz_minder = bevinding in meten, lees-only markeert), `test_regelsom_btw_tarief.py`
+(18-09 "rood" → "oranje"), `test_btw_niet_plichtig.py` (idem), gouden-set-casus ae (Rituals oranje; Lusso groen), vitest
+`regelsomBtwTarief.test.ts`; `test_nameting_workflow.py::test_run_d_btw_afronding_…`.
+
+**Beslispunten:** (a) de 0,05-regel van 15-09 blijft voor verschillen zonder btw-gegevens — samenvoegen tot één regel ná de
+meting; (b) `btw_rlz_lager_dan_factuur` krijgt pas een handeling (storno + herboeken achter de aangiftepoort) ná de meting.
+**Klikpunten:** geen (Lusso 260987 boekt na deploy gewoon; de nameting bewijst het).

@@ -367,6 +367,21 @@ def _documenten(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
         )
         doe = f"Controleer de wijziging in {sys_}; {_DOE_ACCEPTEER}"
         return _titel(f"Bedrag afwijkt in {sys_}", onderwerp), wat, doe
+    if soort == "btw_rlz_lager_dan_factuur":
+        # Run D 02-10 blok A: verschil < € 0,10 uitsluitend btw (netto gelijk), maar RLZ boekt MINDER voorbelasting dan de
+        # factuur — niet in ons voordeel; meten, nooit stil.
+        btw_l, btw_e = euro(_s(d, "btw_lokaal")), euro(_s(d, "btw_extern"))
+        wat = (
+            f"Wij boekten {lokaal} mét btw {btw_l}; {sys_} herrekende de btw per tarief naar {btw_e} en toont {extern} — "
+            "minder voorbelasting dan de factuur vermeldt (netto gelijk, verschil onder € 0,10)."
+            if lokaal and extern and btw_l and btw_e
+            else f"{sys_} boekt op dit document minder btw dan de factuur vermeldt ({_terugval_wat(tekst)})."
+        )
+        doe = (
+            "Geen handeling nodig voor het boeken (factuur-btw leidend, verschil < € 0,10); wil je de factuur-btw exact "
+            f"in {sys_}: corrigeer het document daar. Meetfase — het systeem telt hoe vaak dit voorkomt."
+        )
+        return _titel(f"{sys_} boekt minder btw dan de factuur", onderwerp), wat, doe
     if soort in ("status_wijkt_af", "status_niet_definitief"):
         st = _status_uit_detail(d)
         return (

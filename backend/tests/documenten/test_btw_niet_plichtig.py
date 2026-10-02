@@ -106,7 +106,9 @@ class TestPureCheck:
         assert "btw-code" not in check_verplichte_velden(regels=regels, btw_plichtig=False, **kw).melding
         r = check_btw_past_bij_tarief(regels=[_regel(HOOG, "1535.13", "0")], tarieven=TARIEVEN, btw_plichtig=False)
         assert r.ok and r.naam == NAAM_BTW_TARIEF and NAAM_BTW_NIET_PLICHTIG in r.melding
-        assert not check_btw_past_bij_tarief(regels=[_regel(HOOG, "1535.13", "0")], tarieven=TARIEVEN).ok
+        # 02-10 (run D blok A): in een btw-plichtige administratie is 0 btw op 21 % een ORANJE signaal (geen blokkade).
+        plichtig = check_btw_past_bij_tarief(regels=[_regel(HOOG, "1535.13", "0")], tarieven=TARIEVEN)
+        assert plichtig.ok and plichtig.signaal
 
     def test_voer_harde_checks_uit_voegt_de_rij_alleen_toe_als_niet_plichtig(self) -> None:
         from app.documenten.checks import CheckResultaat

@@ -97,6 +97,11 @@ REGISTRY: dict[str, SoortDefinitie] = {
         # blok 1 bundelrun 24-09 (Vastly-PDF-tweelingen 23-09): losse inkoopfactuur-PDF die de tweeling is van een
         # UBL-verkoopfactuur uit dezelfde e-mail/dag — actie "Bundelen" op de rij; start in meten.
         SoortDefinitie(soort="ubl_pdf_ongebundeld", blok="documenten", sinds=date(2026, 9, 24), default=METEN),
+        # Run D 02-10 blok A (besluit Peter 29-09 "onder € 0,10 lekker boeken … wel altijd in ons voordeel"): het bedrag
+        # in RLZ wijkt < € 0,10 af door RLZ's btw-herrekening per tarief, maar RLZ boekt MINDER voorbelasting dan de
+        # factuur — niet in ons voordeel, dus geen automatische acceptatie maar een zichtbare bevinding mét bedrag; start
+        # in meten (regel 2): meten hoe vaak dit voorkomt vóór er een handeling aan hangt (storno + herboeken is zwaar).
+        SoortDefinitie(soort="btw_rlz_lager_dan_factuur", blok="documenten", sinds=date(2026, 10, 2), default=METEN),
         # bank
         _oud("document_ontbreekt_in_rlz", "bank"),
         _oud("boeking_teruggedraaid_in_rlz", "bank"),

@@ -330,6 +330,38 @@
   `tests/documenten/test_btw_herrekend_netto.py`, gouden-set-casus ae (`test_netto_gewijzigd_btw_herrekend_geeft_tijdlijnregel_met_aanleiding_netto`).
   Werkt in productie: niet gemeten.
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "run-D-alles-in-een" blok A -->
+- **Btw-verschil < € 0,10 nooit blokkeren — de factuur-btw is leidend (besluit Peter 29-09, casus Lusso 260987 Kempen
+  Facilities: netto 4.349,18, factuur-btw 913,27, 21 % geeft 913,33 — zes cent, en de per-regel-marge van 18-09 (1 ct) zette
+  de check "Btw-bedrag past bij tarief" op ROOD; Peter letterlijk: "de btw vermeld op factuur is altijd leidend (altijd,
+  wettelijk bepaald). dan moet er geen blokkade komen" en "als het verschil onder de € 0,10 cent is lekker boeken en niet te
+  druk om maken (wel dan altijd in ons voordeel uiteraard)"; geen migratie; BESLISSINGEN "RUN D 02-10 — BTW < € 0,10, PROJECTMATCH, AFWIJZEN, IC 12 RICHTINGEN, PO STAP-0, NATIVE 1.3 (Peter 02-10)" blok A; HERZIET regel (3) van 18-09
+  (harde check, per regel) en de 25-09-vorm waar het netto mee zou schuiven):** (1) **De check toetst per DOCUMENT:**
+  `regelsom.btw_verschil_document` = Σ(factuur-btw − tarief-btw) over de getoetste regels, op de cent, getekend (+6 ct en −6 ct
+  heffen elkaar op); `regelsom.BTW_DOCUMENT_TOLERANTIE` = € 0,10, strikt: |verschil| < 0,10 = **GROEN zonder melding**
+  (tekst "verschil € 0,06 per document, binnen € 0,10: factuur-btw leidend", geen actie), ≥ 0,10 = **ORANJE signaal**
+  (`ok=True, signaal=True`) mét de twee bestaande acties op élke regel buiten de per-regel-marge (1 ct × samengevoegde
+  factuurregels, min 1 max 5 — ongewijzigd): "Btw in kosten (0 %)" en "Zet N %"; **rood uitsluitend als netto + btw niet op
+  het factuurtotaal sluit** (`totaal_sluit=False`, de regeltelling-uitkomst reist mee vanuit `voer_harde_checks_uit` en de
+  storings-tak van `boekvoorstel.py`) — "nooit rood zolang netto + btw = factuurtotaal". De Rituals-stand van 18-09 (0 % mét
+  20,24 btw, totaal sluit) is daarmee oranje mét dezelfde twee acties, niet geblokkeerd. (2) **De factuur-btw blijft wat naar
+  RLZ gaat:** geen netto-verschuiving (het netto is óók een factuurfeit), de regels gaan ongewijzigd in de PUT; de cent-fix
+  `corrigeer_btw_centen` (15-09, ≤ 5 ct in de laatste btw-regel zodat het RLZ-documenttotaal = factuurtotaal) blijft. RLZ
+  herrekent élke regel-`TaxAmount` toch zelf per tarief (memory 24-09) — vandaar regel (4). (3) **Autoboek-pad:** groen =
+  doorlopen; oranje = `boeken.AutoboekGeweigerdDoorSignaal` ("oranje signaal — … — mens beoordeelt (btw-verschil ≥ € 0,10 per
+  document)") via `boeken.btw_signaal_rij(rapport)`, geauditeerd als zichtbare weigerreden in `autoboeken._weiger` (bestaand
+  patroon van de aangifteperiode-rij 25-09); een mens mag door. (4) **Reconciliatie** — zie `reconciliatie.md` alinea
+  "Btw-afronding RLZ < 0,10": `btw_afronding_rlz` (acceptatie) en `btw_rlz_lager_dan_factuur` (meten). (5) **Frontend-spiegel**
+  `document/regelsom.ts::BTW_DOCUMENT_TOLERANTIE`/`btwVerschilDocument`/`btwPastBijDocument` (het scherm rekent voor, de
+  server blijft de poort; de check-rij toont "Signaal" mét de actieknoppen zoals élke oranje rij sinds 25-09). Meetlat:
+  querybibliotheek `db-lezen btw-afronding --administratie … --param dagen=14` (check_groen_met_verschil = geboekte documenten
+  mét Σ btw 0,01–0,09 naast Σ netto × tarief; acceptatie_btw_afronding; rlz_lager_dan_factuur) + job-log "btw-afronding RLZ" +
+  request-log boeken; dispatch-onderdeel `btw-afronding`. Guards: `tests/documenten/test_btw_afronding_run_d.py` (grens 0,09/
+  0,10 beide kanten, Lusso groen + autoboek door, oranje weigert autoboek + mens boekt, rood alleen zonder sluitend totaal,
+  opheffende regels), `test_regelsom_btw_tarief.py` (18-09-verwachtingen "rood" → "oranje"), gouden-set-casus **ae**
+  (`test_rituals_stand_0_procent_met_btw_is_oranje…`, `test_lusso_zes_cent_verschil_is_groen_zonder_melding`), vitest
+  `regelsomBtwTarief.test.ts`. Werkt in productie: niet gemeten (nameting `2026-10-03-nameting-run-d.md`, onderdeel `btw-afronding`).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Btw-tarief buitenland (CLAUDE.md `ed6d176` r. 354–360)

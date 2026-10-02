@@ -39,7 +39,7 @@ from app.backends.port import Backend, InkoopPort, ToetsMislukt, ToetsUitkomst
 from app.backends.registry import inkoop_port_voor
 from app.db.models import Administratie
 from app.db.session import scoped_session
-from app.documenten.models import Boekvoorstel, Document, DocumentStatus
+from app.documenten.models import Boekvoorstel, BoekvoorstelRegel, Document, DocumentStatus
 from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
 from app.rlz.client import RlzClient
 from app.rlz.credentials import (
@@ -62,6 +62,21 @@ _ROND_TOLERANTIE = Decimal("0.01")
 #: de acceptatie gebeurt in het reconciliatie-alles-blok (`app/cli.py::_reconciliatie`).
 AFRONDING_TOLERANTIE = Decimal("0.05")
 AFRONDING_REDEN = "afronding ≤ 0,05"
+
+#: Run D 02-10 blok A (besluit Peter 29-09 "btw op de factuur is leidend … onder € 0,10 lekker boeken, wel altijd in ons
+#: voordeel"): een bedragverschil dat UITSLUITEND uit RLZ's btw-herrekening per tarief komt (netto gelijk op de cent,
+#: |Δ btw| < € 0,10 — RLZ herrekent élke regel-`TaxAmount` zelf, memory "RLZ herrekent regel-TaxAmount") is geen bevinding
+#: maar een automatische acceptatie mét eigen audit-actie `btw_afronding_rlz` (verbreding van de 0,05-regel, alleen voor
+#: déze oorzaak). "In ons voordeel": boekt RLZ MÉÉR voorbelasting dan de factuur → accepteren; boekt RLZ MINDER → geen
+#: acceptatie maar de bevindingssoort `btw_rlz_lager_dan_factuur` (stand `meten`) mét het bedrag — nooit stil.
+BTW_AFRONDING_TOLERANTIE = Decimal("0.10")
+BTW_AFRONDING_REDEN = "btw-afronding RLZ < 0,10 (netto gelijk, RLZ boekt niet minder voorbelasting)"
+BTW_AFRONDING_AUDIT = "btw_afronding_rlz"
+SOORT_BTW_RLZ_LAGER = "btw_rlz_lager_dan_factuur"
+#: context-sleutel + waarden op een afwijking waarvan het bedragverschil uitsluitend btw is
+BTW_AFRONDING_SLEUTEL = "btw_afronding"
+BTW_AFRONDING_RLZ_MEER = "rlz_meer"
+BTW_AFRONDING_RLZ_MINDER = "rlz_minder"
 
 #: Soorten die "het externe document is er niet meer" betekenen — de zwaarste categorie én de enige waarop de
 #: actie "Opnieuw boeken (document verdwenen)" bestaat. Per backend een eigen naam (contract A↔A8 punt 2).
@@ -145,6 +160,9 @@ class _Geboekt:
     leverancier_naam: str | None
     #: er bestaat een `odoo_document_koppeling` (soort boeking) voor déze boek_cyclus → het document is in Odoo geboekt
     heeft_odoo_koppeling: bool = False
+    #: Run D 02-10 blok A: Σ btw / Σ netto van de module-regels (boekvoorstel_regel) — voor de btw-afrondingsregel.
+    btw_lokaal: Decimal | None = None
+    netto_lokaal: Decimal | None = None
 
 
 def is_rlz_verleden(doc: _Geboekt) -> bool:
@@ -165,6 +183,18 @@ def _geboekte_documenten(administratie_id: uuid.UUID) -> list[_Geboekt]:
         )
         .label("heeft_odoo_koppeling")
     )
+    btw_som = (
+        select(func.sum(BoekvoorstelRegel.btw_bedrag))
+        .where(BoekvoorstelRegel.document_id == Document.id)
+        .scalar_subquery()
+        .label("btw_lokaal")
+    )
+    netto_som = (
+        select(func.sum(BoekvoorstelRegel.netto_bedrag))
+        .where(BoekvoorstelRegel.document_id == Document.id)
+        .scalar_subquery()
+        .label("netto_lokaal")
+    )
     with scoped_session(administratie_id) as session:
         rows = session.execute(
             select(
@@ -175,6 +205,8 @@ def _geboekte_documenten(administratie_id: uuid.UUID) -> list[_Geboekt]:
                 Boekvoorstel.referentie,
                 VendorCache.naam,
                 in_odoo,
+                btw_som,
+                netto_som,
             )
             .join(Boekvoorstel, Boekvoorstel.document_id == Document.id)
             .join(
@@ -193,6 +225,8 @@ def _geboekte_documenten(administratie_id: uuid.UUID) -> list[_Geboekt]:
                 referentie=r[4],
                 leverancier_naam=r[5],
                 heeft_odoo_koppeling=bool(r[6]),
+                btw_lokaal=r[7],
+                netto_lokaal=r[8],
             )
             for r in rows
         ]
@@ -263,7 +297,30 @@ def beoordeel_uitkomst(
         and uitkomst.bedrag is not None
         and abs(uitkomst.bedrag - doc.totaalbedrag) > _ROND_TOLERANTIE
     ):
-        uit.append(afwijking("bedrag_wijkt_af", f"eigen=€{doc.totaalbedrag} {pakket}=€{uitkomst.bedrag}"))
+        detail = f"eigen=€{doc.totaalbedrag} {pakket}=€{uitkomst.bedrag}"
+        richting = btw_afronding_richting(
+            btw_lokaal=doc.btw_lokaal,
+            btw_extern=uitkomst.btw_bedrag,
+            netto_lokaal=doc.netto_lokaal,
+            netto_extern=uitkomst.netto_bedrag,
+        )
+        if richting is not None:
+            # Run D 02-10 blok A: het verschil is uitsluitend btw (netto gelijk, |Δ btw| < 0,10) — de context draagt de
+            # richting én de btw-bedragen; "RLZ boekt minder voorbelasting" is een eigen soort (meten), nooit stil.
+            ctx[BTW_AFRONDING_SLEUTEL] = richting
+            ctx["btw_lokaal"] = _str(doc.btw_lokaal)
+            ctx["btw_extern"] = _str(uitkomst.btw_bedrag)
+            if richting == BTW_AFRONDING_RLZ_MINDER:
+                uit.append(
+                    afwijking(
+                        SOORT_BTW_RLZ_LAGER,
+                        f"{detail} btw eigen=€{doc.btw_lokaal} {pakket}=€{uitkomst.btw_bedrag}",
+                    )
+                )
+            else:
+                uit.append(afwijking("bedrag_wijkt_af", detail))
+        else:
+            uit.append(afwijking("bedrag_wijkt_af", detail))
     if uitkomst.boekstuknummer != doc.rlz_boekstuknummer:
         uit.append(
             afwijking(
@@ -293,6 +350,51 @@ def afrondingsverschil(afwijking: ReconciliatieAfwijking) -> Decimal | None:
 
 def is_afrondingsverschil(afwijking: ReconciliatieAfwijking) -> bool:
     return afrondingsverschil(afwijking) is not None
+
+
+def btw_afronding_richting(
+    *,
+    btw_lokaal: Decimal | None,
+    btw_extern: Decimal | None,
+    netto_lokaal: Decimal | None,
+    netto_extern: Decimal | None,
+) -> str | None:
+    """Puur (run D 02-10 blok A): is een bedragverschil uitsluitend RLZ's btw-herrekening? Vereist alle vier de bedragen,
+    netto gelijk op de cent (≤ 0,01) en 0 < |Δ btw| < `BTW_AFRONDING_TOLERANTIE`. → `rlz_meer` (RLZ boekt méér
+    voorbelasting dan de factuur: in ons voordeel, accepteren) | `rlz_minder` (RLZ boekt minder: soort
+    `btw_rlz_lager_dan_factuur`, meten) | None (geen btw-oorzaak aantoonbaar — fail-closed: de 0,05-regel beslist)."""
+    if btw_lokaal is None or btw_extern is None or netto_lokaal is None or netto_extern is None:
+        return None
+    try:
+        if abs(Decimal(netto_extern) - Decimal(netto_lokaal)) > _ROND_TOLERANTIE:
+            return None
+        delta = Decimal(btw_extern) - Decimal(btw_lokaal)
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if delta == 0 or abs(delta) >= BTW_AFRONDING_TOLERANTIE:
+        return None
+    return BTW_AFRONDING_RLZ_MEER if delta > 0 else BTW_AFRONDING_RLZ_MINDER
+
+
+def btw_afrondingsverschil(afwijking: ReconciliatieAfwijking) -> Decimal | None:
+    """Puur: het absolute btw-verschil van een `bedrag_wijkt_af` waarvan de context zegt dat het uitsluitend btw is én RLZ
+    méér voorbelasting boekt (`btw_afronding = rlz_meer`), anders None. Leest de context-btw-bedragen; onleesbaar =
+    None (fail-closed: dan blijft het een gewone afwijking resp. de 0,05-regel)."""
+    if afwijking.soort != "bedrag_wijkt_af" or afwijking.context.get(BTW_AFRONDING_SLEUTEL) != BTW_AFRONDING_RLZ_MEER:
+        return None
+    try:
+        lokaal = Decimal(str(afwijking.context.get("btw_lokaal")))
+        extern = Decimal(str(afwijking.context.get("btw_extern")))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if not lokaal.is_finite() or not extern.is_finite():
+        return None
+    verschil = abs(extern - lokaal)
+    return verschil if 0 < verschil < BTW_AFRONDING_TOLERANTIE else None
+
+
+def is_btw_afrondingsverschil(afwijking: ReconciliatieAfwijking) -> bool:
+    return btw_afrondingsverschil(afwijking) is not None
 
 
 def _toets_document(

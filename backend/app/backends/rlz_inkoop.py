@@ -347,6 +347,10 @@ class RlzInkoopPort:
             geboekt=status in _RLZ_GEBOEKT,
             teruggedraaid=False,
             bedrag=_als_decimal(invoice.get("BaseInvoiceAmount")),
+            # Run D 02-10 blok A: btw/netto van het RLZ-stuk (DocumentType 1 — api-verkenning: `TotalTaxAmount` is op
+            # PurchaseInvoices wél een btw-veld, anders dan op ManualJournals).
+            btw_bedrag=_als_decimal(invoice.get("TotalTaxAmount")),
+            netto_bedrag=_als_decimal(invoice.get("TotalNetAmount")),
             boekstuknummer=invoice.get("ReceiptNumber"),
             extern_id=str(rlz_document_id),
             extern_state=None if status is None else str(status),

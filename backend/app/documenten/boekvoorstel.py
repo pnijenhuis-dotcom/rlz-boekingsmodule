@@ -2600,6 +2600,12 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
         if crediteur_niet_gekoppeld
         else check_iban_wissel(factuur_iban=factuur_iban, vertrouwde_ibans=vertrouwd)
     )
+    regeltelling = check_regeltelling(
+        totaalbedrag=voorstel.totaalbedrag,
+        regels=regels,
+        totaal_excl=gelezen_totalen[0],
+        factuur_btw=gelezen_totalen[1],
+    )
     return CheckRapport(
         (
             check_verplichte_velden(
@@ -2616,15 +2622,15 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
             check_betaalstatus_declaraties(kanaal=voorstel.intake_kanaal, betaalstatus=voorstel.betaalstatus),
             _projectverdeling_check(voorstel, project_verplicht=project_verplicht),
             *([pa] if (pa := _project_afgesloten_check(administratie_id=administratie_id, voorstel=voorstel)) else []),
-            check_regeltelling(
-                totaalbedrag=voorstel.totaalbedrag,
-                regels=regels,
-                totaal_excl=gelezen_totalen[0],
-                factuur_btw=gelezen_totalen[1],
-            ),
-            # 18-09: btw-bedrag volgt het tarief — lokaal, dus óók in de storings-tak.
+            regeltelling,
+            # 18-09: btw-bedrag volgt het tarief — lokaal, dus óók in de storings-tak (02-10: < € 0,10 groen, ≥ oranje,
+            # rood alleen als het totaal niet sluit).
             check_btw_past_bij_tarief(
-                regels=regels, tarieven=tarieven, samengevoegd_n=samengevoegd_n, btw_plichtig=btw_plichtig
+                regels=regels,
+                tarieven=tarieven,
+                samengevoegd_n=samengevoegd_n,
+                btw_plichtig=btw_plichtig,
+                totaal_sluit=regeltelling.ok,
             ),
             # 22-09: niet-btw-plichtige administratie — lokaal, dus óók in de storings-tak.
             *(

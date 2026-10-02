@@ -214,6 +214,27 @@ def btw_past_bij_tarief(netto: Decimal, btw: Decimal, percentage: Decimal, *, sa
     return abs(btw - btw_uit_tarief(netto, percentage)) <= marge_voor(samengevoegd_n)
 
 
+#: Run D 02-10 blok A (besluit Peter 29-09, casus Lusso 260987: factuur-btw 913,27 op netto 4.349,18, tarief geeft
+#: 913,33): "de btw vermeld op factuur is altijd leidend (wettelijk bepaald) … onder de € 0,10 lekker boeken". De
+#: document-grens: |Σ factuur-btw − Σ tarief-btw| over álle getoetste regels < € 0,10 = GROEN zonder melding; ≥ € 0,10 =
+#: ORANJE mét acties, nooit rood zolang netto + btw = factuurtotaal (de regeltelling blijft dé poort op het totaal).
+#: Strikt kleiner dan: 0,09 groen, 0,10 oranje. Frontend-spiegel: `document/regelsom.ts::BTW_DOCUMENT_TOLERANTIE`.
+BTW_DOCUMENT_TOLERANTIE = Decimal("0.10")
+
+
+def btw_verschil_document(btw: list[Decimal], verwacht: list[Decimal]) -> Decimal:
+    """Getekend verschil per document: Σ(factuur-btw − tarief-btw) over de getoetste regels (een +6 ct en een −6 ct
+    heffen elkaar op — het document als geheel wijkt dan niet af), op de cent."""
+    if len(btw) != len(verwacht):
+        raise ValueError("btw en verwacht moeten per regel gepaard zijn (zelfde lengte)")
+    return _cent(sum((b - v for b, v in zip(btw, verwacht, strict=True)), Decimal(0)))
+
+
+def btw_past_bij_document(verschil: Decimal) -> bool:
+    """|verschil per document| < € 0,10 (strikt) — de factuur-btw is leidend, het verschil is RLZ's/onze afronding."""
+    return abs(verschil) < BTW_DOCUMENT_TOLERANTIE
+
+
 def zet_btw_in_kosten(netto: Decimal, btw: Decimal) -> tuple[Decimal, Decimal]:
     """0 %/geen btw op een regel mét factuur-btw: de niet-aftrekbare btw gaat in de kosten → (netto + btw, 0,00)."""
     return _cent(netto + btw), Decimal("0.00")

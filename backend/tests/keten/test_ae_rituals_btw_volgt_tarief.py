@@ -148,16 +148,20 @@ class TestBtwVolgtHetTarief:
         opnieuw = keten.open_controlescherm(rituals)
         assert opnieuw["regels"][0]["btw_in_kosten"] is True
 
-    def test_rituals_stand_0_procent_met_btw_is_rood_met_twee_acties_en_actie_maakt_groen(
+    def test_rituals_stand_0_procent_met_btw_is_oranje_met_twee_acties_en_actie_maakt_groen(
         self, keten: Keten, rituals: uuid.UUID
     ) -> None:
+        """Run D 02-10 blok A (besluit Peter 29-09 "btw op de factuur is leidend … geen blokkade"): de stand van het
+        screenshot (Δ 20,24 ≥ € 0,10) is sinds 02-10 een ORANJE signaal mét dezelfde twee acties — niet geblokkeerd
+        zolang netto + btw op het factuurtotaal sluit (96,36 + 20,24 = 116,60); het autoboek-pad weigert erop."""
         dto = keten.open_controlescherm(rituals)
         regel = dict(dto["regels"][0])
         # De stand van het screenshot: 0 % · NL, Nul mét netto 96,36 en btw 20,24 (mens zette 0 % zonder herrekening).
         regel.update({"taxrate_id": str(TAXRATE_NUL), "netto_bedrag": "96.36", "btw_bedrag": "20.24"})
         uit = _put(keten, rituals, dto, regel)
         check = _check(uit["checks"], NAAM_BTW_TARIEF)
-        assert check["ok"] is False
+        assert check["ok"] is True and check["signaal"] is True
+        assert "wijkt € 20.24 af van het tarief per document (grens € 0,10" in check["melding"]
         assert "regel 1: 0 % · NL, Nul tarief met btw € 20.24 op netto € 96.36 — verwacht € 0.00" in check["melding"]
         acties = {a["code"]: a for a in check["acties"]}
         assert set(acties) == {ACTIE_BTW_IN_KOSTEN, ACTIE_ZET_TARIEF}
@@ -167,7 +171,7 @@ class TestBtwVolgtHetTarief:
         assert (
             acties[ACTIE_ZET_TARIEF]["taxrate_id"] == str(TAXRATE_HOOG) and "21 %" in acties[ACTIE_ZET_TARIEF]["label"]
         )
-        assert uit["checks"]["geblokkeerd"] is True
+        assert NAAM_BTW_TARIEF not in {r["naam"] for r in uit["checks"]["resultaten"] if not r["ok"]}
         # Actie "Btw in kosten (0 %)" toegepast: netto 116,60, btw 0,00 → groen, en de regeltelling sluit.
         regel.update({"netto_bedrag": "116.60", "btw_bedrag": "0.00"})
         uit = _put(keten, rituals, uit["boekvoorstel"], regel)
@@ -177,6 +181,22 @@ class TestBtwVolgtHetTarief:
         regel.update({"taxrate_id": str(TAXRATE_HOOG), "netto_bedrag": "96.36", "btw_bedrag": "20.24"})
         uit = _put(keten, rituals, uit["boekvoorstel"], regel)
         assert _check(uit["checks"], NAAM_BTW_TARIEF)["ok"] is True
+
+    def test_lusso_zes_cent_verschil_is_groen_zonder_melding(self, keten: Keten, rituals: uuid.UUID) -> None:
+        """Run D 02-10 blok A, casus Lusso 260987 (Kempen Facilities 29-09): factuur-btw 913,27 op netto 4.349,18 terwijl
+        21 % 913,33 geeft — zes cent, < € 0,10 per document → groen, geen actie; de factuur-btw blijft wat naar RLZ
+        gaat (geen netto-verschuiving)."""
+        dto = keten.open_controlescherm(rituals)
+        regel = dict(dto["regels"][0])
+        regel.update({"taxrate_id": str(TAXRATE_HOOG), "netto_bedrag": "4349.18", "btw_bedrag": "913.27"})
+        uit = _put(keten, rituals, {**dto, "totaalbedrag": "5262.45"}, regel)
+        check = _check(uit["checks"], NAAM_BTW_TARIEF)
+        assert check["ok"] is True and check["signaal"] is False and check["acties"] == []
+        assert "verschil € 0.06 per document" in check["melding"] and "factuur-btw leidend" in check["melding"]
+        assert _check(uit["checks"], "Regeltelling vs totaal")["ok"] is True
+        assert NAAM_BTW_TARIEF not in {r["naam"] for r in uit["checks"]["resultaten"] if not r["ok"]}
+        r0 = uit["boekvoorstel"]["regels"][0]
+        assert (r0["netto_bedrag"], r0["btw_bedrag"]) == ("4349.18", "913.27")
 
     def test_netto_gewijzigd_btw_herrekend_geeft_tijdlijnregel_met_aanleiding_netto(
         self, keten: Keten, rituals: uuid.UUID
