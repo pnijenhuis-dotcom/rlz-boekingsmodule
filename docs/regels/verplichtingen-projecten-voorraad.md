@@ -448,6 +448,20 @@
   `tellers.projecten`) — een teller die niet meebeweegt leest als "filtert niet". Guards: vitest `ProjectenKantoorbreedScreen.test.tsx`
   ("punt 13" ×2), `ProjectenScreens.test.tsx` (zoekveld ×2); backend ongewijzigd (`tests/projecten/test_kantoorbreed.py` dekt `q`).
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "besluiten-run-a-verwerken-409-cadans-contract-dubbele-projecten" (capture-at-acceptance) -->
+- **Besluit samenvoegregel dubbele projectnummers (02-10 avond; Peter 17:1x "Ik volg jouw advies" op het run-A-beslispunt 11; geen code,
+  geen migratie; BESLISSINGEN "RUN A 02-10 — BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 11 alinea "BESLIST 02-10"):**
+  voor de vier dubbele nummers van Universal Steigerbouw (26149, 26053, 26064, 26084) geldt de standaardregel **"oudste project mét
+  boekingen blijft"** — exact de blijver-keuze van `project-dubbel-samenvoegen` (leeftijd = module-audit → RLZ `BeginDate` → onbekend;
+  gelijk → meeste koppelingen → via de module aangemaakt → langste naam → kleinste id); geen keuze per nummer door een mens vooraf. Peters
+  "ja" voor de échte run is VOORAF gegeven, ONDER VOORWAARDE dat de dry-run van 03-10 per nummer eenduidig is: precies twee kandidaten, 0
+  rijen "blijven staan (mens)" (geen conflict in koppelingen), archief "zou afsluiten", geen fout. Werkwijze = het terminalbestand
+  `opdrachten/terminal/2026-10-03-project-dubbel-samenvoegen.md` (stap 0 job-image → stap 1 dry-run per nummer, lees-only → stap 2
+  `--uitvoeren --actor <Peter>` per eenduidig nummer als job-executie op de gedeployde image → stap 3 nameting `project-dubbel`); Cowork leest
+  stap 1 en geeft stap 2 per nummer vrij, een niet-eenduidig nummer gaat terug naar Peter terwijl de andere doorlopen. Een blijver mét
+  "Afgesloten …"-naam (Universals afsluitmarkering, 19-09) is geen stopreden maar wordt gemeld. RLZ-factuurregels op een verliezer hangen
+  nooit om (herboeken = mens, 02-10 beslispunt b); verwijderen gebeurt nooit — de verliezer gaat op afgesloten via de 0160-flow.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)
