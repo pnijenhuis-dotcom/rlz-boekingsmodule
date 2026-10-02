@@ -26,8 +26,10 @@ from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload, v
 from app.documenten.webhook_afleveraar import (
     NONCE_HEADER,
     SIGNATURE_HEADER,
+    STORING_CADANS,
     TIMESTAMP_HEADER,
     herstel_dead_letters,
+    storing_cumulatief,
     verwerk_openstaande_webhooks,
 )
 
@@ -240,8 +242,9 @@ class TestHmacVerificatieDoorOntvanger:
         admin_engine: Engine,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """De mock-ontvanger verifieert écht met het gedeelde secret: tekenen wij met een ander
-        secret, dan is het een 401 en blijft de rij (met retry) openstaand."""
+        """De mock-ontvanger verifieert écht met het gedeelde secret: tekenen wij met een ander secret, dan is het
+        een 401. Sinds 02-10 avond (besluit Peter, punt 17a) is een 4xx ≠ 409/429 een configuratie-/payloadfout:
+        herhalen geeft hetzelfde antwoord → DIRECT zichtbaar `mislukt` (was: openstaand mét retry)."""
         monkeypatch.setattr(settings, "webhook_hmac_secret", "een-ander-secret")
         rij_id = _maak_outbox_rij(
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag
@@ -250,12 +253,13 @@ class TestHmacVerificatieDoorOntvanger:
 
         rapport = verwerk_openstaande_webhooks(transport=ontvanger.transport)
 
-        assert rapport.afgeleverd == 0
-        assert rapport.poging_mislukt == 1
+        assert rapport.afgeleverd == 0 and rapport.poging_mislukt == 0
+        assert rapport.geweigerd_4xx == 1
         rij = _rij(admin_engine, rij_id)
-        assert rij["status"] == WebhookStatus.OPENSTAAND.value
-        assert "401" in rij["laatste_fout"]
+        assert rij["status"] == WebhookStatus.MISLUKT.value
+        assert "HTTP 401" in rij["laatste_fout"] and rij["laatste_fout"].endswith("payloadfout, herhalen zinloos")
         assert ontvanger.ontvangen == []
+        assert _audit_acties(admin_engine, rij_id) == ["webhook_geweigerd_4xx"]
 
     def test_replay_van_afgevangen_envelope_wordt_geweigerd(
         self,
@@ -300,64 +304,102 @@ class TestRetryEnDeadLetter:
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag
         )
         ontvanger = MockOntvanger(forceer_status=[500])
-        nu = datetime.now(UTC)
+        # Eerste poging 1 uur "geleden": de tweede valt ná de cadansstap op ≈ nu, binnen het replay-venster van de mock.
+        nu = datetime.now(UTC) - STORING_CADANS[0]
 
         verwerk_openstaande_webhooks(nu=nu, transport=ontvanger.transport)
         rij = _rij(admin_engine, rij_id)
         assert rij["status"] == WebhookStatus.OPENSTAAND.value
         assert rij["pogingen"] == 1
         assert "500" in rij["laatste_fout"]
-        verwacht_volgende = nu + timedelta(seconds=settings.webhook_backoff_basis_seconds)
+        # 02-10 avond (punt 17a): de eerste storingsstap is 1 uur (storingscadans 1 u → 6 u → 24 u → dagelijks).
+        verwacht_volgende = nu + STORING_CADANS[0]
         assert abs((rij["volgende_poging_op"] - verwacht_volgende).total_seconds()) < 1
 
-        # Vóór het backoff-moment: geen nieuwe poging.
-        verwerk_openstaande_webhooks(nu=nu + timedelta(seconds=10), transport=ontvanger.transport)
+        # Vóór de cadansstap: geen nieuwe poging.
+        verwerk_openstaande_webhooks(nu=nu + timedelta(minutes=10), transport=ontvanger.transport)
         assert _rij(admin_engine, rij_id)["pogingen"] == 1
         assert ontvanger.aantal_requests == 1
 
-        # Ná het backoff-moment: poging 2, nu geslaagd (verse timestamp/nonce).
+        # Ná de cadansstap: poging 2, nu geslaagd (verse timestamp/nonce).
         verwerk_openstaande_webhooks(
-            nu=nu + timedelta(seconds=settings.webhook_backoff_basis_seconds + 1),
+            nu=nu + STORING_CADANS[0] + timedelta(seconds=1),
             transport=ontvanger.transport,
         )
         rij = _rij(admin_engine, rij_id)
         assert rij["status"] == WebhookStatus.AFGELEVERD.value
         assert rij["pogingen"] == 2
 
-    def test_dead_letter_na_max_pogingen_zichtbaar_mislukt(
+    def test_storing_mislukt_pas_na_de_7_dagen_cadans_zichtbaar_met_reden(
         self,
         vastgoed_administratie: uuid.UUID,
         gescoopte_gebruiker: uuid.UUID,
         opslag: LokaleBestandsopslag,
         aflevering_aan: None,
         admin_engine: Engine,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(settings, "webhook_max_pogingen", 2)
+        """02-10 avond (besluit Peter, run A punt 17a; herziet "dead-letter ná 8 pogingen ≈ 2 uur"): een storing bij de
+        ontvanger (5xx) volgt de cadans 1 u → 6 u → 24 u → dagelijks en wordt pas `mislukt` als de volgende poging
+        voorbij
+        de 7 dagen zou vallen — negen pogingen (0, 1, 7, 31, 55, 79, 103, 127, 151 u), nooit een tiende op 175 u."""
         rij_id = _maak_outbox_rij(
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag
         )
-        ontvanger = MockOntvanger(forceer_status=[500, 500])
-        nu = datetime.now(UTC)
-
-        verwerk_openstaande_webhooks(nu=nu, transport=ontvanger.transport)
-        rapport = verwerk_openstaande_webhooks(
-            nu=nu + timedelta(seconds=settings.webhook_backoff_basis_seconds + 1),
-            transport=ontvanger.transport,
-        )
-
-        assert rapport.dead_letter == 1
+        ontvanger = MockOntvanger(forceer_status=[500] * 20)
+        t0 = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+        rapport = verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)
+        assert rapport.poging_mislukt == 1 and rapport.storing_verlopen == 0
+        for n in range(1, 8):  # pogingen 2 … 8, telkens precies op de cadansstap
+            moment = t0 + storing_cumulatief(n)
+            verwerk_openstaande_webhooks(nu=moment - timedelta(minutes=1), transport=ontvanger.transport)
+            assert ontvanger.aantal_requests == n  # vóór de stap: niets
+            rapport = verwerk_openstaande_webhooks(nu=moment, transport=ontvanger.transport)
+            assert rapport.poging_mislukt == 1 and rapport.storing_verlopen == 0, n
+            rij = _rij(admin_engine, rij_id)
+            assert rij["status"] == WebhookStatus.OPENSTAAND.value and rij["pogingen"] == n + 1
+        assert storing_cumulatief(8) == timedelta(hours=151) and storing_cumulatief(9) == timedelta(hours=175)
+        # Poging 9 op 151 u faalt → de tiende zou op 175 u (> 7 dagen) vallen → nu `mislukt` mét de laatste fout als
+        # reden.
+        rapport = verwerk_openstaande_webhooks(nu=t0 + storing_cumulatief(8), transport=ontvanger.transport)
+        assert rapport.storing_verlopen == 1 and rapport.poging_mislukt == 0
         rij = _rij(admin_engine, rij_id)
         assert rij["status"] == WebhookStatus.MISLUKT.value
-        assert rij["pogingen"] == 2
-        assert rij["volgende_poging_op"] is None
-        assert "500" in rij["laatste_fout"]
+        assert rij["pogingen"] == 9 and rij["volgende_poging_op"] is None
+        assert rij["laatste_fout"].startswith("aflevering mislukt binnen 7 dagen (9 pogingen): HTTP 500")
+        assert _audit_acties(admin_engine, rij_id)[-1] == "webhook_aflevering_verlopen"
 
-        # Een dead-letter-rij wordt daarna nooit meer stil opnieuw geprobeerd.
-        verwerk_openstaande_webhooks(
-            nu=nu + timedelta(seconds=7200), transport=ontvanger.transport
-        )
-        assert ontvanger.aantal_requests == 2
+        # Daarna nooit meer stil opnieuw geprobeerd.
+        verwerk_openstaande_webhooks(nu=t0 + timedelta(days=30), transport=ontvanger.transport)
+        assert ontvanger.aantal_requests == 9
+
+    def test_4xx_payloadfout_is_direct_mislukt_herhalen_zinloos(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+    ) -> None:
+        """02-10 avond (punt 17a): een 4xx ≠ 409/429 zegt iets over óns bericht — direct `mislukt` mét de body, audit
+        `webhook_geweigerd_4xx`, geen tweede poging. 429 is wél een storing (cadans)."""
+        rij_400 = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        rij_429 = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = MockOntvanger(forceer_status=[400, 429])
+        nu = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+        rapport = verwerk_openstaande_webhooks(nu=nu, transport=ontvanger.transport)
+        assert rapport.geweigerd_4xx == 1 and rapport.poging_mislukt == 1 and rapport.storing_verlopen == 0
+        per_status = {r["status"]: r for r in (_rij(admin_engine, rij_400), _rij(admin_engine, rij_429))}
+        mislukt = per_status[WebhookStatus.MISLUKT.value]
+        assert mislukt["laatste_fout"].startswith("ontvanger weigerde het bericht (HTTP 400): opgelegde fout (test)")
+        assert mislukt["laatste_fout"].endswith("— payloadfout, herhalen zinloos")
+        assert mislukt["volgende_poging_op"] is None
+        open_rij = per_status[WebhookStatus.OPENSTAAND.value]
+        assert "429" in open_rij["laatste_fout"] and open_rij["volgende_poging_op"] == nu + STORING_CADANS[0]
+        acties = {rij_400: _audit_acties(admin_engine, rij_400)[-1], rij_429: _audit_acties(admin_engine, rij_429)[-1]}
+        assert sorted(acties.values()) == ["webhook_geweigerd_4xx", "webhook_poging_mislukt"]
+        n = ontvanger.aantal_requests
+        verwerk_openstaande_webhooks(nu=nu + timedelta(minutes=30), transport=ontvanger.transport)
+        assert ontvanger.aantal_requests == n  # 400-rij nooit opnieuw, 429-rij pas ná 1 uur
 
     def test_audit_event_per_poging(
         self,
@@ -371,11 +413,11 @@ class TestRetryEnDeadLetter:
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag
         )
         ontvanger = MockOntvanger(forceer_status=[500])
-        nu = datetime.now(UTC)
+        nu = datetime.now(UTC) - STORING_CADANS[0]  # tweede poging ≈ nu (replay-venster mock)
 
         verwerk_openstaande_webhooks(nu=nu, transport=ontvanger.transport)
         verwerk_openstaande_webhooks(
-            nu=nu + timedelta(seconds=settings.webhook_backoff_basis_seconds + 1),
+            nu=nu + STORING_CADANS[0] + timedelta(seconds=1),
             transport=ontvanger.transport,
         )
 
@@ -392,11 +434,10 @@ class TestRedrive:
         opslag: LokaleBestandsopslag,
         monkeypatch: pytest.MonkeyPatch,
     ) -> uuid.UUID:
-        """Rij die door zijn retry-budget heen is: max_pogingen=1 + één opgelegde 500."""
-        monkeypatch.setattr(settings, "webhook_max_pogingen", 1)
+        """Rij die `mislukt` is: sinds 02-10 avond via een directe 4xx-weigering (payloadfout) — de kortste weg naar
+        `mislukt` zonder 7 dagen cadans (de redrive-semantiek is voor élke `mislukt`-rij gelijk)."""
         rij_id = _maak_outbox_rij(administratie_id=administratie_id, actor_id=actor_id, opslag=opslag)
-        verwerk_openstaande_webhooks(transport=MockOntvanger(forceer_status=[500]).transport)
-        monkeypatch.setattr(settings, "webhook_max_pogingen", 8)
+        verwerk_openstaande_webhooks(transport=MockOntvanger(forceer_status=[400]).transport)
         return rij_id
 
     def test_redrive_zet_dead_letter_terug_en_aflevering_slaagt_daarna(
@@ -428,7 +469,7 @@ class TestRedrive:
         assert rij["pogingen"] == 0
         assert rij["volgende_poging_op"] is None
         # De fout-historie blijft zichtbaar tot de eerstvolgende poging.
-        assert "500" in rij["laatste_fout"]
+        assert "HTTP 400" in rij["laatste_fout"]
 
         ontvanger = MockOntvanger()
         verwerk_openstaande_webhooks(transport=ontvanger.transport)
@@ -478,14 +519,13 @@ class TestRedrive:
         admin_engine: Engine,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(settings, "webhook_max_pogingen", 1)
         rij_a = _maak_outbox_rij(
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag
         )
         rij_b = _maak_outbox_rij(
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag
         )
-        verwerk_openstaande_webhooks(transport=MockOntvanger(forceer_status=[500, 500]).transport)
+        verwerk_openstaande_webhooks(transport=MockOntvanger(forceer_status=[400, 400]).transport)
         assert _rij(admin_engine, rij_a)["status"] == WebhookStatus.MISLUKT.value
         assert _rij(admin_engine, rij_b)["status"] == WebhookStatus.MISLUKT.value
 

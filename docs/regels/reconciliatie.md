@@ -242,6 +242,39 @@
   letterlijk, route 200/409/404/401 + aflevering-uit, db-lezen v2), gouden set casus **an** `TestNietKoppelbaarInDeKeten`, vitest
   `WebhookActies.test.tsx`; blokkenlijst-guards (`test_rlz_dubbel`, `test_activa/test_reconciliatie`, `test_soort_stand`) bijgewerkt.
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "besluiten-run-a-verwerken-409-cadans-contract-dubbele-projecten" (besluit 4a + 4b, capture-at-acceptance) -->
+- **Webhook-outbox: 7-dagen-storingscadans voor élke andere niet-2xx, 4xx = direct mislukt; §3c geaccordeerd (koppelcontract v1.22)
+  (Peter 02-10 17:1x "Ik volg jouw advies" op run-A-beslispunt 17; geen migratie, geen instelling; BESLISSINGEN "RUN A 02-10 — BOEKEN,
+  PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 17 alinea "BESLIST 02-10"):** (1) **Storing = cadans tot 7 dagen.** Antwoordt de
+  ontvanger anders dan 2xx en is het geen 409 `niet_koppelbaar` — 5xx, 429, timeout/verbindingsfout, nonce-replay-409 (`{"fout": …}`) —
+  dan volgt de rij DEZELFDE cadans als het wachten (`webhook_afleveraar.STORING_CADANS` = 1 u → 6 u → 24 u → dagelijks) maar hooguit
+  **7 dagen** (`STORING_MAX`): status blijft `openstaand` mét `volgende_poging_op`, audit `webhook_poging_mislukt` per poging; zou de
+  volgende cadansstap voorbij de 7 dagen vallen, dan `mislukt` mét de laatste fout als reden ("aflevering mislukt binnen 7 dagen (N
+  pogingen): HTTP 503 …", audit `webhook_aflevering_verlopen`). De cadans telt in storingspogingen (`pogingen − wacht_pogingen`; de
+  volgende poging ligt nooit vóór de stap, een stilstaande job schuift mee): negen pogingen op 0, 1, 7, 31, 55, 79, 103, 127 en 151 uur,
+  de tiende zou op 175 uur vallen en komt er niet. HERZIET "8 pogingen, exponentiële backoff ≤ 3600 s, dead-letter ≈ 2 uur" (instellingen
+  `webhook_max_pogingen`/`webhook_backoff_*` vervallen). (2) **4xx ≠ 409/429 = direct `mislukt`.** Een 400/401/404/422 zegt iets over óns
+  bericht (schema, handtekening, GUID) — herhalen geeft hetzelfde antwoord: direct `mislukt` mét "ontvanger weigerde het bericht (HTTP
+  400): ‹body› — payloadfout, herhalen zinloos" (audit `webhook_geweigerd_4xx`), nooit een stille retry. 409 `niet_koppelbaar` houdt zijn
+  eigen regel (wacht_op_ontvanger, 14 dagen — RLZ-keuze 02-10), 429 is een storing. (3) **Zichtbaar mét handeling:** derde bevindingssoort
+  in blok `webhooks`: **`webhook_aflevering_mislukt`** — direct in **`actie`** (`direct_actie_reden`: mens nodig — storing melden bij
+  Vastly / ons bericht fixen; bewijs = het letterlijke antwoord van de ontvanger; explosie-rem blijft), `detail.reden_soort` =
+  `storing_verlopen` | `payloadfout`, `storing_pogingen`, `max_dagen` 7; leesbare tekst "Event bereikt Vastly al 7 dagen niet" /
+  "Vastly weigerde het event (bericht afgekeurd)"; statuschip "mislukt na 7 dagen storing · ‹fout› · N pogingen" / "geweigerd (payloadfout,
+  herhalen zinloos) · ‹fout›" en dezelfde handeling **"Nu opnieuw"** (`nu_opnieuw` accepteert zo'n rij via `is_verlopen_of_geweigerd`: terug
+  naar `openstaand` mét vers 7-dagen-budget, `pogingen` 0, audit `webhook_nu_opnieuw`); een oude dead-letter zonder prefix blijft
+  webhook-redrive-terrein (409 in de router). CLI-slotregel `WEBHOOKS … N ná 14 dagen mislukt, M ná 7 dagen storing of 4xx geweigerd`;
+  `db-lezen webhook-outbox` v3 kent de twee nieuwe audit-acties. Geen outbox-scherm (ongewijzigd). (4) **Contract (4b):** §3c is
+  geaccordeerd → koppelcontract **v1.22** (wijzigingslog + §3c-kop definitief; vastgoed-kant verandert niets aan de wire, alleen het label
+  `voorstel-3c-409` → `1.22` in `rlz_webhook.KOPPELCONTRACT_VERSIE`/`ANTWOORDVORM_LABEL` is aan Vastly), OPEN_ITEMS-item "contractvoorstel
+  §3 — retry-cadans" afgemeld, `registers/schema-versions.md` rij antwoordvorm = v1.22; Platform apart gecommit. Guards:
+  `tests/documenten/test_webhook_afleveraar.py::TestRetryEnDeadLetter` (cadans 9 pogingen/7 dagen, 4xx direct, 429 = storing, 401 =
+  direct mislukt), `test_webhook_wacht_op_ontvanger.py::TestStoringscadans7Dagen` (puur + blok + teksten + Nu opnieuw + CLI-vorm),
+  soort_stand-pin, vitest `WebhookActies.test.tsx` (derde soort), gouden set casus an. Meetlat ná deploy: bestaand dispatch-onderdeel
+  `webhook-wacht` (`reconciliatie-alles --alleen webhooks --lees-only` + request-log "Nu opnieuw"; verwacht `… 0 ná 7 dagen storing of 4xx
+  geweigerd` zolang Vastly bereikbaar is) + `db-lezen webhook-outbox`. Werkt in productie: niet gemeten (aanwezig-pad pas bij een échte
+  storing of 4xx).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Synthetische bewaking + alerting (CLAUDE.md `ed6d176` r. 632–644)

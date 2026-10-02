@@ -1,7 +1,10 @@
 // Handeling "Nu opnieuw" + statuschip op de twee bevindingen van blok `webhooks` (run A 02-10 punt 17, Peter 02-10):
 // een event naar Vastly dat de ontvanger (nog) niet kan koppelen (409 `niet_koppelbaar`, koppelcontract §3c) wacht
 // mét oplopende cadans (1 u → 6 u → 24 u → dagelijks, max 14 dagen) in status `wacht_op_ontvanger`; ná 14 dagen staat
-// het `mislukt` mét de reden uit Vastly's antwoord. Er is geen outbox-scherm in de kantoor-UI — déze rij is de
+// het `mislukt` mét de reden uit Vastly's antwoord. Sinds 02-10 avond (besluit Peter, punt 17a) óók de derde soort
+// `webhook_aflevering_mislukt`: een storing (5xx/429/timeout) die ná de 7-dagen-cadans nog niet aankwam, of een 4xx-weigering
+// (payloadfout, direct mislukt) — chip "mislukt na 7 dagen storing" / "geweigerd (payloadfout)" + dezelfde knop.
+// Er is geen outbox-scherm in de kantoor-UI — déze rij is de
 // zichtbaarheid: chip "wacht op ontvanger · volgende poging …" (status, groen is het niet) en de knop "Nu opnieuw" (teal
 // = actie) die de rij buiten de cadans om direct één afleverronde geeft (server: POST
 // /reconciliatie/webhooks/{outbox_id}/nu-opnieuw). Een mislukte handeling is zichtbaar naast de knop, nooit stil.
@@ -26,6 +29,20 @@ export function isWebhookNietKoppelbaarVerlopen(r: BevindingDto): boolean {
     typeof r.detail?.outbox_id === 'string' &&
     r.administratie_id !== null
   )
+}
+
+export function isWebhookAfleveringMislukt(r: BevindingDto): boolean {
+  return (
+    r.blok === 'webhooks' &&
+    r.detail?.afwijking_soort === 'webhook_aflevering_mislukt' &&
+    typeof r.detail?.outbox_id === 'string' &&
+    r.administratie_id !== null
+  )
+}
+
+/** Eén van de drie webhook-bevindingen mét handeling "Nu opnieuw". */
+export function isWebhookBevindingMetNuOpnieuw(r: BevindingDto): boolean {
+  return isWebhookWachtOpOntvanger(r) || isWebhookNietKoppelbaarVerlopen(r) || isWebhookAfleveringMislukt(r)
 }
 
 export interface WebhookNuOpnieuwResultaatDto {
@@ -66,6 +83,12 @@ export function webhookStatusTekst(r: BevindingDto): string {
     const dagen = typeof r.detail?.max_dagen === 'number' ? (r.detail.max_dagen as number) : 14
     return `mislukt na ${dagen} dagen wachten${reden ? ` · ${reden}` : ''}${pogingen !== null ? ` · ${pogingen} pogingen` : ''}`
   }
+  if (isWebhookAfleveringMislukt(r)) {
+    if (r.detail?.reden_soort === 'payloadfout') return `geweigerd (payloadfout, herhalen zinloos)${reden ? ` · ${reden}` : ''}`
+    const dagen = typeof r.detail?.max_dagen === 'number' ? (r.detail.max_dagen as number) : 7
+    const storing = typeof r.detail?.storing_pogingen === 'number' ? (r.detail.storing_pogingen as number) : null
+    return `mislukt na ${dagen} dagen storing${reden ? ` · ${reden}` : ''}${storing !== null ? ` · ${storing} pogingen` : ''}`
+  }
   const volgende = datumTijd(r.detail?.volgende_poging_op)
   return `${STATUS_TEKST.wacht_op_ontvanger}${volgende ? ` · volgende poging ${volgende}` : ''}${reden ? ` · ${reden}` : ''}${
     pogingen !== null ? ` · poging ${pogingen}` : ''
@@ -74,7 +97,10 @@ export function webhookStatusTekst(r: BevindingDto): string {
 
 export function WebhookStatusChip({ bevinding }: { bevinding: BevindingDto }) {
   return (
-    <span className="chip" data-status={isWebhookNietKoppelbaarVerlopen(bevinding) ? 'mislukt' : 'wacht_op_ontvanger'}>
+    <span
+      className="chip"
+      data-status={isWebhookNietKoppelbaarVerlopen(bevinding) || isWebhookAfleveringMislukt(bevinding) ? 'mislukt' : 'wacht_op_ontvanger'}
+    >
       {webhookStatusTekst(bevinding)}
     </span>
   )

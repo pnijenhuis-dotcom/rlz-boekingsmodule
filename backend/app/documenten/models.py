@@ -739,8 +739,9 @@ class Tegenboeking(Base):
 
 
 class WebhookStatus(enum.StrEnum):
-    """Afleverstatus van een outbox-rij (migratie 0025) — zichtbaar, nooit stil: `mislukt` is de
-    dead-letter na max pogingen en vraagt om menselijke actie, geen stille eindtoestand."""
+    """Afleverstatus van een outbox-rij (migratie 0025) — zichtbaar, nooit stil: `mislukt` (ná de 7-dagen-storingscadans,
+    een 4xx-weigering, 14 dagen 409-wachten of een genegeerd event — 02-10) vraagt om menselijke actie, geen stille
+    eindtoestand."""
 
     OPENSTAAND = "openstaand"
     AFGELEVERD = "afgeleverd"

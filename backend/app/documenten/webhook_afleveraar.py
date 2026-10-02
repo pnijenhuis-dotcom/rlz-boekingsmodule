@@ -16,9 +16,8 @@ Failsafes ("niets verdwijnt stil", maar ook: nooit per ongeluk pushen):
   webhook_uitgaand.administratie_id op de dóél-administratie, migratie 0046) — hier nogmaals
   ge-assert: een rij van een niet-vastgoed-administratie wordt nooit verzonden maar zichtbaar
   op 'mislukt' gezet, met audit_event.
-- Fout bij verzenden = retry met exponentiële backoff; na max pogingen zichtbaar 'mislukt'
-  (dead-letter). Elke poging (gelukt, mislukt, geweigerd) krijgt een audit_event met de
-  systeem-actor. Dead-letter is géén eindstation: herstel_dead_letters() (CLI webhook-redrive)
+- Fout bij verzenden = storingscadans (zie onder, sinds 02-10 avond; was exponentiële backoff + dead-letter ná 8);
+  daarna zichtbaar 'mislukt'. Elke poging (gelukt, mislukt, geweigerd) krijgt een audit_event met de systeem-actor. 'mislukt' is géén eindstation: herstel_dead_letters() (CLI webhook-redrive)
   zet rijen als expliciete admin-actie terug naar openstaand — een legitiem mislukte levering
   (vastgoed-endpoint langere tijd down) mag nooit permanent verloren zijn.
 - 200 mét `{"resultaat": "genegeerd", "reden": …}` (Vastly's ontvanger, sinds 23-09 herkend) is GEEN aflevering: de
@@ -47,7 +46,19 @@ Failsafes ("niets verdwijnt stil", maar ook: nooit per ongeluk pushen):
   `webhooks` (soort `webhook_wacht_op_ontvanger`, handeling "Nu opnieuw" = `nu_opnieuw()`), en pas ná `WACHT_MAX`
   (14 dagen) `mislukt` mét "ontvanger kon niet koppelen binnen 14 dagen: <reden>" (soort `webhook_niet_koppelbaar_
   verlopen`, zelfde handeling). Een 2xx ná het wachten = gewoon `afgeleverd`. De 409 van een nonce-replay
-  (`{"fout": …}`, zonder `resultaat`) blijft de gewone retry. 409-pogingen tellen niet mee voor de dead-letter-grens.
+  (`{"fout": …}`, zonder `resultaat`) volgt de storingscadans hieronder. 409-pogingen tellen niet mee voor de
+  storingsgrens.
+- Élke ANDERE niet-2xx (besluit Peter 02-10 avond, "besluiten run A" punt 17a; herziet "8 pogingen, exponentiële
+  backoff ≤ 3600 s, dead-letter ≈ 2 uur"): een storing bij de ontvanger — 5xx, 429, timeout/verbindingsfout, nonce-replay-409 — volgt
+  DEZELFDE cadans als het wachten (`STORING_CADANS`: 1 u → 6 u → 24 u → dagelijks) maar hooguit **7 dagen**
+  (`STORING_MAX`): de rij blijft `openstaand` mét `volgende_poging_op`; valt de volgende cadansstap voorbij de 7
+  dagen, dan `mislukt` mét de laatste fout als reden ("aflevering mislukt binnen 7 dagen (N pogingen): HTTP 503 …",
+  audit `webhook_aflevering_verlopen`) en een bevinding direct in `actie` (`webhook_aflevering_mislukt`, handeling "Nu
+  opnieuw"). Een 4xx ≠ 409/429 (400/401/404/422 …) is een payload- of configuratiefout: herhalen is zinloos → DIRECT
+  `mislukt` ("ontvanger weigerde het bericht (HTTP 400): … — payloadfout, herhalen zinloos", audit
+  `webhook_geweigerd_4xx`, zelfde bevinding). Geen instelling. De cadans telt in pogingen (de volgende poging ligt
+  nooit vóór de stap): 9 storingspogingen binnen 7 dagen (0 u, 1 u, 7 u, 31 u, 55 u, 79 u, 103 u, 127 u, 151 u), de
+  tiende zou op 175 u vallen en komt er niet.
 
 Uitvoervormen (zelfde patroon als de extractie-worker/sync): in dev een in-process
 achtergrondlus (InProcessWebhookAfleveraar, gestart in de app-lifespan); productie draait
@@ -117,7 +128,11 @@ class AfleverRapport:
     overgeslagen_reden: str | None = None
     afgeleverd: int = 0
     poging_mislukt: int = 0
-    dead_letter: int = 0
+    #: 02-10 avond: storing bij de ontvanger (5xx/429/timeout) die ná de 7-dagen-cadans alsnog `mislukt` is (was:
+    #: dead-letter ná 8).
+    storing_verlopen: int = 0
+    #: 02-10 avond: 4xx ≠ 409/429 = payload-/configuratiefout — direct `mislukt`, herhalen zinloos.
+    geweigerd_4xx: int = 0
     geweigerd_geen_vastgoed: int = 0
     #: 200 mét resultaat "genegeerd" van de ontvanger — zichtbaar mislukt, niet herhaald (23-09).
     genegeerd: int = 0
@@ -151,6 +166,49 @@ WACHT_DAGELIJKS = timedelta(hours=24)
 WACHT_MAX = timedelta(days=14)
 WACHT_VERLOPEN_PREFIX = "ontvanger kon niet koppelen binnen 14 dagen"
 WACHT_PREFIX = "ontvanger kan nog niet koppelen"
+#: Storingscadans voor élke andere niet-2xx (besluit Peter 02-10 avond, punt 17a): dezelfde stappen als het wachten,
+#: maar hooguit 7 dagen — daarna `mislukt` mét de laatste fout als reden. Telt in pogingen (`pogingen -
+#: wacht_pogingen`): de volgende poging ligt nooit vóór de cadansstap, een stilstaande job schuift mee. Geen
+#: instelling.
+STORING_CADANS = WACHT_CADANS
+STORING_DAGELIJKS = WACHT_DAGELIJKS
+STORING_MAX = timedelta(days=7)
+STORING_VERLOPEN_PREFIX = "aflevering mislukt binnen 7 dagen"
+GEWEIGERD_PREFIX = "ontvanger weigerde het bericht"
+#: 4xx die géén storing is: payload-/configuratiefout, herhalen zinloos (409 = wacht of nonce-replay, 429 = storing).
+_STORING_4XX = frozenset({409, 429})
+
+
+def storing_stap(storing_poging: int) -> timedelta:
+    """Wachttijd ná de n-de mislukte storingspoging (1-gebaseerd): 1 u, 6 u, 24 u, daarna dagelijks."""
+    if storing_poging <= 0:
+        return STORING_CADANS[0]
+    if storing_poging <= len(STORING_CADANS):
+        return STORING_CADANS[storing_poging - 1]
+    return STORING_DAGELIJKS
+
+
+def storing_cumulatief(storing_pogingen: int) -> timedelta:
+    """Som van de cadansstappen ná `storing_pogingen` mislukte pogingen = het moment (t.o.v. de eerste poging) van de
+    volgende poging."""
+    return sum((storing_stap(n) for n in range(1, storing_pogingen + 1)), timedelta(0))
+
+
+def storing_verlopen(storing_pogingen: int) -> bool:
+    """Waar zodra de volgende poging voorbij `STORING_MAX` zou vallen — die komt er dan niet: `mislukt` mét reden."""
+    return storing_cumulatief(storing_pogingen) > STORING_MAX
+
+
+def is_payloadfout(status_code: int | None) -> bool:
+    return status_code is not None and 400 <= status_code < 500 and status_code not in _STORING_4XX
+
+
+def is_verlopen_of_geweigerd(status: str, laatste_fout: str | None) -> bool:
+    """Een `mislukt`-rij uit de storingscadans (ná 7 dagen) of een directe 4xx-weigering — de rijen van de bevinding
+    `webhook_aflevering_mislukt` en van "Nu opnieuw" (naast de 409-rijen)."""
+    return status == WebhookStatus.MISLUKT.value and bool(laatste_fout) and (
+        laatste_fout.startswith(STORING_VERLOPEN_PREFIX) or laatste_fout.startswith(GEWEIGERD_PREFIX)
+    )
 
 
 def volgende_wacht_poging(*, sinds: datetime, nu: datetime) -> datetime:
@@ -214,13 +272,6 @@ def _lees_antwoord(response: httpx.Response) -> tuple[str | None, str | None, st
         str(reden) if reden is not None else None,
         tekst,
         top_resultaat,
-    )
-
-
-def _backoff_seconds(pogingen: int) -> float:
-    return min(
-        settings.webhook_backoff_basis_seconds * (2 ** (pogingen - 1)),
-        settings.webhook_backoff_max_seconds,
     )
 
 
@@ -409,26 +460,57 @@ def _lever_rij_af(
                 logger.warning(
                     "Webhook-rij %s wacht op de ontvanger (%s), poging %s", rij.id, reden, rij.wacht_pogingen
                 )
-        elif (rij.pogingen - rij.wacht_pogingen) >= settings.webhook_max_pogingen:
+        elif is_payloadfout(antwoord.status_code):
+            # 02-10 avond (punt 17a): een 4xx ≠ 409/429 zegt iets over ÓNS bericht (schema, handtekening, GUID) —
+            # herhalen geeft hetzelfde antwoord. Direct zichtbaar mislukt mét de body; herstel = fix +
+            # webhook-herzenden/redrive.
+            fout = (
+                f"{GEWEIGERD_PREFIX} (HTTP {antwoord.status_code}): {(antwoord.body or '')[:200]} — payloadfout, "
+                "herhalen zinloos"
+            )
             rij.status = WebhookStatus.MISLUKT.value
             rij.laatste_fout = fout
             rij.volgende_poging_op = None
-            actie = "webhook_dead_letter"
+            actie = "webhook_geweigerd_4xx"
             poging_detail["fout"] = fout
-            rapport.dead_letter += 1
-            rapport.fouten.append(f"{rij.id}: dead-letter na {rij.pogingen} pogingen — {fout}")
-            rapport.per_rij[rij.id] = f"dead-letter na {rij.pogingen} pogingen — {fout}"
-            logger.error("Webhook-rij %s definitief mislukt na %s pogingen: %s", rij.id, rij.pogingen, fout)
+            poging_detail["status_code"] = antwoord.status_code
+            rapport.geweigerd_4xx += 1
+            rapport.fouten.append(f"{referentie_tekst}: {fout}")
+            rapport.per_rij[rij.id] = f"mislukt — {fout}"
+            logger.error("Webhook-rij %s door de ontvanger geweigerd (HTTP %s): %s", rij.id, antwoord.status_code, fout)
         else:
-            rij.laatste_fout = fout
-            rij.volgende_poging_op = nu + timedelta(seconds=_backoff_seconds(rij.pogingen - rij.wacht_pogingen))
-            actie = "webhook_poging_mislukt"
-            poging_detail["fout"] = fout
-            poging_detail["volgende_poging_op"] = rij.volgende_poging_op.isoformat()
-            rapport.poging_mislukt += 1
-            rapport.fouten.append(f"{rij.id}: poging {rij.pogingen} mislukt — {fout}")
-            rapport.per_rij[rij.id] = f"poging {rij.pogingen} mislukt — {fout}"
-            logger.warning("Webhook-rij %s poging %s mislukt: %s", rij.id, rij.pogingen, fout)
+            # Storing bij de ontvanger (5xx, 429, timeout/verbindingsfout, nonce-replay-409): storingscadans 1 u → 6 u
+            # → 24 u → dagelijks, hooguit 7 dagen (besluit Peter 02-10 avond; was 8 pogingen/backoff ≤ 3600
+            # s/dead-letter ≈ 2 u).
+            storing_pogingen = rij.pogingen - rij.wacht_pogingen
+            poging_detail["storing_pogingen"] = storing_pogingen
+            poging_detail["status_code"] = antwoord.status_code
+            if storing_verlopen(storing_pogingen):
+                fout = f"{STORING_VERLOPEN_PREFIX} ({storing_pogingen} pogingen): {fout}"
+                rij.status = WebhookStatus.MISLUKT.value
+                rij.laatste_fout = fout
+                rij.volgende_poging_op = None
+                actie = "webhook_aflevering_verlopen"
+                poging_detail["fout"] = fout
+                rapport.storing_verlopen += 1
+                rapport.fouten.append(f"{referentie_tekst}: {fout}")
+                rapport.per_rij[rij.id] = f"mislukt — {fout}"
+                logger.error(
+                    "Webhook-rij %s ná %s storingspogingen (7 dagen) mislukt: %s", rij.id, storing_pogingen, fout
+                )
+            else:
+                rij.laatste_fout = fout
+                rij.volgende_poging_op = nu + storing_stap(storing_pogingen)
+                actie = "webhook_poging_mislukt"
+                poging_detail["fout"] = fout
+                poging_detail["volgende_poging_op"] = rij.volgende_poging_op.isoformat()
+                rapport.poging_mislukt += 1
+                rapport.fouten.append(
+                    f"{referentie_tekst}: poging {storing_pogingen} mislukt — {fout} — volgende poging "
+                    f"{rij.volgende_poging_op:%d-%m %H:%M} UTC"
+                )
+                rapport.per_rij[rij.id] = f"poging {storing_pogingen} mislukt — {fout}"
+                logger.warning("Webhook-rij %s storingspoging %s mislukt: %s", rij.id, storing_pogingen, fout)
 
         record_audit_event(
             session,
@@ -752,8 +834,10 @@ def nu_opnieuw(
     koppeling hersteld is hoeft niemand op de volgende cadansstap te wachten. Een mens-besluit: audit
     `webhook_nu_opnieuw` mét de actor. Op een verlopen rij begint de 14-dagen-telling opnieuw (de rij gaat terug naar
     `openstaand`; antwoordt de ontvanger wéér 409, dan wacht ze opnieuw mét een verse `wacht_op_ontvanger_sinds`).
-    Een rij die al gewoon openstaand/afgeleverd is, of mislukt om een andere reden, hoort hier niet (409 in de
-    router)."""
+    Sinds 02-10 avond (punt 17a) geldt dezelfde handeling voor een rij die ná de 7-dagen-storingscadans of door een
+    4xx-weigering `mislukt` is (`is_verlopen_of_geweigerd`): terug naar `openstaand` mét een vers storingsbudget.
+    Een rij die al gewoon openstaand/afgeleverd is, of mislukt om een andere reden (genegeerd, geen vastgoed, oude
+    dead-letter), hoort hier niet (409 in de router — daar is webhook-herzenden/-redrive de route)."""
     nu = nu or datetime.now(UTC)
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         rij = session.scalars(
@@ -768,11 +852,14 @@ def nu_opnieuw(
         if rij is None:
             raise LookupError("outbox-rij niet gevonden in deze administratie")
         status_voor = rij.status
-        verlopen = rij.status == WebhookStatus.MISLUKT.value and rij.wacht_op_ontvanger_sinds is not None
+        verlopen = (
+            rij.status == WebhookStatus.MISLUKT.value and rij.wacht_op_ontvanger_sinds is not None
+        ) or is_verlopen_of_geweigerd(rij.status, rij.laatste_fout)
         if rij.status != WebhookStatus.WACHT_OP_ONTVANGER.value and not verlopen:
             raise NuOpnieuwNietMogelijk(
                 f"rij staat op {rij.status} en wacht niet op de ontvanger — 'Nu opnieuw' geldt alleen voor een rij die "
-                "wacht of ná 14 dagen wachten mislukt is (anders: webhook-herzenden / webhook-redrive)"
+                "wacht, ná 14 dagen wachten mislukt is, of ná de 7-dagen-storingscadans / een 4xx-weigering mislukt is "
+                "(anders: webhook-herzenden / webhook-redrive)"
             )
         sinds_oud = rij.wacht_op_ontvanger_sinds
         oud = {
@@ -786,6 +873,8 @@ def nu_opnieuw(
             rij.status = WebhookStatus.OPENSTAAND.value
             rij.wacht_op_ontvanger_sinds = None
             rij.wacht_pogingen = 0
+            # Vers storingsbudget (7 dagen): een mens-klik is een nieuw begin, net als herzenden/redrive.
+            rij.pogingen = 0
         rij.volgende_poging_op = None
         record_audit_event(
             session,
@@ -831,12 +920,17 @@ class InProcessWebhookAfleveraar:
         while not self._stop_event.is_set():
             try:
                 rapport = verwerk_openstaande_webhooks()
-                if rapport.afgeleverd or rapport.poging_mislukt or rapport.dead_letter or rapport.wacht_op_ontvanger:
+                if (
+                    rapport.afgeleverd
+                    or rapport.poging_mislukt
+                    or rapport.storing_verlopen
+                    or rapport.wacht_op_ontvanger
+                ):
                     logger.info(
-                        "Webhook-afleveraar: %s afgeleverd, %s poging(en) mislukt, %s dead-letter, %s wacht(en)",
+                        "Webhook-afleveraar: %s afgeleverd, %s poging(en) mislukt, %s ná 7 dagen mislukt, %s wacht(en)",
                         rapport.afgeleverd,
                         rapport.poging_mislukt,
-                        rapport.dead_letter,
+                        rapport.storing_verlopen,
                         rapport.wacht_op_ontvanger,
                     )
             except Exception:  # noqa: BLE001 — vangnet: de lus mag nooit stil sterven

@@ -44,7 +44,7 @@ import {
   OpnieuwAanbiedenActie,
 } from './VastlyActies'
 import { isActivumAanmakenMislukt, OpnieuwAanmakenActie } from './OpnieuwAanmakenActie'
-import { isWebhookNietKoppelbaarVerlopen, isWebhookWachtOpOntvanger, NuOpnieuwActie } from './WebhookActies'
+import { isWebhookBevindingMetNuOpnieuw, NuOpnieuwActie } from './WebhookActies'
 import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
 import {
   accepteerBevinding,
@@ -308,7 +308,8 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
 
     // 02-10 (run A punt 17): webhook-event dat Vastly (nog) niet kan koppelen (409) wacht mét cadans, of is ná 14 dagen
     // mislukt → statuschip + "Nu opnieuw" (directe afleverronde buiten de cadans om). Er is geen outbox-scherm: dit is 'm.
-    if (r.soort !== 'let_op' && (isWebhookWachtOpOntvanger(r) || isWebhookNietKoppelbaarVerlopen(r))) {
+    // 02-10 avond (punt 17a): óók de rij die ná 7 dagen storing of door een 4xx-weigering mislukt is.
+    if (r.soort !== 'let_op' && isWebhookBevindingMetNuOpnieuw(r)) {
       return (
         <NuOpnieuwActie
           bevinding={r}

@@ -6,6 +6,12 @@
   vorm). Geen AI.
 -->
 
+## 2026-10-02 — Koppeling Vastly: een bericht dat niet aankomt wordt zeven dagen opnieuw geprobeerd en daarna gemeld
+
+<!-- besluiten-run-a-02-10 -->
+
+- **Een boekingsbericht naar Vastly dat door een storing niet aankomt, probeert de module nu zeven dagen lang opnieuw (na 1 uur, 6 uur, 24 uur en daarna elke dag) in plaats van ongeveer twee uur.** Komt het na zeven dagen nog niet aan, dan staat het als mislukt op Inzicht › Reconciliatie mét de laatste foutmelding en de knop "Nu opnieuw"; wijst Vastly het bericht zelf af (ongeldige vorm), dan staat het direct als mislukt — opnieuw sturen heeft dan geen zin tot de oorzaak is verholpen.
+
 ## 2026-10-02 — Planning: transport-icoon, kleur per project, dag kopiëren; veld-app uitvoerder: tab Planning
 
 <!-- run-b-02-10 -->

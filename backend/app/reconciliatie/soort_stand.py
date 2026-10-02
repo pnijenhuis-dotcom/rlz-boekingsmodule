@@ -231,6 +231,21 @@ REGISTRY: dict[str, SoortDefinitie] = {
             "is een bestaande, zichtbare fout mét de reden uit Vastly's eigen antwoord als bewijs — melden bij Vastly, "
             "daarna 'Nu opnieuw'; explosie-rem blijft",
         ),
+        # 02-10 avond (besluit Peter, run A punt 17a): élke andere niet-2xx (5xx/429/timeout) volgt de storingscadans
+        # tot 7 dagen; daarna `mislukt` mét de laatste fout als reden — en een 4xx ≠ 409/429 is direct `mislukt`
+        # (payloadfout). Beide direct `actie`: hier is een mens nodig (Vastly-storing melden óf ons bericht fixen),
+        # het bewijs is het letterlijke antwoord/de fout van de ontvanger; handeling "Nu opnieuw" op de rij;
+        # explosie-rem blijft.
+        SoortDefinitie(
+            soort="webhook_aflevering_mislukt",
+            blok="webhooks",
+            sinds=date(2026, 10, 2),
+            default=ACTIE,
+            direct_actie_reden="Peter 02-10 avond (besluiten run A, punt 17a): een event dat ná de 7-dagen-"
+            "storingscadans nog niet bij Vastly aankomt, of door Vastly met een 4xx geweigerd is, is een bestaande "
+            "zichtbare fout mét het letterlijke antwoord als bewijs — mens nodig (storing melden / bericht fixen), "
+            "daarna 'Nu opnieuw'; explosie-rem blijft",
+        ),
         SoortDefinitie(
             soort="intake_postvak_verschil",
             blok="intake",

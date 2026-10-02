@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BevindingDto } from './reconciliatieApi'
 import {
+  isWebhookAfleveringMislukt,
+  isWebhookBevindingMetNuOpnieuw,
   isWebhookNietKoppelbaarVerlopen,
   isWebhookWachtOpOntvanger,
   NuOpnieuwActie,
@@ -75,6 +77,27 @@ describe('WebhookActies (run A 02-10 punt 17 — 409 niet_koppelbaar = wacht op 
     expect(webhookStatusTekst(verlopen)).toBe('mislukt na 14 dagen wachten · onbekend_document · 15 pogingen')
     render(<WebhookStatusChip bevinding={verlopen} />)
     expect(screen.getByText(/mislukt na 14 dagen wachten/)).toHaveAttribute('data-status', 'mislukt')
+  })
+
+  it('derde soort (02-10 avond, punt 17a): storing ná 7 dagen en 4xx-weigering = chip mislukt + Nu opnieuw', () => {
+    const storing = bevinding({
+      soort: 'afwijking',
+      detail: { afwijking_soort: 'webhook_aflevering_mislukt', outbox_id: 'out-3', referentie: 'X', reden: 'HTTP 503: down', reden_soort: 'storing_verlopen', storing_pogingen: 9, max_dagen: 7 },
+    })
+    const payload = bevinding({
+      soort: 'afwijking',
+      detail: { afwijking_soort: 'webhook_aflevering_mislukt', outbox_id: 'out-4', referentie: 'Y', reden: '(HTTP 400): onbekende schema_version', reden_soort: 'payloadfout' },
+    })
+    expect(isWebhookAfleveringMislukt(storing)).toBe(true)
+    expect(isWebhookWachtOpOntvanger(storing)).toBe(false)
+    expect(isWebhookNietKoppelbaarVerlopen(storing)).toBe(false)
+    expect(isWebhookBevindingMetNuOpnieuw(storing)).toBe(true)
+    expect(isWebhookBevindingMetNuOpnieuw(bevinding())).toBe(true)
+    expect(isWebhookBevindingMetNuOpnieuw(bevinding({ blok: 'documenten' }))).toBe(false)
+    expect(webhookStatusTekst(storing)).toBe('mislukt na 7 dagen storing · HTTP 503: down · 9 pogingen')
+    expect(webhookStatusTekst(payload)).toBe('geweigerd (payloadfout, herhalen zinloos) · (HTTP 400): onbekende schema_version')
+    render(<WebhookStatusChip bevinding={storing} />)
+    expect(screen.getByText(/mislukt na 7 dagen storing/)).toHaveAttribute('data-status', 'mislukt')
   })
 
   it('Nu opnieuw: één klik → POST mét administratie; afgeleverd = melding + hint; 409 zichtbaar naast de knop', async () => {

@@ -1,8 +1,14 @@
 """Run A 02-10 punt 17 (Peter 02-10): een 409 `niet_koppelbaar` van Vastly ("nog niet koppelbaar", koppelcontract §3c)
 is géén dead-letter ná 8 pogingen maar status `wacht_op_ontvanger` mét oplopende cadans vanaf de eerste 409 (1 u → 6 u
 → 24 u → dagelijks), max 14 dagen, daarna pas `mislukt` mét de reden uit de body; zichtbaar in het reconciliatieblok
-`webhooks` mét handeling "Nu opnieuw" (route + motor). De nonce-replay-409 (`{"fout": …}`) blijft de gewone retry;
-andere niet-2xx houden hun 8 pogingen (409-pogingen tellen daar niet in mee); 2xx ná het wachten = afgeleverd."""
+`webhooks` mét handeling "Nu opnieuw" (route + motor). 2xx ná het wachten = afgeleverd.
+
+02-10 avond (besluit Peter "Ik volg jouw advies", besluiten run A punt 17a): élke ANDERE niet-2xx (5xx, 429, timeout,
+02-10 avond (besluit Peter "Ik volg jouw advies", besluiten run A punt 17a): élke ANDERE niet-2xx (5xx, 429, timeout,
+nonce- replay-409) volgt dezelfde cadans als storing, hooguit 7 dagen (`STORING_MAX`), daarna `mislukt` mét de laatste
+fout als reden + bevinding `webhook_aflevering_mislukt` direct in `actie`; een 4xx ≠ 409/429 is direct `mislukt`
+(payloadfout). 409-pogingen tellen niet mee voor de storingsgrens. Zie `TestStoringscadans7Dagen` onderaan en
+`test_webhook_afleveraar.py::TestRetryEnDeadLetter`."""
 
 # ruff: noqa: F811 — de fixtures uit test_webhook_afleveraar worden geïmporteerd én als testparameter gebruikt.
 from __future__ import annotations
@@ -17,15 +23,18 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
 from app import cli
-from app.config import settings
 from app.documenten import webhook_afleveraar, webhook_reconciliatie
 from app.documenten.models import WebhookStatus
 from app.documenten.storage import LokaleBestandsopslag
 from app.documenten.webhook_afleveraar import (
+    STORING_CADANS,
+    STORING_MAX,
     WACHT_MAX,
     NuOpnieuwNietMogelijk,
     herzend_afgeleverd,
     nu_opnieuw,
+    storing_cumulatief,
+    storing_verlopen,
     verwerk_openstaande_webhooks,
     volgende_wacht_poging,
 )
@@ -106,13 +115,12 @@ class TestAfleveraar409:
         admin_engine: Engine,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(settings, "webhook_max_pogingen", 2)  # zou bij de oude regel ná 2 × 409 dead-letter zijn
         rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
         ontvanger = NietKoppelbaarOntvanger()
         t0 = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
 
         rapport = verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)
-        assert rapport.wacht_op_ontvanger == 1 and rapport.dead_letter == 0 and rapport.poging_mislukt == 0
+        assert rapport.wacht_op_ontvanger == 1 and rapport.storing_verlopen == 0 and rapport.poging_mislukt == 0
         rij = _wacht_rij(admin_engine, rij_id)
         assert rij["status"] == WebhookStatus.WACHT_OP_ONTVANGER.value
         assert rij["wacht_pogingen"] == 1 and rij["pogingen"] == 1
@@ -169,7 +177,7 @@ class TestAfleveraar409:
         verwerk_openstaande_webhooks(nu=t0 + timedelta(days=13), transport=ontvanger.transport)
         assert _wacht_rij(admin_engine, rij_id)["status"] == WebhookStatus.WACHT_OP_ONTVANGER.value
         rapport = verwerk_openstaande_webhooks(nu=t0 + WACHT_MAX, transport=ontvanger.transport)
-        assert rapport.wacht_verlopen == 1 and rapport.dead_letter == 0
+        assert rapport.wacht_verlopen == 1 and rapport.storing_verlopen == 0
         rij = _wacht_rij(admin_engine, rij_id)
         assert rij["status"] == WebhookStatus.MISLUKT.value
         assert rij["laatste_fout"] == "ontvanger kon niet koppelen binnen 14 dagen: referentie_conflict"
@@ -195,18 +203,19 @@ class TestAfleveraar409:
         assert rapport.poging_mislukt == 1 and rapport.wacht_op_ontvanger == 0
         rij = _wacht_rij(admin_engine, rij_id)
         assert rij["status"] == WebhookStatus.OPENSTAAND.value and rij["wacht_pogingen"] == 0
-        assert rij["volgende_poging_op"] == nu + timedelta(seconds=settings.webhook_backoff_basis_seconds)
+        # 02-10 avond: de nonce-replay-409 is een storing → storingscadans (eerste stap 1 uur), geen wacht_op_ontvanger.
+        assert rij["volgende_poging_op"] == nu + STORING_CADANS[0]
 
-    def test_andere_niet_2xx_houdt_8_pogingen_ongeacht_eerdere_409s(
+    def test_andere_niet_2xx_na_een_409_volgt_de_storingscadans_en_telt_409s_niet_mee(
         self,
         vastgoed_administratie: uuid.UUID,
         gescoopte_gebruiker: uuid.UUID,
         opslag: LokaleBestandsopslag,
         aflevering_aan: None,
         admin_engine: Engine,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(settings, "webhook_max_pogingen", 2)
+        """Was tot 02-10 avond "8 pogingen ongeacht eerdere 409's" — nu de storingscadans (1 u → 6 u …) op
+        `pogingen - wacht_pogingen`, nooit een dead-letter ná 8; de 409-poging telt niet mee."""
         rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
         ontvanger = NietKoppelbaarOntvanger()
         t0 = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
@@ -216,10 +225,14 @@ class TestAfleveraar409:
         rij = _wacht_rij(admin_engine, rij_id)
         assert rij["status"] == WebhookStatus.WACHT_OP_ONTVANGER.value and rij["pogingen"] == 2
         assert "500" in rij["laatste_fout"]
-        verwerk_openstaande_webhooks(nu=t0 + 3 * UUR, transport=ontvanger.transport)
+        assert rij["volgende_poging_op"] == t0 + 1 * UUR + STORING_CADANS[0]  # storingspoging 1 → +1 u
+        verwerk_openstaande_webhooks(nu=t0 + 2 * UUR, transport=ontvanger.transport)
         rij = _wacht_rij(admin_engine, rij_id)
-        assert rij["status"] == WebhookStatus.MISLUKT.value and rij["pogingen"] == 3 and rij["wacht_pogingen"] == 1
-        assert _audit_acties(admin_engine, rij_id)[-1] == "webhook_dead_letter"
+        assert rij["status"] == WebhookStatus.WACHT_OP_ONTVANGER.value
+        assert rij["pogingen"] == 3 and rij["wacht_pogingen"] == 1
+        assert rij["volgende_poging_op"] == t0 + 2 * UUR + STORING_CADANS[1]  # storingspoging 2 → +6 u
+        assert "webhook_dead_letter" not in _audit_acties(admin_engine, rij_id)
+        assert _audit_acties(admin_engine, rij_id)[-1] == "webhook_poging_mislukt"
 
 
 class TestHerzendenEnNuOpnieuw:
@@ -484,6 +497,101 @@ def test_db_lezen_query_webhook_outbox_laadt_met_de_nieuwe_kolommen() -> None:
     from app.lezen import bibliotheek
 
     q = bibliotheek.zoek("webhook-outbox")
-    assert q.versie == "2"
+    assert q.versie == "3"
     assert "wacht_op_ontvanger_sinds" in q.sql and "webhook_nu_opnieuw" in q.sql
+    assert "webhook_aflevering_verlopen" in q.sql and "webhook_geweigerd_4xx" in q.sql  # 02-10 avond (17a)
     assert json.dumps(list(q.kolommen)).count("wacht") >= 2
+
+
+class TestStoringscadans7Dagen:
+    """02-10 avond (besluit Peter, besluiten run A punt 17a): storing → cadans tot 7 dagen → `mislukt` + bevinding
+    direct
+    `actie`; 4xx ≠ 409/429 → direct `mislukt`; "Nu opnieuw" werkt óók op die rijen (vers budget)."""
+
+    def test_cadans_puur_9_pogingen_binnen_7_dagen(self) -> None:
+        assert [storing_cumulatief(n) for n in (1, 2, 3, 4)] == [
+            timedelta(hours=1), timedelta(hours=7), timedelta(hours=31), timedelta(hours=55)
+        ]
+        assert storing_cumulatief(8) == timedelta(hours=151) <= STORING_MAX
+        assert storing_cumulatief(9) == timedelta(hours=175) > STORING_MAX
+        assert not storing_verlopen(8) and storing_verlopen(9)
+        assert timedelta(days=7) == STORING_MAX and timedelta(days=14) == WACHT_MAX  # 409 houdt 14 (RLZ-keuze 02-10)
+
+    def test_blok_meldt_storing_verlopen_en_4xx_als_derde_soort_direct_actie_met_nu_opnieuw(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        maak = lambda: _maak_outbox_rij(  # noqa: E731
+            administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag
+        )
+        t0 = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+        # payload: één 400 → direct mislukt; storing: 9 × 503 over de cadans; oud: oude dead-letter zonder prefix.
+        # Eén rij per ronde, zodat de opgelegde status deterministisch bij de bedoelde rij landt.
+        payload_id = maak()
+        ontvanger = MockOntvanger(forceer_status=[400])
+        verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)
+        storing_id, oud_id = maak(), maak()
+        ontvanger._forceer_status = [503, 503]
+        verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE boekhouding.webhook_uitgaand SET status = 'mislukt', volgende_poging_op = NULL, "
+                    "laatste_fout = 'HTTP 500: oud' WHERE id = :id"
+                ),
+                {"id": oud_id},
+            )
+        ontvanger._forceer_status = [503] * 20
+        for n in range(1, 9):
+            verwerk_openstaande_webhooks(nu=t0 + storing_cumulatief(n), transport=ontvanger.transport)
+        storing = _wacht_rij(admin_engine, storing_id)
+        payload = _wacht_rij(admin_engine, payload_id)
+        assert storing["status"] == payload["status"] == WebhookStatus.MISLUKT.value
+        assert storing["laatste_fout"].startswith("aflevering mislukt binnen 7 dagen (9 pogingen): HTTP 503")
+        assert payload["laatste_fout"].startswith("ontvanger weigerde het bericht (HTTP 400)")
+
+        v = Verzamelaar()
+        v.start_blok(webhook_reconciliatie.BLOK)
+        regels: list[str] = []
+        code = webhook_reconciliatie.cli_blok(None, v, stdout=regels.append, nu=t0 + STORING_MAX)
+        assert code == 1
+        per_outbox = {b.detail["outbox_id"]: b for b in v.bevindingen}
+        # De oude dead-letter zonder prefix hoort er niet in.
+        assert set(per_outbox) == {str(storing_id), str(payload_id)}
+        s = per_outbox[str(storing_id)]
+        assert s.detail["afwijking_soort"] == webhook_reconciliatie.SOORT_AFLEVERING_MISLUKT
+        assert s.detail["reden_soort"] == "storing_verlopen" and s.detail["storing_pogingen"] == 9
+        assert s.detail["max_dagen"] == 7 and s.detail["reden"].startswith("HTTP 503")
+        p = per_outbox[str(payload_id)]
+        assert p.detail["reden_soort"] == "payloadfout"
+        assert p.detail["reden"].startswith("(HTTP 400): opgelegde fout (test)")
+        assert regels[-1].endswith("0 ná 14 dagen mislukt, 2 ná 7 dagen storing of 4xx geweigerd")
+        assert soort_stand.code_default(webhook_reconciliatie.SOORT_AFLEVERING_MISLUKT) == "actie"
+        assert soort_stand.REGISTRY[webhook_reconciliatie.SOORT_AFLEVERING_MISLUKT].direct_actie_reden
+        for b in v.bevindingen:
+            lees = teksten.leesbaar(b)
+            assert len(lees.titel) <= teksten.MAX_TITEL and lees.wat and lees.doe and "Nu opnieuw" in lees.doe
+            assert not teksten.bevat_technische_sleutel(lees.wat) and not teksten.bevat_technische_sleutel(lees.doe)
+        assert "7 dagen" in teksten.leesbaar(s).titel and "afgekeurd" in teksten.leesbaar(p).titel
+        assert cli.main(["reconciliatie-alles", "--alleen", "webhooks", "--lees-only"]) == 1
+        assert "2 ná 7 dagen storing of 4xx geweigerd" in capsys.readouterr().out
+
+        # "Nu opnieuw" op zo'n rij: terug naar openstaand mét vers budget, direct één afleverronde (nu 200 →
+        # afgeleverd).
+        ontvanger._forceer_status = []
+        uit = nu_opnieuw(  # échte klok: de mock toetst de timestamp tegen het replay-venster
+            actor_id=beheerder_id, administratie_id=vastgoed_administratie, outbox_id=storing_id,
+            nu=datetime.now(UTC), transport=ontvanger.transport,
+        )
+        assert uit.status_voor == "mislukt" and uit.status_na == WebhookStatus.AFGELEVERD.value
+        assert _audit_acties(admin_engine, storing_id)[-2:] == ["webhook_nu_opnieuw", "webhook_afgeleverd"]
+        # Een oude dead-letter zonder prefix blijft webhook-redrive-terrein (409 in de router).
+        with pytest.raises(NuOpnieuwNietMogelijk):
+            nu_opnieuw(actor_id=beheerder_id, administratie_id=vastgoed_administratie, outbox_id=oud_id, nu=t0,
+            transport=ontvanger.transport)

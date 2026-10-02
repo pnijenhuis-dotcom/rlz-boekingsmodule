@@ -654,6 +654,8 @@ jobs:
             # (1) `reconciliatie-alles --alleen webhooks --lees-only`: per outbox-rij die op Vastly wacht (409 niet_koppelbaar, status
             # wacht_op_ontvanger, cadans 1 u / 6 u / 24 u / dagelijks) of ná 14 dagen mislukt is één AFWIJKING-regel + WEBHOOKS-slotregel
             # (verwacht vóór een eerste 409: "0 outbox-rij(en)"); (2) request-log van de handeling "Nu opnieuw" (POST /reconciliatie/webhooks/…).
+            # 02-10 avond (besluit Peter, punt 17a): de slotregel eindigt óók op "… N ná 7 dagen storing of 4xx geweigerd" (derde soort
+            # webhook_aflevering_mislukt, direct actie) — verwacht 0 zolang Vastly bereikbaar is; het grep-patroon hieronder is een prefix.
             # De outbox zelf per administratie = `db-lezen webhook-outbox --administratie …` (scope-query, hier niet kantoorbreed).
             UIT="verkenning/nameting-webhook-wacht-$DATUM.txt"
             rc_ww=0

@@ -177,12 +177,10 @@ class Settings(BaseSettings):
     # toggle (platform.webhook_instelling, default UIT — parallel aan de boeken-failsafe).
     webhook_doel_url: str | None = None
     webhook_timeout_seconds: float = 10.0
-    # Retry/backoff per outbox-rij: exponentieel (basis * 2^(poging-1), gecapt), na
-    # webhook_max_pogingen mislukte pogingen gaat de rij zichtbaar naar 'mislukt' (dead-letter)
-    # — nooit een stille oneindige retry-lus.
-    webhook_max_pogingen: int = 8
-    webhook_backoff_basis_seconds: float = 60.0
-    webhook_backoff_max_seconds: float = 3600.0
+    # 02-10 avond (besluit Peter, run A punt 17a): de retry-instellingen webhook_max_pogingen/webhook_backoff_* zijn
+    # vervallen — élke niet-2xx volgt de vaste storingscadans in app/documenten/webhook_afleveraar.py (1 u → 6 u → 24
+    # u → dagelijks, max 7 dagen; nooit een stille oneindige lus), een 4xx ≠ 409/429 is direct 'mislukt'. Geen
+    # instelling (Peter 30-09 "hou het simpel").
     # In-process poll-interval (dev; productie draait dezelfde verwerk-functie als Cloud
     # Scheduler/Cloud Run-job via `python -m app.cli webhook-afleveren`).
     webhook_afleveraar_interval_seconds: float = 30.0

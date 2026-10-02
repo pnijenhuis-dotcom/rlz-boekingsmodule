@@ -16,6 +16,12 @@ Twee bevindingssoorten (lees-only, geen HTTP-call — de afleveraar doet het wer
   `WACHT_VERLOPEN_PREFIX`, `wacht_op_ontvanger_sinds` gevuld): direct in `actie` — hier is wél een mens nodig (melden
   bij Vastly waarom de koppeling er ná 14 dagen nog niet is; daarna "Nu opnieuw"). Besluit Peter in de opdracht
   (punt 17: "daarna pas `mislukt` mét reden"), het bewijs is de reden uit Vastly's eigen antwoord; explosie-rem blijft.
+- `webhook_aflevering_mislukt` (02-10 avond, besluit Peter punt 17a) — per rij die ná de 7-dagen-storingscadans
+  (5xx/429/
+  timeout; `laatste_fout` begint met `STORING_VERLOPEN_PREFIX`) óf door een 4xx-weigering (`GEWEIGERD_PREFIX`,
+  payloadfout) `mislukt` is: direct in `actie` — mens nodig (storing melden bij Vastly / ons bericht fixen), bewijs =
+  het letterlijke antwoord; `detail.reden_soort` = `storing_verlopen` | `payloadfout`; dezelfde handeling "Nu opnieuw"
+  (vers budget).
 Per administratie in eigen RLS-scope (coalesce administratie_id/document.administratie_id, zoals de afleveraar)."""
 
 from __future__ import annotations
@@ -30,11 +36,21 @@ from sqlalchemy import func, select
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.documenten.models import Document, WebhookStatus, WebhookUitgaand
-from app.documenten.webhook_afleveraar import WACHT_MAX, WACHT_PREFIX, WACHT_VERLOPEN_PREFIX
+from app.documenten.webhook_afleveraar import (
+    GEWEIGERD_PREFIX,
+    STORING_MAX,
+    STORING_VERLOPEN_PREFIX,
+    WACHT_MAX,
+    WACHT_PREFIX,
+    WACHT_VERLOPEN_PREFIX,
+    is_verlopen_of_geweigerd,
+)
 
 BLOK = "webhooks"
 SOORT_WACHT = "webhook_wacht_op_ontvanger"
 SOORT_VERLOPEN = "webhook_niet_koppelbaar_verlopen"
+#: 02-10 avond (punt 17a): storing ná 7 dagen cadans óf 4xx-weigering — direct `actie`.
+SOORT_AFLEVERING_MISLUKT = "webhook_aflevering_mislukt"
 
 
 def _vingerafdruk(*delen: str) -> str:
@@ -50,7 +66,24 @@ def _reden_uit(laatste_fout: str | None) -> str | None:
         return laatste_fout.split(":", 1)[1].strip() if ":" in laatste_fout else None
     if laatste_fout.startswith(WACHT_PREFIX) and "(" in laatste_fout:
         return laatste_fout[laatste_fout.index("(") + 1 : laatste_fout.rindex(")")] if ")" in laatste_fout else None
+    if laatste_fout.startswith(STORING_VERLOPEN_PREFIX):
+        # "aflevering mislukt binnen 7 dagen (N pogingen): <laatste fout>"
+        return laatste_fout.split("):", 1)[1].strip() if "):" in laatste_fout else laatste_fout
+    if laatste_fout.startswith(GEWEIGERD_PREFIX):
+        # "ontvanger weigerde het bericht (HTTP 400): <body> — payloadfout, herhalen zinloos"
+        kern = laatste_fout[len(GEWEIGERD_PREFIX) :].strip()
+        return kern.rsplit(" — payloadfout", 1)[0].strip() or laatste_fout
     return laatste_fout
+
+
+def _storing_pogingen_uit(laatste_fout: str | None) -> int | None:
+    """N uit "aflevering mislukt binnen 7 dagen (N pogingen): …"."""
+    if not laatste_fout or not laatste_fout.startswith(STORING_VERLOPEN_PREFIX):
+        return None
+    try:
+        return int(laatste_fout[len(STORING_VERLOPEN_PREFIX) :].split("(", 1)[1].split(" ", 1)[0])
+    except (IndexError, ValueError):
+        return None
 
 
 def _bevinding(verzamelaar, **kw) -> None:  # noqa: ANN001, ANN003
@@ -70,6 +103,13 @@ def _rijen(administratie_id: uuid.UUID) -> list[WebhookUitgaand]:
                     (WebhookUitgaand.status == WebhookStatus.MISLUKT.value)
                     & WebhookUitgaand.wacht_op_ontvanger_sinds.is_not(None)
                     & WebhookUitgaand.laatste_fout.like(f"{WACHT_VERLOPEN_PREFIX}%")
+                )
+                | (
+                    (WebhookUitgaand.status == WebhookStatus.MISLUKT.value)
+                    & (
+                        WebhookUitgaand.laatste_fout.like(f"{STORING_VERLOPEN_PREFIX}%")
+                        | WebhookUitgaand.laatste_fout.like(f"{GEWEIGERD_PREFIX}%")
+                    )
                 ),
             )
             .order_by(WebhookUitgaand.aangemaakt_op)
@@ -88,6 +128,7 @@ def cli_blok(  # noqa: ANN001
         administraties = [(a.id, a.naam) for a in session.scalars(select(Administratie))]
     n_wacht = 0
     n_verlopen = 0
+    n_mislukt = 0
     gecontroleerd = 0
     for administratie_id, naam in administraties:
         for rij in _rijen(administratie_id):
@@ -96,9 +137,28 @@ def cli_blok(  # noqa: ANN001
             referentie = str(data.get("referentie") or rij.id)
             reden = _reden_uit(rij.laatste_fout) or "geen reden in het antwoord"
             sinds = rij.wacht_op_ontvanger_sinds
-            verlopen = rij.status == WebhookStatus.MISLUKT.value
-            soort = SOORT_VERLOPEN if verlopen else SOORT_WACHT
-            if verlopen:
+            aflevering_mislukt = is_verlopen_of_geweigerd(rij.status, rij.laatste_fout)
+            verlopen = rij.status == WebhookStatus.MISLUKT.value and not aflevering_mislukt
+            soort = SOORT_AFLEVERING_MISLUKT if aflevering_mislukt else (SOORT_VERLOPEN if verlopen else SOORT_WACHT)
+            reden_soort = None
+            storing_pogingen = None
+            if aflevering_mislukt:
+                n_mislukt += 1
+                payloadfout = (rij.laatste_fout or "").startswith(GEWEIGERD_PREFIX)
+                reden_soort = "payloadfout" if payloadfout else "storing_verlopen"
+                storing_pogingen = _storing_pogingen_uit(rij.laatste_fout) or (rij.pogingen - rij.wacht_pogingen)
+                laatste = f"{rij.laatste_poging_op:%d-%m %H:%M} UTC" if rij.laatste_poging_op else "?"
+                if payloadfout:
+                    tekst = (
+                        f"AFWIJKING  webhooks {naam}: {rij.event} {referentie} door de ontvanger geweigerd "
+                        f"(payloadfout, herhalen zinloos) — {reden} (laatste poging {laatste})"
+                    )
+                else:
+                    tekst = (
+                        f"AFWIJKING  webhooks {naam}: {rij.event} {referentie} ná {STORING_MAX.days} dagen "
+                        f"storingscadans mislukt — {reden} ({storing_pogingen} pogingen, laatste {laatste})"
+                    )
+            elif verlopen:
                 n_verlopen += 1
                 tekst = (
                     f"AFWIJKING  webhooks {naam}: {rij.event} {referentie} ná {WACHT_MAX.days} dagen wachten op de "
@@ -130,7 +190,10 @@ def cli_blok(  # noqa: ANN001
                     "sinds": sinds.isoformat() if sinds else None,
                     "volgende_poging_op": rij.volgende_poging_op.isoformat() if rij.volgende_poging_op else None,
                     "wacht_pogingen": rij.wacht_pogingen,
-                    "max_dagen": WACHT_MAX.days,
+                    "max_dagen": STORING_MAX.days if aflevering_mislukt else WACHT_MAX.days,
+                    "reden_soort": reden_soort,
+                    "storing_pogingen": storing_pogingen,
+                    "laatste_poging_op": rij.laatste_poging_op.isoformat() if rij.laatste_poging_op else None,
                     "doel_pad": "/reconciliatie",
                 },
                 blok=BLOK,
@@ -139,6 +202,7 @@ def cli_blok(  # noqa: ANN001
         verzamelaar.gecontroleerd(gecontroleerd)
     stdout(
         f"WEBHOOKS   {gecontroleerd} outbox-rij(en) in wacht of verlopen getoetst: {n_wacht} wacht op de ontvanger "
-        f"(409 niet_koppelbaar, cadans 1 u / 6 u / 24 u / dagelijks), {n_verlopen} ná {WACHT_MAX.days} dagen mislukt"
+        f"(409 niet_koppelbaar, cadans 1 u / 6 u / 24 u / dagelijks), {n_verlopen} ná {WACHT_MAX.days} dagen mislukt, "
+        f"{n_mislukt} ná {STORING_MAX.days} dagen storing of 4xx geweigerd"
     )
-    return 1 if (n_wacht or n_verlopen) else 0
+    return 1 if (n_wacht or n_verlopen or n_mislukt) else 0

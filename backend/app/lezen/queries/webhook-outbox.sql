@@ -1,6 +1,6 @@
 -- naam: webhook-outbox
--- versie: 2
--- doel: Webhook-outbox (koppelcontract §3) van één administratie per rij: event, status, pogingen, afgeleverd_op, laatste_fout, referentie/rlz_document_id/volgnummer uit de payload én het laatste afleverantwoord uit het audit (resultaat van de ontvanger: verwerkt/al_verwerkt/voorstellen/genegeerd + reden) — meetlat voor webhook-herzenden (OPEN_ITEMS regel 13); v2 (02-10, run A punt 17): wacht_op_ontvanger_sinds, wacht_pogingen, volgende_poging_op en de audit-acties webhook_wacht_op_ontvanger / webhook_niet_koppelbaar_verlopen / webhook_nu_opnieuw
+-- versie: 3
+-- doel: Webhook-outbox (koppelcontract §3) van één administratie per rij: event, status, pogingen, afgeleverd_op, laatste_fout, referentie/rlz_document_id/volgnummer uit de payload én het laatste afleverantwoord uit het audit (resultaat van de ontvanger: verwerkt/al_verwerkt/voorstellen/genegeerd + reden) — meetlat voor webhook-herzenden (OPEN_ITEMS regel 13); v2 (02-10, run A punt 17): wacht_op_ontvanger_sinds, wacht_pogingen, volgende_poging_op en de audit-acties webhook_wacht_op_ontvanger / webhook_niet_koppelbaar_verlopen / webhook_nu_opnieuw; v3 (02-10 avond, besluit punt 17a): audit-acties webhook_aflevering_verlopen (ná 7 dagen storingscadans) en webhook_geweigerd_4xx (payloadfout, direct mislukt) — webhook_dead_letter alleen nog historisch
 -- scope: administratie
 -- parameters: administratie_id, referentie, event
 -- optioneel: referentie, event
@@ -32,7 +32,8 @@ SELECT w.id AS outbox_id,
           FROM platform.audit_event e
          WHERE e.tabel = 'webhook_uitgaand' AND e.record_id = w.id
            AND e.actie IN ('webhook_afgeleverd', 'webhook_genegeerd', 'webhook_poging_mislukt', 'webhook_dead_letter',
-                           'webhook_wacht_op_ontvanger', 'webhook_niet_koppelbaar_verlopen')
+                           'webhook_wacht_op_ontvanger', 'webhook_niet_koppelbaar_verlopen',
+                           'webhook_aflevering_verlopen', 'webhook_geweigerd_4xx')
          ORDER BY e.tijdstip DESC
          LIMIT 1
        ) a ON TRUE

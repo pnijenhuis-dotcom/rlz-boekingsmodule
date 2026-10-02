@@ -93,8 +93,12 @@ class TestRegistry:
             # 02-10 (run A punt 17): ná 14 dagen 409 niet_koppelbaar alsnog mislukt — mens nodig (melden bij Vastly),
             # bewijs = Vastly's eigen reden; het wachten zelf (`webhook_wacht_op_ontvanger`) start in `meten`.
             "webhook_niet_koppelbaar_verlopen",
+            # 02-10 avond (besluit Peter, run A punt 17a): storing ná 7 dagen cadans of 4xx-weigering — mens nodig,
+            # bewijs = het letterlijke antwoord van de ontvanger.
+            "webhook_aflevering_mislukt",
             "intake_postvak_verschil",
         ]
+        assert soort_stand.code_default("webhook_aflevering_mislukt") == "actie"
         assert soort_stand.code_default("webhook_wacht_op_ontvanger") == "meten"
         assert soort_stand.code_default("webhook_niet_koppelbaar_verlopen") == "actie"
         assert soort_stand.code_default("doorbelasting_bedrag_afwijking") == "actie"

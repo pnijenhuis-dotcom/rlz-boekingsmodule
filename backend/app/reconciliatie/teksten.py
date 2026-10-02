@@ -1287,6 +1287,26 @@ def _webhooks(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             "Meld bij Vastly dat de koppeling voor deze administratie of factuur ontbreekt; is die hersteld, klik "
             "'Nu opnieuw' — het event wordt dan direct opnieuw aangeboden.",
         )
+    if soort == "webhook_aflevering_mislukt":
+        # 02-10 avond (punt 17a): storing ná 7 dagen cadans óf een 4xx-weigering (payloadfout) — de reden is de
+        # letterlijke fout/het antwoord van de ontvanger, hier zonder technische sleutels.
+        storing_pogingen = int(d.get("storing_pogingen") or 0)
+        fout = _s(d, "reden") or "geen foutomschrijving"
+        if _s(d, "reden_soort") == "payloadfout":
+            return (
+                _titel("Vastly weigerde het event (bericht afgekeurd)", referentie),
+                f"Het bericht {event} voor {referentie} is door Vastly afgekeurd — opnieuw sturen geeft hetzelfde "
+                f"antwoord: {zonder_guids(fout)}.",
+                "Dit zit in ons bericht (vorm, handtekening of versie), niet bij Vastly: meld het bij het beheer; ná "
+                "de fix klik 'Nu opnieuw' — het event wordt dan direct opnieuw aangeboden.",
+            )
+        return (
+            _titel("Event bereikt Vastly al 7 dagen niet", referentie),
+            f"Het bericht {event} voor {referentie} is {storing_pogingen} keer aangeboden (na 1 uur, 6 uur, 24 uur en "
+            f"daarna dagelijks, 7 dagen lang) en kwam niet aan; laatste antwoord: {zonder_guids(fout)}.",
+            "Meld de storing bij Vastly (of het beheer als de fout bij ons ligt); werkt de koppeling weer, klik "
+            "'Nu opnieuw' — het event wordt dan direct opnieuw aangeboden met een vers budget van 7 dagen.",
+        )
     return (
         _titel("Webhook-afwijking", referentie),
         _terugval_wat(tekst),

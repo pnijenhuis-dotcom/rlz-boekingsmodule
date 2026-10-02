@@ -108,7 +108,7 @@ class TestNietKoppelbaarInDeKeten:
         rij = _outbox(keten, bdo_geboekt_vastgoed)
         ontvanger = NietKoppelbaarOntvanger(reden="onbekende_administratie")
         rapport = verwerk_openstaande_webhooks(transport=ontvanger.transport)
-        assert rapport.wacht_op_ontvanger == 1 and rapport.dead_letter == 0 and rapport.poging_mislukt == 0
+        assert rapport.wacht_op_ontvanger == 1 and rapport.storing_verlopen == 0 and rapport.poging_mislukt == 0
         rij = _outbox(keten, bdo_geboekt_vastgoed)
         assert rij["status"] == WebhookStatus.WACHT_OP_ONTVANGER.value
         assert "onbekende_administratie" in rij["laatste_fout"]
