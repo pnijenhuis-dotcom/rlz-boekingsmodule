@@ -16,6 +16,10 @@ export interface ComboboxOptie {
    * door useGrootboekOpties, doorgeefluik voor BoekvoorstelPanel's "btw volgt de rekening" bij een grootboek-wissel.
    * SearchableCombobox zelf doet niets met dit veld. */
   standaardTaxrateId?: string | null
+  /** Rekeningtype van een grootboekrekening (RLZ AccountType onvertaald: 1 opbrengsten, 2 kosten, 3 activa, 4 passiva;
+   * punt 6 02-10) — alleen gezet door useGrootboekOpties; BoekvoorstelPanel laat de projectkolom leeg op een balansrekening.
+   * SearchableCombobox zelf doet niets met dit veld. */
+  soort?: number
   /** Idem, afgeleid uit de historie (0143, `historie_taxrate_id` + `historie_taxrate_n`) — volgt ná de RLZ-default. */
   historieTaxrateId?: string | null
   historieTaxrateN?: number | null

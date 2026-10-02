@@ -36,6 +36,8 @@ class CheckRegel:
     netto_bedrag: Decimal | None
     btw_bedrag: Decimal | None
     project_id: uuid.UUID | None = None
+    #: Punt 6 02-10: False = balansrekening (voorraad/activa/tussenrekening) — de projectplicht geldt niet op deze regel.
+    project_van_toepassing: bool = True
 
 
 @dataclass(frozen=True)
@@ -136,7 +138,7 @@ def check_verplichte_velden(
             per_veld["btw-code"].append(i)
         if regel.netto_bedrag is None:
             per_veld["netto bedrag"].append(i)
-        if project_verplicht and regel.project_id is None:
+        if project_verplicht and regel.project_van_toepassing and regel.project_id is None:
             per_veld["project"].append(i)
     for veld, nummers in per_veld.items():
         if nummers:

@@ -97,6 +97,7 @@ from sqlalchemy.orm import Session
 
 from app.beheer.btw_plichtig import BTW_BRON_NIET_PLICHTIG, CHIP_TEKST, geen_btw_taxrate_voor
 from app.db.models import Administratie, Grootboekrekening
+from app.documenten import rekeningtype
 from app.documenten.checks import is_buitenland_tarief
 from app.documenten.regelsom import zet_btw_in_kosten
 from app.geheugen import regel_gb
@@ -755,6 +756,12 @@ def verrijk_prefill(
         engine_observaties = _engine_observaties(session, administratie_id=administratie_id, vendor_id=vendor_id)
         classificaties = regel_gb.classificaties_voor(session, document_id=document_id)
 
+    # Punt 6 (02-10): op een BALANSrekening (voorraad/activa/tussenrekening) wordt nooit een project voorgesteld —
+    # ook niet uit de factuur; de regel draagt geen projectplicht (`rekeningtype`). Eén query per document.
+    balans = (
+        rekeningtype.balans_ledger_ids(session, administratie_id=administratie_id) if project_verplicht else frozenset()
+    )
+
     verrijkt: list[BoekvoorstelRegelData] = []
     for volgnummer, regel in enumerate(regels, start=1):
         sleutel = normaliseer_regel_sleutel(regel.omschrijving)
@@ -785,11 +792,12 @@ def verrijk_prefill(
                     )
         if uitgesloten and regel.ledger_id in uitgesloten:
             regel = _met_aftrek_uitgesloten(regel, uitgesloten=uitgesloten, nul_taxrate_id=nul_voor(regel.ledger_id))
+        projectdragend = rekeningtype.project_van_toepassing(regel.ledger_id, balans)
         regel = _met_factuur_project(
             regel,
             kandidaten=projectkandidaten,
             werknummers=werknummers,
-            project_verplicht=project_verplicht,
+            project_verplicht=project_verplicht and projectdragend,
             projectformaat=projectformaat,
             alle_kandidaten=alle_projecten,
         )
@@ -797,7 +805,7 @@ def verrijk_prefill(
             regel,
             engine_observaties=engine_observaties,
             regel_sleutel=sleutel,
-            project_verplicht=project_verplicht,
+            project_verplicht=project_verplicht and projectdragend,
             vandaag=vandaag,
             projectformaat=projectformaat,
             actieve_project_ids=frozenset(k.id for k in projectkandidaten) if project_verplicht else None,

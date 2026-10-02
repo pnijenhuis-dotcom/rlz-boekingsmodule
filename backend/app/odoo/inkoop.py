@@ -419,7 +419,10 @@ class OdooInkoopPort:
                     quantity=quantity,
                     price_unit=price_unit,
                     product_uom_id=uom,
-                    analytic_distribution=distributie if regel.project_id is None else None,
+                    # Punt 6 (02-10): een balansregel (voorraad/activa) krijgt nooit de projectverdeling.
+                    analytic_distribution=(
+                        distributie if regel.project_id is None and regel.project_van_toepassing else None
+                    ),
                 )
             )
         return regels

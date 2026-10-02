@@ -130,6 +130,11 @@ class BoekvoorstelRegelData:
     # (`app/odoo/hervertaling.py`) — per veld van→naar of "geen tegenhanger". Alleen op opgeslagen regels; de
     # eerstvolgende PUT door de mens schrijft de regels opnieuw zonder dit spoor (chip verdwijnt, bewust).
     overstap_vertaling: dict | None = None
+    # Punt 6 "Boeken prettig 1" (02-10): False = de rekening is een BALANSrekening (voorraad 3xxx, activa 0xxx,
+    # tussenrekening; `grootboekrekening.soort` ≠ 2) — geen projectveld, geen verdeling, geen projectcheck op deze regel.
+    # Gezet in `_met_projectverdeling` (één rekeningtype-query per lezing, `app/documenten/rekeningtype.py`); de
+    # adapters (RLZ/Odoo) splitsen zo'n regel nooit over de verdeling. Niet gepersisteerd; afgeleid uit de sync.
+    project_van_toepassing: bool = True
     # Blok A10 07-09 (stale check bij geheugen-prefill): herkomst per gevuld veld op een prefill-regel —
     # {"grootboek"|"btw"|"project": bron} met bron = gb_bron-waarde (blok D) | "leverancier_geheugen" (kop-niveau-
     # engine, chip "Geheugen N %") | "factuur" | "standaard" (blok E). Intern: stuurt de autosave-trigger en het
@@ -321,9 +326,22 @@ def _opgeslagen_betaalstatus(
 def _met_projectverdeling(
     session: Session, administratie_id: uuid.UUID, project_verplicht: bool, data: BoekvoorstelData
 ) -> BoekvoorstelData:
-    """Koppelpunt blok C: zet `projectverdeling` op het (frozen) voorstel — lazy import, geen kring."""
+    """Koppelpunt blok C: zet `projectverdeling` op het (frozen) voorstel — lazy import, geen kring.
+
+    Punt 6 (02-10): markeert vooraf élke regel op een BALANSrekening als `project_van_toepassing=False`
+    (`rekeningtype.balans_ledger_ids`, één query) — de verdeling, de checks en de adapters lezen die vlag."""
+    from app.documenten import rekeningtype
     from app.projectverdeling import service as projectverdeling_service
 
+    balans = rekeningtype.balans_ledger_ids(session, administratie_id=administratie_id)
+    if balans:
+        data = replace(
+            data,
+            regels=[
+                replace(r, project_van_toepassing=rekeningtype.project_van_toepassing(r.ledger_id, balans))
+                for r in data.regels
+            ],
+        )
     return projectverdeling_service.verrijk_boekvoorstel(
         session, administratie_id=administratie_id, data=data, project_verplicht=project_verplicht
     )
@@ -342,7 +360,8 @@ def _project_verplicht_per_regel(project_verplicht: bool, voorstel: Boekvoorstel
 
 
 def _regels_zonder_project(voorstel: BoekvoorstelData) -> int:
-    return sum(1 for r in voorstel.regels if r.project_id is None)
+    # Punt 6 (02-10): een balansregel zonder project telt niet — daar hoort geen project.
+    return sum(1 for r in voorstel.regels if r.project_id is None and r.project_van_toepassing)
 
 
 def _verdeling_reden(voorstel: BoekvoorstelData) -> str | None:
@@ -2458,6 +2477,7 @@ def _naar_check_regels(
             ledger_id=r.ledger_id,
             taxrate_id=r.taxrate_id,
             project_id=r.project_id,
+            project_van_toepassing=r.project_van_toepassing,
             netto_bedrag=r.netto_bedrag,
             btw_bedrag=btw_van(r),
         )

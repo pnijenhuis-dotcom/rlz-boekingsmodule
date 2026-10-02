@@ -399,7 +399,8 @@ def verrijk_boekvoorstel(
         administratie_id=administratie_id,
         document_id=data.document_id,
         vendor_id=data.vendor_id,
-        regels=[(r.project_id, r.netto_bedrag) for r in data.regels],
+        # Punt 6 (02-10): balansregels (voorraad/activa/tussenrekening) doen niet mee in de verdeling.
+        regels=[(r.project_id, r.netto_bedrag) for r in data.regels if r.project_van_toepassing],
         project_verplicht=project_verplicht,
         boek_cyclus=data.boek_cyclus,
         drempel_pct=drempel_voor(session, administratie_id),
@@ -551,11 +552,14 @@ def sla_op(
         row.hercontrole_verdeling = None
         row.hercontrole_bevinding = None
         # Informatief snapshot van de berekening op dit moment (de bindende stand wordt bij het boeken bevroren).
+        from app.documenten import rekeningtype
         from app.documenten.models import BoekvoorstelRegel
 
+        balans = rekeningtype.balans_ledger_ids(session, administratie_id=administratie_id)
         regels = [
             (r.project_id, r.netto_bedrag)
             for r in session.scalars(select(BoekvoorstelRegel).where(BoekvoorstelRegel.document_id == document_id))
+            if rekeningtype.project_van_toepassing(r.ledger_id, balans)  # punt 6 (02-10): balansregels doen niet mee
         ]
         live = None
         if not vervallen:

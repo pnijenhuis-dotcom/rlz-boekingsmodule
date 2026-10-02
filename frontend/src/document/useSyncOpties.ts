@@ -54,6 +54,7 @@ export function useGrootboekOpties(administratieId: string, herlaadSleutel = 0):
       id: r.ledger_id,
       code: r.code,
       label: r.naam,
+      soort: r.soort,
       standaardTaxrateId: r.standaard_taxrate_id ?? null,
       historieTaxrateId: r.historie_taxrate_id ?? null,
       historieTaxrateN: r.historie_taxrate_n ?? null,

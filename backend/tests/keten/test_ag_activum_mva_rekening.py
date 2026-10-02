@@ -10,6 +10,7 @@ Regel 2 (kosten 4700) blijft buiten beeld."""
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -133,3 +134,34 @@ def test_ag_regel_op_mva_rekening_wordt_activum_in_rlz_na_boeken(keten: Keten) -
     assert keten.api.post(f"{pad}/1/aanmaken", headers=keten.headers).status_code == 409
     # Regel 2 is geen kandidaat: 422.
     assert keten.api.post(f"{pad}/2/aanmaken", headers=keten.headers).status_code == 422
+
+
+def test_ag_balansregel_zonder_project_geen_projecteis(keten: Keten) -> None:
+    """Punt 6 "Boeken prettig 1" (02-10): de MVA-regel op 0107 (activa, soort 3) draagt geen projectplicht — alleen de
+    kostenregel 4700 moet een project hebben (of via de verdeling lopen). Activa-kaart (0168) ongewijzigd."""
+    _mva_rekeningen(keten)
+    pdf = CASUS.pdf()
+    resultaat = keten.mail([(CASUS.xml_bestandsnaam(), CASUS.xml(ingesloten_pdf=pdf)), (CASUS.pdf_bestandsnaam(), pdf)])
+    document_id = resultaat.bijlagen[0].document_id
+    voorstel = keten.prefill(document_id)
+    activum = _regel(GB_0107, "5000.00", "Kantoorinrichting vergaderruimte")
+    boekvoorstel.sla_boekvoorstel_op(
+        administratie_id=keten.administratie_id,
+        document_id=document_id,
+        actor_id=keten.actor,
+        vendor_id=voorstel.vendor_id,
+        referentie=voorstel.referentie,
+        factuurdatum=voorstel.factuurdatum,
+        totaalbedrag=voorstel.totaalbedrag,
+        regels=[replace(activum, project_id=None), _regel(GB_ADVIES, "500.00", "Advies")],
+    )
+    opgeslagen = keten.prefill(document_id)
+    assert [r.project_van_toepassing for r in opgeslagen.regels] == [False, True]
+    assert opgeslagen.projectverdeling is None  # de kostenregel heeft zijn project; de activaregel hoort er geen
+    checks = keten.checks(document_id)
+    assert checks["Verplichte velden"][0], checks["Verplichte velden"][1]
+    assert checks["Projectverdeling"] == (True, "Geen projectverdeling van toepassing")
+    kaart = keten.api.get(
+        f"/administraties/{keten.administratie_id}/documenten/{document_id}/activa-voorstel", headers=keten.headers
+    ).json()
+    assert [k["regel_volgnummer"] for k in kaart["kandidaten"]] == [1]

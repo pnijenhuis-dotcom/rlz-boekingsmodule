@@ -831,6 +831,14 @@ export function BoekvoorstelPanel({
   // server-side (regel_prefill.py stap 5 → 5b).
   // 15-09: één bron met de bankschermen (document/grootboekBtwDefault.ts).
   const grootboekDefaultMap = useMemo(() => bouwGrootboekBtwDefaultMap(grootboekOpties, taxrateOpties), [grootboekOpties, taxrateOpties])
+  // Punt 6 "Boeken prettig 1" (02-10): projecteis en projectverdeling gelden alleen voor KOSTENrekeningen (soort 2 uit de
+  // sync). Een regel op een balansrekening (voorraad 3xxx, activa 0xxx, tussenrekening) heeft geen projectveld; een
+  // rekening zonder bekend type telt als kosten (fail-closed, spiegel van app/documenten/rekeningtype.py).
+  const balansLedgerIds = useMemo(
+    () => new Set(grootboekOpties.filter((o) => o.soort !== undefined && o.soort !== 2).map((o) => o.id)),
+    [grootboekOpties],
+  )
+  const projectVanToepassing = (r: { ledgerId: string | null }) => r.ledgerId === null || !balansLedgerIds.has(r.ledgerId)
   const { opties: vendorOpties, fout: vendorFout, laden: vendorLaden } = useVendorOpties(administratieId, cacheVersie)
   const { opties: projectOpties, laden: projectLaden, fout: projectFout } = useProjectOpties(administratieId, cacheVersie)
   const projectVerplicht = useProjectVerplicht(administratieId)
@@ -1427,7 +1435,7 @@ export function BoekvoorstelPanel({
   // "€ 0,00 · verdeeld 100 %" zonder uitleg.
   const verdelenLeeggemaaktRef = useRef<{ regels: number } | null>(null)
   const verdelenGevraagd = () => {
-    const metProject = regels.filter((r) => r.projectId !== null).length
+    const metProject = regels.filter((r) => r.projectId !== null && projectVanToepassing(r)).length
     if (metProject > 0) {
       setRegels((huidig) =>
         huidig.map((r) =>
@@ -1447,10 +1455,12 @@ export function BoekvoorstelPanel({
     else setKopTaxrateId(id)
     if (id === null) return
     const label = (veld === 'projectId' ? projectOpties : taxrateOpties).find((o) => o.id === id)?.label
-    for (const r of regels) wijzigRegel(r.key, veld, id)
+    // Punt 6 (02-10): een project op factuurniveau slaat balansregels over (daar hoort geen project).
+    const doel = veld === 'projectId' ? regels.filter(projectVanToepassing) : regels
+    for (const r of doel) wijzigRegel(r.key, veld, id)
     kopDoorgezetRef.current = {
       ...(kopDoorgezetRef.current ?? {}),
-      ...(veld === 'projectId' ? { project: regels.length, project_naam: label } : { btw: regels.length, btw_code: label }),
+      ...(veld === 'projectId' ? { project: doel.length, project_naam: label } : { btw: doel.length, btw_code: label }),
     }
   }
 
@@ -2726,7 +2736,18 @@ export function BoekvoorstelPanel({
                     </>
                   )}
                 </td>
-                {projectVerplicht && (
+                {projectVerplicht && !projectVanToepassing(regel) ? (
+                  // Punt 6 (02-10): balansrekening (voorraad/activa/tussenrekening) — geen projectveld, geen verdeling.
+                  <td>
+                    <span
+                      className="hint"
+                      data-testid="regel-project-balans"
+                      title="Balansrekening (voorraad, activa of tussenrekening): hier hoort geen project op — projecteis en projectverdeling gelden alleen voor kostenrekeningen."
+                    >
+                      — geen project (balansrekening)
+                    </span>
+                  </td>
+                ) : projectVerplicht && (
                   <td>
                     {isReadOnly ? (
                       optieWeergave(projectOpties, regel.projectId)
@@ -2917,13 +2938,13 @@ export function BoekvoorstelPanel({
         )}
         {/* B1 (04-09, UX-norm "lege stand = actie"): regels zonder project bieden de verdeling aan — één project blijft
             gewoon de kolom, het blok is voor de meerdere-projecten-gevallen. */}
-        {!isReadOnly && projectVerplicht && onVerdelenGevraagd && regels.some((r) => r.projectId === null) && (
+        {!isReadOnly && projectVerplicht && onVerdelenGevraagd && regels.some((r) => r.projectId === null && projectVanToepassing(r)) && (
           // Blok 4d (08-09): draagt de factuur zélf een projectnummer (blok 10-chip op een regel), dan is verdelen over
           // projecten niet de weg — dan alleen "kies per regel een project".
           <div className="hint" data-testid="project-leeg-actie" style={{ marginTop: 6 }}>
-            {regels.filter((r) => r.projectId === null).length === 1
+            {regels.filter((r) => r.projectId === null && projectVanToepassing(r)).length === 1
               ? '1 regel zonder project'
-              : `${regels.filter((r) => r.projectId === null).length} regels zonder project`}{' '}
+              : `${regels.filter((r) => r.projectId === null && projectVanToepassing(r)).length} regels zonder project`}{' '}
             {verdelingDektRegels ? (
               // B3-dekking: de opgeslagen verdeling geeft deze regels hun project(en) — geen actie meer nodig.
               <>— gedekt door de projectverdeling ✓</>

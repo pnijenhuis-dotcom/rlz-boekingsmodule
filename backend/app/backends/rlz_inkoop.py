@@ -94,8 +94,9 @@ def regels_naar_rlz_lines(voorstel: BoekvoorstelData) -> list[dict]:
             basis["TaxRate"] = {"id": str(regel.taxrate_id)}
         if regel.omschrijving:
             basis["Description"] = regel.omschrijving
-        if regel.project_id is None and gewichten:
+        if regel.project_id is None and gewichten and regel.project_van_toepassing:
             # Regel zonder eigen project → N regels mét Project, netto én btw per deel via grootste-rest (sluitend).
+            # Punt 6 (02-10): een balansregel (voorraad/activa) wordt nooit gesplitst — geen project.
             for deel in splits_regel(regel.netto_bedrag, btw_bedrag, gewichten):
                 lines.append(
                     {**basis, "NetAmount": float(deel.netto), "TaxAmount": float(deel.btw), "Project": {"id": str(deel.project_id)}}
@@ -118,7 +119,7 @@ def tegenboek_lines(voorstel: BoekvoorstelData, omschrijving: str) -> list[dict]
         basis: dict = {"Account": {"id": str(regel.ledger_id)}, "Description": omschrijving}
         if regel.taxrate_id is not None:
             basis["TaxRate"] = {"id": str(regel.taxrate_id)}
-        if regel.project_id is None and gewichten:
+        if regel.project_id is None and gewichten and regel.project_van_toepassing:
             for deel in splits_regel(regel.netto_bedrag or Decimal("0"), btw_bedrag, gewichten):
                 lines.append(
                     {**basis, "NetAmount": float(-deel.netto), "TaxAmount": float(-deel.btw), "Project": {"id": str(deel.project_id)}}
