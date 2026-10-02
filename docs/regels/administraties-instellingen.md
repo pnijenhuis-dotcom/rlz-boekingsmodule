@@ -170,6 +170,25 @@
   `tests/unit/test_nameting_workflow.py::test_verkoop_overstap_onderdeel_…`), tests `tests/odoo/test_leesbron_promotie.py`, vitest
   `OdooKoppelWizard.test.tsx`/`InstellingenScreen.test.tsx`. Werkt in productie: niet gemeten (vervolg-opdracht niet vóór 29-09 09:00).
 
+<!-- toegevoegd 02-10-2026, opdracht "run-D-alles-in-een" blok E -->
+- **Universal Verkoop — leveranciersfactuur ↔ Odoo-inkooporder: STAP-0 GEDAAN, GEEN BOUW (run D blok E 02-10-2026; opdracht Peter 28-09 "de
+  inkooporder gewoon in odoo blijven maken en de factuur van onze module koppelen aan die inkooporder … human error eruit"; geen migratie;
+  BESLISSINGEN "RUN D 02-10 — BTW < € 0,10, PROJECTMATCH, AFWIJZEN, IC 12 RICHTINGEN, PO STAP-0, NATIVE 1.3 (Peter 02-10)" blok E; feitenbron
+  `verkenning/odoo-verkenning.md` §14):** uitsluitend lees-only op company 3 (`OdooClient(read_only=True)`, 100 calls, geen enkele write). Feiten
+  die het ontwerp sturen: (1) in Odoo 19 hangt een leveranciersfactuur per REGEL aan de inkooporder via `account.move.line.purchase_line_id`
+  (stored, niet readonly, zetbaar in `account.move.create`); `qty_invoiced`/`invoice_status` op de PO volgen daar automatisch uit, de PO zelf
+  wordt nooit beschreven; `account.move.purchase_id`/`purchase_vendor_bill_id` zijn niet-opgeslagen UI-helpers; (2) `account_3way_match` is
+  niet geïnstalleerd — geen betaalblokkade, de "match" is PO-regel ↔ ontvangst (`qty_received`, stock moves) ↔ factuurregel; de bill-control-
+  policy zit per product (`purchase_method`: 305 × bestelde / 748 × ontvangen hoeveelheid); (3) stand 02-10: 30 PO's (alle sinds 02-09,
+  alle bevestigd), 18 gefactureerd / 12 open waarvan 11 intercompany Universal Materiaal (€ 98.788,27 excl., alle ontvangen) + 1 Q-FENCE
+  (gefactureerd vóór ontvangst); 98 leveranciersfacturen, 21 mét PO-koppeling (13 OCR-match, 5 "Automatisch aanvullen", 2 "Factuur maken",
+  1 geannuleerd), 2 van onze module (`invoice_origin AKN:…`, overhead zonder PO — **de overstap van 28-09 is dus uitgevoerd; de module boekt
+  in company 3**); human-error-spoor P00058 Bradwolff (OCR-concept geannuleerd, zelfde factuur opnieuw gemaakt). (4) Regel voor élke
+  module-factuur op een Odoo-administratie mét inkoopmodule: een regel zónder `purchase_line_id` raakt de PO niet → de PO blijft "te
+  factureren" en kan een tweede factuur krijgen (dubbeltellingsrisico) — daarom is de PO-match géén optie maar een voorwaarde zodra
+  PO-leveranciers via de module lopen. Ontwerp (drie opties, advies, beslisvragen) staat in het rapport `docs/rapporten/2026-10-02-run-d.md`
+  blok E; bouw uitsluitend ná Peters keuze. Werkt in productie: n.v.t. (STAP-0, niets gebouwd).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Stack & platform — Instellingen › Administraties v2 (CLAUDE.md `ed6d176` r. 52–62)

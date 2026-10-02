@@ -9,7 +9,7 @@ instellingen gewijzigd. Scripts: `verkenning/odoo_stap0_client.py` (JSON-2-clien
 mét reden) in `verkenning/output/odoo_stap0_*.{json,log,jsonl}` (gitignored). Secrets zijn nergens gelogd.
 
 Leeswijzer: §0 samenvatting · §1 verbinding & inventaris · §2 veld-voor-veld-mapping · §3 semantiekverschillen ·
-§4 bewijs-cycli A/B · §5 conclusie, beslispunten, klikpunten · §6 product-semantiek · §7 keten-cyclus · §8 afrondingsrun 04-09 (leesbron cloud + overstap-generale).
+§4 bewijs-cycli A/B · §5 conclusie, beslispunten, klikpunten · §6 product-semantiek · §7 keten-cyclus · §8 afrondingsrun 04-09 (leesbron cloud + overstap-generale) · §14 PO-koppeling STAP-0 02-10 (company 3, lees-only).
 
 ---
 
@@ -1098,3 +1098,92 @@ vervolg-opdracht in de inbox; meetlat: bank- en tussenrekeninggroep 0,00 of mét
 later: (a) asset-modellen per `asset_fixed`-rekening + `create_asset='draft'` inrichten (Odoo-configuratie, geen module-code), (b) de
 module leest `account.asset` + `depreciation_move_ids` voor de reconciliatie en koppelt via `original_move_line_ids` aan onze
 geboekte regel.
+
+## §14 PO-koppeling STAP-0 02-10 — leveranciersfactuur ↔ Odoo-inkooporder op company 3 (run D blok E; UITSLUITEND lees-only)
+
+**Opdracht (Peter 28-09, letterlijk): "is het dan niet makkelijker de inkooporder gewoon in odoo te blijven maken en de [leveranciers]factuur
+van onze module te koppelen aan die inkooporder? … human error eruit".** Dit is STAP-0: feiten + ontwerpvoorstel, GEEN bouw, GEEN write.
+Methode: `OdooClient(company_id=3, read_only=True)` (schrijfmethoden geweigerd vóór de call), JSON-2 `search_read`/`search_count`/`read`/
+`fields_get`/`has_access`, 100 calls in twee rondes op 02-10-2026 (scripts `E_po_stap0.py` + `E_po_stap0b.py` in de sessie-scratchpad,
+ruwe JSON idem; key alleen in de request-header, nergens geprint). Bron per feit: **[live]** = terug-gelezen op universal-steigers.odoo.com,
+**[code]** = Odoo-19-broncode/-docs, niet live geschreven. Namen hieronder zijn bedrijfsnamen en Odoo-loginlabels van de klant (geen BSN/privé).
+
+### 14.1 Inrichting en modules company 3 [live]
+
+| Feit | Waarneming |
+|---|---|
+| Modules | `purchase` 19.0.1.2, `purchase_stock` 19.0.1.2, `stock` 19.0.1.1, `stock_account` 19.0.1.1, `purchase_edi_ubl_bis3` (UBL-orders in/uit), `account_invoice_extract_purchase` (OCR matcht leveranciersfactuur aan PO), `account_edi_ubl_cii`. **`account_3way_match` is NIET geïnstalleerd** → `account.move` kent geen `release_to_pay`/`release_to_pay_manual`/`can_be_paid` (fields_get: ONTBREEKT). De "3-way match" in deze database is dus géén betaalblokkade maar de combinatie PO-regel ↔ ontvangst (`qty_received`) ↔ factuurregel (`qty_invoiced`). |
+| Company-instellingen | `po_lock = edit` (bevestigde PO blijft bewerkbaar), `po_double_validation = one_step` (drempel 5.000 irrelevant), `purchase_lock_date` False, alle lock dates False, `extract_in_invoice_digitalization_mode = no_send` (K2 van §5.3 staat nu óók op company 3 — OCR voor nieuwe facturen uit), `quick_edit_mode` False. |
+| Magazijn | warehouse 2 "Universal Verkoop B.V.", picking type 18 "Ontvangsten" (`IN`, code `incoming`) → locatie 30 `UV/Voorraad`; ontvangsten heten `UV/IN/000nn`. |
+| API-gebruiker | `has_access` read/write/create ✓ op `purchase.order(.line)`, `stock.picking`, `stock.move`, `account.move(.line)` — zelfde alles-kunnende gebruiker als §1.2 (uid 6 = Peter); **module-boekingen op company 3 dragen daardoor `create_uid` "Peter Nijenhuis"** (2 facturen, zie 14.3). |
+| Producten (purchase_ok) | `purchase_method`: **305 × `purchase` (factureren op bestelde hoeveelheid), 748 × `receive` (op ontvangen hoeveelheid)**; `type` consu/service/combo (geen `detailed_type` meer), 628 `is_storable`, 120 consu niet-voorraad, 305 service. De bill-control-policy zit dus per product en bepaalt `qty_to_invoice`. |
+
+### 14.2 Schema — de velden die de koppeling dragen [live `fields_get`]
+
+| Model.veld | type · stored · readonly | Betekenis voor een externe koppeling |
+|---|---|---|
+| `purchase.order.state` | selection **draft / sent / to approve / purchase / cancel** (géén `done` in 19) | alleen `purchase` is een bevestigde order |
+| `purchase.order.invoice_status` | selection `no` / `to invoice` / `invoiced` (ro, computed) | Odoo's eigen "open PO"-signaal — volgt `qty_invoiced` per regel |
+| `purchase.order.receipt_status` | `pending` / `partial` / `full` (ro) | ontvangststand uit de stock moves |
+| `purchase.order.invoice_ids` | m2m `account.move` (ro, computed uit de regels) | niet schrijfbaar — de koppeling loopt via de REGEL |
+| `purchase.order.partner_ref` | char | leveranciers-/bonnummer (bij 9/30 leeg; bij IC-orders = het Materiaal-verkoopordernummer `S00nnn`) |
+| `purchase.order.line.product_qty` / `qty_received` / `qty_invoiced` / `qty_to_invoice` | float · `qty_received` **schrijfbaar** (+ `qty_received_manual`, `qty_received_method` manual/stock_moves) · `qty_invoiced`/`qty_to_invoice` ro | `qty_invoiced` = Σ `quantity` van factuurregels mét `purchase_line_id` op facturen `state ≠ cancel` **[code]**; `qty_to_invoice` = (`qty_received` bij policy receive, anders `product_qty`) − `qty_invoiced` |
+| `purchase.order.line.invoice_lines` | o2m `account.move.line` (ro) — inverse van `purchase_line_id` | leesroute "welke factuurregels hangen aan deze PO-regel" |
+| `purchase.order.line.move_ids` | o2m `stock.move` (ro) | ontvangsten per regel; `tax_ids` (niet `taxes_id`), `analytic_distribution` json, `display_type` line_section/line_subsection/line_note |
+| **`account.move.line.purchase_line_id`** | **m2o `purchase.order.line` · stored · NIET readonly** | **DÉ koppeling.** Zetbaar in `account.move.create(invoice_line_ids=[(0,0,{…,"purchase_line_id": id})])` **[code; niet live geschreven]**; `purchase_order_id` is related/ro |
+| `account.move.purchase_id` | m2o, **niet stored** | UI-helper "Inkooporder" op een concept (onchange `_onchange_purchase_auto_complete`, privaat) |
+| `account.move.purchase_vendor_bill_id` | m2o `purchase.bill.union`, niet stored | UI-helper "Automatisch aanvullen": `purchase.bill.union` = view over `purchase.order` ∪ `account.move` (velden name/reference/partner_id/date/amount/vendor_bill_id/purchase_order_id) |
+| `account.move.invoice_origin` | char · stored · **readonly in fields_get, maar `create` accepteert het** (bewezen: onze AKN-marker staat op 2 facturen van company 3) | cosmetisch "Bron"; Odoo zet 'm op de PO-naam alleen bij "Factuur maken" vanuit de PO |
+| `account.move.purchase_order_count` | integer, computed | aantal gekoppelde PO's via de regels |
+| `stock.move.purchase_line_id` | m2o, stored, ro (door Odoo gezet bij PO-bevestiging) | ontvangst → PO-regel; `stock.picking.purchase_id` is related/niet stored, `picking_type_code` incoming |
+
+### 14.3 Stand company 3 op 02-10-2026 [live]
+
+| Meting | Uitkomst |
+|---|---|
+| Inkooporders | **30**, allemaal company 3 (companies 1, 2, 4–10: 0), allemaal `state purchase`; 29 besteld in 2026-09, 1 in 2026-10 — **vóór 02-09-2026 bestond er geen enkele PO** (de inkoopmodule is mét de Odoo-live-gang van Verkoop in gebruik genomen); 20 aangemaakt door de inkoper, 10 door een tweede medewerker |
+| `invoice_status` | 18 `invoiced`, **12 `to invoice`**, 0 `no` |
+| `receipt_status` | 29 `full`, 1 `pending`, 0 `partial`; 34 ontvangsten `done` + 2 open; 82 stock moves mét `purchase_line_id` (81 done) |
+| PO-regels | 90 (0 zonder product); `qty_received_method`: 82 `stock_moves`, 8 `manual` (diensten) |
+| Leveranciers op PO | **Universal Materiaal B.V. 11** (intercompany — `partner_ref` = Materiaal-verkooporder `S00069`…`S00274`; `account_inter_company_rules` is geïnstalleerd, §1.10), Bradwolff Constructie 5, Q-FENCE 3, HAKA 3, Licharz, Keraf, Scafom rux, Essentra, Indutrade, Gjerde, MJ-Gerüst, De Wit Bouwmachines 1 |
+| Leveranciersfacturen (`in_invoice`) | **98 totaal (88 in de laatste 90 dagen)**: 79 posted/90 d, 11 `cancel`, 1 `draft` (OCR-concept `waiting_validation`); per maand: 2026-09 47 · 08 34 · 07 7 · ouder 10 |
+| Mét PO-koppeling (≥ 1 regel `purchase_line_id`) | **21** (alle sinds 28-08-2026); herkomst: 13 OCR (`extract_state done`, `account_invoice_extract_purchase` matcht de PO) · 5 handmatig mét "Automatisch aanvullen" (`no_extract_requested`, `invoice_origin` leeg) · 2 "Factuur maken" vanuit de PO (`invoice_origin` = `P00015`/`P00026`) · 1 geannuleerd OCR-concept; **1 gemengde factuur** (`LF/2026/09/0029`: PO-regels + 1 losse regel) |
+| Zonder PO-koppeling | 63 posted los (44 historisch door de vorige boekhouder, 19 OCR-done zonder match) + **2 van onze module** (`invoice_origin AKN:…`): `LF/2026/09/0035` NEDKAB € 533,90 (23-09, 469000) en `LF/2026/09/0036` Viking € 44,79 (28-09, 431000) — overhead zonder PO, terecht los; **de module boekt dus al in Odoo company 3 (de overstap van 28-09 is uitgevoerd)** |
+| PO's mét 2 facturen | `P00055` Scafom rux (deelfactuur "33000751 / 55 deel" € 53.046,00 + tweede) en **`P00058` Bradwolff: OCR-concept 3441 (ref 20230729, PO-regels gematcht, `invoice_origin P00058`) is GEANNULEERD en dezelfde factuur opnieuw gemaakt als `LF/2026/09/0039` (zelfde ref, zelfde twee regels, 1.000 × 2,144 + 1.000 × 2,16 = € 5.207,84)** — het human-error-spoor dat Peter bedoelt |
+| De 12 open PO's (`to invoice`) | **11 × Universal Materiaal** (alle `receipt full`, `qty_invoiced 0`, samen € 98.788,27 excl. / € 119.534,82 incl.: P00014 € 1.800 · P00035 € 7.878,50 · P00037 € 19.662,76 · P00049 € 9.404 · P00050 € 100 · P00053 € 6.917 · P00054 € 16.797 · P00060 € 10.291,50 · P00062 € 8.841,76 · P00064 € 5.928 · P00065 € 11.167,75) + **P00031 Q-FENCE** (20 looppoorten: `qty_invoiced 20`, `qty_received 0`, `qty_to_invoice −20` — gefactureerd vóór ontvangst onder policy `receive`, factuur `LF/2026/09/0015` € 1.577,60). Voor géén van de 12 bestaat een losse factuur van dezelfde leverancier mét gelijk bedrag → geen dubbele boeking gevonden; de 11 IC-orders wachten op de Materiaal-verkoopfactuur (raakvlak blok D "IC 12 richtingen": Materiaal verkoopt in RLZ, Verkoop koopt in Odoo) |
+| Voorbeeld geslaagde keten | `P00063` Licharz GmbH (29-09, € 4.460): 2 regels 400 × 6,20 + 400 × 4,95 → ontvangst picking 268 `full` → factuur `LF/2026/09/0037` ref 4090154 (OCR done, beide regels `purchase_line_id` 118/119, rekening 700200) → `invoiced`. `P00061` Keraf (€ 1.101,52, `partner_ref pb201144198`) idem via `LF/2026/09/0034`. |
+
+### 14.4 Hoe Odoo 19 een leveranciersfactuur aan een PO koppelt (vijf routes, alle via `account.move.line.purchase_line_id`)
+
+1. **"Factuur maken" op de PO** — `purchase.order.action_create_invoice` (**write**, alleen benoemd): maakt een concept `in_invoice` mét
+   `invoice_origin` = PO-naam, per regel `purchase_line_id` + `quantity = qty_to_invoice`, `product_id`, `price_unit`, `tax_ids`,
+   `analytic_distribution` uit de PO-regel [code]; 2/21 live zo gemaakt.
+2. **"Automatisch aanvullen" op een concept-factuur** — UI-veld `purchase_vendor_bill_id` (`purchase.bill.union`) / `purchase_id` →
+   onchange `_onchange_purchase_auto_complete` (privaat, 403 via JSON-2) kopieert de nog te factureren PO-regels mét `purchase_line_id`;
+   `invoice_origin` blijft leeg; 5/21 live zo.
+3. **OCR + `account_invoice_extract_purchase`** — Odoo zoekt bij een gedigitaliseerde factuur een PO van dezelfde partner (PO-nummer in de
+   tekst / bedrag) en vult `purchase_line_id` + `invoice_origin`; 13/21 live zo (+ 1 geannuleerd). Sinds `no_send` op company 3 komen er
+   geen nieuwe OCR-concepten; de 9 geannuleerde `waiting_validation`-concepten zijn de opruiming van die periode.
+4. **UBL-order/-factuur (`purchase_edi_ubl_bis3`)** — een inkomende UBL-factuur mét `cac:OrderReference` = PO-naam wordt aan de PO gematcht
+   [code]; niet waargenomen op company 3.
+5. **Externe API (onze route)** — `account.move.create({move_type in_invoice, partner_id, journal_id, ref, invoice_date, date, company_id,
+   invoice_line_ids: [(0,0,{purchase_line_id, product_id, quantity, product_uom_id, price_unit, tax_ids, account_id, analytic_distribution,
+   name})]})` → `qty_invoiced` op de PO-regel loopt automatisch op (compute over `invoice_lines` met `move_id.state != cancel`),
+   `invoice_status` wordt `invoiced` zodra alles gefactureerd is, `purchase_order_count` 1; `action_post` daarna zoals vandaag [code — het
+   veld is stored en niet readonly; het enige wat niet live bewezen is, is de create zelf: geen write in deze STAP-0]. Minimum per regel:
+   `purchase_line_id` + `quantity`; `product_id`/`product_uom_id`/`account_id` moeten bij de PO-regel passen (Odoo toont anders een
+   "regel verschilt van de order"-waarschuwing in de UI, geen weigering [code]). Een factuurregel ZONDER `purchase_line_id` (zoals onze twee
+   AKN-facturen) raakt de PO nooit → de PO blijft `to invoice` en kan vanuit de PO een TWEEDE factuur krijgen — dat is het dubbeltellings-
+   risico van de huidige situatie zodra Verkoop PO-leveranciers via de module laat lopen.
+
+**Wat de koppeling NIET doet:** geen betaalblokkade (3-way-match-module ontbreekt), geen harde weigering bij afwijkende prijs/aantal (Odoo
+accepteert elke `quantity`, ook > `qty_to_invoice`; `qty_to_invoice` wordt dan negatief — live zichtbaar op P00031), geen koppeling op
+documentniveau (alleen regels), geen idempotentie (§3.1 blijft: zoek-vóór-create op `ref`+partner+company).
+
+### 14.5 Conclusie STAP-0
+
+De PO ís in Odoo de bron van "wat is besteld en ontvangen"; de factuur hangt er per REGEL aan via `purchase_line_id`. Een externe koppeling
+hoeft dus niets aan de PO te schrijven: de module maakt de `in_invoice` zoals nu (`app/odoo/inkoop.py`) en geeft per regel het juiste
+`purchase_line_id` mee — mits de module de PO-regel eenduidig kent. Het matchen (factuur → PO-regel) is het echte werk: op `partner_id` +
+`partner_ref`/PO-nummer in de factuurtekst + product/aantal/prijs per regel, deterministisch, mens kiest bij twijfel. Ontwerpopties, risico's
+en beslisvragen: rapport `docs/rapporten/2026-10-02-run-d.md` blok E + BESLISSINGEN "RUN D 02-10 — … PO STAP-0 …".

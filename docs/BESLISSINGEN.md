@@ -13996,3 +13996,34 @@ alinea "IC-controle Universal — alle 12 richtingen" + `docs/regels/reconciliat
 Werkt in productie: niet gemeten — vervolg-nameting `2026-10-03-nameting-run-d.md`, onderdeel `ic-aansluiting`. Verwachting: 12 richtingen
 voor de vier Universal-BV's (4 zonder records), ~53 van de 98 Nederland → Steigerbouw worden "onderweg", F/2026/00066 geen
 `ic_verkoop_ontbreekt` meer, `ic_inkoop_ontbreekt` loopt vermoedelijk tegen de explosie-rem (> 50) → `meten` + systeemfout-LET-OP.
+
+### Blok E — Universal Verkoop: leveranciersfactuur ↔ Odoo-inkooporder, STAP-0 (lees-only) — GEDAAN 02-10, GEEN BOUW
+
+**Opdracht (Peter 28-09, letterlijk):** "is het dan niet makkelijker de inkooporder gewoon in odoo te blijven maken en de [leveranciers]factuur van onze module te
+koppelen aan die inkooporder? … human error eruit". Uitgevoerd als STAP-0 op company 3 (Universal Verkoop B.V.): uitsluitend `search_read`/`search_count`/`read`/
+`fields_get`/`has_access` via `OdooClient(read_only=True)` (100 calls), geen write, geen productie-DB. Feitenbron = `verkenning/odoo-verkenning.md` §14;
+regels-alinea in `docs/regels/administraties-instellingen.md`; ontwerp + beslisvragen in `docs/rapporten/2026-10-02-run-d.md` blok E.
+
+**Feiten (live 02-10):** (1) de koppeling is per REGEL — `account.move.line.purchase_line_id` (stored, niet readonly, zetbaar bij `account.move.create`);
+`qty_invoiced`/`qty_to_invoice`/`invoice_status` op de PO zijn computed, `purchase.order.invoice_ids` readonly; de UI-helpers `purchase_id`/
+`purchase_vendor_bill_id` (`purchase.bill.union`) zijn niet opgeslagen en hun onchange is privaat. (2) `account_3way_match` is niet geïnstalleerd (geen
+`release_to_pay`): de match is PO-regel ↔ ontvangst (`qty_received`, stock moves) ↔ factuurregel; bill-control per product (`purchase_method` 305 ×
+bestelde / 748 × ontvangen hoeveelheid); `po_lock = edit`, OCR `no_send`. (3) Stand: 30 PO's (alle sinds 02-09, alle bevestigd, 29 volledig ontvangen),
+18 gefactureerd / 12 open = 11 × intercompany Universal Materiaal (€ 98.788,27 excl., alle ontvangen) + 1 × Q-FENCE (gefactureerd vóór ontvangst,
+`qty_to_invoice −20` — Odoo weigert dat niet); 98 leveranciersfacturen, 21 mét PO-koppeling (13 OCR-match, 5 "Automatisch aanvullen", 2 "Factuur maken",
+1 geannuleerd), 2 van onze module (`invoice_origin AKN:…`, overhead zonder PO) → **de overstap van 28-09 is uitgevoerd, de module boekt in company 3**;
+human-error-spoor P00058 (OCR-concept geannuleerd, zelfde factuur opnieuw gemaakt). (4) Risico van nu: een module-factuur zónder `purchase_line_id`
+raakt de PO niet → PO blijft "te factureren" → Odoo kan een tweede factuur maken.
+
+**Ontwerp (ter keuze, niets gebouwd):** A = module matcht factuur → PO-regel deterministisch (partner + PO-nummer/`partner_ref`/UBL `OrderReference` +
+product/aantal/prijs; mens bij twijfel) en geeft bij "Boeken in Odoo" per regel `purchase_line_id` + `quantity` mee, harde checks "al gefactureerd",
+`quantity ≤ qty_to_invoice` (ORANJE "nog niet ontvangen"), prijsverschil ORANJE (factuur leidend); B = Odoo maakt het concept uit de PO
+(`action_create_invoice`) en de module vult aan (twee bronnen, correcties); C = alleen een harde check, geen koppeling (= de situatie van nu).
+**Advies A in twee stappen:** A1 lees-only PO-kaart + checks; A2 `purchase_line_id` meegeven ná STAP-0 deel 2 (schrijvend op company 1, TEST-PO +
+TEST-factuur, reversal; GO Peter) dat de create-vorm, het terug-lezen van `qty_invoiced` en het rekeninggedrag onder `anglo_saxon_accounting` bewijst.
+Seam-eis: nieuwe code alleen in `app/odoo/` + port-methode (RLZ-port "niet van toepassing").
+
+**Beslisvragen Peter:** (1) welke leveranciers via PO (handelsgoederen) en is "PO-leverancier zonder order" ROOD of ORANJE; (2) factuur ≠ PO = ORANJE
+mét verschil of blokkeren; (3) factuur vóór ontvangst = ORANJE "Toch boeken" of wachten; (4) rekening uit Odoo-product/categorie of uit het
+boekvoorstel; (5) IC Universal Materiaal: Materiaal-verkoopfactuur via de intake naar Verkoop → PO (raakt blok D) of handmatig in Odoo; (6) PO-nummer
+verplicht op de factuur/UBL vragen; (7) GO voor STAP-0 deel 2. Werkt in productie: n.v.t.
