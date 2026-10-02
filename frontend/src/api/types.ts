@@ -2252,6 +2252,10 @@ export interface DocumentVerplaatsResponseDto {
   vragen_hertoegewezen: number
   /** Punt 6a: True als op verzoek een tenaamstelling-regel naar het doel is geleerd. */
   tenaamstelling_geleerd?: boolean
+  /** Run A 02-10 punt 9: het server-gekozen volgende document in de BRON-lijst (zelfde regels als ná boeken);
+   * null/afwezig = niets verwerkbaars → terug naar de lijst van de bron mét het actieve filter. */
+  volgende_document_id?: string | null
+  volgende_document_soort?: string | null
 }
 
 /** Inzicht › Open vragen kantoorbreed (design-ronde 03-09 blok B2, `GET /vragen`): één rij per open

@@ -599,6 +599,59 @@ class TestHttp:
             == 404
         )
 
+    def test_endpoint_geeft_het_volgende_document_in_de_bron_terug_nooit_het_doel(
+        self, administratie_id: uuid.UUID, doel_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        """Run A 02-10 punt 9 (Peter: "verplaatsen moet verplaatsen en door naar volgende document in steigerbouw"):
+        de verplaats-route kiest ná de verhuizing het VOLGENDE document in de BRON-lijst met exact de regels van het
+        202-antwoord van `POST …/boeken` (positie in de meegestuurde volgorde, cyclisch, statussen vers) — nooit het
+        doel, nooit het verplaatste document; niets verwerkbaars meer = null."""
+        hdr = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        doc_a = _upload(administratie_id, gescoopte_gebruiker, naam="a.xml")
+        doc_x = _upload(administratie_id, gescoopte_gebruiker, naam="x.xml")
+        doc_b = _upload(administratie_id, gescoopte_gebruiker, naam="b.xml")
+        # Een document in het DOEL mag nooit als "volgende" terugkomen.
+        in_doel = _upload(doel_id, gescoopte_gebruiker, naam="doel.xml")
+        volgorde = [str(doc_a), str(doc_x), str(doc_b)]
+
+        # X verplaatsen mét de getoonde volgorde A, X, B → positioneel: B (bron), niet het doel-document.
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{doc_x}/verplaats",
+            json={"doel_administratie_id": str(doel_id), "lijst_volgorde": volgorde},
+            headers=hdr,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["volgende_document_id"] == str(doc_b)
+        assert body["volgende_document_soort"] == "inkoopfactuur"
+        assert body["volgende_document_id"] not in {str(in_doel), str(doc_x)}
+        assert _document_rij(admin_engine, doc_b).administratie_id == administratie_id
+        assert _document_rij(admin_engine, doc_x).administratie_id == doel_id
+
+        # B is de laatste in de (nu kortere) lijst → cyclisch terug naar A.
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{doc_b}/verplaats",
+            json={"doel_administratie_id": str(doel_id), "lijst_volgorde": [str(doc_a), str(doc_b)]},
+            headers=hdr,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["volgende_document_id"] == str(doc_a)
+
+        # Zonder lijst_volgorde: backend-volgorde (nieuwste eerst) — nog steeds alleen de bron; A is het enige document
+        # dat overblijft → ná zijn verhuizing is er niets verwerkbaars meer: null (de frontend gaat naar de bron-lijst).
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{doc_a}/verplaats",
+            json={"doel_administratie_id": str(doel_id)},
+            headers=hdr,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["volgende_document_id"] is None
+        assert body["volgende_document_soort"] is None
+        # Het doel heeft intussen vier documenten — geen daarvan is ooit als "volgende" teruggegeven.
+        for d in (doc_a, doc_b, doc_x, in_doel):
+            assert _document_rij(admin_engine, d).administratie_id == doel_id
+
     def test_endpoint_409_met_uitleg_bij_geboekt_en_403_zonder_doelscope(
         self,
         administratie_id: uuid.UUID,

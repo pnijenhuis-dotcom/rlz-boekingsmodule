@@ -74,6 +74,13 @@ class TestVerplaatsenOnderProductieEigenaar:
         assert verhuis[0]["verplaatst"]["van_administratie_id"] == str(keten.administratie_id)
         assert verhuis[0]["verplaatst"]["naar_administratie_naam"] == "Universal Verkoop (test)"
         assert _rls_weigeringen(admin_engine) == 0
+        # Run A 02-10 punt 9: de doorloop ná verplaatsen = die ná boeken — het antwoord draagt het volgende document in
+        # de BRON-lijst (of null), nooit het verplaatste document en nooit iets uit het doel.
+        assert "volgende_document_id" in body
+        assert body["volgende_document_id"] != str(document_id)
+        if body["volgende_document_id"] is not None:
+            assert body["volgende_document_id"] in keten.standaardlijst_ids()
+            assert body["volgende_document_soort"]
         # In de bron is het document weg uit de lijst; het doel toont het.
         assert str(document_id) not in keten.standaardlijst_ids()
         doel_lijst = keten.api.get(f"/administraties/{doel_id}/documenten", headers=keten.headers)

@@ -1063,8 +1063,12 @@ describe('DocumentDetailScreen — ⋯-menu "Verplaats naar andere administratie
     }
   }
 
-  /** Bovenop de standaard-mock: administraties (voor de modal) + het verplaats-endpoint. */
-  function metVerplaatsMock(verplaatsAanroepen: unknown[]) {
+  const VOLGENDE_ID = 'bbbbbbbb-0000-0000-0000-000000000031'
+  const VORIGE_ID = 'bbbbbbbb-0000-0000-0000-000000000030'
+
+  /** Bovenop de standaard-mock: administraties (voor de modal) + het verplaats-endpoint. Run A 02-10 punt 9: het
+   * antwoord draagt optioneel het server-gekozen volgende document in de BRON. */
+  function metVerplaatsMock(verplaatsAanroepen: unknown[], volgende: { id: string; soort?: string } | null = null) {
     const basis = globalThis.fetch
     vi.stubGlobal(
       'fetch',
@@ -1092,6 +1096,8 @@ describe('DocumentDetailScreen — ⋯-menu "Verplaats naar andere administratie
               leerregels_gecorrigeerd: ['tenaamstelling', 'afzender'],
               vragen_verhuisd: 0,
               vragen_hertoegewezen: 0,
+              volgende_document_id: volgende?.id ?? null,
+              volgende_document_soort: volgende ? (volgende.soort ?? 'inkoopfactuur') : null,
             }),
           )
         }
@@ -1100,12 +1106,19 @@ describe('DocumentDetailScreen — ⋯-menu "Verplaats naar andere administratie
     )
   }
 
-  it('te_controleren: menu-item actief → modal → verplaatsen → toast + navigatie naar het document in het doel', async () => {
+  it('te_controleren: menu-item actief → modal → verplaatsen → toast + door naar het volgende document in de BRON-lijst (nooit het doel) — run A 02-10 punt 9', async () => {
     const gebruiker = userEvent.setup()
-    installFetchMock(basisDetail('te_controleren'))
+    // Getoonde lijst van de bron: vorige, dit document, volgende — reist als lijst_volgorde mee (zoals bij "Boeken in RLZ").
+    const lijst = [
+      lijstItem(VORIGE_ID, 'inkoopfactuur', 'te_controleren'),
+      lijstItem(DOCUMENT_ID, 'inkoopfactuur', 'te_controleren'),
+      lijstItem(VOLGENDE_ID, 'inkoopfactuur', 'te_controleren'),
+    ]
+    installFetchMock(basisDetail('te_controleren'), { lijst })
     const aanroepen: unknown[] = []
-    metVerplaatsMock(aanroepen)
-    renderScherm()
+    metVerplaatsMock(aanroepen, { id: VOLGENDE_ID })
+    // Mét lijstcontext (zoals vanuit de documentenlijst): de getoonde volgorde is bekend en reist mee.
+    renderSchermMetQuery('soort=inkoopfactuur&status=te_controleren')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Meer acties' })).toBeInTheDocument())
 
     await gebruiker.click(screen.getByRole('button', { name: 'Meer acties' }))
@@ -1119,9 +1132,32 @@ describe('DocumentDetailScreen — ⋯-menu "Verplaats naar andere administratie
     await gebruiker.click(await screen.findByRole('option', { name: 'Port of Rotterdam N.V.' }))
     await gebruiker.click(screen.getByRole('button', { name: 'Verplaatsen naar Port of Rotterdam N.V.' }))
 
-    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${DOEL_ID}/${DOCUMENT_ID}`))
-    expect(aanroepen).toEqual([{ doel_administratie_id: DOEL_ID, onthoud_tenaamstelling: false }])
+    // Zelfde doorloop als ná boeken: het server-gekozen volgende document in de BRON-administratie.
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${ADMINISTRATIE_ID}/${VOLGENDE_ID}`))
+    expect(screen.getByTestId('locatie')).not.toHaveTextContent(DOEL_ID)
+    expect(aanroepen).toEqual([
+      { doel_administratie_id: DOEL_ID, onthoud_tenaamstelling: false, lijst_volgorde: [VORIGE_ID, DOCUMENT_ID, VOLGENDE_ID] },
+    ])
     expect(screen.getByText(/Verplaatst naar Port of Rotterdam N.V./)).toBeInTheDocument()
+  })
+
+  it('verplaatsen zonder volgend document in de bron → terug naar de documentenlijst van de BRON, nooit naar het doel — run A 02-10 punt 9', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock(basisDetail('te_controleren'), { lijst: [lijstItem(DOCUMENT_ID, 'inkoopfactuur', 'te_controleren')] })
+    const aanroepen: unknown[] = []
+    metVerplaatsMock(aanroepen, null)
+    renderSchermMetQuery('soort=inkoopfactuur&status=te_controleren')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Meer acties' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: 'Meer acties' }))
+    await gebruiker.click(screen.getByRole('menuitem', { name: 'Verplaats naar andere administratie…' }))
+    const veld = await screen.findByRole('combobox', { name: /Doeladministratie/ })
+    await gebruiker.click(veld)
+    await gebruiker.click(await screen.findByRole('option', { name: 'Port of Rotterdam N.V.' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Verplaatsen naar Port of Rotterdam N.V.' }))
+
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/?administratie=${ADMINISTRATIE_ID}`))
+    expect(screen.getByTestId('locatie')).not.toHaveTextContent(DOEL_ID)
+    expect(aanroepen).toEqual([{ doel_administratie_id: DOEL_ID, onthoud_tenaamstelling: false, lijst_volgorde: [DOCUMENT_ID] }])
   })
 
   it.each([

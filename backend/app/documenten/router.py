@@ -1084,6 +1084,11 @@ def document_verplaatsen(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Verplaatsen is mislukt — automatisch gemeld (code {correlatie_id}).",
         ) from exc
+    # Run A 02-10 punt 9: dezelfde doorloop als ná boeken — het volgende document in de BRON-lijst (positie in de
+    # getoonde volgorde, cyclisch, statussen vers), nooit het doel. Eén helper, geen tweede implementatie.
+    volgende = boek_wachtrij.kies_volgend_document(
+        administratie_id=administratie_id, huidig_id=document_id, volgorde=invoer.lijst_volgorde
+    )
     return schemas.DocumentVerplaatsResponse(
         document_id=resultaat.document_id,
         status=resultaat.status.value,
@@ -1091,6 +1096,8 @@ def document_verplaatsen(
         van_administratie_naam=resultaat.van_administratie_naam,
         naar_administratie_id=resultaat.naar_administratie_id,
         naar_administratie_naam=resultaat.naar_administratie_naam,
+        volgende_document_id=volgende[0] if volgende else None,
+        volgende_document_soort=volgende[1] if volgende else None,
         leerregels_gecorrigeerd=list(resultaat.leerregels_gecorrigeerd),
         vragen_verhuisd=resultaat.vragen_verhuisd,
         vragen_hertoegewezen=resultaat.vragen_hertoegewezen,

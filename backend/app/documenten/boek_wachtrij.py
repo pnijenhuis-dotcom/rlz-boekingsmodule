@@ -308,7 +308,10 @@ def kies_volgend_document(
                 )
             ).all()
             per_id = {rij.id: (rij.status, rij.soort) for rij in rijen}
-            ids = [d for d in volgorde if d in per_id]
+            # Het huidige document blijft op zijn positie staan óók als het niet (meer) in deze administratie staat —
+            # ná "Verplaatsen naar een andere administratie" (run A 02-10 punt 9) kiest de bron-lijst het volgende
+            # document positioneel, precies zoals ná boeken; het huidige zelf wordt hieronder altijd uitgesloten.
+            ids = [d for d in volgorde if d in per_id or d == huidig_id]
         else:
             rijen = session.execute(
                 select(Document.id, Document.status, Document.soort)

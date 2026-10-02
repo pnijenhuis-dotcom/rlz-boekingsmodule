@@ -15,6 +15,9 @@ interface Props {
   openVragen: number
   /** Gelezen tenaamstelling (punt 6a): voedt de optionele "onthoud"-checkbox; null = geen checkbox. */
   tenaamstelling?: string | null
+  /** Run A 02-10 punt 9: de getoonde lijstvolgorde van de bron (zoals bij "Boeken in RLZ") — de server kiest het
+   * volgende document in díe lijst; afwezig = backend-volgorde. */
+  lijstVolgorde?: string[]
   onVerplaatst: (resultaat: DocumentVerplaatsResponseDto) => void
   onAnnuleren: () => void
 }
@@ -30,6 +33,7 @@ export function VerplaatsModal({
   bestandsnaam,
   openVragen,
   tenaamstelling = null,
+  lijstVolgorde,
   onVerplaatst,
   onAnnuleren,
 }: Props) {
@@ -52,7 +56,7 @@ export function VerplaatsModal({
     setBezig(true)
     setFout(null)
     try {
-      const resultaat = await verplaatsDocument(administratieId, documentId, doelId, onthoud && !!tenaamstelling)
+      const resultaat = await verplaatsDocument(administratieId, documentId, doelId, onthoud && !!tenaamstelling, lijstVolgorde)
       onVerplaatst(resultaat)
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Verplaatsen mislukt.')

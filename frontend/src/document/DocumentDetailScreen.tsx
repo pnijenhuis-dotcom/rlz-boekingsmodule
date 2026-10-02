@@ -74,6 +74,18 @@ const AFWIJZEN_STATUSSEN = VRAAG_STELLEN_STATUSSEN
 type VerwerkingsInfo =
   | GeboektInfo
   | { uitkomst: 'afgewezen'; referentie: string | null; boekstuknummer: null; waarschuwing?: undefined }
+  // Run A 02-10 punt 9: ná "Verplaatsen naar een andere administratie" dezelfde doorloop als ná boeken — het
+  // server-gekozen volgende document in de BRON-lijst; het doel wordt nooit geopend.
+  | {
+      uitkomst: 'verplaatst'
+      referentie: string | null
+      boekstuknummer: null
+      waarschuwing?: undefined
+      doelNaam: string
+      volgendeDocumentId?: string | null
+      volgendeDocumentSoort?: string | null
+      miniVoorraad?: undefined
+    }
 
 /** Boeken sneller (18-09, stap 3): prefetch van het VOLGENDE document — alleen `prefetchDetail` vult de cache, alleen de
  * eerstvolgende `haalDetailOp` van dát document leest 'm (één keer, ≤ 60 s). Elke andere lezing (openen, `laadDetail` ná
@@ -110,6 +122,8 @@ function toastTekst(info: VerwerkingsInfo, referentie: string): string {
       return `Ter accordering aangeboden — ${referentie}`
     case 'afgewezen':
       return `Afgewezen — ${referentie}`
+    case 'verplaatst':
+      return `Verplaatst naar ${info.doelNaam} — extractie draait opnieuw${info.volgendeDocumentId ? ' · je gaat door naar de volgende' : ''}`
   }
 }
 
@@ -767,13 +781,15 @@ export function DocumentDetailScreen() {
     // Boeken sneller (18-09, stap 3): (1) het server-side gekozen volgende document uit het 202-antwoord — geen
     // lijst-fetch; (2) anders de al geladen lijst (positie.volgende / kiesVolgendDocument zonder fetch); (3) pas als
     // beide ontbreken de lijst ophalen. Zonder volgend document → de lijst mét filter.
-    if (info.uitkomst === 'wordt_geboekt' && info.volgendeDocumentId) {
+    // Punt 9 (02-10): ná verplaatsen exact hetzelfde pad — de server koos het volgende document in de BRON-lijst.
+    const serverKoos = info.uitkomst === 'wordt_geboekt' || info.uitkomst === 'verplaatst'
+    if (serverKoos && info.volgendeDocumentId) {
       const volgendeItem = lijst?.find((d) => d.id === info.volgendeDocumentId)
       const stub = { id: info.volgendeDocumentId, soort: info.volgendeDocumentSoort ?? 'inkoopfactuur', status: 'te_controleren' }
       void navigate(documentRoute(administratieId, (volgendeItem ?? stub) as DocumentListResponseDto['documenten'][number], context))
       return
     }
-    if (info.uitkomst === 'wordt_geboekt') {
+    if (serverKoos) {
       // De server koos al (of vond niets verwerkbaars): geen lijst-fetch meer — terug naar de lijst mét filter.
       void navigate(doel)
       return
@@ -1978,11 +1994,20 @@ export function DocumentDetailScreen() {
               bestandsnaam={detail.bestandsnaam}
               openVragen={documentVragen?.filter((v) => v.status === 'open').length ?? 0}
               tenaamstelling={detail.tenaamstelling ?? null}
+              lijstVolgorde={lijstVolgorde}
               onVerplaatst={(resultaat) => {
                 setVerplaatsModalOpen(false)
-                meld(`Verplaatst naar ${resultaat.naar_administratie_naam} — extractie draait opnieuw`)
-                // Het document is in de bron-scope niet meer zichtbaar: door naar het doel.
-                void navigate(documentPad(resultaat.naar_administratie_id, { id: documentId, soort: detail?.soort }))
+                // Run A 02-10 punt 9 (Peter: "verplaatsen moet verplaatsen en door naar volgende document in
+                // steigerbouw"): dezelfde doorloop als ná boeken — het server-gekozen volgende document in de BRON-lijst
+                // (actief filter), nooit naar de doeladministratie. Vóór 02-10 navigeerde dit naar het doel.
+                void naVerwerking({
+                  uitkomst: 'verplaatst',
+                  referentie: null,
+                  boekstuknummer: null,
+                  doelNaam: resultaat.naar_administratie_naam,
+                  volgendeDocumentId: resultaat.volgende_document_id ?? null,
+                  volgendeDocumentSoort: resultaat.volgende_document_soort ?? null,
+                })
               }}
               onAnnuleren={() => setVerplaatsModalOpen(false)}
             />

@@ -1304,6 +1304,10 @@ class VerplaatsInput(StrikteInvoer):
     # — dicht het register-match-gat (toewijzing die uit de administratienaam-match kwam en dus geen
     # leer-regel had). Default UIT; géén automatische leer-regel.
     onthoud_tenaamstelling: bool = False
+    # Run A 02-10 punt 9 (Peter: "verplaatsen moet verplaatsen en door naar volgende document in steigerbouw"): de
+    # document-id's in de GETOONDE lijstvolgorde van de BRON (gefilterd + gesorteerd, max 2000) — exact het veld van
+    # `BoekInput`; de server kiest daarmee het volgende document in de bron-lijst. Zonder lijst: backend-volgorde.
+    lijst_volgorde: list[uuid.UUID] | None = Field(default=None, max_length=2000)
 
 
 class DocumentVerplaatsResponse(BaseModel):
@@ -1313,6 +1317,10 @@ class DocumentVerplaatsResponse(BaseModel):
     van_administratie_naam: str
     naar_administratie_id: uuid.UUID
     naar_administratie_naam: str
+    # Run A 02-10 punt 9: het server-gekozen VOLGENDE document in de BRON-administratie (zelfde regels als het
+    # 202-antwoord van `POST …/boeken`: `boek_wachtrij.kies_volgend_document`); None = niets verwerkbaars → de lijst.
+    volgende_document_id: uuid.UUID | None = None
+    volgende_document_soort: str | None = None
     """Leer-regels (tenaamstelling/afzender) die van de oude naar de nieuwe administratie zijn
     gecorrigeerd — leeg = de toewijzing kwam niet uit het geheugen (alleen verplaatst)."""
     leerregels_gecorrigeerd: list[str]

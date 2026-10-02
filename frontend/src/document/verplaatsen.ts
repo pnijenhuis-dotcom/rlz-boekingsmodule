@@ -47,10 +47,14 @@ export function verplaatsDocument(
   documentId: string,
   doelAdministratieId: string,
   onthoudTenaamstelling = false,
+  lijstVolgorde?: string[],
 ): Promise<DocumentVerplaatsResponseDto> {
   return apiPostJson<DocumentVerplaatsResponseDto>(`/administraties/${administratieId}/documenten/${documentId}/verplaats`, {
     doel_administratie_id: doelAdministratieId,
     // Punt 6a: alleen op expliciet verzoek (checkbox, default uit) — nooit automatisch.
     onthoud_tenaamstelling: onthoudTenaamstelling,
+    // Run A 02-10 punt 9: de getoonde lijstvolgorde van de BRON reist mee (zelfde veld als bij "Boeken in RLZ") zodat de
+    // server het volgende document in de bron-lijst kiest — de doorloop ná verplaatsen is die ná boeken.
+    ...(lijstVolgorde ? { lijst_volgorde: lijstVolgorde } : {}),
   })
 }

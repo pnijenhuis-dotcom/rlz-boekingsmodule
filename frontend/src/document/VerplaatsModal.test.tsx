@@ -107,6 +107,34 @@ describe('VerplaatsModal (addendum 27-08 punt 5)', () => {
     expect(onVerplaatst.mock.calls[0][0]).toMatchObject({ naar_administratie_id: DOEL, leerregels_gecorrigeerd: ['tenaamstelling'] })
   })
 
+  it('stuurt de getoonde lijstvolgorde van de bron mee als lijst_volgorde (run A 02-10 punt 9) en geeft het volgende document door', async () => {
+    const gebruiker = userEvent.setup()
+    const aanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ verplaatsAanroepen: aanroepen })
+    const onVerplaatst = vi.fn()
+    const volgorde = ['bbbbbbbb-0000-0000-0000-000000000001', DOCUMENT_ID, 'bbbbbbbb-0000-0000-0000-000000000003']
+    render(
+      <VerplaatsModal
+        administratieId={BRON}
+        administratieNaam="ARVUM B.V."
+        documentId={DOCUMENT_ID}
+        bestandsnaam="factuur-4711.pdf"
+        openVragen={0}
+        lijstVolgorde={volgorde}
+        onVerplaatst={onVerplaatst}
+        onAnnuleren={() => {}}
+      />,
+    )
+    const veld = screen.getByRole('combobox', { name: /Doeladministratie/ })
+    await gebruiker.click(veld)
+    await gebruiker.click(await screen.findByRole('option', { name: 'Port of Rotterdam N.V.' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Verplaatsen naar Port of Rotterdam N.V.' }))
+    await waitFor(() => expect(onVerplaatst).toHaveBeenCalledTimes(1))
+    expect(aanroepen[0].body).toEqual({ doel_administratie_id: DOEL, onthoud_tenaamstelling: false, lijst_volgorde: volgorde })
+    // Het antwoord (mét of zonder volgend document) gaat ongewijzigd door naar het scherm — dát kiest de route.
+    expect(onVerplaatst.mock.calls[0][0]).toMatchObject({ naar_administratie_id: DOEL })
+  })
+
   it('toont de server-uitleg (409) zichtbaar in de modal en blijft open', async () => {
     const gebruiker = userEvent.setup()
     installFetchMock({ verplaatsStatus: 409, detail: 'Het document ligt bij de klant ter accordering — trek de accordering eerst in.' })
