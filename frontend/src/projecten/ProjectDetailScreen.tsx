@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { meerwerkBonPad, projectResultaatPad } from './projectPad'
 import { ApiError, apiFetch, apiJson } from '../api/client'
 import type { VendorLijstDto } from '../api/types'
 import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Select, SkeletonPaneel } from '../ui/basis'
@@ -95,6 +96,9 @@ const ONTLEDING_STATUS: Record<string, { label: string; variant: 'ok' | 'warn' |
 export function ProjectDetailScreen() {
   const navigate = useNavigate()
   const { administratieId = '', projectId = '' } = useParams()
+  // Punt 10 run A (02-10): geopend vanaf een meerwerkbon → terugweg naar precies die bon (projectPad(…, { meerwerkId })).
+  const [searchParams] = useSearchParams()
+  const vanMeerwerkId = searchParams.get('meerwerk')
   const { administraties } = useAdministraties()
   const [detail, setDetail] = useState<ProjectDetailDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
@@ -168,12 +172,19 @@ export function ProjectDetailScreen() {
               ? ` · gekoppeld werknummer opdrachtgever: ${detail.specificatie.werknummer_opdrachtgever}`
               : ''}
           </div>
+          {vanMeerwerkId && (
+            <div style={{ marginTop: 6 }}>
+              <Link to={meerwerkBonPad(administratieId, vanMeerwerkId)} className="linkbtn" data-testid="terug-naar-meerwerkbon">
+                ← Terug naar de meerwerkbon
+              </Link>
+            </div>
+          )}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Button
             variant="secundair"
             maat="klein"
-            onClick={() => navigate(`/projecten/${administratieId}/${projectId}/resultaat`)}
+            onClick={() => navigate(projectResultaatPad(administratieId, projectId))}
           >
             📈 Resultaat
           </Button>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { projectResultaatPad } from './projectPad'
 import { Badge, SkeletonPaneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
@@ -137,7 +138,7 @@ export function ProjectenOverzichtScreen() {
                     <tr
                       key={rij.project_id}
                       className="clickable"
-                      onClick={() => navigate(`/projecten/${administratieId}/${rij.project_id}/resultaat`)}
+                      onClick={() => navigate(projectResultaatPad(administratieId, rij.project_id))}
                     >
                       <td>
                         <b>{rij.project_naam ?? rij.project_id}</b>

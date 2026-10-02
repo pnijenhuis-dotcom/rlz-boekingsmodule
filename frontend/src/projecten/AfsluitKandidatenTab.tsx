@@ -8,6 +8,7 @@
 // automatisch. Teal = actie, groen = status, oranje = let op, rood = mislukt. Tabel in `.tabel-scroll` (overflow-les 18-09).
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { projectPad } from './projectPad'
 import { useAuthOptioneel } from '../auth/AuthContext'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
@@ -553,7 +554,7 @@ export function AfsluitKandidatenTab({
                           Niet afsluiten…
                         </button>
                       )}{' '}
-                      <Link to={`/projecten/${r.administratie_id}/${r.project_id}`} className="btn secondary" aria-label={`Open project ${r.naam ?? r.project_id}`}>
+                      <Link to={projectPad(r.administratie_id, r.project_id)} className="btn secondary" aria-label={`Open project ${r.naam ?? r.project_id}`}>
                         Openen →
                       </Link>
                     </td>

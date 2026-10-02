@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError, apiFetch } from '../api/client'
+import { projectPad } from '../projecten/projectPad'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import {
@@ -84,6 +85,9 @@ export function MeerwerkScreen() {
   const weekstaatId = searchParams.get('weekstaat')
   // Bug 18-09: één landingsplek "Beoordelen" mét twee tabs; `?tab=urenstaten|meerwerk` (de chip landt op de tab mét werk).
   const tab: BeoordelenTab = searchParams.get('tab') === 'meerwerk' ? 'meerwerk' : 'urenstaten'
+  // Punt 10 run A (02-10): `?meerwerk=<id>` = deeplink naar één meerwerkbon (projectpagina → bon); opent het beoordeel-paneel
+  // zodra de lijst er is en zet het statusfilter op die melding.
+  const meerwerkParam = searchParams.get('meerwerk')
   const [urenstatenAantal, setUrenstatenAantal] = useState<number | null>(null)
   const { administraties } = useAdministraties()
   const { meld } = useToastOptioneel()
@@ -126,6 +130,18 @@ export function MeerwerkScreen() {
     setItems(null)
     laad()
   }, [laad])
+
+  useEffect(() => {
+    if (!meerwerkParam || items === null) return
+    const gevraagd = items.find((i) => i.id === meerwerkParam)
+    if (!gevraagd) return
+    setFilter(gevraagd.status)
+    setOpenItem(gevraagd)
+    // Eén keer openen: de parameter gaat uit de URL zodat sluiten niet opnieuw opent.
+    const volgende = new URLSearchParams(searchParams)
+    volgende.delete('meerwerk')
+    setSearchParams(volgende, { replace: true })
+  }, [meerwerkParam, items, searchParams, setSearchParams])
 
   if (!administratieId) {
     return <p className="hint">Geen administratie gekozen — open Beoordelen vanaf de klantpagina.</p>
@@ -237,7 +253,16 @@ export function MeerwerkScreen() {
                 {zichtbaar.map((item) => (
                   <tr key={item.id} className="clickable" onClick={() => setOpenItem(item)}>
                     <td>
-                      <b>{item.project_naam ?? '?'}</b>
+                      {/* Punt 10 run A (02-10): projectnummer/-naam = link naar de projectpagina (rijklik blijft de bon). */}
+                      <Link
+                        to={projectPad(administratieId, item.project_id, { meerwerkId: item.id })}
+                        className="linkbtn"
+                        style={{ fontWeight: 600 }}
+                        onClick={(e) => e.stopPropagation()}
+                        data-testid={`project-link-${item.id}`}
+                      >
+                        {item.project_naam ?? '?'}
+                      </Link>
                     </td>
                     {/* Omschrijving ALTIJD voluit (mockup-norm): regelterugloop, nooit "…" */}
                     <td style={{ maxWidth: 380, whiteSpace: 'normal' }}>
@@ -376,7 +401,14 @@ function MeerwerkPaneel({
           <div className="info-grid">
             <div className="rij">
               <span className="k">Project</span>
-              <b>{item.project_naam ?? '?'}</b>
+              <Link
+                to={projectPad(administratieId, item.project_id, { meerwerkId: item.id })}
+                className="linkbtn"
+                style={{ fontWeight: 600 }}
+                data-testid="paneel-project-link"
+              >
+                {item.project_naam ?? '?'} →
+              </Link>
             </div>
             <div className="rij">
               <span className="k">Gemeld door</span>

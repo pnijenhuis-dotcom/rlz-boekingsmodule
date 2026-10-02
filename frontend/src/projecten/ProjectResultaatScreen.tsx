@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { projectPad } from './projectPad'
 import { Button, SkeletonPaneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
@@ -105,7 +106,7 @@ export function ProjectResultaatScreen() {
               { label: 'Werkvoorraad', naar: '/' },
               { label: administratieNaam, naar: `/?administratie=${administratieId}` },
               { label: 'Projecten', naar: `/projecten?administratie=${administratieId}` },
-              { label: data.project_naam ?? 'Project', naar: `/projecten/${administratieId}/${projectId}` },
+              { label: data.project_naam ?? 'Project', naar: projectPad(administratieId, projectId) },
             ]}
             huidige="Resultaat"
           />

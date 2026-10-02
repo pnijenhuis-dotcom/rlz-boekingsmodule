@@ -2866,6 +2866,10 @@ function MeerwerkVraagView({
       <Terug label={kaart.project_naam ?? 'Project'} onClick={terug} />
       <div className="acc-seclabel">Vraag van het kantoor</div>
       <div className="acc-card">
+        {/* Punt 10 run A (Peter 02-10): vanaf de meerwerkbon direct door naar het project — de projectkaart (≥ 48 px). */}
+        <button type="button" className="acc-tekstlink acc-projectlink" data-testid="naar-project" onClick={terug}>
+          🏗 Project {kaart.project_naam ?? ''} →
+        </button>
         <div className="acc-notitie" style={{ margin: '0 0 10px' }}>
           <span>❓</span>
           <span>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { projectPad } from './projectPad'
 import { Badge, Button, SkeletonRegels } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
@@ -188,7 +189,7 @@ export function ProjectenScreen() {
                   <tr
                     key={rij.project_id}
                     className="clickable"
-                    onClick={() => navigate(`/projecten/${administratieId}/${rij.project_id}`)}
+                    onClick={() => navigate(projectPad(administratieId, rij.project_id))}
                   >
                     <td style={rij.status === 'afgesloten' ? { color: 'var(--muted)' } : undefined}>
                       <b>{rij.naam ?? rij.project_id}</b>
@@ -228,7 +229,7 @@ export function ProjectenScreen() {
           administratieId={administratieId}
           onKlaar={(projectId) => {
             setNieuwOpen(false)
-            navigate(`/projecten/${administratieId}/${projectId}`)
+            navigate(projectPad(administratieId, projectId))
           }}
           onAnnuleren={() => setNieuwOpen(false)}
         />

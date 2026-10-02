@@ -92,9 +92,9 @@ function installMock(state: { detail: ReturnType<typeof detail>; puts: Array<{ u
   )
 }
 
-function renderDetail() {
+function renderDetail(query = '') {
   return render(
-    <MemoryRouter initialEntries={[`/projecten/${ADMINISTRATIE_ID}/${PROJECT_ID}`]}>
+    <MemoryRouter initialEntries={[`/projecten/${ADMINISTRATIE_ID}/${PROJECT_ID}${query}`]}>
       <Routes>
         <Route path="/projecten/:administratieId/:projectId" element={<ProjectDetailScreen />} />
       </Routes>
@@ -154,5 +154,24 @@ describe('ProjectDetailScreen — contract-ontleding auto-first (D6)', () => {
       expect(within(rij).getByText('handmatig', { selector: 'span' })).toBeTruthy()
     })
     expect(screen.getByText('Staffel gewijzigd.')).toBeTruthy()
+  })
+})
+
+/** Punt 10 run A (Peter 02-10): geopend vanaf een meerwerkbon (`?meerwerk=<id>`) → terugweg naar precies die bon. */
+describe('ProjectDetailScreen — terug naar de meerwerkbon (punt 10 run A)', () => {
+  it('toont "← Terug naar de meerwerkbon" alleen mét ?meerwerk=, als link naar Beoordelen › Meerwerk met die bon open', async () => {
+    installMock({ detail: detail(), puts: [] })
+    renderDetail('?meerwerk=mw-7')
+    await screen.findByRole('heading', { name: '26031 Tilburg (Heijmans)' })
+    const terug = screen.getByTestId('terug-naar-meerwerkbon')
+    expect(terug).toHaveAttribute('href', `/meerwerk?administratie=${ADMINISTRATIE_ID}&tab=meerwerk&meerwerk=mw-7`)
+    expect(terug).toHaveClass('linkbtn')
+  })
+
+  it('zonder ?meerwerk= geen terugweg', async () => {
+    installMock({ detail: detail(), puts: [] })
+    renderDetail()
+    await screen.findByRole('heading', { name: '26031 Tilburg (Heijmans)' })
+    expect(screen.queryByTestId('terug-naar-meerwerkbon')).toBeNull()
   })
 })

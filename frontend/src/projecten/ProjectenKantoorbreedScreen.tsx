@@ -7,6 +7,7 @@
 // projectdetail (/projecten/:administratieId/:projectId). Teal = actie, groen = status, rood = signaal.
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { projectPad } from './projectPad'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Badge, Button, SkeletonRegels } from '../ui/basis'
@@ -308,7 +309,7 @@ export function ProjectenKantoorbreedScreen() {
                     key={`${r.administratie_id}-${r.project_id}`}
                     data-testid="projecten-rij"
                     className="clickable"
-                    onClick={() => navigate(`/projecten/${r.administratie_id}/${r.project_id}`)}
+                    onClick={() => navigate(projectPad(r.administratie_id, r.project_id))}
                   >
                     <td onClick={(e) => e.stopPropagation()}>
                       <Link to={`/projecten?administratie=${r.administratie_id}`} className="text-primary no-underline hover:underline">
@@ -352,7 +353,7 @@ export function ProjectenKantoorbreedScreen() {
                     </td>
                     <td className="acties" style={{ whiteSpace: 'nowrap', textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                       <Link
-                        to={`/projecten/${r.administratie_id}/${r.project_id}`}
+                        to={projectPad(r.administratie_id, r.project_id)}
                         className="btn secondary"
                         aria-label={`Open project ${r.naam ?? r.project_id}`}
                       >

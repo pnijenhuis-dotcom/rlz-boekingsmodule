@@ -40,6 +40,7 @@ function installMock(opties: { staten: unknown[]; laatsteKeuring?: string | null
       if (url.startsWith('/uren/kantoor/weekstaten?')) {
         return Promise.resolve(jsonResponse({ items: staten, laatste_keuring_op: opties.laatsteKeuring ?? null }))
       }
+      if (url.endsWith('/contract-toets')) return Promise.resolve(jsonResponse([]))
       if (url.startsWith('/uren/kantoor/meerwerk')) return Promise.resolve(jsonResponse(opties.meerwerk ?? []))
       if (url.includes('/uren/kantoor/weekstaten/') && init?.method === 'POST') {
         opties.posts?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
@@ -121,5 +122,52 @@ describe('Beoordelen — urenstaten & meerwerk op één plek (bug 18-09)', () =>
     expect(screen.getByTestId('urenstaten-leeg')).toHaveTextContent('Geen urenstaten te beoordelen — laatste keuring 12 september 2026.')
     expect(screen.getByRole('link', { name: 'Planning openen →' })).toHaveAttribute('href', `/planning?administratie=${ADM}`)
     expect(screen.getByTestId('tab-urenstaten')).toHaveTextContent('Urenstaten (0)')
+  })
+})
+
+/** Punt 10 run A (Peter 02-10): meerwerkbon ↔ projectpagina. */
+const MW = (id: string, status: string, project: string) => ({
+  id,
+  status,
+  project_id: `pr-${project}`,
+  project_naam: project,
+  omschrijving: `Omschrijving ${id}`,
+  aantal: '1',
+  eenheid: 'm2',
+  datum_uitgevoerd: '2026-09-15',
+  gemeld_door_naam: 'Irfan',
+  in_opdracht_van: null,
+  heeft_foto: false,
+  vraag_tekst: null,
+  vraag_antwoord: null,
+  prijs_per_eenheid: null,
+  bedrag: null,
+  verkoopfactuur_referentie: null,
+  afwijs_reden: null,
+})
+
+describe('Meerwerkbon ↔ projectpagina (punt 10 run A)', () => {
+  it('projectnummer/-naam in de rij én in de bon is een link naar de projectpagina (mét terugweg naar de bon); rijklik blijft de bon', async () => {
+    installMock({ staten: [], meerwerk: [MW('m1', 'gemeld', '26149 Nijmegen (Dura Vermeer)')] })
+    renderScherm(`/meerwerk?administratie=${ADM}&tab=meerwerk`)
+    const rijLink = await screen.findByTestId('project-link-m1')
+    expect(rijLink).toHaveAttribute('href', `/projecten/${ADM}/pr-26149 Nijmegen (Dura Vermeer)?meerwerk=m1`)
+    expect(rijLink).toHaveClass('linkbtn')
+    expect(screen.queryByRole('dialog', { name: 'Meerwerk beoordelen' })).toBeNull()
+    await userEvent.setup().click(screen.getByText('Omschrijving m1'))
+    const bon = await screen.findByRole('dialog', { name: 'Meerwerk beoordelen' })
+    expect(within(bon).getByTestId('paneel-project-link')).toHaveAttribute('href', `/projecten/${ADM}/pr-26149 Nijmegen (Dura Vermeer)?meerwerk=m1`)
+  })
+
+  it('?meerwerk=<id> opent die bon direct, zet het statusfilter op de melding en haalt de parameter uit de URL', async () => {
+    installMock({ staten: [], meerwerk: [MW('m1', 'gemeld', 'A'), MW('m2', 'doorbelast', 'B')] })
+    renderScherm(`/meerwerk?administratie=${ADM}&tab=meerwerk&meerwerk=m2`)
+    const bon = await screen.findByRole('dialog', { name: 'Meerwerk beoordelen' })
+    expect(within(bon).getByText('Omschrijving m2')).toBeInTheDocument()
+    // Statusfilter volgt de melding (doorbelast), zodat de rij ná sluiten zichtbaar is.
+    await userEvent.setup().click(within(bon).getAllByRole('button', { name: 'Sluiten' })[0])
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Meerwerk beoordelen' })).toBeNull())
+    expect(screen.getByText('Omschrijving m2')).toBeInTheDocument()
+    expect(screen.queryByText('Omschrijving m1')).toBeNull()
   })
 })
