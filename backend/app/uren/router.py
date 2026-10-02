@@ -32,7 +32,7 @@ from app.auth.deps import (
     vereis_kantoorrol,
 )
 from app.auth.rollen import is_veldrol
-from app.tijd import vandaag_nl
+from app.tijd import OngeldigeDatum, parse_datum_nl, vandaag_nl
 from app.uren import dossier as dossier_service
 from app.uren import overzichten, planning, schemas, service
 from app.uren import planning_signaal as planning_signaal_service
@@ -72,6 +72,16 @@ def _vertaal(exc: service.UrenFout) -> HTTPException:
     if isinstance(exc, dossier_service.HerinneringMislukt):
         return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+def _geldig_tot_uit_formulier(waarde: str | None) -> date | None:
+    """Punt 15 run A 02-10 (Peter: "geldig_tot: … invalid date separator"): het formulierveld komt als tekst
+    binnen en gaat door dé ene parser (`app.tijd.parse_datum_nl`: jjjj-mm-dd, dd-mm-jjjj, dd/mm/jjjj);
+    ongeldig = 422 mét een melding in gewone taal i.p.v. Pydantics Engelse scheidingsteken-fout."""
+    try:
+        return parse_datum_nl(waarde, veld="Geldig tot")
+    except OngeldigeDatum as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 def _dossier_response(stand: dossier_service.DossierStand) -> schemas.DossierDto:
@@ -563,19 +573,20 @@ def mijn_dossier(
 async def dossier_upload(
     administratie_id: uuid.UUID = Form(...),
     type_code: str = Form(...),
-    geldig_tot: date | None = Form(default=None),
+    geldig_tot: str | None = Form(default=None),
     namens: uuid.UUID | None = Form(default=None),
     bestand: UploadFile = File(...),
     actor: CurrentGebruiker = Depends(vereis_veldrol),
 ) -> schemas.DossierDto:
     """Upload door de veldwerker zelf (of detacheerder namens) → status 'ter controle'; telt
     direct voor de deblokkade, als aanwezig pas ná goedkeuring door kantoor."""
+    geldig_tot_datum = _geldig_tot_uit_formulier(geldig_tot)
     try:
         stand = dossier_service.upload_document(
             administratie_id=administratie_id,
             gebruiker_id=namens or actor.id,
             type_code=type_code,
-            geldig_tot=geldig_tot,
+            geldig_tot=geldig_tot_datum,
             bestand=await _lees_upload(bestand),
             actor_id=actor.id,
         )
@@ -1438,17 +1449,18 @@ async def kantoor_dossier_upload(
     administratie_id: uuid.UUID,
     gebruiker_id: uuid.UUID,
     type_code: str = Form(...),
-    geldig_tot: date | None = Form(default=None),
+    geldig_tot: str | None = Form(default=None),
     bestand: UploadFile = File(...),
     actor: CurrentGebruiker = Depends(require_veldwerkerbeheer_of_meerwerk_recht),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DossierDto:
+    geldig_tot_datum = _geldig_tot_uit_formulier(geldig_tot)
     try:
         stand = dossier_service.upload_document(
             administratie_id=administratie_id,
             gebruiker_id=gebruiker_id,
             type_code=type_code,
-            geldig_tot=geldig_tot,
+            geldig_tot=geldig_tot_datum,
             bestand=await _lees_upload(bestand),
             actor_id=actor.id,
         )

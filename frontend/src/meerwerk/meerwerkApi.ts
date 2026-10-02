@@ -1,4 +1,5 @@
 import { apiJson, apiPostJson } from '../api/client'
+import { naarIsoDatum } from '../ui/datum'
 
 /* Uren & meerwerk — kantoorkant (fase 3, mockup meerwerk-kantoor.html). Alle paden onder
  * /uren/* (proxy-gedekt); het module-recht "Meerwerk & urenstaten" wordt server-side
@@ -302,9 +303,11 @@ export async function uploadDossierDocument(
   gebruikerId: string,
   payload: { type_code: string; geldig_tot: string | null; bestand: File },
 ): Promise<DossierDto> {
+  // Punt 15 run A 02-10: de datum gaat altijd als ISO de lijn op (één helper, ook voor de veld-app-route).
+  const geldigTot = naarIsoDatum(payload.geldig_tot, 'Geldig tot')
   const form = new FormData()
   form.append('type_code', payload.type_code)
-  if (payload.geldig_tot) form.append('geldig_tot', payload.geldig_tot)
+  if (geldigTot) form.append('geldig_tot', geldigTot)
   form.append('bestand', payload.bestand, payload.bestand.name)
   return apiJson<DossierDto>(`/uren/kantoor/dossier/${administratieId}/${gebruikerId}/upload`, {
     method: 'POST',

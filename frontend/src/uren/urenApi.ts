@@ -4,6 +4,7 @@
 // schermen (performance-budget accordeur-PWA).
 
 import { apiFetch, apiJson, apiPostJson } from '../api/client'
+import { naarIsoDatum } from '../ui/datum'
 
 export interface DagDto {
   id: string
@@ -767,10 +768,12 @@ export async function uploadDossierDocument(payload: {
   namens: string | null
   bestand: File
 }): Promise<DossierDto> {
+  // Punt 15 run A 02-10: de datum gaat altijd als ISO de lijn op (één helper, ook voor de kantoorroute).
+  const geldigTot = naarIsoDatum(payload.geldig_tot, 'Geldig tot')
   const form = new FormData()
   form.append('administratie_id', payload.administratie_id)
   form.append('type_code', payload.type_code)
-  if (payload.geldig_tot) form.append('geldig_tot', payload.geldig_tot)
+  if (geldigTot) form.append('geldig_tot', geldigTot)
   if (payload.namens) form.append('namens', payload.namens)
   form.append('bestand', payload.bestand, payload.bestand.name)
   return apiJson<DossierDto>('/uren/dossier/upload', { method: 'POST', body: form })

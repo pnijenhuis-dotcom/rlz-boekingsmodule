@@ -54,6 +54,34 @@ export function parseSoepeleDatum(ruw: string): string | null {
   return weergaveNaarIso(`${dd}-${mm}-${jjjj}`)
 }
 
+/** Punt 15 run A 02-10 (Peter: KvK-upload "geldig_tot: invalid date separator"): dé ene normalisatie van een
+ * door een mens getypte datum vóór verzenden. Een geldige ISO-waarde (`jjjj-mm-dd`, wat `<input type="date">`
+ * hoort te geven) gaat ongewijzigd door; anders de soepele NL-parser (dd-mm-jjjj, dd/mm/jjjj, d-m-jjjj, …).
+ * Leeg → null (de aanroeper beslist of het veld verplicht is); onherkenbaar → `OngeldigeDatumFout` mét
+ * de tekst die ook de backend geeft, zodat er nooit een onleesbare waarde de lijn op gaat. */
+export const DATUM_FOUT_TEKST = 'is geen geldige datum — schrijf de datum als 31-12-2026'
+
+export class OngeldigeDatumFout extends Error {
+  constructor(veld: string, ruw: string) {
+    super(`${veld}: '${ruw}' ${DATUM_FOUT_TEKST}`)
+    this.name = 'OngeldigeDatumFout'
+  }
+}
+
+export function naarIsoDatum(ruw: string | null | undefined, veld = 'Datum'): string | null {
+  const tekst = (ruw ?? '').trim()
+  if (!tekst) return null
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(tekst)
+  if (iso) {
+    const [, jjjj, mm, dd] = iso
+    if (weergaveNaarIso(`${dd}-${mm}-${jjjj}`)) return tekst
+    throw new OngeldigeDatumFout(veld, tekst)
+  }
+  const soepel = parseSoepeleDatum(tekst)
+  if (!soepel) throw new OngeldigeDatumFout(veld, tekst)
+  return soepel
+}
+
 export function isoNaarDate(iso: string): Date {
   const [jjjj, mm, dd] = iso.split('-').map(Number)
   return new Date(jjjj, mm - 1, dd)
