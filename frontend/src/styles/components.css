@@ -1846,6 +1846,22 @@ tr.subrij .eerste-sync-rij ul {
   height: auto;
 }
 .plan-matrix td.plan-cel-mx .plan-kaart { margin-bottom: 0; }
+/* Run B punt 25 (Peter 02-10 "door de bomen het bos niet meer"): per projectrij één stabiele accentkleur (--pk = var(--projectkleur-N),
+   gezet op de <tr> door DagEerstGrid), projectnummer vet in die tint, rijkop + kaarten in de rij dragen 'm als linkerrand; rijen
+   duidelijker gescheiden (2 px), de lege plancel is rustiger dan een geplande kaart (alleen "+", tekst pas bij hover/focus/selectie). */
+.plan-matrix tbody tr > th.plan-rijkop { border-left: 4px solid var(--pk, transparent); }
+.plan-matrix tbody tr > th.plan-rijkop, .plan-matrix tbody tr > td.plan-cel-mx { border-bottom: 2px solid color-mix(in srgb, var(--border) 40%, var(--muted)); }
+.plan-matrix th.plan-rijkop .plan-rijkop-naam { font-weight: 500; }
+.plan-matrix th.plan-rijkop .plan-nr { color: var(--pk, inherit); font-weight: 800; font-size: 13.5px; letter-spacing: 0; }
+.plan-matrix td.plan-cel-mx .plan-kaart { border-left: 3px solid var(--pk, var(--border)); }
+.plan-matrix .plan-kaart .n { font-weight: 500; }
+.plan-matrix .plan-kaart .n .plan-nr { color: var(--pk, inherit); font-weight: 800; }
+.plan-matrix .plan-kaart.conflict { border-left-color: var(--pk, var(--border)); }
+.plan-matrix .plan-leegcel { border-color: color-mix(in srgb, var(--faint) 45%, transparent); color: var(--faint); display: flex; align-items: center; justify-content: center; gap: 6px; }
+.plan-matrix .plan-leegcel .plan-leegcel-plus { font-size: 16px; line-height: 1; opacity: 0.55; }
+.plan-matrix .plan-leegcel .plan-leegcel-tekst { display: none; }
+.plan-matrix .plan-leegcel:hover .plan-leegcel-tekst, .plan-matrix .plan-leegcel:focus-visible .plan-leegcel-tekst, .plan-matrix .plan-leegcel.sel .plan-leegcel-tekst { display: inline; }
+.plan-matrix .plan-leegcel:hover .plan-leegcel-plus, .plan-matrix .plan-leegcel:focus-visible .plan-leegcel-plus, .plan-matrix .plan-leegcel.sel .plan-leegcel-plus { opacity: 1; }
 .plan-matrix th.plan-rijkop {
   text-align: left;
   vertical-align: top;

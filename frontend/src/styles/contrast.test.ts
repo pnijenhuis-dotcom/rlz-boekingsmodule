@@ -169,6 +169,28 @@ describe('contrast-audit kleurtokens — kantoor-console (licht + donker)', () =
     }
   })
 
+  // Run B punt 25 (Peter 02-10): projectkleur-palet — het projectnummer staat als tekst in de tint op de rijkop (panel-2), de
+  // kaart (panel) en het scherm (bg): als TEKST toetsen (≥ 4,5:1), in beide modi; acht verschillende tinten, dark ≠ licht.
+  it('projectkleur-palet: acht tinten, als tekst ≥ 4,5:1 op panel/panel-2/bg in beide modi, dark met eigen hexen', () => {
+    for (const [modus, t] of [
+      ['licht', lichtTokens],
+      ['donker', darkTokens],
+    ] as const) {
+      const tinten = new Set<string>()
+      for (let i = 0; i < 8; i++) {
+        const naam = `projectkleur-${i}`
+        expect(t[naam], `--${naam} ontbreekt in ${modus}`).toBeTruthy()
+        tinten.add(t[naam])
+        toets(t, modus, [[naam, 'panel'], [naam, 'panel-2'], [naam, 'bg']], 4.5)
+        // Identiteit ≠ semantiek: nooit letterlijk het actie- of statustoken.
+        expect(t[naam]).not.toBe(t.primary)
+        expect(t[naam]).not.toBe(t.ok)
+      }
+      expect(tinten.size, `${modus}: acht verschillende tinten`).toBe(8)
+    }
+    for (let i = 0; i < 8; i++) expect(darkTokens[`projectkleur-${i}`], `--projectkleur-${i} dark ≠ licht`).not.toBe(lichtTokens[`projectkleur-${i}`])
+  })
+
   it('rail-teller-bg is de 22%-blend van rail-accent over rail (mockup color-mix), beide modi', () => {
     for (const [modus, t] of [
       ['licht', lichtTokens],

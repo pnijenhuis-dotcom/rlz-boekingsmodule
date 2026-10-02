@@ -831,3 +831,30 @@ describe('Run B punt 24 — transport-icoon op de projectkaart (Peter 02-10)', (
     expect(within(screen.getByTestId(`kaart-${KAART_MA}`)).queryByTestId('kaart-transport')).toBeNull()
   })
 })
+
+describe('Run B punt 25 — onderscheid tussen de werk-vakjes (Peter 02-10)', () => {
+  it('elke projectrij draagt een stabiele projectkleur (--pk uit hash projectnummer), het nummer staat vet in de rijkop én op de kaart, de lege plancel is rustig', async () => {
+    installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await wachtOpGrid()
+    const rij = screen.getByTestId(`matrix-rij-${PROJECT_ID}`)
+    const index = Number(rij.getAttribute('data-projectkleur'))
+    expect(index).toBeGreaterThanOrEqual(0)
+    expect(index).toBeLessThan(8)
+    expect(rij.getAttribute('style')).toContain(`--pk: var(--projectkleur-${index})`)
+    // Rijkop: nummer vet (plan-nr), de rest van de naam ernaast; opdrachtgever in de lichtere subregel.
+    const rijkop = within(rij).getByRole('rowheader')
+    expect(rijkop.querySelector('.plan-rijkop-naam .plan-nr')).toHaveTextContent('144')
+    expect(rijkop.querySelector('.plan-rijkop-naam')).toHaveTextContent('144 Breda (Moeskops)')
+    expect(rijkop.querySelector('.plan-rijkop-sub')).toHaveTextContent('Moeskops')
+    // Kaart: zelfde nummer-accent.
+    const kaart = screen.getByTestId(`kaart-${KAART_MA}`)
+    expect(kaart.querySelector('.n .plan-nr')).toHaveTextContent('144')
+    // Lege plancel: "+" zichtbaar, de uitleg als aparte (CSS-verborgen) tekst — aria-label blijft volledig.
+    const leeg = screen.getByTestId(`leegcel-${PROJECT_ID}|2026-08-26`)
+    expect(leeg.querySelector('.plan-leegcel-plus')).toHaveTextContent('+')
+    expect(leeg.querySelector('.plan-leegcel-tekst')).toHaveTextContent('sleep hierheen / + plannen')
+    expect(leeg).toHaveAttribute('aria-label', '144 Breda (Moeskops) op wo 26-8 plannen')
+  })
+  // Determinisme over weken/sessies: pure test in projectKleur.test.ts (zelfde nummer = zelfde index).
+})

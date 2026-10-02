@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { dagKort, handvatBereik, initialen, matrixRijen, transportTooltip, transportenPerCel, vulhandvatVoorbeeld, type DagKaart, type DagKolom, type VulhandvatVoorbeeld } from './dagEerst'
 import { UREN_STATUS_KLEUR, UREN_STATUS_LABEL, urenKort, type PlanningKaartDto, type PlanningTransportKortDto, type PlanningWeekDto, type UrenFilter } from './planningApi'
+import { projectKleurIndex, projectKleurVar, splitsProjectnummer } from './projectKleur'
 import { useDagDrop } from './useDagDrop'
 
 /* Weekgrid dag-eerst v4 — PROJECT × DAG-MATRIX (feedback Peter 28-09, herziet v3 18-09 "vrije kaartvolgorde per dag"): rijen =
@@ -159,10 +160,17 @@ export function DagEerstGrid(p: DagEerstGridProps) {
           </thead>
           <tbody>
             {rijen.map((rij) => (
-              <tr key={rij.project_id} data-testid={`matrix-rij-${rij.project_id}`}>
+              <tr
+                key={rij.project_id}
+                data-testid={`matrix-rij-${rij.project_id}`}
+                // Run B punt 25 (02-10): stabiele accentkleur per projectrij (hash projectnummer → --projectkleur-N) als CSS-variabele
+                // voor rijkop én kaarten in deze rij.
+                data-projectkleur={projectKleurIndex(rij.project_naam)}
+                style={{ '--pk': projectKleurVar(rij.project_naam) } as CSSProperties}
+              >
                 <th className="plan-rijkop" scope="row">
                   <span className="plan-rijkop-naam" title={rij.project_naam ?? rij.project_id}>
-                    {rij.project_naam ?? rij.project_id}
+                    <ProjectNaam naam={rij.project_naam ?? rij.project_id} />
                   </span>
                   <span className="plan-rijkop-sub">
                     {rij.opdrachtgever ? `${rij.opdrachtgever} · ` : ''}
@@ -212,6 +220,7 @@ export function DagEerstGrid(p: DagEerstGridProps) {
                       {!cel.kaart && !ghost && (
                         <button
                           type="button"
+                          // Run B punt 25: een lege plancel is visueel rustiger dan een geplande kaart — alleen een "+", de tekst pas bij hover/focus.
                           className={`plan-leegcel${p.geselecteerd === `${rij.project_id}|${cel.datum}` ? ' sel' : ''}`}
                           data-testid={`leegcel-${rij.project_id}|${cel.datum}`}
                           aria-label={`${rij.project_naam ?? rij.project_id} op ${dagKort(cel.datum)} plannen`}
@@ -222,7 +231,10 @@ export function DagEerstGrid(p: DagEerstGridProps) {
                             else p.onLegeCel(rij.project_id, cel.datum)
                           }}
                         >
-                          sleep hierheen / + plannen
+                          <span className="plan-leegcel-plus" aria-hidden>
+                            +
+                          </span>
+                          <span className="plan-leegcel-tekst">sleep hierheen / + plannen</span>
                         </button>
                       )}
                     </td>
@@ -317,7 +329,7 @@ function KaartView({
       }}
     >
       <div className="n">
-        {kaart.project_naam ?? kaart.project_id}
+        <ProjectNaam naam={kaart.project_naam ?? kaart.project_id} />
         {transporten.length > 0 && (
           <button
             type="button"
@@ -480,6 +492,20 @@ function KaartView({
         />
       )}
     </div>
+  )
+}
+
+/** Run B punt 25: projectnummer vetter (en in de projectkleur) dan de rest van de naam — "25147" springt eruit, "Hoofddorp (Grunsven)"
+ * blijft gewoon leesbaar. Zonder cijferprefix gewoon de naam. */
+function ProjectNaam({ naam }: { naam: string }) {
+  const { voorvoegsel, nummer, rest } = splitsProjectnummer(naam)
+  if (!nummer) return <>{naam}</>
+  return (
+    <>
+      {voorvoegsel}
+      <b className="plan-nr">{nummer}</b>
+      {rest}
+    </>
   )
 }
 
