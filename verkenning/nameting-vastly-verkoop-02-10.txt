@@ -1,0 +1,183 @@
+== vastly-verkoop-heraanbieden --dry-run (lees-only, kantoorbreed) ==
+vastly-verkoop-heraanbieden — DRY-RUN (niets geschreven) (run 3d5a1e03-7ad3-4df7-8ead-4f5920b84fc6): 14 kandidaat/kandidaten
+  - [open_in_administratie] factuur-ARV-2026-0025-ubl.xml · ARVUM B.V. → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-ARV-2026-0026-ubl.xml · ARVUM B.V. → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-ARV-2026-0027-ubl.xml · ARVUM B.V. → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-RUB-2026-0026-ubl.xml · Rubicon Investments B.V. → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-RUB-2026-0027-ubl.xml · Rubicon Investments B.V. → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-RUB-2026-0028-ubl.xml · Rubicon Investments B.V. → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-RUB-2026-0029-ubl.xml · Rubicon Investments B.V. → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-RUB-2026-0030-ubl.xml · Rubicon Investments B.V. → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-RUB-2026-0032-ubl.xml · Rubicon Investments B.V. → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-RUB-2026-0033-ubl.xml · Rubicon Investments B.V. → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-RUB-2026-0034-ubl.xml · Rubicon Investments B.V. → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-STI-2026-0010-ubl.xml · Stichting Shuto → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-STI-2026-0011-ubl.xml · Stichting Shuto → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  - [open_in_administratie] factuur-STI-2026-0012-ubl.xml · Stichting Shuto → geweigerd — omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze regelsoort in deze administratie — kies de rekening éénmalig (Instellingen › Vastgoed-koppeling of de bevinding)
+  ARVUM B.V.: geweigerd 3
+  Rubicon Investments B.V.: geweigerd 8
+  Stichting Shuto: geweigerd 3
+PER UITKOMST: geweigerd 14
+TOTAAL: 14 kandidaten — DRY-RUN (niets geschreven)
+Container called exit(0).
+
+
+== db-lezen vastly-verkoop --param dagen=14 ==
+== db-lezen vastly-verkoop v1 (324 ms) ==
+| soort | tijdstip | sleutel | waarde |
+|---|---|---|---|
+| run | 2026-10-02 04:30:31.013690+00:00 | dagelijks | kandidaten=14 · dry_run=false · per_uitkomst={"geweigerd": 14} |
+| run | 2026-10-01 04:30:21.924314+00:00 | dagelijks | kandidaten=14 · dry_run=false · per_uitkomst={"geweigerd": 14} |
+| run | 2026-09-30 04:30:47.013654+00:00 | dagelijks | kandidaten=16 · dry_run=false · per_uitkomst={"geboekt": 2, "geweigerd": 14} |
+| run | 2026-09-29 11:33:05.258105+00:00 | cli | kandidaten=22 · dry_run=false · per_uitkomst={"geboekt": 6, "geweigerd": 16} |
+4 rij(en)
+Container called exit(0).
+
+
+== db-lezen vastly-verkoop-administratie --administratie Rubicon --param dagen=14 ==
+== db-lezen vastly-verkoop-administratie v1 (40 ms) ==
+| administratie | soort | tijdstip | sleutel | waarde |
+|---|---|---|---|---|
+| Rubicon Investments B.V. | autoboek | 2026-10-02 04:30:30.858184+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-02 04:30:30.780427+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-02 04:30:30.705407+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-02 04:30:30.620147+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-02 04:30:30.543738+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-02 04:30:30.483526+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-02 04:30:30.428374+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-02 04:30:30.363046+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-01 04:30:21.786699+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-01 04:30:21.728150+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-01 04:30:21.653687+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-01 04:30:21.586222+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-01 04:30:21.517117+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-01 04:30:21.462953+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-01 04:30:21.411908+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-10-01 04:30:21.351050+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-30 04:30:46.659449+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-30 04:30:46.505409+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-30 04:30:46.352105+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-30 04:30:46.197418+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-30 04:30:46.032196+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-30 04:30:45.915900+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-30 04:30:45.811902+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-30 04:30:45.697056+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-29 11:33:05.102890+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-29 11:33:05.035168+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-29 11:33:04.963706+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-29 11:33:04.893933+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-29 11:33:04.816203+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-29 11:33:04.764294+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-29 11:33:04.714791+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-29 11:33:04.651683+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Rubicon Investments B.V. | autoboek | 2026-09-23 20:21:40.088012+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Rubicon Investments B.V. | autoboek | 2026-09-23 20:21:36.884528+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Rubicon Investments B.V. | autoboek | 2026-09-23 20:21:33.748543+00:00 | automatisch_geboekt | RUB-2026-0031 · — |
+| Rubicon Investments B.V. | autoboek | 2026-09-23 20:21:28.562249+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Rubicon Investments B.V. | autoboek | 2026-09-23 20:21:25.146736+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Rubicon Investments B.V. | autoboek | 2026-09-23 20:21:21.419870+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Rubicon Investments B.V. | autoboek | 2026-09-23 20:21:17.657919+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Rubicon Investments B.V. | autoboek | 2026-09-23 20:21:14.152202+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Rubicon Investments B.V. | autoboek | 2026-09-23 20:21:10.126534+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Rubicon Investments B.V. | autoboek | 2026-09-23 20:21:06.047313+00:00 | automatisch_geboekt | RUB-2026-0025 · — |
+| Rubicon Investments B.V. | bevinding | 2026-10-02 04:47:55.976737+00:00 | vastly_omzetrekening_ontbreekt | AFWIJKING  vastly_verkoop Rubicon Investments B.V.: geen Vastly-omzetrekening voor regelsoort 'huur' — 8 verkoopfactu… |
+| Rubicon Investments B.V. | open_document | 2026-09-23 20:21:39.781149+00:00 | factuur-RUB-2026-0034-ubl.xml | te_controleren |
+| Rubicon Investments B.V. | open_document | 2026-09-23 20:21:36.585840+00:00 | factuur-RUB-2026-0033-ubl.xml | te_controleren |
+| Rubicon Investments B.V. | open_document | 2026-09-23 20:21:28.267384+00:00 | factuur-RUB-2026-0032-ubl.xml | te_controleren |
+| Rubicon Investments B.V. | open_document | 2026-09-23 20:21:24.761480+00:00 | factuur-RUB-2026-0030-ubl.xml | te_controleren |
+| Rubicon Investments B.V. | open_document | 2026-09-23 20:21:21.127003+00:00 | factuur-RUB-2026-0029-ubl.xml | te_controleren |
+| Rubicon Investments B.V. | open_document | 2026-09-23 20:21:17.388788+00:00 | factuur-RUB-2026-0028-ubl.xml | te_controleren |
+| Rubicon Investments B.V. | open_document | 2026-09-23 20:21:13.804096+00:00 | factuur-RUB-2026-0027-ubl.xml | te_controleren |
+| Rubicon Investments B.V. | open_document | 2026-09-23 20:21:09.855161+00:00 | factuur-RUB-2026-0026-ubl.xml | te_controleren |
+51 rij(en) over 1 administratie(s)
+Container called exit(0).
+
+
+== db-lezen vastly-verkoop-administratie --administratie Elissen --param dagen=14 ==
+== db-lezen vastly-verkoop-administratie v1 (30 ms) ==
+| administratie | soort | tijdstip | sleutel | waarde |
+|---|---|---|---|---|
+| J.G.M. Elissen Holding BV | autoboek | 2026-09-30 04:30:45.584161+00:00 | automatisch_geboekt | JGM-2026-0039 · — |
+| J.G.M. Elissen Holding BV | autoboek | 2026-09-30 04:30:43.572260+00:00 | automatisch_geboekt | JGM-2026-0036 · — |
+| J.G.M. Elissen Holding BV | autoboek | 2026-09-29 11:33:04.595587+00:00 | automatisch_geboekt | JGM-2026-0037 · — |
+| J.G.M. Elissen Holding BV | autoboek | 2026-09-29 11:33:02.432880+00:00 | automatisch_geboekt | JGM-2026-0041 · — |
+| J.G.M. Elissen Holding BV | autoboek | 2026-09-29 11:32:57.574586+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| J.G.M. Elissen Holding BV | autoboek | 2026-09-29 11:32:57.515114+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| J.G.M. Elissen Holding BV | autoboek | 2026-09-26 05:50:41.843451+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| J.G.M. Elissen Holding BV | autoboek | 2026-09-23 20:30:42.798877+00:00 | autoboeken_geweigerd | — · regel 1: factuur-btw is ambigu (meerdere dekkende RLZ-tarieven) en er is nog geen onthouden keuze voor deze admin… |
+| J.G.M. Elissen Holding BV | autoboek | 2026-09-23 20:20:58.914569+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| J.G.M. Elissen Holding BV | autoboek | 2026-09-23 20:20:55.369416+00:00 | automatisch_geboekt | JGM-2026-0038 · — |
+| J.G.M. Elissen Holding BV | autoboek | 2026-09-23 20:20:47.540139+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| J.G.M. Elissen Holding BV | omzetrekening | 2026-09-29 11:33:02.452880+00:00 | huur | 8006 · Huur Bergstraat 2 · bron=historie |
+12 rij(en) over 1 administratie(s)
+Container called exit(0).
+
+
+== db-lezen vastly-verkoop-administratie --administratie ARVUM --param dagen=14 ==
+db-lezen: --administratie 'ARVUM' is niet eenduidig (3 treffers)
+Container called exit(2).
+
+
+== db-lezen vastly-verkoop-administratie --administratie Meyer --param dagen=14 ==
+== db-lezen vastly-verkoop-administratie v1 (24 ms) ==
+| administratie | soort | tijdstip | sleutel | waarde |
+|---|---|---|---|---|
+| Beleggingsmaatschappij Meyer BV | autoboek | 2026-09-29 11:32:57.465600+00:00 | automatisch_geboekt | MEY-2026-0029 · — |
+| Beleggingsmaatschappij Meyer BV | autoboek | 2026-09-29 11:32:55.254095+00:00 | automatisch_geboekt | MEY-2026-0027 · — |
+| Beleggingsmaatschappij Meyer BV | autoboek | 2026-09-29 11:32:51.126029+00:00 | automatisch_geboekt | MEY-2026-0026 · — |
+| Beleggingsmaatschappij Meyer BV | autoboek | 2026-09-29 11:32:48.813483+00:00 | automatisch_geboekt | MEY-2026-0025 · — |
+| Beleggingsmaatschappij Meyer BV | autoboek | 2026-09-24 10:20:31.868190+00:00 | autoboeken_geweigerd | — · regel 1: factuur-btw is ambigu (meerdere dekkende RLZ-tarieven) en er is nog geen onthouden keuze voor deze admin… |
+| Beleggingsmaatschappij Meyer BV | autoboek | 2026-09-23 20:11:21.557221+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Beleggingsmaatschappij Meyer BV | autoboek | 2026-09-23 20:11:16.824590+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Beleggingsmaatschappij Meyer BV | autoboek | 2026-09-23 20:11:12.137211+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Beleggingsmaatschappij Meyer BV | omzetrekening | 2026-09-29 11:17:05.495125+00:00 | huur | 8105 · Opbrengst verhuur · bron=historie |
+9 rij(en) over 1 administratie(s)
+Container called exit(0).
+
+
+== db-lezen vastly-verkoop-administratie --administratie Shuto --param dagen=14 ==
+== db-lezen vastly-verkoop-administratie v1 (28 ms) ==
+| administratie | soort | tijdstip | sleutel | waarde |
+|---|---|---|---|---|
+| Stichting Shuto | autoboek | 2026-10-02 04:30:31.002404+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-10-02 04:30:30.958657+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-10-02 04:30:30.915929+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-10-01 04:30:21.915594+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-10-01 04:30:21.871398+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-10-01 04:30:21.833358+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-09-30 04:30:46.990272+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-09-30 04:30:46.888364+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-09-30 04:30:46.781413+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-09-29 11:33:05.248273+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-09-29 11:33:05.204953+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-09-29 11:33:05.154486+00:00 | autoboeken_geweigerd | — · omzetrekening_ontbreekt: regel 1 (huur): geen grootboekcode in de UBL en geen Vastly-omzetrekening voor deze rege… |
+| Stichting Shuto | autoboek | 2026-09-23 20:21:49.767681+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Stichting Shuto | autoboek | 2026-09-23 20:21:46.523580+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Stichting Shuto | autoboek | 2026-09-23 20:21:43.402787+00:00 | autoboeken_geweigerd | — · regel 1: geen grootboekcode in de UBL — mens kiest |
+| Stichting Shuto | bevinding | 2026-10-02 04:47:55.976737+00:00 | vastly_omzetrekening_ontbreekt | AFWIJKING  vastly_verkoop Stichting Shuto: geen Vastly-omzetrekening voor regelsoort 'huur' — 3 verkoopfacturen wacht… |
+| Stichting Shuto | open_document | 2026-09-23 20:21:49.480560+00:00 | factuur-STI-2026-0012-ubl.xml | te_controleren |
+| Stichting Shuto | open_document | 2026-09-23 20:21:46.290561+00:00 | factuur-STI-2026-0011-ubl.xml | te_controleren |
+| Stichting Shuto | open_document | 2026-09-23 20:21:43.074548+00:00 | factuur-STI-2026-0010-ubl.xml | te_controleren |
+19 rij(en) over 1 administratie(s)
+Container called exit(0).
+
+
+== db-lezen vastly-verkoop-administratie --administratie Inpensas --param dagen=14 ==
+== db-lezen vastly-verkoop-administratie v1 (43 ms) ==
+| administratie | soort | tijdstip | sleutel | waarde |
+|---|---|---|---|---|
+| Inpensas Beheer BV | open_document | 2026-09-23 20:20:43.374930+00:00 | factuur-INP-2026-0025-ubl.xml | te_controleren |
+1 rij(en) over 1 administratie(s)
+Container called exit(0).
+
+
+== db-lezen vastly-verkoop-administratie --administratie Rooijen --param dagen=14 ==
+== db-lezen vastly-verkoop-administratie v1 (29 ms) ==
+| administratie | soort | tijdstip | sleutel | waarde |
+|---|---|---|---|---|
+0 rij(en)
+Container called exit(0).
+
+
+== request-log POST /reconciliatie/vastly/* + PUT /vastly-omzetrekeningen sinds 2026-09-29T12:00:00Z ==
+Oordeel: vastly-verkoop: TOTAAL: 14 kandidaten — PER UITKOMST: geweigerd 14 — job-exit 0
