@@ -635,6 +635,39 @@ def document_extern_geboekt_toch_verschillend(
 
 
 @router.post(
+    "/reconciliatie/webhooks/{outbox_id}/nu-opnieuw",
+    response_model=schemas.WebhookNuOpnieuwResultaatDto,
+)
+def webhook_nu_opnieuw(
+    outbox_id: uuid.UUID,
+    invoer: schemas.WebhookNuOpnieuwInvoerDto,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.WebhookNuOpnieuwResultaatDto:
+    """"Nu opnieuw" (run A 02-10 punt 17) op een outbox-rij die op de ontvanger wacht (409 `niet_koppelbaar`) of ná 14
+    dagen wachten `mislukt` is: één directe afleverronde buiten de cadans om, audit `webhook_nu_opnieuw` mét de actor.
+    404 = rij niet in deze administratie (RLS), 409 = rij wacht niet (gewoon openstaand/afgeleverd of om een andere
+    reden mislukt → webhook-herzenden/-redrive). Aflevering uit of niet geconfigureerd = 200 mét die reden in `uitkomst`
+    (zichtbaar, nooit stil)."""
+    from app.documenten import webhook_afleveraar
+
+    try:
+        r = webhook_afleveraar.nu_opnieuw(
+            actor_id=actor.id, administratie_id=invoer.administratie_id, outbox_id=outbox_id
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except webhook_afleveraar.NuOpnieuwNietMogelijk as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.WebhookNuOpnieuwResultaatDto(
+        outbox_id=r.outbox_id,
+        administratie_id=invoer.administratie_id,
+        status_voor=r.status_voor,
+        status_na=r.status_na,
+        uitkomst=r.uitkomst,
+    )
+
+
+@router.post(
     "/reconciliatie/vastly/documenten/{document_id}/opnieuw-aanbieden",
     response_model=schemas.VastlyOpnieuwAanbiedenResultaatDto,
 )

@@ -146,6 +146,7 @@ via_gh_onderdeel() {
     extern-geboekt) echo extern-geboekt ;;  # 23-09: geen CLI-commando — request-log handelingen extern-geboekt/afwijzen|toch-verschillend + accordeur-409 + job-log HERCONTROLE + db-lezen bevindingen
     activa-kaart) echo activa-kaart ;;  # 24-09: geen CLI-commando — request-log POST activa-voorstel/*/aanmaken (200/422/5xx) + job-log activum_aanmaken_mislukt(_mens) + db-lezen activa-stand/bevindingen BLOw+Pilates + rlz-lezen FixedAssets BLOw
     checks-cache) echo checks-cache ;;  # 23-09: geen CLI-commando — request-log checks/extern=vers + iban-accordering-statussen + server_timing p50/p95
+    webhook-wacht) echo webhook-wacht ;;  # 02-10 run A punt 17: geen CLI-commando — het workflow-onderdeel doet reconciliatie-alles --alleen webhooks --lees-only + request-log "Nu opnieuw"
     corrigeren) echo corrigeren ;;  # 22-09: geen CLI-commando — het workflow-onderdeel doet request-log + rlz-lezen + db-lezen correcties (nameting "Corrigeren…")  # 21-09: geen CLI-commando — het workflow-onderdeel doet gcloud describe + db-lezen boek-wachtrij
     reconciliatie-alles) echo reconciliatie ;;
     btw-default-rapport) echo btw-default ;;

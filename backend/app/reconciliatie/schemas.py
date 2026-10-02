@@ -309,3 +309,19 @@ class VastlyOpnieuwAanbiedenResultaatDto(BaseModel):
     uitkomst: str
     reden: str | None
     doel_pad: str
+
+
+class WebhookNuOpnieuwInvoerDto(BaseModel):
+    """Invoer van "Nu opnieuw" (run A 02-10 punt 17, bevindingen `webhook_wacht_op_ontvanger` /
+    `webhook_niet_koppelbaar_verlopen`): alleen de administratie (scope-toets); de rij wordt server-side gelezen."""
+
+    administratie_id: uuid.UUID
+
+
+class WebhookNuOpnieuwResultaatDto(BaseModel):
+    outbox_id: uuid.UUID
+    administratie_id: uuid.UUID
+    status_voor: str
+    status_na: str
+    #: Uitkomst van de directe afleverronde, letterlijk ("afgeleverd — resultaat verwerkt" | "wacht op de ontvanger (…)").
+    uitkomst: str

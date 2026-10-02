@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop, bijlagen-factuur, project-dubbel\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop, bijlagen-factuur, project-dubbel, webhook-wacht\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -754,6 +754,21 @@ def test_verkoop_overstap_onderdeel_alleen_op_verzoek_lees_only_met_eigen_oordee
     sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
     assert re.search(r"^\s*verkoop-overstap\) echo verkoop-overstap ;;", sh, flags=re.M), "via_gh_onderdeel mist: verkoop-overstap"
     assert (REPO / "backend" / "app" / "lezen" / "queries" / "verkoop-overstap.sql").is_file()
+
+
+def test_onderdeel_webhook_wacht_alleen_op_verzoek_en_lees_only() -> None:
+    """02-10 run A punt 17 (webhook-outbox 409 → wacht_op_ontvanger): het dispatch-onderdeel `webhook-wacht` =
+    `reconciliatie-alles --alleen webhooks --lees-only` + request-log van "Nu opnieuw"; eigen OORDEEL_BRON, niet in 'alles',
+    nameting.sh kent het onderdeel (geen CLI-commando)."""
+    tekst = _tekst()
+    blok = tekst.split('if [[ "$ONDERDEEL" == "webhook-wacht" ]]; then', 1)[1].split("\n          fi\n", 1)[0]
+    assert "reconciliatie-alles --alleen webhooks --lees-only" in blok
+    assert "/reconciliatie/webhooks/" in blok
+    assert 'UIT="verkenning/nameting-webhook-wacht-$DATUM.txt"' in blok
+    assert 'elif [[ "$ONDERDEEL" == "webhook-wacht" ]]; then\n            OORDEEL_BRON="verkenning/nameting-webhook-wacht-$DATUM.txt"' in tekst
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "webhook-wacht"' not in tekst
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    assert re.search(r"^\s*webhook-wacht\) echo webhook-wacht ;;", sh, re.M)
 
 
 def test_onderdeel_vastly_verkoop_alleen_op_verzoek_en_lees_only(tmp_path: Path) -> None:

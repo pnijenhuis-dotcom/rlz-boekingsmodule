@@ -90,8 +90,13 @@ class TestRegistry:
             "vastly_entiteit_niet_gekoppeld",
             "vastly_omzetrekening_ontbreekt",
             "vastly_verkoop_niet_geboekt",
+            # 02-10 (run A punt 17): ná 14 dagen 409 niet_koppelbaar alsnog mislukt — mens nodig (melden bij Vastly),
+            # bewijs = Vastly's eigen reden; het wachten zelf (`webhook_wacht_op_ontvanger`) start in `meten`.
+            "webhook_niet_koppelbaar_verlopen",
             "intake_postvak_verschil",
         ]
+        assert soort_stand.code_default("webhook_wacht_op_ontvanger") == "meten"
+        assert soort_stand.code_default("webhook_niet_koppelbaar_verlopen") == "actie"
         assert soort_stand.code_default("doorbelasting_bedrag_afwijking") == "actie"
         assert soort_stand.code_default("doorbelasting_factuur_pdf_ontbreekt") == "meten"
         assert soort_stand.code_default("activum_aanmaken_mislukt_mens") == "actie"

@@ -110,6 +110,9 @@ export type BevindingBlok =
   /** 29-09 (Peter 28-09): Vastly-verkoop volledig automatisch — élk open Vastly-verkoopdocument > 1 dag is één bevinding mét
    * handeling (Koppel aan administratie… / Rekening kiezen / Opnieuw aanbieden); nooit verzamelbak of werkvoorraad. */
   | 'vastly_verkoop'
+  /** 02-10 (run A punt 17): webhook-outbox-rijen die op Vastly wachten (409 niet_koppelbaar, cadans 1 u / 6 u / 24 u /
+   * dagelijks, max 14 dagen) of daarna mislukt zijn — handeling "Nu opnieuw" op de rij. */
+  | 'webhooks'
 
 export interface BevindingDto {
   id: string
@@ -344,6 +347,7 @@ export const BLOK_LABEL: Record<BevindingBlok, string> = {
   intake: 'Postvak',
   activa: 'Activa',
   vastly_verkoop: 'Vastly-verkoop',
+  webhooks: 'Webhooks',
 }
 
 /** Leesbare labels van de reden-categorieën (spiegel van REDEN_LABEL in automatiseringen.py). */

@@ -84,6 +84,9 @@ BLOKKEN = (
     # Vastly-verkoop volledig automatisch (Peter 29-09): élk open Vastly-verkoopdocument > 1 dag = bevinding mét handeling
     # (entiteit koppelen / rekening kiezen / opnieuw aanbieden) — app/verkoop/reconciliatie.py.
     "vastly_verkoop",
+    # Run A 02-10 punt 17 (Peter 02-10): outbox-rijen die op de ontvanger wachten (409 niet_koppelbaar, cadans tot 14
+    # dagen) of daarna mislukt zijn — bevinding mét handeling "Nu opnieuw" (app/documenten/webhook_reconciliatie.py).
+    "webhooks",
 )
 #: Sleutel in `samenvatting` voor de tellers per automatisering (géén blokstand — de bevindingen ervan
 #: staan onder blok `automatisering`, enkelvoud).

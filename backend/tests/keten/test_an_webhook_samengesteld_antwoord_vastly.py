@@ -15,12 +15,19 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import text
 
-from app.documenten import boeken, boekvoorstel
+from app.documenten import boeken, boekvoorstel, webhook_reconciliatie
 from app.documenten.models import DocumentStatus, WebhookStatus
-from app.documenten.webhook_afleveraar import herzend_afgeleverd, lever_rijen_direct_af, verwerk_openstaande_webhooks
+from app.documenten.webhook_afleveraar import (
+    herzend_afgeleverd,
+    lever_rijen_direct_af,
+    nu_opnieuw,
+    verwerk_openstaande_webhooks,
+)
+from app.reconciliatie.run import Verzamelaar
 from tests.auth.conftest import beheerder_id  # noqa: F401
 from tests.documenten.test_webhook_afleveraar import aflevering_aan  # noqa: F401
 from tests.documenten.test_webhook_herzenden import VastlyOntvanger
+from tests.documenten.test_webhook_wacht_op_ontvanger import NietKoppelbaarOntvanger
 from tests.keten import casussen
 from tests.keten.casussen import Casus
 from tests.keten.conftest import GB_ADVIES, PROJECT_26084, TAXRATE_HOOG, Keten
@@ -89,6 +96,44 @@ def _laatste_audit(keten: Keten, rij_id: uuid.UUID) -> dict:
             ),
             {"id": rij_id},
         ).mappings().one()
+
+
+class TestNietKoppelbaarInDeKeten:
+    """Run A 02-10 punt 17: Vastly antwoordt 409 `niet_koppelbaar` (§3c) op de geboekte BDO → de rij wacht (geen
+    dead-letter), staat als bevinding in blok `webhooks`, en "Nu opnieuw" levert 'm ná Vastly's herstel direct af."""
+
+    def test_409_niet_koppelbaar_wacht_staat_in_blok_webhooks_en_nu_opnieuw_levert_af(
+        self, keten: Keten, bdo_geboekt_vastgoed: uuid.UUID, beheerder_id: uuid.UUID, aflevering_aan: None
+    ) -> None:
+        rij = _outbox(keten, bdo_geboekt_vastgoed)
+        ontvanger = NietKoppelbaarOntvanger(reden="onbekende_administratie")
+        rapport = verwerk_openstaande_webhooks(transport=ontvanger.transport)
+        assert rapport.wacht_op_ontvanger == 1 and rapport.dead_letter == 0 and rapport.poging_mislukt == 0
+        rij = _outbox(keten, bdo_geboekt_vastgoed)
+        assert rij["status"] == WebhookStatus.WACHT_OP_ONTVANGER.value
+        assert "onbekende_administratie" in rij["laatste_fout"]
+        assert _laatste_audit(keten, rij["id"])["actie"] == "webhook_wacht_op_ontvanger"
+
+        v = Verzamelaar()
+        v.start_blok(webhook_reconciliatie.BLOK)
+        assert webhook_reconciliatie.cli_blok(None, v, stdout=lambda t: None) == 1
+        (b,) = [x for x in v.bevindingen if x.detail["outbox_id"] == str(rij["id"])]
+        assert b.detail["afwijking_soort"] == webhook_reconciliatie.SOORT_WACHT
+        assert b.detail["referentie"] == rij["referentie"] and b.administratie_id == keten.administratie_id
+
+        # Vastly koppelt de verhuurder → "Nu opnieuw" levert direct af, buiten de cadans om (volgende poging: + 1 u).
+        ontvanger.koppelbaar = True
+        r = nu_opnieuw(
+            actor_id=beheerder_id,
+            administratie_id=keten.administratie_id,
+            outbox_id=rij["id"],
+            transport=ontvanger.transport,
+        )
+        assert r.status_na == WebhookStatus.AFGELEVERD.value and r.uitkomst.startswith("afgeleverd")
+        assert ontvanger.ontvangen[0]["data"]["referentie"] == rij["referentie"]
+        rij = _outbox(keten, bdo_geboekt_vastgoed)
+        assert rij["status"] == WebhookStatus.AFGELEVERD.value and rij["laatste_fout"] is None
+        assert _laatste_audit(keten, rij["id"])["actie"] == "webhook_afgeleverd"
 
 
 class TestSamengesteldAntwoordInDeKeten:

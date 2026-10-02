@@ -2388,6 +2388,7 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
     overdracht). `--alleen` vereist `--lees-only`: een deel-run die als 'laatste afgeronde run' zou worden
     vastgelegd laat de kantoorbrede lijst de andere blokken verliezen en mailt hun afwijkingen als 'hersteld'."""
     from app.activa import reconciliatie as activa_reconciliatie
+    from app.documenten import webhook_reconciliatie
     from app.doorbelasting import aansluiting as doorbelasting_aansluiting
     from app.intake import bewaking as intake_bewaking
     from app.intercompany import factuurmatch, rekening_courant
@@ -2423,6 +2424,9 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
         # Vastly-verkoop volledig automatisch (Peter 29-09): open Vastly-verkoopdocumenten > 1 dag = bevinding mét handeling
         # (entiteit koppelen / rekening kiezen / opnieuw aanbieden); schrappen = deze regel + run.BLOKKEN.
         (vastly_reconciliatie.BLOK, vastly_reconciliatie.cli_blok),
+        # Run A 02-10 punt 17 (Peter 02-10): webhook-outbox-rijen die op de ontvanger wachten (409 niet_koppelbaar) of ná
+        # 14 dagen wachten mislukt zijn = bevinding mét "Nu opnieuw"; schrappen = deze regel + run.BLOKKEN.
+        (webhook_reconciliatie.BLOK, webhook_reconciliatie.cli_blok),
     )
     alleen = set(getattr(args, "alleen", None) or [])
     lees_only = bool(getattr(args, "lees_only", False))
@@ -3222,13 +3226,16 @@ def _webhook_afleveren(args: argparse.Namespace) -> int:
     print(
         f"Afgeleverd: {rapport.afgeleverd}, poging(en) mislukt: {rapport.poging_mislukt}, "
         f"dead-letter: {rapport.dead_letter}, geweigerd (geen vastgoed): {rapport.geweigerd_geen_vastgoed}, "
-        f"genegeerd door de ontvanger: {rapport.genegeerd}, afgeleverd zonder verwerking: {rapport.zonder_verwerking}"
+        f"genegeerd door de ontvanger: {rapport.genegeerd}, afgeleverd zonder verwerking: {rapport.zonder_verwerking}, "
+        f"wacht op ontvanger (409): {rapport.wacht_op_ontvanger}, "
+        f"wachten verlopen (> 14 dagen): {rapport.wacht_verlopen}"
     )
     for fout in rapport.fouten:
         print(f"FOUT  {fout}", file=sys.stderr)
     for melding in rapport.let_op:
         print(f"LET-OP  {melding}", file=sys.stderr)
-    return 1 if (rapport.dead_letter or rapport.geweigerd_geen_vastgoed or rapport.genegeerd) else 0
+    rood = rapport.dead_letter or rapport.geweigerd_geen_vastgoed or rapport.genegeerd or rapport.wacht_verlopen
+    return 1 if rood else 0
 
 
 def _webhook_herzenden(args: argparse.Namespace) -> int:

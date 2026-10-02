@@ -215,6 +215,22 @@ REGISTRY: dict[str, SoortDefinitie] = {
             "dag zonder boeking is een actie-bevinding mét reden en Opnieuw aanbieden — geen werkvoorraad; explosie-rem "
             "blijft",
         ),
+        # Run A 02-10 punt 17 (Peter 02-10): webhook-outbox 409 `niet_koppelbaar` = wachten op de ontvanger (cadans
+        # 1 u / 6 u / 24 u / dagelijks, max 14 dagen). Wachten start in `meten`: het systeem herhaalt zelf, een
+        # actiemail over iets dat vanzelf oplost is ruis (Peter 02-10 "geen mails meer"); de handeling "Nu opnieuw" staat
+        # wél op de rij (Inzicht › Reconciliatie, facet "in meting"). Ná 14 dagen alsnog `mislukt` = direct `actie`: daar is een
+        # mens nodig (melden bij Vastly), het bewijs is Vastly's eigen reden uit de 409-body — besluit Peter in de
+        # opdracht ("daarna pas mislukt mét reden"); explosie-rem blijft.
+        SoortDefinitie(soort="webhook_wacht_op_ontvanger", blok="webhooks", sinds=date(2026, 10, 2), default=METEN),
+        SoortDefinitie(
+            soort="webhook_niet_koppelbaar_verlopen",
+            blok="webhooks",
+            sinds=date(2026, 10, 2),
+            default=ACTIE,
+            direct_actie_reden="Peter 02-10 (run A punt 17): een 409 niet_koppelbaar die ná 14 dagen cadans nog staat "
+            "is een bestaande, zichtbare fout mét de reden uit Vastly's eigen antwoord als bewijs — melden bij Vastly, "
+            "daarna 'Nu opnieuw'; explosie-rem blijft",
+        ),
         SoortDefinitie(
             soort="intake_postvak_verschil",
             blok="intake",

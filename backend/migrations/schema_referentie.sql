@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0174
+-- Migratie-head bij deze dump: 0175
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -3529,7 +3529,9 @@ CREATE TABLE boekhouding.webhook_uitgaand (
     laatste_fout text,
     volgende_poging_op timestamp with time zone,
     administratie_id uuid,
-    CONSTRAINT webhook_uitgaand_status_geldig CHECK ((status = ANY (ARRAY['openstaand'::text, 'afgeleverd'::text, 'mislukt'::text])))
+    wacht_op_ontvanger_sinds timestamp with time zone,
+    wacht_pogingen integer DEFAULT 0 NOT NULL,
+    CONSTRAINT webhook_uitgaand_status_geldig CHECK ((status = ANY (ARRAY['openstaand'::text, 'afgeleverd'::text, 'mislukt'::text, 'wacht_op_ontvanger'::text])))
 );
 
 ALTER TABLE ONLY boekhouding.webhook_uitgaand FORCE ROW LEVEL SECURITY;
@@ -7467,7 +7469,7 @@ CREATE INDEX ix_webhook_uitgaand_document_id ON boekhouding.webhook_uitgaand USI
 -- Name: ix_webhook_uitgaand_openstaand; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
-CREATE INDEX ix_webhook_uitgaand_openstaand ON boekhouding.webhook_uitgaand USING btree (volgende_poging_op) WHERE (status = 'openstaand'::text);
+CREATE INDEX ix_webhook_uitgaand_openstaand ON boekhouding.webhook_uitgaand USING btree (volgende_poging_op) WHERE (status = ANY (ARRAY['openstaand'::text, 'wacht_op_ontvanger'::text]));
 
 
 --

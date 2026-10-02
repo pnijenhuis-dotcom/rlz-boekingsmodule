@@ -1245,7 +1245,57 @@ def _vastly_verkoop(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
     )
 
 
+#: Leesbare namen voor de wire-waarden van koppelcontract §3/§3c (nooit de technische sleutel in titel/wat/doe).
+_WEBHOOK_EVENT_LABEL = {
+    "factuur_geboekt": "'factuur geboekt'",
+    "factuur_gestorneerd": "'factuur gestorneerd'",
+    "factuur_afgeletterd": "'factuur afgeletterd'",
+}
+_WEBHOOK_REDEN_LABEL = {
+    "onbekende_administratie": "de administratie is bij Vastly niet aan een verhuurder gekoppeld",
+    "onbekend_document": "de factuur is bij Vastly onbekend",
+    "referentie_conflict": "de referentie hangt bij Vastly al aan een ander document",
+}
+
+
+def _webhooks(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
+    """Blok `webhooks` (run A 02-10 punt 17): een event naar Vastly dat de ontvanger (nog) niet kan koppelen (409
+    `niet_koppelbaar`) wacht mét cadans; ná 14 dagen is het mislukt mét de reden uit Vastly's antwoord."""
+    referentie = zonder_guids(_s(d, "referentie") or "") or "dit event"
+    event = _WEBHOOK_EVENT_LABEL.get(_s(d, "event") or "", _s(d, "event") or "webhook")
+    reden_code = _s(d, "reden") or ""
+    reden = _WEBHOOK_REDEN_LABEL.get(reden_code, reden_code or "geen reden in het antwoord")
+    sinds = datum(d.get("sinds"))
+    pogingen = int(d.get("wacht_pogingen") or 0)
+    max_dagen = int(d.get("max_dagen") or 14)
+    if soort == "webhook_wacht_op_ontvanger":
+        volgende = _s(d, "volgende_poging_op")
+        volgende_tekst = f"; volgende poging {datum(volgende)}" if volgende else ""
+        return (
+            _titel("Vastly kan het event nog niet koppelen", referentie),
+            f"Het bericht {event} voor {referentie} is sinds {sinds or 'vandaag'} {pogingen} keer aangeboden; Vastly "
+            f"antwoordt '{reden}' (nog niet koppelbaar). De module probeert het zelf opnieuw na 1 uur, 6 uur, 24 uur "
+            f"en daarna dagelijks, tot {max_dagen} dagen{volgende_tekst}.",
+            "Niets doen tot Vastly de koppeling (administratie of factuur) heeft hersteld; weet je dat dat al gebeurd "
+            "is, klik 'Nu opnieuw' — dan wacht de module niet op de volgende cadansstap.",
+        )
+    if soort == "webhook_niet_koppelbaar_verlopen":
+        return (
+            _titel(f"Vastly kon het event {max_dagen} dagen niet koppelen", referentie),
+            f"Het bericht {event} voor {referentie} is sinds {sinds or '?'} {pogingen} keer aangeboden en Vastly bleef "
+            f"'{reden}' antwoorden; ná {max_dagen} dagen staat het nu als mislukt.",
+            "Meld bij Vastly dat de koppeling voor deze administratie of factuur ontbreekt; is die hersteld, klik "
+            "'Nu opnieuw' — het event wordt dan direct opnieuw aangeboden.",
+        )
+    return (
+        _titel("Webhook-afwijking", referentie),
+        _terugval_wat(tekst),
+        "Beoordeel de melding; de handeling staat op de rij.",
+    )
+
+
 _BLOK_AFWIJKING = {
+    "webhooks": _webhooks,
     "vastly_verkoop": _vastly_verkoop,
     "intake": _intake,
     "activa": _activa,

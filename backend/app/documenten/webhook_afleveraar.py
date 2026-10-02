@@ -40,6 +40,14 @@ Failsafes ("niets verdwijnt stil", maar ook: nooit per ongeluk pushen):
   `kostenintake_uit` (Vastly-tier-vlag `entiteit_config.rlz_kostenintake` staat uit) is een aflevering zónder
   verwerking: rij `afgeleverd`, maar zichtbaar in het rapport (LET-OP) en het audit — de klant zet de kostenintake
   aan Vastly-kant aan.
+- 409 `niet_koppelbaar` (koppelcontract §3c, voorstel-3c-409; run A 02-10 punt 17, Peter 02-10; migratie 0175): de
+  ontvanger zegt "nog niet koppelbaar" (onbekende_administratie / onbekend_document / referentie_conflict) — dat is
+  geen fout van ons en nooit een dead-letter ná 8 pogingen. De rij gaat naar status `wacht_op_ontvanger` mét oplopende
+  cadans vanaf de EERSTE 409 (`WACHT_CADANS`: 1 u → 6 u → 24 u, daarna dagelijks), zichtbaar in het reconciliatieblok
+  `webhooks` (soort `webhook_wacht_op_ontvanger`, handeling "Nu opnieuw" = `nu_opnieuw()`), en pas ná `WACHT_MAX`
+  (14 dagen) `mislukt` mét "ontvanger kon niet koppelen binnen 14 dagen: <reden>" (soort `webhook_niet_koppelbaar_
+  verlopen`, zelfde handeling). Een 2xx ná het wachten = gewoon `afgeleverd`. De 409 van een nonce-replay
+  (`{"fout": …}`, zonder `resultaat`) blijft de gewone retry. 409-pogingen tellen niet mee voor de dead-letter-grens.
 
 Uitvoervormen (zelfde patroon als de extractie-worker/sync): in dev een in-process
 achtergrondlus (InProcessWebhookAfleveraar, gestart in de app-lifespan); productie draait
@@ -64,7 +72,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie, WebhookInstelling
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten.models import Document, WebhookStatus, WebhookUitgaand
+from app.documenten.models import WEBHOOK_ACTIEVE_STATUSSEN, Document, WebhookStatus, WebhookUitgaand
 from app.documenten.webhook import onderteken_voor_verzending, webhook_secret
 
 logger = logging.getLogger(__name__)
@@ -115,6 +123,10 @@ class AfleverRapport:
     genegeerd: int = 0
     #: Afgeleverd, maar de ontvanger heeft bewust niets verwerkt (bv. `kostenintake_uit`) — zichtbaar, geen fout.
     zonder_verwerking: int = 0
+    #: 02-10: 409 `niet_koppelbaar` → rij wacht op de ontvanger (cadans 1 u / 6 u / 24 u / dagelijks, max 14 dagen).
+    wacht_op_ontvanger: int = 0
+    #: 02-10: ná 14 dagen wachten alsnog `mislukt` mét de reden uit de body — zichtbaar, handeling "Nu opnieuw".
+    wacht_verlopen: int = 0
     fouten: list[str] = field(default_factory=list)
     let_op: list[str] = field(default_factory=list)
     #: Uitkomst per rij (outbox_id → korte tekst) voor de directe afleverronde van `webhook-herzenden --afleveren`.
@@ -128,6 +140,34 @@ RESULTAAT_GENEGEERD = "genegeerd"
 #: `entiteit_config.rlz_kostenintake` uit). Geen fout — wel zichtbaar (rapport LET-OP + audit), zodat "afgeleverd" nooit
 #: stil "verwerkt" suggereert. Herzenden ná het aanzetten van de vlag is één `webhook-herzenden`-commando.
 RESULTATEN_ZONDER_VERWERKING = frozenset({"kostenintake_uit"})
+#: 409-body van Vastly als het bericht (nog) niet te koppelen is (koppelcontract §3c): `{"resultaat":
+#: "niet_koppelbaar", "reden": onbekende_administratie | onbekend_document | referentie_conflict}`. De
+#: nonce-replay-409 draagt `{"fout": …}` en blijft de gewone retry.
+RESULTAAT_NIET_KOPPELBAAR = "niet_koppelbaar"
+#: Cadans ná een 409 `niet_koppelbaar`, gerekend vanaf de EERSTE 409 (run A 02-10 punt 17): 1 u → 6 u → 24 u, daarna
+#: dagelijks tot `WACHT_MAX`. Geen instelling (Peter 30-09 "hou het simpel").
+WACHT_CADANS = (timedelta(hours=1), timedelta(hours=6), timedelta(hours=24))
+WACHT_DAGELIJKS = timedelta(hours=24)
+WACHT_MAX = timedelta(days=14)
+WACHT_VERLOPEN_PREFIX = "ontvanger kon niet koppelen binnen 14 dagen"
+WACHT_PREFIX = "ontvanger kan nog niet koppelen"
+
+
+def volgende_wacht_poging(*, sinds: datetime, nu: datetime) -> datetime:
+    """Eerstvolgende poging ná `nu` volgens de cadans vanaf `sinds` (eerste 409): sinds + 1 u, + 7 u, + 31 u, daarna
+    elke 24 u. Altijd strikt ná `nu`, zodat een late job-run nooit twee pogingen in één run doet."""
+    moment = sinds
+    for stap in WACHT_CADANS:
+        moment = moment + stap
+        if moment > nu:
+            return moment
+    while moment <= nu:
+        moment = moment + WACHT_DAGELIJKS
+    return moment
+
+
+def wacht_verlopen(*, sinds: datetime, nu: datetime) -> bool:
+    return nu - sinds >= WACHT_MAX
 
 
 @dataclass(frozen=True)
@@ -138,6 +178,10 @@ class OntvangerAntwoord:
     body: str | None = None
     #: Topniveau-resultaat zoals de ontvanger het letterlijk gaf (diagnostiek; `resultaat` is de effectieve uitkomst).
     topniveau_resultaat: str | None = None
+    #: HTTP-status van het antwoord (None bij een verbindingsfout).
+    status_code: int | None = None
+    #: 02-10: 409 mét `resultaat: niet_koppelbaar` — "nog niet koppelbaar", geen fout, geen dead-letter.
+    niet_koppelbaar: bool = False
 
 
 def _lees_antwoord(response: httpx.Response) -> tuple[str | None, str | None, str | None, str | None]:
@@ -195,8 +239,23 @@ def _verstuur(*, client: httpx.Client, config: AfleverConfig, envelope: dict) ->
         return OntvangerAntwoord(fout=f"verbindingsfout: {exc}")
     if response.is_success:
         resultaat, reden, body, topniveau = _lees_antwoord(response)
-        return OntvangerAntwoord(fout=None, resultaat=resultaat, reden=reden, body=body, topniveau_resultaat=topniveau)
-    return OntvangerAntwoord(fout=f"HTTP {response.status_code}: {response.text[:200]}", body=response.text[:500])
+        return OntvangerAntwoord(
+            fout=None,
+            resultaat=resultaat,
+            reden=reden,
+            body=body,
+            topniveau_resultaat=topniveau,
+            status_code=response.status_code,
+        )
+    fout = f"HTTP {response.status_code}: {response.text[:200]}"
+    if response.status_code == 409:
+        # §3c: 409 `niet_koppelbaar` (+ reden) ≠ de nonce-replay-409 (`{"fout": …}`); alleen de eerste is "wacht".
+        resultaat, reden, body, _ = _lees_antwoord(response)
+        if resultaat == RESULTAAT_NIET_KOPPELBAAR:
+            return OntvangerAntwoord(
+                fout=fout, resultaat=resultaat, reden=reden, body=body, status_code=409, niet_koppelbaar=True
+            )
+    return OntvangerAntwoord(fout=fout, body=response.text[:500], status_code=response.status_code)
 
 
 def _lever_rij_af(
@@ -218,13 +277,14 @@ def _lever_rij_af(
     with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
         rij = session.scalars(
             select(WebhookUitgaand)
-            .where(WebhookUitgaand.id == rij_id, WebhookUitgaand.status == WebhookStatus.OPENSTAAND.value)
+            .where(WebhookUitgaand.id == rij_id, WebhookUitgaand.status.in_(WEBHOOK_ACTIEVE_STATUSSEN))
             .with_for_update(skip_locked=True)
         ).one_or_none()
         if rij is None:
             return
 
         correlatie_id = uuid.uuid4()
+        wachtte_al = rij.status == WebhookStatus.WACHT_OP_ONTVANGER.value
 
         if not is_vastgoed:
             # Assert op de aanmaak-scope-filter (migratie 0018): deze rij had niet mogen bestaan
@@ -293,6 +353,12 @@ def _lever_rij_af(
             actie = "webhook_afgeleverd"
             rapport.afgeleverd += 1
             rapport.per_rij[rij.id] = f"afgeleverd — resultaat {antwoord.resultaat or 'onbekend (geen JSON-body)'}"
+            if wachtte_al:
+                poging_detail["wachtte_sinds"] = (
+                    rij.wacht_op_ontvanger_sinds.isoformat() if rij.wacht_op_ontvanger_sinds else None
+                )
+                poging_detail["wacht_pogingen"] = rij.wacht_pogingen
+                rapport.per_rij[rij.id] += f" (ná {rij.wacht_pogingen} × wachten op de ontvanger)"
             if antwoord.resultaat in RESULTATEN_ZONDER_VERWERKING:
                 # Afgeleverd, maar de ontvanger heeft bewust niets verwerkt: zichtbaar, geen fout, niet herhalen
                 # (zelfde payload = zelfde antwoord tot de klant de vlag aan Vastly-kant omzet).
@@ -303,7 +369,47 @@ def _lever_rij_af(
                 logger.warning(
                     "Webhook-rij %s afgeleverd zonder verwerking aan de ontvangerkant: %s", rij.id, antwoord.resultaat
                 )
-        elif rij.pogingen >= settings.webhook_max_pogingen:
+        elif antwoord.niet_koppelbaar:
+            # 02-10 (run A punt 17): "nog niet koppelbaar" is geen fout van ons — wachten mét cadans vanaf de eerste
+            # 409, zichtbaar als status + reconciliatiebevinding; pas ná 14 dagen `mislukt` mét de reden uit de body.
+            sinds = rij.wacht_op_ontvanger_sinds or nu
+            reden = antwoord.reden or "geen reden in het antwoord"
+            rij.wacht_op_ontvanger_sinds = sinds
+            rij.wacht_pogingen += 1
+            poging_detail["ontvanger_reden"] = antwoord.reden
+            poging_detail["wacht_sinds"] = sinds.isoformat()
+            poging_detail["wacht_pogingen"] = rij.wacht_pogingen
+            if wacht_verlopen(sinds=sinds, nu=nu):
+                fout = f"{WACHT_VERLOPEN_PREFIX}: {reden}"
+                rij.status = WebhookStatus.MISLUKT.value
+                rij.laatste_fout = fout
+                rij.volgende_poging_op = None
+                actie = "webhook_niet_koppelbaar_verlopen"
+                poging_detail["fout"] = fout
+                rapport.wacht_verlopen += 1
+                rapport.fouten.append(f"{referentie_tekst}: {fout} ({rij.wacht_pogingen} pogingen sinds {sinds:%d-%m})")
+                rapport.per_rij[rij.id] = f"mislukt — {fout}"
+                logger.error("Webhook-rij %s ná 14 dagen wachten alsnog mislukt: %s", rij.id, reden)
+            else:
+                fout = f"{WACHT_PREFIX} ({reden}) — wacht"
+                rij.status = WebhookStatus.WACHT_OP_ONTVANGER.value
+                rij.laatste_fout = fout
+                rij.volgende_poging_op = volgende_wacht_poging(sinds=sinds, nu=nu)
+                actie = "webhook_wacht_op_ontvanger"
+                poging_detail["fout"] = fout
+                poging_detail["volgende_poging_op"] = rij.volgende_poging_op.isoformat()
+                rapport.wacht_op_ontvanger += 1
+                rapport.let_op.append(
+                    f"{referentie_tekst}: {fout} — volgende poging {rij.volgende_poging_op:%d-%m %H:%M} UTC "
+                    f"(poging {rij.wacht_pogingen}, sinds {sinds:%d-%m})"
+                )
+                rapport.per_rij[rij.id] = (
+                    f"wacht op de ontvanger ({reden}) — volgende poging {rij.volgende_poging_op:%d-%m %H:%M} UTC"
+                )
+                logger.warning(
+                    "Webhook-rij %s wacht op de ontvanger (%s), poging %s", rij.id, reden, rij.wacht_pogingen
+                )
+        elif (rij.pogingen - rij.wacht_pogingen) >= settings.webhook_max_pogingen:
             rij.status = WebhookStatus.MISLUKT.value
             rij.laatste_fout = fout
             rij.volgende_poging_op = None
@@ -315,7 +421,7 @@ def _lever_rij_af(
             logger.error("Webhook-rij %s definitief mislukt na %s pogingen: %s", rij.id, rij.pogingen, fout)
         else:
             rij.laatste_fout = fout
-            rij.volgende_poging_op = nu + timedelta(seconds=_backoff_seconds(rij.pogingen))
+            rij.volgende_poging_op = nu + timedelta(seconds=_backoff_seconds(rij.pogingen - rij.wacht_pogingen))
             actie = "webhook_poging_mislukt"
             poging_detail["fout"] = fout
             poging_detail["volgende_poging_op"] = rij.volgende_poging_op.isoformat()
@@ -368,7 +474,7 @@ def verwerk_openstaande_webhooks(
                         .where(
                             func.coalesce(WebhookUitgaand.administratie_id, Document.administratie_id)
                             == administratie_id,
-                            WebhookUitgaand.status == WebhookStatus.OPENSTAAND.value,
+                            WebhookUitgaand.status.in_(WEBHOOK_ACTIEVE_STATUSSEN),
                             (WebhookUitgaand.volgende_poging_op.is_(None))
                             | (WebhookUitgaand.volgende_poging_op <= nu),
                         )
@@ -473,6 +579,8 @@ def herstel_dead_letters(*, actor_id: uuid.UUID, outbox_id: uuid.UUID | None = N
                 rij.status = WebhookStatus.OPENSTAAND.value
                 rij.pogingen = 0
                 rij.volgende_poging_op = None
+                rij.wacht_op_ontvanger_sinds = None
+                rij.wacht_pogingen = 0
                 record_audit_event(
                     session,
                     actor_id=actor_id,
@@ -574,7 +682,8 @@ def herzend_afgeleverd(
                     afgeleverd_op=rij.afgeleverd_op,
                     pogingen=rij.pogingen,
                 )
-                if rij.status == WebhookStatus.OPENSTAAND.value:
+                if rij.status in WEBHOOK_ACTIEVE_STATUSSEN:
+                    # 02-10: ook een rij die op de ontvanger wacht is al onderweg — niet dubbel terugzetten.
                     uit.append(HerzendRij(**basis, uitkomst="al openstaand — niet herzonden"))
                     continue
                 if dry_run:
@@ -592,6 +701,8 @@ def herzend_afgeleverd(
                 rij.volgende_poging_op = None
                 rij.afgeleverd_op = None
                 rij.laatste_fout = None
+                rij.wacht_op_ontvanger_sinds = None
+                rij.wacht_pogingen = 0
                 record_audit_event(
                     session,
                     actor_id=actor_id,
@@ -616,6 +727,88 @@ def herzend_afgeleverd(
     return uit
 
 
+class NuOpnieuwNietMogelijk(Exception):
+    """"Nu opnieuw" op een rij die niet (meer) wacht en niet door het wachten mislukt is — reden in de melding."""
+
+
+@dataclass(frozen=True)
+class NuOpnieuwResultaat:
+    outbox_id: uuid.UUID
+    status_voor: str
+    status_na: str
+    uitkomst: str
+
+
+def nu_opnieuw(
+    *,
+    actor_id: uuid.UUID,
+    administratie_id: uuid.UUID,
+    outbox_id: uuid.UUID,
+    nu: datetime | None = None,
+    transport: httpx.BaseTransport | None = None,
+) -> NuOpnieuwResultaat:
+    """Handeling "Nu opnieuw" (run A 02-10 punt 17) op een rij die op de ontvanger wacht (`wacht_op_ontvanger`) of ná
+    14 dagen wachten `mislukt` is: één directe afleverronde, buiten de cadans om — ná de melding van Vastly dat de
+    koppeling hersteld is hoeft niemand op de volgende cadansstap te wachten. Een mens-besluit: audit
+    `webhook_nu_opnieuw` mét de actor. Op een verlopen rij begint de 14-dagen-telling opnieuw (de rij gaat terug naar
+    `openstaand`; antwoordt de ontvanger wéér 409, dan wacht ze opnieuw mét een verse `wacht_op_ontvanger_sinds`).
+    Een rij die al gewoon openstaand/afgeleverd is, of mislukt om een andere reden, hoort hier niet (409 in de
+    router)."""
+    nu = nu or datetime.now(UTC)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        rij = session.scalars(
+            select(WebhookUitgaand)
+            .outerjoin(Document, WebhookUitgaand.document_id == Document.id)
+            .where(
+                WebhookUitgaand.id == outbox_id,
+                func.coalesce(WebhookUitgaand.administratie_id, Document.administratie_id) == administratie_id,
+            )
+            .with_for_update(of=WebhookUitgaand)
+        ).one_or_none()
+        if rij is None:
+            raise LookupError("outbox-rij niet gevonden in deze administratie")
+        status_voor = rij.status
+        verlopen = rij.status == WebhookStatus.MISLUKT.value and rij.wacht_op_ontvanger_sinds is not None
+        if rij.status != WebhookStatus.WACHT_OP_ONTVANGER.value and not verlopen:
+            raise NuOpnieuwNietMogelijk(
+                f"rij staat op {rij.status} en wacht niet op de ontvanger — 'Nu opnieuw' geldt alleen voor een rij die "
+                "wacht of ná 14 dagen wachten mislukt is (anders: webhook-herzenden / webhook-redrive)"
+            )
+        sinds_oud = rij.wacht_op_ontvanger_sinds
+        oud = {
+            "status": rij.status,
+            "wacht_op_ontvanger_sinds": sinds_oud.isoformat() if sinds_oud else None,
+            "wacht_pogingen": rij.wacht_pogingen,
+            "volgende_poging_op": rij.volgende_poging_op.isoformat() if rij.volgende_poging_op else None,
+            "laatste_fout": rij.laatste_fout,
+        }
+        if verlopen:
+            rij.status = WebhookStatus.OPENSTAAND.value
+            rij.wacht_op_ontvanger_sinds = None
+            rij.wacht_pogingen = 0
+        rij.volgende_poging_op = None
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="webhook_uitgaand",
+            record_id=rij.id,
+            actie="webhook_nu_opnieuw",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde=oud,
+            nieuwe_waarde={"status": rij.status, "referentie": (rij.payload.get("data") or {}).get("referentie")},
+            administratie_id=administratie_id,
+        )
+    rapport = lever_rijen_direct_af(rij_ids=[outbox_id], administratie_id=administratie_id, nu=nu, transport=transport)
+    if rapport.overgeslagen_reden:
+        uitkomst = f"niet verstuurd — {rapport.overgeslagen_reden}"
+    else:
+        uitkomst = rapport.per_rij.get(outbox_id, "niet geraakt (al geclaimd)")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        status_na = session.get(WebhookUitgaand, outbox_id).status  # type: ignore[union-attr]
+    return NuOpnieuwResultaat(outbox_id=outbox_id, status_voor=status_voor, status_na=status_na, uitkomst=uitkomst)
+
+
 class InProcessWebhookAfleveraar:
     """Dev-achtergrondlus (zelfde in-process-patroon als de extractie-wachtrij): roept
     verwerk_openstaande_webhooks() elke `interval_seconds` aan tot stop(). Elke iteratie is
@@ -638,12 +831,13 @@ class InProcessWebhookAfleveraar:
         while not self._stop_event.is_set():
             try:
                 rapport = verwerk_openstaande_webhooks()
-                if rapport.afgeleverd or rapport.poging_mislukt or rapport.dead_letter:
+                if rapport.afgeleverd or rapport.poging_mislukt or rapport.dead_letter or rapport.wacht_op_ontvanger:
                     logger.info(
-                        "Webhook-afleveraar: %s afgeleverd, %s poging(en) mislukt, %s dead-letter",
+                        "Webhook-afleveraar: %s afgeleverd, %s poging(en) mislukt, %s dead-letter, %s wacht(en)",
                         rapport.afgeleverd,
                         rapport.poging_mislukt,
                         rapport.dead_letter,
+                        rapport.wacht_op_ontvanger,
                     )
             except Exception:  # noqa: BLE001 — vangnet: de lus mag nooit stil sterven
                 logger.exception("Webhook-afleveraar-iteratie faalde onverwacht")

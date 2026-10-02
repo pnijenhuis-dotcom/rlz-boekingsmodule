@@ -227,7 +227,8 @@ class TestRegistryEnTeksten:
         # `vastly_verkoop` (Peter 28/29-09) — de volgorde activa → intake blijft.
         b = run_service.BLOKKEN
         assert "activa" in b and b.index("intake") == b.index("activa") + 1
-        assert b[-2:] == ("intake", "vastly_verkoop")
+        # 02-10 (run A punt 17): daarná `webhooks` (outbox-rijen die op de ontvanger wachten).
+        assert b[-3:] == ("intake", "vastly_verkoop", "webhooks")
 
 
 class TestCliBlok:

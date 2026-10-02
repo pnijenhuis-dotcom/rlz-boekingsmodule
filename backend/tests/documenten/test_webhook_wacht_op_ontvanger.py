@@ -1,0 +1,489 @@
+"""Run A 02-10 punt 17 (Peter 02-10): een 409 `niet_koppelbaar` van Vastly ("nog niet koppelbaar", koppelcontract §3c)
+is géén dead-letter ná 8 pogingen maar status `wacht_op_ontvanger` mét oplopende cadans vanaf de eerste 409 (1 u → 6 u
+→ 24 u → dagelijks), max 14 dagen, daarna pas `mislukt` mét de reden uit de body; zichtbaar in het reconciliatieblok
+`webhooks` mét handeling "Nu opnieuw" (route + motor). De nonce-replay-409 (`{"fout": …}`) blijft de gewone retry;
+andere niet-2xx houden hun 8 pogingen (409-pogingen tellen daar niet in mee); 2xx ná het wachten = afgeleverd."""
+
+# ruff: noqa: F811 — de fixtures uit test_webhook_afleveraar worden geïmporteerd én als testparameter gebruikt.
+from __future__ import annotations
+
+import json
+import uuid
+from datetime import UTC, datetime, timedelta
+
+import httpx
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, text
+
+from app import cli
+from app.config import settings
+from app.documenten import webhook_afleveraar, webhook_reconciliatie
+from app.documenten.models import WebhookStatus
+from app.documenten.storage import LokaleBestandsopslag
+from app.documenten.webhook_afleveraar import (
+    WACHT_MAX,
+    NuOpnieuwNietMogelijk,
+    herzend_afgeleverd,
+    nu_opnieuw,
+    verwerk_openstaande_webhooks,
+    volgende_wacht_poging,
+)
+from app.main import app
+from app.reconciliatie import soort_stand, teksten
+from app.reconciliatie.run import Verzamelaar
+from app.security.tokens import create_access_token
+from tests.documenten.test_webhook_afleveraar import (  # noqa: F401
+    MockOntvanger,
+    _audit_acties,
+    _maak_outbox_rij,
+    aflevering_aan,
+    vastgoed_administratie,
+)
+
+client = TestClient(app)
+UUR = timedelta(hours=1)
+
+
+class NietKoppelbaarOntvanger(MockOntvanger):
+    """Vastly's §3c-gedrag: zolang `koppelbaar` False is antwoordt élk bericht 409 `niet_koppelbaar` mét reden;
+    daarna 200 `verwerkt`."""
+
+    def __init__(self, *, reden: str = "onbekende_administratie", forceer_status: list[int] | None = None) -> None:
+        super().__init__(forceer_status=forceer_status)
+        self.koppelbaar = False
+        self.reden = reden
+
+    def verwerk(self, envelope: dict) -> httpx.Response:
+        if not self.koppelbaar:
+            self.aantal_409 = getattr(self, "aantal_409", 0) + 1
+            return httpx.Response(409, json={"resultaat": "niet_koppelbaar", "reden": self.reden})
+        antwoord = super().verwerk(envelope)
+        if antwoord.status_code == 200:
+            return httpx.Response(200, json={"resultaat": "verwerkt"})
+        return antwoord
+
+
+def _headers(admin_engine: Engine, gid: uuid.UUID) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_access_token(gid, rol='boekhouding')}"}
+
+
+def _wacht_rij(admin_engine: Engine, rij_id: uuid.UUID) -> dict:
+    with admin_engine.connect() as conn:
+        return (
+            conn.execute(
+                text(
+                    "SELECT status, pogingen, wacht_pogingen, wacht_op_ontvanger_sinds, volgende_poging_op, "
+                    "laatste_fout "
+                    "FROM boekhouding.webhook_uitgaand WHERE id = :id"
+                ),
+                {"id": rij_id},
+            )
+            .mappings()
+            .one()
+        )
+
+
+class TestCadans:
+    def test_volgende_poging_1u_7u_31u_daarna_dagelijks_en_altijd_na_nu(self) -> None:
+        sinds = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+        assert volgende_wacht_poging(sinds=sinds, nu=sinds) == sinds + 1 * UUR
+        assert volgende_wacht_poging(sinds=sinds, nu=sinds + 1 * UUR) == sinds + 7 * UUR
+        assert volgende_wacht_poging(sinds=sinds, nu=sinds + 7 * UUR) == sinds + 31 * UUR
+        assert volgende_wacht_poging(sinds=sinds, nu=sinds + 31 * UUR) == sinds + 55 * UUR
+        # Een late job-run (poging 2 pas ná 9 u) slaat de gemiste stap over en landt op de eerstvolgende ná nu.
+        assert volgende_wacht_poging(sinds=sinds, nu=sinds + 9 * UUR) == sinds + 31 * UUR
+        assert volgende_wacht_poging(sinds=sinds, nu=sinds + 100 * UUR) == sinds + 103 * UUR
+
+
+class TestAfleveraar409:
+    def test_409_niet_koppelbaar_wordt_wacht_op_ontvanger_met_cadans_en_nooit_dead_letter(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(settings, "webhook_max_pogingen", 2)  # zou bij de oude regel ná 2 × 409 dead-letter zijn
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = NietKoppelbaarOntvanger()
+        t0 = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+
+        rapport = verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)
+        assert rapport.wacht_op_ontvanger == 1 and rapport.dead_letter == 0 and rapport.poging_mislukt == 0
+        rij = _wacht_rij(admin_engine, rij_id)
+        assert rij["status"] == WebhookStatus.WACHT_OP_ONTVANGER.value
+        assert rij["wacht_pogingen"] == 1 and rij["pogingen"] == 1
+        assert rij["wacht_op_ontvanger_sinds"] == t0
+        assert rij["volgende_poging_op"] == t0 + 1 * UUR
+        assert "onbekende_administratie" in rij["laatste_fout"]
+        assert _audit_acties(admin_engine, rij_id) == ["webhook_wacht_op_ontvanger"]
+
+        # Vóór het cadansmoment: niets. Op 1 u: tweede 409 → volgende 7 u ná de eerste; 7 u → 31 u; 31 u → 55 u.
+        verwerk_openstaande_webhooks(nu=t0 + timedelta(minutes=30), transport=ontvanger.transport)
+        assert ontvanger.aantal_409 == 1
+        for nu, verwacht in ((1 * UUR, 7 * UUR), (7 * UUR, 31 * UUR), (31 * UUR, 55 * UUR), (55 * UUR, 79 * UUR)):
+            verwerk_openstaande_webhooks(nu=t0 + nu, transport=ontvanger.transport)
+            rij = _wacht_rij(admin_engine, rij_id)
+            assert rij["status"] == WebhookStatus.WACHT_OP_ONTVANGER.value, nu
+            assert rij["volgende_poging_op"] == t0 + verwacht, nu
+        assert rij["wacht_pogingen"] == 5 and ontvanger.aantal_409 == 5
+        # vijf 409's en max_pogingen 2 — tóch geen dead-letter: 409-pogingen tellen daar niet in mee.
+        assert rij["pogingen"] == 5
+
+    def test_2xx_na_wachten_is_afgeleverd(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = NietKoppelbaarOntvanger(reden="onbekend_document")
+        t0 = datetime.now(UTC) - timedelta(minutes=61)  # de tweede poging (t0 + 1 u) valt op "nu" (replay-venster)
+        verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)
+        ontvanger.koppelbaar = True  # Vastly herstelt de koppeling
+        rapport = verwerk_openstaande_webhooks(nu=datetime.now(UTC), transport=ontvanger.transport)
+        assert rapport.afgeleverd == 1
+        rij = _wacht_rij(admin_engine, rij_id)
+        assert rij["status"] == WebhookStatus.AFGELEVERD.value and rij["volgende_poging_op"] is None
+        assert _audit_acties(admin_engine, rij_id) == ["webhook_wacht_op_ontvanger", "webhook_afgeleverd"]
+        assert "ná 1 × wachten" in rapport.per_rij[rij_id]
+
+    def test_na_14_dagen_mislukt_met_reden_en_wordt_niet_meer_geprobeerd(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = NietKoppelbaarOntvanger(reden="referentie_conflict")
+        t0 = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+        verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)
+        # Dag 13: nog wachten. Dag 14: verlopen → mislukt mét reden, en daarna nooit meer stil geprobeerd.
+        verwerk_openstaande_webhooks(nu=t0 + timedelta(days=13), transport=ontvanger.transport)
+        assert _wacht_rij(admin_engine, rij_id)["status"] == WebhookStatus.WACHT_OP_ONTVANGER.value
+        rapport = verwerk_openstaande_webhooks(nu=t0 + WACHT_MAX, transport=ontvanger.transport)
+        assert rapport.wacht_verlopen == 1 and rapport.dead_letter == 0
+        rij = _wacht_rij(admin_engine, rij_id)
+        assert rij["status"] == WebhookStatus.MISLUKT.value
+        assert rij["laatste_fout"] == "ontvanger kon niet koppelen binnen 14 dagen: referentie_conflict"
+        assert rij["volgende_poging_op"] is None and rij["wacht_op_ontvanger_sinds"] == t0
+        assert _audit_acties(admin_engine, rij_id)[-1] == "webhook_niet_koppelbaar_verlopen"
+        n = ontvanger.aantal_409
+        verwerk_openstaande_webhooks(nu=t0 + WACHT_MAX + timedelta(days=3), transport=ontvanger.transport)
+        assert ontvanger.aantal_409 == n
+        assert cli.main(["webhook-afleveren"]) in (0, 1)  # de CLI-regel noemt de nieuwe tellers (smoke)
+
+    def test_nonce_replay_409_zonder_resultaat_blijft_gewone_retry(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = MockOntvanger(forceer_status=[409])  # tekst-body "opgelegde fout (test)", géén resultaat
+        nu = datetime.now(UTC)
+        rapport = verwerk_openstaande_webhooks(nu=nu, transport=ontvanger.transport)
+        assert rapport.poging_mislukt == 1 and rapport.wacht_op_ontvanger == 0
+        rij = _wacht_rij(admin_engine, rij_id)
+        assert rij["status"] == WebhookStatus.OPENSTAAND.value and rij["wacht_pogingen"] == 0
+        assert rij["volgende_poging_op"] == nu + timedelta(seconds=settings.webhook_backoff_basis_seconds)
+
+    def test_andere_niet_2xx_houdt_8_pogingen_ongeacht_eerdere_409s(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(settings, "webhook_max_pogingen", 2)
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = NietKoppelbaarOntvanger()
+        t0 = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+        verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)  # 409 → wacht
+        ontvanger._forceer_status = [500, 500]  # daarna twee échte fouten
+        verwerk_openstaande_webhooks(nu=t0 + 1 * UUR, transport=ontvanger.transport)
+        rij = _wacht_rij(admin_engine, rij_id)
+        assert rij["status"] == WebhookStatus.WACHT_OP_ONTVANGER.value and rij["pogingen"] == 2
+        assert "500" in rij["laatste_fout"]
+        verwerk_openstaande_webhooks(nu=t0 + 3 * UUR, transport=ontvanger.transport)
+        rij = _wacht_rij(admin_engine, rij_id)
+        assert rij["status"] == WebhookStatus.MISLUKT.value and rij["pogingen"] == 3 and rij["wacht_pogingen"] == 1
+        assert _audit_acties(admin_engine, rij_id)[-1] == "webhook_dead_letter"
+
+
+class TestHerzendenEnNuOpnieuw:
+    def test_herzenden_reset_het_wachten_en_ziet_een_wachtende_rij_als_onderweg(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = NietKoppelbaarOntvanger()
+        t0 = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+        verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)
+        with admin_engine.connect() as conn:
+            ref = conn.execute(
+                text("SELECT payload -> 'data' ->> 'referentie' FROM boekhouding.webhook_uitgaand WHERE id = :id"),
+                {"id": rij_id},
+            ).scalar_one()
+        uit = herzend_afgeleverd(
+            actor_id=beheerder_id,
+            administratie_id=vastgoed_administratie,
+            referenties=[ref],
+            reden="test",
+            dry_run=True,
+        )
+        assert uit[0].uitkomst == "al openstaand — niet herzonden"
+        verwerk_openstaande_webhooks(nu=t0 + WACHT_MAX, transport=ontvanger.transport)  # → mislukt (verlopen)
+        uit = herzend_afgeleverd(
+            actor_id=beheerder_id,
+            administratie_id=vastgoed_administratie,
+            referenties=[ref],
+            reden="Vastly fix",
+            dry_run=False,
+        )
+        assert uit[0].uitkomst == "herzonden"
+        rij = _wacht_rij(admin_engine, rij_id)
+        assert rij["status"] == WebhookStatus.OPENSTAAND.value
+        assert rij["wacht_op_ontvanger_sinds"] is None and rij["wacht_pogingen"] == 0
+
+    def test_nu_opnieuw_levert_direct_af_buiten_de_cadans_met_audit(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = NietKoppelbaarOntvanger()
+        t0 = datetime.now(UTC) - timedelta(minutes=5)
+        verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)
+        # Nog niet aan de beurt (volgende poging over ~55 min), maar Vastly meldt: koppeling hersteld.
+        ontvanger.koppelbaar = True
+        r = nu_opnieuw(
+            actor_id=beheerder_id,
+            administratie_id=vastgoed_administratie,
+            outbox_id=rij_id,
+            transport=ontvanger.transport,
+        )
+        assert (r.status_voor, r.status_na) == (WebhookStatus.WACHT_OP_ONTVANGER.value, WebhookStatus.AFGELEVERD.value)
+        assert r.uitkomst.startswith("afgeleverd")
+        assert _audit_acties(admin_engine, rij_id) == [
+            "webhook_wacht_op_ontvanger",
+            "webhook_nu_opnieuw",
+            "webhook_afgeleverd",
+        ]
+
+    def test_nu_opnieuw_op_verlopen_rij_start_opnieuw_en_wacht_bij_herhaalde_409(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = NietKoppelbaarOntvanger()
+        t0 = datetime.now(UTC) - WACHT_MAX - timedelta(days=1)
+        verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)
+        verwerk_openstaande_webhooks(nu=t0 + WACHT_MAX, transport=ontvanger.transport)
+        assert _wacht_rij(admin_engine, rij_id)["status"] == WebhookStatus.MISLUKT.value
+        r = nu_opnieuw(
+            actor_id=beheerder_id,
+            administratie_id=vastgoed_administratie,
+            outbox_id=rij_id,
+            transport=ontvanger.transport,
+        )
+        assert r.status_voor == WebhookStatus.MISLUKT.value and r.status_na == WebhookStatus.WACHT_OP_ONTVANGER.value
+        rij = _wacht_rij(admin_engine, rij_id)
+        assert rij["wacht_pogingen"] == 1 and rij["wacht_op_ontvanger_sinds"] > t0 + WACHT_MAX  # verse telling
+
+    def test_nu_opnieuw_weigert_een_rij_die_niet_wacht(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        with pytest.raises(NuOpnieuwNietMogelijk):
+            nu_opnieuw(actor_id=beheerder_id, administratie_id=vastgoed_administratie, outbox_id=rij_id)
+        with pytest.raises(LookupError):
+            nu_opnieuw(actor_id=beheerder_id, administratie_id=vastgoed_administratie, outbox_id=uuid.uuid4())
+
+
+class TestBlokWebhooks:
+    def test_blok_staat_in_run_en_cli_en_soorten_in_registry_met_tekst(self) -> None:
+        from app.reconciliatie import run as run_service
+
+        assert run_service.BLOKKEN[-1] == webhook_reconciliatie.BLOK == "webhooks"
+        assert cli._reconciliatie_run_blokken()[-1] == "webhooks"
+        assert soort_stand.code_default(webhook_reconciliatie.SOORT_WACHT) == "meten"
+        assert soort_stand.code_default(webhook_reconciliatie.SOORT_VERLOPEN) == "actie"
+        assert soort_stand.REGISTRY[webhook_reconciliatie.SOORT_VERLOPEN].direct_actie_reden
+
+    def test_blok_meldt_wachtende_en_verlopen_rij_met_handelingsdetail_en_leesbare_tekst(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        wacht_id = _maak_outbox_rij(
+            administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag
+        )
+        verlopen_id = _maak_outbox_rij(
+            administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag
+        )
+        gewoon_id = _maak_outbox_rij(
+            administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag
+        )
+        ontvanger = NietKoppelbaarOntvanger()
+        t0 = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+        verwerk_openstaande_webhooks(nu=t0, transport=ontvanger.transport)  # alle drie → wacht
+        with admin_engine.begin() as conn:
+            # `gewoon` wordt een gewone dead-letter (geen wacht-spoor) en hoort NIET in het blok.
+            conn.execute(
+                text(
+                    "UPDATE boekhouding.webhook_uitgaand SET status = 'mislukt', wacht_op_ontvanger_sinds = NULL, "
+                    "wacht_pogingen = 0, laatste_fout = 'HTTP 500' WHERE id = :id"
+                ),
+                {"id": gewoon_id},
+            )
+            conn.execute(
+                text("UPDATE boekhouding.webhook_uitgaand SET volgende_poging_op = NULL WHERE id = :id"),
+                {"id": verlopen_id},
+            )
+        # Alleen `verlopen` is aan de beurt op dag 14 (de andere wacht nog tot t0 + 1 u): die wordt mislukt-verlopen.
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE boekhouding.webhook_uitgaand SET volgende_poging_op = :vp WHERE id = :id"),
+                {"id": wacht_id, "vp": t0 + WACHT_MAX + timedelta(days=5)},
+            )
+        verwerk_openstaande_webhooks(nu=t0 + WACHT_MAX, transport=ontvanger.transport)
+        assert _wacht_rij(admin_engine, verlopen_id)["status"] == WebhookStatus.MISLUKT.value
+        assert _wacht_rij(admin_engine, wacht_id)["status"] == WebhookStatus.WACHT_OP_ONTVANGER.value
+
+        v = Verzamelaar()
+        v.start_blok(webhook_reconciliatie.BLOK)
+        regels: list[str] = []
+        code = webhook_reconciliatie.cli_blok(None, v, stdout=regels.append, nu=t0 + WACHT_MAX)
+        assert code == 1
+        per_soort = {b.detail["afwijking_soort"]: b for b in v.bevindingen}
+        assert set(per_soort) == {webhook_reconciliatie.SOORT_WACHT, webhook_reconciliatie.SOORT_VERLOPEN}
+        wacht = per_soort[webhook_reconciliatie.SOORT_WACHT]
+        assert wacht.administratie_id == vastgoed_administratie and wacht.detail["outbox_id"] == str(wacht_id)
+        assert wacht.detail["reden"] == "onbekende_administratie" and wacht.detail["wacht_pogingen"] == 1
+        assert wacht.detail["volgende_poging_op"] and datetime.fromisoformat(wacht.detail["sinds"]) == t0
+        verlopen = per_soort[webhook_reconciliatie.SOORT_VERLOPEN]
+        assert verlopen.detail["outbox_id"] == str(verlopen_id) and verlopen.detail["max_dagen"] == 14
+        assert str(gewoon_id) not in {b.detail["outbox_id"] for b in v.bevindingen}
+        assert regels[-1].startswith(
+            "WEBHOOKS   2 outbox-rij(en) in wacht of verlopen getoetst: 1 wacht op de ontvanger"
+        )
+        for b in v.bevindingen:
+            lees = teksten.leesbaar(b)
+            assert len(lees.titel) <= teksten.MAX_TITEL and lees.wat and lees.doe
+            assert "Nu opnieuw" in lees.doe
+            assert not teksten.bevat_technische_sleutel(lees.wat) and not teksten.bevat_technische_sleutel(lees.doe)
+        assert "14 dagen" in teksten.leesbaar(verlopen).titel
+
+        # Zelfde blok via de CLI-keuzelijst (meetlat-vorm uit het meetrecept, letterlijk).
+        assert cli.main(["reconciliatie-alles", "--alleen", "webhooks", "--lees-only"]) == 1
+        out = capsys.readouterr().out
+        assert "WEBHOOKS   2 outbox-rij(en)" in out and "AFWIJKING  webhooks" in out
+
+
+class TestRouteNuOpnieuw:
+    def test_route_200_409_404(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        aflevering_aan: None,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        ontvanger = NietKoppelbaarOntvanger()
+        verwerk_openstaande_webhooks(nu=datetime.now(UTC) - timedelta(minutes=1), transport=ontvanger.transport)
+        headers = _headers(admin_engine, gescoopte_gebruiker)
+        body = {"administratie_id": str(vastgoed_administratie)}
+
+        # De route gebruikt het echte httpx-transport; vervang 'm door de mock-ontvanger (koppeling intussen hersteld).
+        ontvanger.koppelbaar = True
+        echte = webhook_afleveraar.lever_rijen_direct_af
+
+        def met_mock(**kw):  # noqa: ANN003, ANN202
+            kw["transport"] = ontvanger.transport
+            return echte(**kw)
+
+        monkeypatch.setattr(webhook_afleveraar, "lever_rijen_direct_af", met_mock)
+        r = client.post(f"/reconciliatie/webhooks/{rij_id}/nu-opnieuw", json=body, headers=headers)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["status_voor"] == "wacht_op_ontvanger" and data["status_na"] == "afgeleverd"
+        assert data["uitkomst"].startswith("afgeleverd")
+        # Nog eens: de rij wacht niet meer → 409 mét reden; onbekende rij → 404.
+        r = client.post(f"/reconciliatie/webhooks/{rij_id}/nu-opnieuw", json=body, headers=headers)
+        assert r.status_code == 409 and "wacht niet" in r.json()["detail"]
+        r = client.post(f"/reconciliatie/webhooks/{uuid.uuid4()}/nu-opnieuw", json=body, headers=headers)
+        assert r.status_code == 404
+        assert client.post(f"/reconciliatie/webhooks/{rij_id}/nu-opnieuw", json=body).status_code == 401
+
+    def test_route_aflevering_uit_is_zichtbaar_in_de_uitkomst(
+        self,
+        vastgoed_administratie: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        rij_id = _maak_outbox_rij(administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker, opslag=opslag)
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE boekhouding.webhook_uitgaand SET status = 'wacht_op_ontvanger', wacht_pogingen = 1, "
+                    "wacht_op_ontvanger_sinds = now(), laatste_fout = 'ontvanger kan nog niet koppelen (x) — wacht' "
+                    "WHERE id = :id"
+                ),
+                {"id": rij_id},
+            )
+        r = client.post(
+            f"/reconciliatie/webhooks/{rij_id}/nu-opnieuw",
+            json={"administratie_id": str(vastgoed_administratie)},
+            headers=_headers(admin_engine, gescoopte_gebruiker),
+        )
+        assert r.status_code == 200
+        assert r.json()["uitkomst"].startswith("niet verstuurd — aflevering staat uit")
+        assert r.json()["status_na"] == "wacht_op_ontvanger"
+
+
+def test_db_lezen_query_webhook_outbox_laadt_met_de_nieuwe_kolommen() -> None:
+    from app.lezen import bibliotheek
+
+    q = bibliotheek.zoek("webhook-outbox")
+    assert q.versie == "2"
+    assert "wacht_op_ontvanger_sinds" in q.sql and "webhook_nu_opnieuw" in q.sql
+    assert json.dumps(list(q.kolommen)).count("wacht") >= 2

@@ -745,6 +745,14 @@ class WebhookStatus(enum.StrEnum):
     OPENSTAAND = "openstaand"
     AFGELEVERD = "afgeleverd"
     MISLUKT = "mislukt"
+    #: 02-10 (run A punt 17, migratie 0175): de ontvanger antwoordde 409 `niet_koppelbaar` ("nog niet koppelbaar",
+    #: koppelcontract §3c) — geen fout van ons, geen dead-letter: de rij wacht mét oplopende cadans (1 u → 6 u → 24 u →
+    #: dagelijks) tot de koppeling aan Vastly-kant hersteld is, hooguit 14 dagen; daarna pas `mislukt` mét de reden.
+    WACHT_OP_ONTVANGER = "wacht_op_ontvanger"
+
+
+#: Statussen waarin de afleveraar een rij nog oppakt (openstaand óf wachtend op de ontvanger).
+WEBHOOK_ACTIEVE_STATUSSEN = (WebhookStatus.OPENSTAAND.value, WebhookStatus.WACHT_OP_ONTVANGER.value)
 
 
 class WebhookUitgaand(Base):
@@ -764,7 +772,7 @@ class WebhookUitgaand(Base):
         Index(
             "ix_webhook_uitgaand_openstaand",
             "volgende_poging_op",
-            postgresql_where=text("status = 'openstaand'"),
+            postgresql_where=text("status IN ('openstaand', 'wacht_op_ontvanger')"),
         ),
         {"schema": "boekhouding"},
     )
@@ -784,6 +792,10 @@ class WebhookUitgaand(Base):
     laatste_poging_op: Mapped[datetime | None] = mapped_column(default=None)
     laatste_fout: Mapped[str | None] = mapped_column(default=None)
     volgende_poging_op: Mapped[datetime | None] = mapped_column(default=None)
+    # 02-10 (migratie 0175): eerste 409 `niet_koppelbaar` van de ontvanger (NULL = nooit gewacht) — de cadans en de
+    # 14-dagen-grens rekenen hiervandaan; `wacht_pogingen` telt de 409-pogingen en telt NIET mee voor de dead-letter.
+    wacht_op_ontvanger_sinds: Mapped[datetime | None] = mapped_column(default=None)
+    wacht_pogingen: Mapped[int] = mapped_column(default=0, server_default="0")
 
 
 # Metadata-registratie: Document.intake_bericht_id draagt een FK naar boekhouding.intake_bericht

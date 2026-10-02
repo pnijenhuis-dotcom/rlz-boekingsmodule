@@ -1138,4 +1138,5 @@ class TestCliLeesOnly:
             "activa",  # activa fase 1 21-09: aansluiting module ↔ RLZ-activaregister (vijf soorten, stand meten)
             "intake",  # postvak-bewaking 23-09 (Peter 22-09): ontvangen in het postvak ↔ verwerkt, per kanaal
             "vastly_verkoop",  # 29-09 (Peter 28/29-09): open Vastly-verkoopdocumenten = bevinding mét handeling
+            "webhooks",  # 02-10 (run A punt 17): outbox-rijen die op de ontvanger wachten (409) of ná 14 dagen mislukt
         ]
