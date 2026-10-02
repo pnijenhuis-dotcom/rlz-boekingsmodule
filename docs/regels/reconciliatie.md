@@ -384,3 +384,9 @@
   productie niet gezien en er is geen tweede kandidaat. Meetles: een LET-OP mét `administratie_id` staat onder RLS — een telling zonder
   `--administratie` op de replica geeft stil 0 (zelfde les als `reconciliatie_bevinding`-sweep en `audit_event`); toets een 0 altijd ook in de
   scope van de verwachte administratie vóór je 'm "verwacht 0" noemt. Rapport `docs/rapporten/2026-09-23-nameting-btw-plichtig-vgg-data-stap-en-lacy-lion.md`.
+
+## Verwijsregels uit CLAUDE.md — WOORDELIJK verplaatst 02-10-2026 avond (bijvangst opdracht "besluiten-run-a-verwerken"; CLAUDE.md > 90k tekens)
+
+> Blok "Reconciliatie, bewaking en meldingen", regel 6. De volledige regelalinea's hierboven blijven canoniek; dit zijn de letterlijke verwijsregels zoals ze tot 02-10 avond in CLAUDE.md stonden (per punt staat in CLAUDE.md nu één regel + verwijzing).
+
+- (CLAUDE.md regel 6) Blok `webhooks` (run A punt 17, Peter 02-10, migratie 0175): een Vastly-409 `niet_koppelbaar` is status `wacht_op_ontvanger` mét cadans 1 u → 6 u → 24 u → dagelijks (max 14 dagen, daarna `mislukt` mét reden), nooit een dead-letter ná 8 pogingen; bevinding per rij (`webhook_wacht_op_ontvanger` in `meten`, `webhook_niet_koppelbaar_verlopen` direct `actie`) mét statuschip + "Nu opnieuw"; §3-notitie 02-10 in het koppelcontract, accordering §3c + 7-dagen-cadans = beslispunten Peter; dispatch-onderdeel `webhook-wacht` — zie BESLISSINGEN "RUN A 02-10 — BOEKEN, PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)".
