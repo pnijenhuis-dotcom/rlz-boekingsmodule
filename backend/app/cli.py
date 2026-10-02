@@ -2869,10 +2869,10 @@ def _accordeur_herinneringen(args: argparse.Namespace) -> int:
     for fout in rapport.fouten:
         print(f"FOUT  {fout}" if rapport.is_fout else f"LET-OP {fout}", file=sys.stderr)
     print(
-        "Herinneringen: "
-        f"{rapport.verzonden_push} push, {rapport.verzonden_mail} e-mail, "
+        "Herinneringen (push-only, besluit 02-10): "
+        f"{rapport.verzonden_push} push, "
         f"{rapport.al_verzonden} al verzonden vandaag, "
-        f"{rapport.overgeslagen_geen_kanaal} overgeslagen (geen kanaal), "
+        f"{rapport.overgeslagen_geen_push} overgeslagen_geen_push (geen push-inschrijving/push mislukt — geen e-mail), "
         f"{rapport.geen_open_werk} accordeur(s) zonder open werk, "
         f"{rapport.mislukt} mislukt, {rapport.onafgemaakt} onafgemaakt, "
         f"{rapport.subscripties_vervallen} subscriptie(s) vervallen gemarkeerd."
@@ -2931,11 +2931,11 @@ def _nieuwe_facturen_melden(args: argparse.Namespace) -> int:
     for fout in rapport.fouten:
         print(f"FOUT  {fout}" if rapport.is_fout else f"LET-OP {fout}", file=sys.stderr)
     print(
-        "Nieuwe-facturen-meldingen: "
-        f"{rapport.verzonden_push} push, {rapport.verzonden_mail} e-mail, "
+        "Nieuwe-facturen-meldingen (push-only, besluit 02-10): "
+        f"{rapport.verzonden_push} push, "
         f"{rapport.gemelde_documenten} document(en) nieuw gemeld, "
         f"{rapport.accordeurs_zonder_nieuw} accordeur(s) zonder nieuw werk, "
-        f"{rapport.overgeslagen_geen_kanaal} overgeslagen (geen kanaal), "
+        f"{rapport.overgeslagen_geen_push} overgeslagen_geen_push (geen push-inschrijving/push mislukt — geen e-mail), "
         f"{rapport.mislukt} mislukt, {rapport.onafgemaakt} onafgemaakt, "
         f"{rapport.subscripties_vervallen} subscriptie(s) vervallen gemarkeerd."
     )

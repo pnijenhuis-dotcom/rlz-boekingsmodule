@@ -113,3 +113,53 @@ def verstuur_push_anders_mail(
         return VerzendUitkomst(HerinneringStatus.MISLUKT, None, detail, vervallen)
     detail_ok = {"na_push_fouten": push_fouten} if push_fouten else None
     return VerzendUitkomst(HerinneringStatus.VERZONDEN, HerinneringKanaal.E_MAIL, detail_ok, vervallen)
+
+
+#: Reden-sleutel in `VerzendUitkomst.detail` én de job-tellers wanneer een push-only bericht niet bezorgd kon worden.
+GEEN_PUSH = "geen_push"
+
+
+def verstuur_push_only(
+    gebruiker: Gebruiker,
+    *,
+    pushtekst: str,
+    url: str,
+    extra_payload: dict | None = None,
+) -> VerzendUitkomst:
+    """PUSH-ONLY (besluit Peter 02-10 "zet die mail uit … geen mails meer"): de automatische accordeur-meldingen
+    (nieuwe-facturen-bundel, 09:00-herinnering) gaan uitsluitend als push. Geen actieve subscriptie, alle subscripties
+    vervallen of élke push mislukt = OVERGESLAGEN mét reden `geen_push` — NOOIT e-mail. De uitkomst is nooit stil:
+    status + detail (push-fouten, vervallen) reizen mee naar de claim-rij en de job-tellers. De handmatige herinnering
+    per document (kantoorknop) gebruikt bewust `verstuur_push_anders_mail` — een mens drukte op de knop."""
+    subscripties = actieve_subscripties(gebruiker.id)
+    push_gelukt = 0
+    vervallen = 0
+    push_fouten: list[str] = []
+    payload = {"titel": "Nijenhuis Boekingsmodule", "tekst": pushtekst, "url": url}
+    if extra_payload:
+        payload.update(extra_payload)
+    for subscriptie in subscripties:
+        if not push.is_geconfigureerd(subscriptie.soort):
+            continue
+        try:
+            push.verzend_push(subscriptie, payload=payload)
+            push_gelukt += 1
+        except push.PushSubscriptieVervallen:
+            markeer_subscriptie_vervallen(subscriptie.id)
+            vervallen += 1
+        except push.PushFout as exc:
+            push_fouten.append(str(exc))
+        except Exception as exc:  # noqa: BLE001 — adaptercrash mag de job nooit doden; zichtbaar in detail
+            push_fouten.append(f"{type(exc).__name__}: {exc}")
+    if push_gelukt:
+        return VerzendUitkomst(
+            HerinneringStatus.VERZONDEN, HerinneringKanaal.PUSH, {"subscripties": push_gelukt}, vervallen
+        )
+    detail: dict = {"reden": GEEN_PUSH, "subscripties": len(subscripties), "vervallen": vervallen}
+    if not subscripties:
+        detail["uitleg"] = "geen push-inschrijving (geen toestel met meldingen aan) — geen e-mail, besluit 02-10"
+    elif push_fouten:
+        detail["push_fouten"] = push_fouten
+    else:
+        detail["uitleg"] = "alle subscripties vervallen of push niet geconfigureerd — geen e-mail, besluit 02-10"
+    return VerzendUitkomst(HerinneringStatus.OVERGESLAGEN, None, detail, vervallen)

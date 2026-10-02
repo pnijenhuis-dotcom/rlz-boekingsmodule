@@ -14,7 +14,12 @@ Regels:
 - Stille uren: tussen 20:00 en 08:00 Europe/Amsterdam verstuurt de job níéts (en claimt ook
   niets) — wat 's nachts binnenkomt telt gewoon mee in de eerstvolgende run ná 08:00 én in de
   ongewijzigde 09:00-herinnering (die telt altijd integraal).
-- Kanaal: push-anders-mail (gedeelde helper app/berichten/verzending.py), deep-link /accordeur.
+- Kanaal: PUSH-ONLY (besluit Peter 02-10 "zet die mail uit over hoeveel facturen er klaar staan,
+  wordt je echt gek van. Geen mails meer" — herziet push-anders-mail van 16-08): geen
+  push-inschrijving of push mislukt = overslaan mét teller `overgeslagen_geen_push` in de joblog
+  en het run-audit `accordeur_melding_run` (reconciliatie-dagteller) — nooit e-mail. De claim
+  blijft 'overgeslagen' en wordt een volgende run opnieuw geprobeerd (zodra er een toestel mét
+  meldingen is, komt de bundel alsnog). Deep-link /accordeur.
 - Volumerem: settings.nieuwe_facturen_max_berichten_per_run per run, daarboven zichtbaar stoppen.
 
 HARD PRINCIPE: deep-link naar de PWA — goedkeuren-zonder-inloggen bestaat bewust niet."""
@@ -31,7 +36,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.accordering import service as accordering_service
 from app.berichten import verzending
-from app.berichten.herinneringen import _actieve_accordeurs
+from app.berichten.herinneringen import _actieve_accordeurs, log_overgeslagen_geen_push, schrijf_melding_run_audit
 from app.berichten.models import AccordeurNieuwGemeld, HerinneringKanaal, HerinneringStatus
 from app.config import settings
 from app.db.models import Administratie
@@ -49,10 +54,9 @@ class NieuweFacturenRapport:
 
     stille_uren: bool = False
     verzonden_push: int = 0
-    verzonden_mail: int = 0
     gemelde_documenten: int = 0
     accordeurs_zonder_nieuw: int = 0
-    overgeslagen_geen_kanaal: int = 0
+    overgeslagen_geen_push: int = 0  # 02-10: geen push-inschrijving / push mislukt → overgeslagen, nooit mail
     mislukt: int = 0
     onafgemaakt: int = 0  # bezig-blijvers — mens beoordeelt, nooit automatisch opnieuw
     subscripties_vervallen: int = 0
@@ -62,6 +66,19 @@ class NieuweFacturenRapport:
     @property
     def is_fout(self) -> bool:
         return bool(self.mislukt or self.onafgemaakt or self.volumerem_bereikt)
+
+    def als_tellers(self) -> dict:
+        return {
+            "stille_uren": self.stille_uren,
+            "verzonden_push": self.verzonden_push,
+            "gemelde_documenten": self.gemelde_documenten,
+            "accordeurs_zonder_nieuw": self.accordeurs_zonder_nieuw,
+            "overgeslagen_geen_push": self.overgeslagen_geen_push,
+            "mislukt": self.mislukt,
+            "onafgemaakt": self.onafgemaakt,
+            "subscripties_vervallen": self.subscripties_vervallen,
+            "volumerem_bereikt": self.volumerem_bereikt,
+        }
 
 
 def in_stille_uren(moment: datetime | None = None) -> bool:
@@ -189,12 +206,11 @@ def verstuur_nieuwe_facturen_meldingen(*, nu: datetime | None = None) -> NieuweF
             rapport.accordeurs_zonder_nieuw += 1
             continue
         totaal = len(document_ids)
-        onderwerp, pushtekst, mailtekst = bericht_teksten(totaal)
-        uitkomst = verzending.verstuur_push_anders_mail(
+        _, pushtekst, _ = bericht_teksten(totaal)
+        # Push-only (besluit Peter 02-10): geen push = overgeslagen mét teller, nooit e-mail.
+        uitkomst = verzending.verstuur_push_only(
             gebruiker,
-            onderwerp=onderwerp,
             pushtekst=pushtekst,
-            mailtekst=mailtekst,
             url="/accordeur",
             # Badge-count (D4, 01-09): N = totaal openstaand voor deze accordeur.
             extra_payload={"badge": totaal},
@@ -204,13 +220,12 @@ def verstuur_nieuwe_facturen_meldingen(*, nu: datetime | None = None) -> NieuweF
         if uitkomst.status == HerinneringStatus.VERZONDEN:
             verzonden_deze_run += 1
             rapport.gemelde_documenten += claim.nieuw
-            if uitkomst.kanaal == HerinneringKanaal.PUSH:
-                rapport.verzonden_push += 1
-            else:
-                rapport.verzonden_mail += 1
+            rapport.verzonden_push += 1
         elif uitkomst.status == HerinneringStatus.OVERGESLAGEN:
-            rapport.overgeslagen_geen_kanaal += 1
+            rapport.overgeslagen_geen_push += 1
+            log_overgeslagen_geen_push(soort="nieuwe_facturen", gebruiker_id=gebruiker.id, detail=uitkomst.detail)
         else:
             rapport.mislukt += 1
             rapport.fouten.append(f"verzending mislukt voor {gebruiker.id}: {uitkomst.detail}")
+    schrijf_melding_run_audit(soort="nieuwe_facturen", tellers=rapport.als_tellers())
     return rapport

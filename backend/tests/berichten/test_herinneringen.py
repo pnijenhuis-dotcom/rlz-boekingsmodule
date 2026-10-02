@@ -1,6 +1,8 @@
 """Selectielogica + idempotentie van de dagelijkse accordeur-herinnering (berichten-bouwsteen):
 wie krijgt wat wanneer, >0-drempel, idempotent per dag, mislukt-retry, bezig-blijver nooit
-dubbel, kanaalkeuze push→e-mail, vervallen subscripties, volumerem, kill-switch."""
+dubbel, kanaal PUSH-ONLY (besluit Peter 02-10 "geen mails meer" — herziet push→e-mail van 15-08),
+vervallen subscripties, volumerem, kill-switch. `mail_log` blijft in élke test als bewijs dat er
+géén e-mail meer uitgaat."""
 
 from __future__ import annotations
 
@@ -51,6 +53,12 @@ def maak_subscriptie(gebruiker_id: uuid.UUID, apparaat_id: uuid.UUID, endpoint: 
     return data.id
 
 
+def met_push(admin_engine: Engine, gebruiker_id: uuid.UUID, endpoint: str = "https://push.example/abc") -> uuid.UUID:
+    """Accordeur mét een actief toestel + push-subscriptie (sinds 02-10 de enige weg naar een bericht)."""
+    apparaat = maak_apparaat(admin_engine, gebruiker_id)
+    return maak_subscriptie(gebruiker_id, apparaat, endpoint)
+
+
 def dagrij(admin_engine: Engine, gebruiker_id: uuid.UUID) -> dict | None:
     with admin_engine.connect() as conn:
         rij = conn.execute(
@@ -85,30 +93,38 @@ class TestSelectie:
         assert not rapport.is_fout
         assert dagrij(admin_engine, accordeur_1) is None
 
-    def test_open_werk_stuurt_mail_met_aantal_en_link(
+    def test_open_werk_stuurt_push_met_aantal_en_link(
         self,
         ter_accordering_bij_1: uuid.UUID,
         accordeur_1: uuid.UUID,
         accordeur_2: uuid.UUID,
         mail_log: list[dict],
+        push_log: list[dict],
         admin_engine: Engine,
     ) -> None:
+        met_push(admin_engine, accordeur_1)
         rapport = herinneringen.verstuur_dagelijkse_herinneringen(vandaag=VANDAAG)
-        assert rapport.verzonden_mail == 1 and rapport.verzonden_push == 0
-        assert len(mail_log) == 1
-        assert "1 factuur" in mail_log[0]["tekst"] and "/accordeur" in mail_log[0]["tekst"]
-        assert dagrij(admin_engine, accordeur_1) == {"status": "verzonden", "kanaal": "e-mail", "aantal_open": 1}
+        assert rapport.verzonden_push == 1 and rapport.overgeslagen_geen_push == 0
+        assert mail_log == [] and len(push_log) == 1
+        assert "1 factuur" in push_log[0]["payload"]["tekst"] and push_log[0]["payload"]["url"] == "/accordeur"
+        assert dagrij(admin_engine, accordeur_1) == {"status": "verzonden", "kanaal": "push", "aantal_open": 1}
         # accordeur_2 is niet aan de beurt (laag 1 is van accordeur_1) -> níéts
         assert dagrij(admin_engine, accordeur_2) is None
 
     def test_idempotent_per_dag(
-        self, ter_accordering_bij_1: uuid.UUID, accordeur_1: uuid.UUID, mail_log: list[dict]
+        self,
+        ter_accordering_bij_1: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        mail_log: list[dict],
+        push_log: list[dict],
+        admin_engine: Engine,
     ) -> None:
+        met_push(admin_engine, accordeur_1)
         eerste = herinneringen.verstuur_dagelijkse_herinneringen(vandaag=VANDAAG)
         tweede = herinneringen.verstuur_dagelijkse_herinneringen(vandaag=VANDAAG)
-        assert eerste.verzonden_mail == 1
-        assert tweede.verzonden_mail == 0 and tweede.al_verzonden == 1
-        assert len(mail_log) == 1
+        assert eerste.verzonden_push == 1
+        assert tweede.verzonden_push == 0 and tweede.al_verzonden == 1
+        assert len(push_log) == 1 and mail_log == []
         assert not tweede.is_fout
 
     def test_mislukt_wordt_bij_volgende_run_opnieuw_geprobeerd(
@@ -116,21 +132,26 @@ class TestSelectie:
         ter_accordering_bij_1: uuid.UUID,
         accordeur_1: uuid.UUID,
         admin_engine: Engine,
+        mail_log: list[dict],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        def _faal(**kwargs: object) -> None:
-            raise mail.MailVerzendFout("SMTP down")
+        """Sinds 02-10 is een mislukte push geen 'mislukt' meer maar 'overgeslagen' (geen_push) — aantoonbaar niets
+        bezorgd, dus de volgende run (volgende dag: dagrij) probeert opnieuw; en er gaat géén mail uit."""
+        met_push(admin_engine, accordeur_1, "https://push.example/flaky")
+        monkeypatch.setattr(push, "is_geconfigureerd", lambda soort="webpush": True)
 
-        monkeypatch.setattr(mail, "verzend_mail", _faal)
+        def _faal(subscriptie: PushSubscriptie, *, payload: dict) -> None:
+            raise push.PushFout("502 van de pushdienst")
+
+        monkeypatch.setattr(push, "verzend_push", _faal)
         eerste = herinneringen.verstuur_dagelijkse_herinneringen(vandaag=VANDAAG)
-        assert eerste.mislukt == 1 and eerste.is_fout
-        assert dagrij(admin_engine, accordeur_1)["status"] == "mislukt"
-
-        verzonden: list[dict] = []
-        monkeypatch.setattr(mail, "verzend_mail", lambda **kw: verzonden.append(kw))
+        assert eerste.overgeslagen_geen_push == 1 and eerste.mislukt == 0 and not eerste.is_fout
+        rij = dagrij(admin_engine, accordeur_1)
+        assert rij["status"] == "overgeslagen" and rij["kanaal"] is None
+        assert mail_log == []
+        # Herhaalde run dezelfde dag: de overgeslagen dagrij telt als 'al verzonden' (één poging per dag), geen mail.
         tweede = herinneringen.verstuur_dagelijkse_herinneringen(vandaag=VANDAAG)
-        assert tweede.verzonden_mail == 1 and len(verzonden) == 1
-        assert dagrij(admin_engine, accordeur_1)["status"] == "verzonden"
+        assert tweede.al_verzonden == 1 and tweede.overgeslagen_geen_push == 0 and mail_log == []
 
     def test_bezig_blijver_wordt_nooit_dubbel_gestuurd(
         self,
@@ -164,6 +185,21 @@ class TestSelectie:
 
 
 class TestKanaalkeuze:
+    def test_push_only_zonder_inschrijving_geen_mail(
+        self,
+        ter_accordering_bij_1: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        admin_engine: Engine,
+        mail_log: list[dict],
+        push_log: list[dict],
+    ) -> None:
+        """Guard afwezig-pad (besluit Peter 02-10): geen push-inschrijving → overgeslagen mét teller, NOOIT e-mail."""
+        rapport = herinneringen.verstuur_dagelijkse_herinneringen(vandaag=VANDAAG)
+        assert rapport.overgeslagen_geen_push == 1 and rapport.verzonden_push == 0 and not rapport.is_fout
+        assert mail_log == [] and push_log == []
+        rij = dagrij(admin_engine, accordeur_1)
+        assert rij["status"] == "overgeslagen" and rij["kanaal"] is None
+
     def test_push_boven_mail(
         self,
         ter_accordering_bij_1: uuid.UUID,
@@ -172,15 +208,14 @@ class TestKanaalkeuze:
         mail_log: list[dict],
         push_log: list[dict],
     ) -> None:
-        apparaat = maak_apparaat(admin_engine, accordeur_1)
-        maak_subscriptie(accordeur_1, apparaat, "https://push.example/abc")
+        met_push(admin_engine, accordeur_1)
         rapport = herinneringen.verstuur_dagelijkse_herinneringen(vandaag=VANDAAG)
-        assert rapport.verzonden_push == 1 and rapport.verzonden_mail == 0
+        assert rapport.verzonden_push == 1 and rapport.overgeslagen_geen_push == 0
         assert mail_log == []
         assert push_log[0]["payload"]["url"] == "/accordeur" and push_log[0]["payload"]["aantal"] == 1
         assert dagrij(admin_engine, accordeur_1)["kanaal"] == "push"
 
-    def test_vervallen_subscriptie_gemarkeerd_en_mail_terugval(
+    def test_vervallen_subscriptie_gemarkeerd_zonder_mail_terugval(
         self,
         ter_accordering_bij_1: uuid.UUID,
         accordeur_1: uuid.UUID,
@@ -197,8 +232,8 @@ class TestKanaalkeuze:
 
         monkeypatch.setattr(push, "verzend_push", _vervallen)
         rapport = herinneringen.verstuur_dagelijkse_herinneringen(vandaag=VANDAAG)
-        assert rapport.verzonden_mail == 1 and rapport.subscripties_vervallen == 1
-        assert len(mail_log) == 1
+        assert rapport.overgeslagen_geen_push == 1 and rapport.subscripties_vervallen == 1
+        assert mail_log == []  # 02-10: vervallen subscriptie = overgeslagen, geen e-mail-terugval meer
         with scoped_session(None) as session:
             rij = session.get(PushSubscriptie, subscriptie_id)
             assert rij.ingetrokken_op is not None and rij.ingetrokken_reden == "vervallen"
@@ -220,4 +255,4 @@ class TestKanaalkeuze:
             assert rij.ingetrokken_op is not None and rij.ingetrokken_reden == "kill_switch"
         rapport = herinneringen.verstuur_dagelijkse_herinneringen(vandaag=VANDAAG)
         assert push_log == []
-        assert rapport.verzonden_mail == 1 and len(mail_log) == 1
+        assert rapport.overgeslagen_geen_push == 1 and mail_log == []  # kill-switch = geen push én geen mail

@@ -119,6 +119,10 @@ AL_VERZONDEN = "al_verzonden"
 STILLE_UREN = "stille_uren"
 GEEN_KANAAL = "geen_kanaal"
 NIET_ACTIEF = "niet_actief"
+#: Run A 02-10 punt 14 (besluit Peter "geen mails meer"): de automatische accordeur-meldingen (nieuwe-facturen-bundel +
+#: 09:00-herinnering) zijn push-only; een accordeur zonder push-inschrijving (of met alleen mislukte/vervallen pushes)
+#: wordt overgeslagen mét deze reden — zacht (géén LET-OP: geen mail is de bedoeling), zichtbaar als dagteller.
+GEEN_PUSH = "geen_push"
 
 #: Categorieën die een ONTBREKENDE HARDE VOORWAARDE markeren → LET-OP mét handeling.
 #: "geen eigenaar" hoort hier óók bij: sinds blok B (07-09) is een ontbrekende eigenaar/toewijzing géén poort meer —
@@ -241,6 +245,7 @@ REDEN_LABEL: dict[str, str] = {
     STILLE_UREN: "stille uren",
     GEEN_KANAAL: "geen kanaal (geen toestel én geen e-mailadres)",
     NIET_ACTIEF: "account niet actief",
+    GEEN_PUSH: "geen push-inschrijving of push mislukt (geen e-mail — besluit 02-10)",
 }
 
 # --- de automatiseringen ------------------------------------------------------------------------------
@@ -297,6 +302,10 @@ DOORBELASTING_HERKOPPELING = "doorbelasting_herkoppeling"
 #: `uren_herinnering_run` (één administratie-loze rij per job-run mét tellers verwacht/gedaan/overgeslagen per reden;
 #: `app/uren/herinnering.py`).
 UREN_HERINNERING = "uren_herinnering"
+#: Run A 02-10 punt 14: accordeur-meldingen push-only — bron audit `accordeur_melding_run` (één administratie-loze rij
+#: per job-run van `nieuwe-facturen-melden` én `accordeur-herinneringen`, `soort` = nieuwe_facturen | dag_herinnering;
+#: gedaan = verzonden_push, overgeslagen `geen_push` = overgeslagen_geen_push, `fout` = mislukt; e-mail bestaat niet meer).
+ACCORDEUR_MELDINGEN = "accordeur_meldingen"
 #: Boeken sneller (18-09): achtergrond-schrijver "Boeken in RLZ" — bron audit `boek_wachtrij_ingediend` (verwacht),
 #: `boek_wachtrij_afgerond` (gedaan = geboekt, overgeslagen FOUT = mislukt), `boek_wachtrij_trigger` mislukt = LET-OP
 #: vangnet scheduler. En het voorverwarmen van de externe checks: audit `checks_voorverwarmd`
@@ -356,6 +365,7 @@ VOLGORDE: tuple[str, ...] = (
     KASSARAPPORT_INKOOPSTROOM,
     DOORBELASTING_HERKOPPELING,
     UREN_HERINNERING,
+    ACCORDEUR_MELDINGEN,
     CHECKS_VOORVERWARMEN,
 )
 
@@ -372,6 +382,7 @@ LABEL: dict[str, str] = {
     KASSARAPPORT_AUTOTYPE: "Kassarapport automatisch getypeerd (inkoopfactuur → kassarapport op parser-treffer)",
     DOORBELASTING_HERKOPPELING: "Doorbelasting — herkoppeling doelentiteiten (whitelist zonder doel)",
     UREN_HERINNERING: "Uren-herinnering einde werkdag (veld-app)",
+    ACCORDEUR_MELDINGEN: "Accordeur-meldingen push-only (nieuwe facturen + 09:00-herinnering; geen e-mail)",
     EXTRACTIE_WACHTRIJ: "Extractie-wachtrij (job-trigger)",
     DUPLICAAT_AFVOER: "Duplicaat-afvoer",
     CREDITEUREN: "Crediteuren-dubbelen (auto)",
@@ -427,6 +438,7 @@ VASTE_CATEGORIEEN: dict[str, tuple[str, ...]] = {
     OMZETBRON_HERKENNING: (STORE_ONBEKEND,),
     DOORBELASTING_HERKOPPELING: (DOEL_BIJNA_MATCH, DOEL_NIET_ONBOARDED),
     UREN_HERINNERING: (AL_UREN, OPT_OUT, GEEN_KANAAL),
+    ACCORDEUR_MELDINGEN: (GEEN_PUSH,),
     BOEK_WACHTRIJ: (FOUT,),
     CHECKS_VOORVERWARMEN: (VOORVERWARMEN_UIT, VOORVERWARMEN_BEZIG),
     INTAKE_POSTVAK: (POSTVAK_AL_BEKEND, POSTVAK_NIET_VERWERKBAAR, POSTVAK_UIT_SPAM, POSTVAK_DUBBEL_VIA_FORWARD),
@@ -464,6 +476,8 @@ _ACTIES: tuple[str, ...] = (
     "doorbelasting_herkoppeling_run",
     # run B 18-09: dag-einde herinnering veld-app (één rij per job-run, administratie-loos)
     "uren_herinnering_run",
+    # run A 02-10 punt 14: accordeur-meldingen push-only (één rij per job-run, administratie-loos)
+    "accordeur_melding_run",
     # boeken sneller 18-09: achtergrond-schrijver + voorverwarmen externe checks
     "boek_wachtrij_ingediend",
     "boek_wachtrij_afgerond",
@@ -920,6 +934,13 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "één per veldwerker per dag",
         "audit uren_herinnering_run",
     )
+    accordeur_meldingen = maak(
+        ACCORDEUR_MELDINGEN,
+        "altijd",
+        "jobs rlz-nieuwe-facturen (~10 min, stille uren 20:00–08:00) + rlz-accordeur-herinneringen (09:00); "
+        "uitsluitend push — geen push-inschrijving = overgeslagen, nooit e-mail (besluit Peter 02-10)",
+        "audit accordeur_melding_run",
+    )
     boek_job = feiten.boek_wachtrij_job_resource
     boek_wachtrij = maak(
         BOEK_WACHTRIJ,
@@ -1116,6 +1137,20 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
                 # tel_over telt per aanroep één; de rest erbij zodat de teller het aantal veldwerkers draagt.
                 for v in vensters(uren_herinnering, f.tijdstip):
                     v.tel_overgeslagen(GEEN_KANAAL, n_geen_kanaal - 1)
+        elif f.actie == "accordeur_melding_run":
+            n_push = int(nw.get("verzonden_push") or 0)
+            n_geen_push = int(nw.get("overgeslagen_geen_push") or 0)
+            n_mislukt = int(nw.get("mislukt") or 0)
+            for v in vensters(accordeur_meldingen, f.tijdstip):
+                v.tel_gedaan(n_push)
+                v.tel_overgeslagen(GEEN_PUSH, n_geen_push)
+                if n_mislukt:
+                    v.tel_overgeslagen(FOUT, n_mislukt)
+            if n_geen_push and f.tijdstip >= dag_vanaf:
+                accordeur_meldingen.detail = accordeur_meldingen.detail or {}
+                per_soort = accordeur_meldingen.detail.setdefault("geen_push_per_soort", {})
+                soort = str(nw.get("soort") or "onbekend")
+                per_soort[soort] = int(per_soort.get(soort) or 0) + n_geen_push
         elif f.actie == "doorbelasting_herkoppeling_run":
             for v in vensters(herkoppeling, f.tijdstip):
                 v.tel_gedaan(int(nw.get("gekoppeld") or 0))

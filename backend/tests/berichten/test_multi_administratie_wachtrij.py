@@ -15,6 +15,7 @@ from sqlalchemy import Engine, text
 from app.accordering import service as accordering_service
 from app.auth import service as auth_service
 from app.berichten import herinneringen
+from app.berichten import service as berichten_service
 from app.db.session import scoped_session
 from app.documenten import boekvoorstel
 from app.documenten import service as documenten_service
@@ -26,8 +27,8 @@ from app.documenten.storage import LokaleBestandsopslag
 # tests/berichten/conftest.py (zelfde package) — expliciete imports botsen met de
 # gelijknamige testparameters (ruff F811, hygiëne-run 16-08); alleen de niet-fixture-helper
 # zet_schema wordt geïmporteerd.
-from tests.berichten.conftest import zet_schema
-from tests.berichten.test_herinneringen import mail_log  # noqa: F401
+from tests.berichten.conftest import maak_apparaat, zet_schema
+from tests.berichten.test_herinneringen import mail_log, push_log  # noqa: F401
 from tests.documenten.conftest import _opslag_naar_tmp  # noqa: F401
 
 VANDAAG = date(2026, 8, 16)
@@ -165,14 +166,19 @@ class TestWachtrijOverAdministratiesHeen:
         twee_admins_bij_een_accordeur: tuple[uuid.UUID, uuid.UUID],
         accordeur_1: uuid.UUID,  # noqa: F811
         mail_log: list[dict],  # noqa: F811
+        push_log: list[dict],  # noqa: F811
         admin_engine: Engine,
     ) -> None:
         totalen = herinneringen.open_aantallen_per_accordeur()
         assert totalen[accordeur_1] == 2
+        apparaat = maak_apparaat(admin_engine, accordeur_1)
+        berichten_service.registreer_subscriptie(
+            gebruiker_id=accordeur_1, apparaat_id=apparaat, endpoint="https://push.example/multi", p256dh="p", auth="a"
+        )
         rapport = herinneringen.verstuur_dagelijkse_herinneringen(vandaag=VANDAAG)
-        assert rapport.verzonden_mail == 1
-        onze_mails = [m for m in mail_log if "2 facturen" in m["tekst"]]
-        assert len(onze_mails) == 1
+        assert rapport.verzonden_push == 1 and mail_log == []  # push-only sinds 02-10
+        onze_pushes = [m for m in push_log if "2 facturen" in m["payload"]["tekst"]]
+        assert len(onze_pushes) == 1
         with admin_engine.connect() as conn:
             rijen = conn.execute(
                 text(
