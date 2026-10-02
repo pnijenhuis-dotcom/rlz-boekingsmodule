@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop, bijlagen-factuur\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop, bijlagen-factuur, project-dubbel\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -384,6 +384,42 @@ def test_onderdeel_veldwerkers_dubbelen_alleen_op_verzoek_en_lees_only(tmp_path:
         },
     )
     assert "TOTAAL 0 kandidaat-cluster(s)" in oordeel
+
+
+def test_onderdeel_project_dubbel_alleen_op_verzoek_en_dry_run(tmp_path: Path) -> None:
+    """Run A 02-10 punt 11 (dubbel projectnummer 26149): dispatch-onderdeel `project-dubbel` = dry-run van
+    `project-dubbel-samenvoegen` (Universal Steigerbouw, 26149) + `projecten-dubbele-nummers`, alleen op verzoek (niet
+    in 'alles'), uitsluitend via nameting.sh, uitkomst in verkenning/nameting-project-dubbel-<dd-mm>.txt mét eigen
+    oordeelregel; de echte run (--uitvoeren) is een job-executie ná Peters ja — de workflow roept die nooit aan."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "project-dubbel" ]]; then' in meet
+    cli = 'scripts/gcp/nameting.sh project-dubbel-samenvoegen --administratie "Universal Steigerbouw" --nummer 26149'
+    assert f"{cli} --dry-run" in meet
+    assert 'scripts/gcp/nameting.sh projecten-dubbele-nummers --administratie "Universal Steigerbouw"' in meet
+    assert 'UIT="verkenning/nameting-project-dubbel-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "project-dubbel"' not in meet, "niet in 'alles'"
+    aanroepen = [r for r in meet.splitlines() if "nameting.sh project-dubbel-samenvoegen" in r]
+    assert aanroepen and all("--uitvoeren" not in r for r in aanroepen), "de workflow mag nooit --uitvoeren aanroepen"
+    assert 'OORDEEL_BRON="verkenning/nameting-project-dubbel-$DATUM.txt"' in meet
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "project-dubbel",
+        {
+            "nameting-project-dubbel-14-09.txt": (
+                "kop\nOordeel: project-dubbel dry-run — TOTAAL: nummer 26149 — blijft 42b27746 '26149 Poeldijk' · "
+                "1 verliezer(s) · 0 rij(en) omgehangen in 0 tabel(len) · 0 rij(en) blijven staan (mens) · "
+                "modus dry-run (niets geschreven) — job-exit 0\n"
+            )
+        },
+    )
+    assert "TOTAAL: nummer 26149" in oordeel
+    # nameting.sh: in de lees-only allowlist, --dry-run verplicht, --uitvoeren geweigerd, via_gh → project-dubbel
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    allow = re.search(r'^ALLOWLIST="([^"]+)"', sh, flags=re.M)
+    assert allow and "project-dubbel-samenvoegen" in allow.group(1).split()
+    assert 'if [[ "$CMD" == "project-dubbel-samenvoegen" ]]; then' in sh
+    assert "FOUT: --uitvoeren is geen nameting" in sh
+    assert re.search(r"^\s*project-dubbel-samenvoegen\) echo project-dubbel ;;", sh, flags=re.M)
 
 
 def test_onderdeel_corrigeren_alleen_op_verzoek_en_lees_only(tmp_path: Path) -> None:

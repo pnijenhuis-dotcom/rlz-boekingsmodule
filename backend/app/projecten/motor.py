@@ -39,6 +39,12 @@ from app.sync.models import ProjectCache
 logger = logging.getLogger(__name__)
 
 
+def _nummer_module():  # noqa: ANN202 — lazy: nummer.py importeert projectverdeling; geen importcyclus bij modulelaad
+    from app.projecten import nummer
+
+    return nummer
+
+
 class ProjectAanmakenMislukt(Exception):
     """RLZ-fout of onoplosbare toestand tijdens de aanmaak — zichtbare foutstatus (502 op het
     koppelvlak), vastgoed herhaalt met hetzelfde bericht_id; nooit een halve stille uitkomst."""
@@ -135,6 +141,26 @@ def maak_pand_project_aan(
             raise ProjectAanmakenMislukt(f"Project-naamcheck in RLZ mislukt: {exc}") from exc
         if naamgenoten:
             raise ProjectNaamConflict(naam, str(naamgenoten[0].get("id")))
+        # Run A 02-10 punt 11: óók route A (pand-project) loopt door de 0160-nummerpoort zodra de naam een cijfer-prefix
+        # draagt — tot 02-10 toetste deze route alleen de exacte naam, zodat "26149 Dorpsstraat" naast "26149 …" kon ontstaan.
+        nummer = _nummer_module().cijfer_prefix(naam)
+        if nummer is not None:
+            from app.db.session import scoped_session as _scoped
+
+            try:
+                with _scoped(administratie_id) as session:
+                    _nummer_module().vereis_nummer_vrij(
+                        session,
+                        administratie_id=administratie_id,
+                        nummer=nummer,
+                        client=client,
+                        toegestaan_id=project_id,
+                        toegestane_naam=naam,
+                    )
+            except _nummer_module().ProjectnummerBestaatAl as exc:
+                raise ProjectNaamConflict(naam, str(exc.treffer.project_id)) from exc
+            except Exception as exc:  # noqa: BLE001 — fail-closed: zonder betrouwbare nummercheck geen PUT
+                raise ProjectAanmakenMislukt(f"Project-nummercheck in RLZ mislukt: {exc}") from exc
 
         try:
             client.put_project(project_id, name=naam, is_active=True)

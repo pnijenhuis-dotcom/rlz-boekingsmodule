@@ -168,11 +168,15 @@ def _wissel(
     reden: str | None,
     datum: date | None,
     client: Any | None,
+    rolpoort: bool = True,
 ) -> ProjectStatusStand:
     from app.projecten.kantoor import ProjectNietGevonden, _vereis_schrijfrol
 
     with scoped_session(administratie_id) as session:
-        _vereis_schrijfrol(session, actor_id)
+        # Run A 02-10 punt 11: alleen de nazorg-CLI `project-dubbel-samenvoegen` zet `rolpoort=False`, uitsluitend voor
+        # de systeem-actor (rol 'boekhouding') — de job-executie ná Peters "ja" is daar zélf de poort (regel 08-09).
+        if rolpoort:
+            _vereis_schrijfrol(session, actor_id)
         project = session.get(ProjectCache, (project_id, administratie_id))
         if project is None or project.verdwenen_uit_bron_op is not None:
             raise ProjectNietGevonden(f"Onbekend project: {project_id}")
@@ -247,10 +251,12 @@ def sluit_project_af(
     reden: str | None = None,
     datum: date | None = None,
     client: Any | None = None,
+    rolpoort: bool = True,
 ) -> ProjectStatusStand:
     """Afsluiten: bron inactief (terugleesverificatie, RLZ wint bij conflict) → status afgesloten + audit. Nagekomen
     facturen blijven boekbaar (oranje signaal, nooit blokkerend —
-    `app/documenten/checks.py::check_project_afgesloten`)."""
+    `app/documenten/checks.py::check_project_afgesloten`). `rolpoort=False` alleen voor de systeem-actor in de
+    nazorg-CLI `project-dubbel-samenvoegen` (run A 02-10 punt 11)."""
     return _wissel(
         administratie_id=administratie_id,
         project_id=project_id,
@@ -259,6 +265,7 @@ def sluit_project_af(
         reden=reden,
         datum=datum,
         client=client,
+        rolpoort=rolpoort,
     )
 
 

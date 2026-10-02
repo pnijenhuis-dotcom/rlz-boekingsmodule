@@ -61,9 +61,19 @@ def cijfer_prefix(naam: str | None) -> str | None:
 
 
 def rlz_prefixen(nummer: str) -> tuple[str, str]:
-    """De twee RLZ-`startswith`-vormen waarin een nummer als naam-prefix kan staan: "26064 " en "Afgesloten 26064 " (de
-    spatie erachter zorgt dat 261270 geen treffer voor 26127 is)."""
-    return (f"{nummer} ", f"{AFGESLOTEN_VOORVOEGSEL}{nummer} ")
+    """De twee RLZ-`startswith`-vormen waarin een nummer als naam-prefix kan staan: "26064" en "Afgesloten 26064".
+
+    Run A 02-10 punt 11 (diagnose 26149, Universal Steigerbouw): tot 02-10 stond er een SPATIE achter het nummer ("26149 ")
+    zodat 261270 geen treffer voor 26127 zou zijn — maar een project dat in de RLZ-UI alléén het nummer als naam kreeg
+    ("26149", adres in Description) werd daardoor NIET gezien, en de cache had het nog niet (dag-sync 07:00): zo ontstond
+    het dubbele 26149 ondanks de 0160-poort. De RLZ-filter is nu het kale nummer (ruimer); de exacte toets — "261270" is
+    geen 26127 — doet `cijfer_prefix` lokaal, zoals altijd al voor de cache-kant."""
+    return (nummer, f"{AFGESLOTEN_VOORVOEGSEL}{nummer}")
+
+
+#: Afsluit-reden-prefix die `project-dubbel-samenvoegen` (run A 02-10 punt 11) op de verliezer zet; een zo afgesloten
+#: project telt in `dubbele_nummers` niet meer mee (de bevinding `project_nummer_dubbel` sluit dan vanzelf, mét audit).
+SAMENVOEG_REDEN_PREFIX = "dubbel projectnummer"
 
 
 @dataclass(frozen=True)
@@ -197,6 +207,10 @@ def dubbele_nummers(session: Session, *, administratie_id: uuid.UUID) -> list[Du
     ):
         nr = cijfer_prefix(r.naam)
         if nr is None:
+            continue
+        # Run A 02-10 punt 11: een verliezer die `project-dubbel-samenvoegen` al heeft afgesloten telt niet meer als dubbel —
+        # anders blijft `project_nummer_dubbel` na het samenvoegen eeuwig open.
+        if r.status == PROJECT_STATUS_AFGESLOTEN and (r.afsluit_reden or "").startswith(SAMENVOEG_REDEN_PREFIX):
             continue
         per_nummer.setdefault(nr, []).append(
             NummerTreffer(project_id=r.id, naam=r.naam or "", status=r.status, is_actief=r.is_actief, bron="cache")

@@ -298,7 +298,8 @@ class TestProjectnummerUniek:
         assert nummer_module.cijfer_prefix("Afgesloten zonder nummer") is None
         # Alleen het EERSTE woord is de afsluitmarkering — elders in de naam blijft het gewone tekst (geen nummer).
         assert nummer_module.cijfer_prefix("Project afgesloten 26064 Apeldoorn") is None
-        assert nummer_module.rlz_prefixen("26064") == ("26064 ", "Afgesloten 26064 ")
+        # Run A 02-10 punt 11: géén spatie meer achter het nummer — een RLZ-UI-project dat alléén "26149" heet moet ook treffen.
+        assert nummer_module.rlz_prefixen("26064") == ("26064", "Afgesloten 26064")
 
     def test_afgesloten_naam_in_rlz_of_cache_bezet_het_nummer(
         self, admin_engine: Engine, administratie_id, beheerder_id
@@ -317,7 +318,7 @@ class TestProjectnummerUniek:
         assert str(exc.value) == "26064 bestaat al: Afgesloten 26064 Apeldoorn (Ben Kuijer), lopend — openen?"
         assert fake.put_project_aanroepen == 0
         # De `or`-GET (STAP-0 19-09) is de gebruikte route: één aanroep met beide prefixen.
-        assert fake.prefixes_aanroepen == [("26064 ", "Afgesloten 26064 ")]
+        assert fake.prefixes_aanroepen == [("26064", "Afgesloten 26064")]
         # Cache-kant: hetzelfde project in de cache (gesynct), RLZ leeg → óók 409 op de cache-treffer.
         leeg = FakeProjectClient()
         pid = maak_project(admin_engine, administratie_id, "Afgesloten 26065 Opijnen")
@@ -338,11 +339,11 @@ class TestProjectnummerUniek:
                 self.prefixen.append(prefix)
                 if not prefix.startswith("Afg"):
                     return []
-                return [{"id": str(uuid.uuid4()), "Name": f"{prefix}X", "IsActive": True}]
+                return [{"id": str(uuid.uuid4()), "Name": f"{prefix} X", "IsActive": True}]
 
         oud = Oud()
         treffers = nummer_module.treffers_in_rlz(oud, nummer="26064")
-        assert oud.prefixen == ["26064 ", "Afgesloten 26064 "]
+        assert oud.prefixen == ["26064", "Afgesloten 26064"]
         assert [t.naam for t in treffers] == ["Afgesloten 26064 X"]
 
 

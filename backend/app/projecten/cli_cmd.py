@@ -14,7 +14,13 @@
   herstelroute
   (voorstel, nooit uitgevoerd) + deterministisch projectvoorstel; `--rlz` = dezelfde toets op de RLZ-kant, uitsluitend GET
   (`app/projecten/zonder_project.py`).
-Geen writes; RLZ alleen lezen (aangifte-status, en de regels bij `--rlz`)."""
+Geen writes; RLZ alleen lezen (aangifte-status, en de regels bij `--rlz`).
+
+- `project-dubbel-samenvoegen --administratie X --nummer N [--dry-run] [--uitvoeren] [--actor UUID|E-MAIL]` (run A
+  02-10 punt 11, casus 26149 Universal Steigerbouw): SCHRIJVEND bij `--uitvoeren` — dry-run is de default en staat in
+  de nameting-allowlist (alleen mét --dry-run); de echte run = `gcloud run jobs execute rlz-reconciliatie
+  --args=-m,app.cli,project-dubbel-samenvoegen,--administratie,…,--nummer,26149,--uitvoeren` ná Peters "ja"
+  (`app/projecten/samenvoegen.py`)."""
 
 from __future__ import annotations
 
@@ -24,10 +30,32 @@ import uuid
 
 from sqlalchemy import select
 
-PROJECTEN_COMMANDOS = ("projecten-afsluit-kandidaten", "projecten-dubbele-nummers", "facturen-zonder-project")
+PROJECTEN_COMMANDOS = (
+    "projecten-afsluit-kandidaten",
+    "projecten-dubbele-nummers",
+    "facturen-zonder-project",
+    "project-dubbel-samenvoegen",
+)
 
 
 def register_projecten(subparsers) -> None:  # noqa: ANN001
+    sv = subparsers.add_parser(
+        "project-dubbel-samenvoegen",
+        help="Run A 02-10 punt 11: dubbel projectnummer samenvoegen — het oudste project mét koppelingen blijft, de "
+        "andere worden omgehangen (weekstaten, meerwerk, planning, documenten, verdelingen, offertes, …) mét audit + "
+        "tijdlijn en daarna afgesloten via de 0160-flow (RLZ IsActive false / Odoo archived). DRY-RUN is de default; "
+        "--uitvoeren schrijft (alleen als job-executie ná Peters ja). Nooit verwijderen.",
+    )
+    sv.add_argument("--administratie", required=True, metavar="UUID|NAAMDEEL", help="Precies één administratie.")
+    sv.add_argument("--nummer", required=True, metavar="NNNNN", help="Het dubbele projectnummer (cijfer-prefix).")
+    sv.add_argument("--dry-run", action="store_true", help="Toon exact wat zou gebeuren (default).")
+    sv.add_argument("--uitvoeren", action="store_true", help="Echt omhangen + verliezer afsluiten. Alleen ná Peters ja.")
+    sv.add_argument(
+        "--actor",
+        default=None,
+        metavar="UUID|E-MAIL",
+        help="Actor voor audit/tijdlijn (default: systeem-actor; die passeert de rolpoort — de job-executie is de poort).",
+    )
     kand = subparsers.add_parser(
         "projecten-afsluit-kandidaten",
         help="19-09: LEES-ONLY — afsluit-kandidaten uit dezelfde motor als de tab Afsluiten? (stil N mnd / eindfactuur / "
@@ -226,7 +254,61 @@ def _facturen_zonder_project(args: argparse.Namespace) -> int:
     return 0
 
 
+def _actor_id(tekst: str | None) -> uuid.UUID | None:
+    from app.db.models import Gebruiker
+    from app.db.session import scoped_session
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+
+    if not tekst:
+        return SYSTEEM_ACTOR_ID
+    try:
+        return uuid.UUID(tekst)
+    except ValueError:
+        pass
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        rij = session.scalars(select(Gebruiker).where(Gebruiker.e_mail == tekst.strip().lower())).first()
+        if rij is None:
+            print(f"--actor {tekst!r}: geen gebruiker met dit e-mailadres", file=sys.stderr)
+            return None
+        return rij.id
+
+
+def _dubbel_samenvoegen(args: argparse.Namespace) -> int:
+    from app.projecten import samenvoegen
+
+    if args.dry_run and args.uitvoeren:
+        print("kies óf --dry-run (default) óf --uitvoeren, niet beide", file=sys.stderr)
+        return 2
+    nummer = " ".join(str(args.nummer).split())
+    if not nummer.isdigit():
+        print(f"--nummer {args.nummer!r}: alleen cijfers (cijfer-prefix van de projectnaam, bv. 26149)", file=sys.stderr)
+        return 2
+    administraties = _administraties(args.administratie)
+    if administraties is None:
+        return 2
+    actor = _actor_id(args.actor)
+    if actor is None:
+        return 2
+    (aid, naam), = administraties
+    dry_run = not args.uitvoeren
+    print(
+        f"Dubbel projectnummer samenvoegen — {naam} ({aid}), nummer {nummer}, "
+        f"modus {'DRY-RUN (niets geschreven)' if dry_run else 'UITVOEREN (omhangen + verliezer afsluiten via de 0160-flow)'}. "
+        "Nooit verwijderen; RLZ/Odoo alleen via sluit_project_af (IsActive false, teruggelezen)."
+    )
+    uit = samenvoegen.samenvoegen(
+        administratie_id=aid, administratie_naam=naam, nummer=nummer, actor_id=actor, dry_run=dry_run
+    )
+    print("\n".join(samenvoegen.rapportregels(uit)))
+    if uit.fout and uit.verliezers:
+        print(f"\nFOUT: {uit.fout}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def run_projecten(args: argparse.Namespace) -> int:
+    if args.commando == "project-dubbel-samenvoegen":
+        return _dubbel_samenvoegen(args)
     if args.commando == "projecten-afsluit-kandidaten":
         return _afsluit_kandidaten(args)
     if args.commando == "projecten-dubbele-nummers":
