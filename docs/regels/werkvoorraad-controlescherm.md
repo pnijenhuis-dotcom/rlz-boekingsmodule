@@ -484,6 +484,18 @@
   de BRON-lijst", "zonder volgend document → lijst van de BRON") + `VerplaatsModal.test.tsx` (`lijst_volgorde` reist mee). Werkt in
   productie: niet gemeten (klikpunt Peter: verplaatsen vanuit Universal Steigerbouw ná deploy → volgende Steigerbouw-document).
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "besluiten-run-a-verwerken-409-cadans-contract-dubbele-projecten" (capture-at-acceptance) -->
+- **Besluiten run A 02-10 (punt 7 + 8) — Peter 17:1x "Ik volg jouw advies" (geen code, geen migratie; BESLISSINGEN "RUN A 02-10 — BOEKEN,
+  PROJECTEN, MELDINGEN, KLEINE BUGS (Peter 02-10)" punt 7 en 8, alinea "BESLIST 02-10"):** (1) **Compacte regelweergave = definitief.** Is de
+  `.tabel-scroll`-container smaller dan de som van de kolomminima (738 px, 906 mét projectplicht), dan is de compacte regelweergave
+  (`document/compacteRegels.ts`) de eerste trap vóór de horizontale scroll — de kolomminima van 27-08/08-09 blijven, kolommen worden nooit
+  smaller gemaakt, er komt geen instelling. Het beslispunt uit het run-A-rapport ("afwijking van 'smallere kolommen'") is hiermee gesloten.
+  (2) **Recency-consensus telt als "zeker" voor het grootboek-geheugen.** Náást de drempel ≥ 90 % gewogen zekerheid (`GEHEUGEN_GROOTBOEK_MIN_
+  ZEKERHEID`) vult het leverancier-geheugen de grootboekrekening óók als de laatste drie app-bevestigde MENS-boekingen identiek zijn (besluit
+  "recency wint" 10-09, `VeldVoorstel.recent_consensus`) — ook als het gewogen aandeel onder de 90 % ligt; punt 8 draait het besluit van 10-09
+  dus niet stil terug. Dit is bestaand gedrag van `regel_prefill.geheugen_grootboek_zeker` en de frontend-spiegel `geheugenGrootboekZeker`
+  (gouden set `test_s_geheugen_recency.py`); vastgelegd, niet gewijzigd.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Na boeken direct door, lijstcontext, sneltoetsen, actiebalk, boekingsregels-kolommen (CLAUDE.md `ed6d176` r. 271–294)

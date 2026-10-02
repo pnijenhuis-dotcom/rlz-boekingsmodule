@@ -13585,6 +13585,8 @@ regel voor browsers zonder ResizeObserver; mét ResizeObserver is de compacte we
 keten `test_al_postvak_kempengroep_kanaal.py` (velden `herkomst_mail`) + `test_keten_guard`. **Werkt in productie: niet gemeten** (klikpunt
 Peter: f00117f4 op 1455 px ná deploy).
 
+**BESLIST 02-10 (Peter 17:1x "Ik volg jouw advies"; opdracht `2026-10-02-besluiten-run-a-verwerken-409-cadans-contract-dubbele-projecten`):** de compacte regelweergave onder de kolomminima-som (738 px, 906 mét projectplicht) is DEFINITIEF — geen smallere kolommen, geen instelling; het beslispunt is gesloten, geen code. Regeltekst: `docs/regels/werkvoorraad-controlescherm.md` alinea "Besluiten run A 02-10 (punt 7 + 8)".
+
 ### Punt 8 — grootboek-geheugen per leverancier wint niet meer van de inhoud (casus f00117f4: 7005 Inhuur steiger, "Geheugen 71 %" op brandstof diesel)
 
 **Aanleiding (Cowork-waarneming 02-10 op f00117f4):** het leverancier-geheugen (kop-niveau-engine) zette 7005 Inhuur steiger met een
@@ -13607,6 +13609,8 @@ draait punt 8 het besluit van 10-09 stil terug. Hard 90 % ook daar = één regel
 
 **Werkt in productie: niet gemeten** — klikpunt Peter: f00117f4 openen ná deploy → grootboek leeg mét "voorstel uit historie — niet ingevuld
 (71 %)"; meetlat: prefill-snapshots mét `gb_bron = leverancier_geheugen_niet_ingevuld` (db-lezen).
+
+**BESLIST 02-10 (Peter 17:1x "Ik volg jouw advies"):** recency-consensus (de laatste drie app-bevestigde mens-boekingen identiek, besluit 10-09) telt als "zeker" voor het grootboek uit het leverancier-geheugen, NÁÁST de drempel ≥ 90 % — het besluit van 10-09 wordt niet stil teruggedraaid. Geen code (`geheugen_grootboek_zeker` / `geheugenGrootboekZeker` doen dit al); alleen vastgelegd. Regeltekst: `docs/regels/werkvoorraad-controlescherm.md` alinea "Besluiten run A 02-10 (punt 7 + 8)".
 
 ### Punt 9 — Verplaatsen: zelfde doorloop als ná boeken, nooit naar de doeladministratie
 
