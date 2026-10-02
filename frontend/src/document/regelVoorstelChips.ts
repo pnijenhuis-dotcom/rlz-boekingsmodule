@@ -37,7 +37,46 @@ export type BtwBron =
  * wijst naar een project maar het veld is bewust LEEG gelaten (nooit een project uit de historie zonder factuurverwijzing)
  * (chip "voorstel uit historie" — nooit stil; alleen als factuur/werknummer/klant-loze code niets gaven),
  * 'factuur_conflict' = niets ingevuld omdat de factuur een ánder projectnummer noemt dan het geheugen (chip + keuze). */
-export type ProjectBron = 'factuur' | 'factuur_onbevestigd' | 'factuur_meerduidig' | 'geheugen' | 'factuur_conflict'
+/** Run D 02-10 blok B (casussen Huvanco/Hoogwerkservice): 'factuur_plaats_opdrachtgever' = ORANJE voorstel — een plaats-token én
+ * een opdrachtgever-token van de projectnaam staan beide in de factuurtekst (deterministisch, één project per document;
+ * herziet de fuzzy "lijkt op" van 07-09). Meerduidig draagt sinds 02-10 `project_kandidaten` voor de keuze in het scherm. */
+export type ProjectBron =
+  | 'factuur'
+  | 'factuur_onbevestigd'
+  | 'factuur_meerduidig'
+  | 'geheugen'
+  | 'factuur_conflict'
+  | 'factuur_plaats_opdrachtgever'
+
+export interface ProjectKandidaat {
+  id: string
+  naam: string
+}
+
+/** Server-JSON → gevalideerde kandidatenlijst (alleen rijen mét id én naam); leeg/onbruikbaar = null. */
+export function projectKandidatenUitDto(waarde: unknown): ProjectKandidaat[] | null {
+  if (!Array.isArray(waarde)) return null
+  const uit: ProjectKandidaat[] = []
+  for (const k of waarde) {
+    if (k && typeof k === 'object') {
+      const o = k as Record<string, unknown>
+      if (typeof o.id === 'string' && o.id !== '' && typeof o.naam === 'string' && o.naam !== '') uit.push({ id: o.id, naam: o.naam })
+    }
+  }
+  return uit.length > 0 ? uit : null
+}
+
+/** Mogen de kandidaten als keuze onder het projectveld staan? Alleen bij meerduidig, zolang het veld leeg is en de mens het
+ * veld niet zelf aanraakte (zelfde regel als de chip). */
+export function toonProjectKandidaten(
+  bron: ProjectBron | null,
+  kandidaten: ProjectKandidaat[] | null,
+  huidigProjectId: string | null,
+  handmatig: boolean,
+): ProjectKandidaat[] {
+  if (bron !== 'factuur_meerduidig' || !kandidaten || huidigProjectId || handmatig) return []
+  return kandidaten
+}
 
 export interface RegelChip {
   /** CSS-klassen naast `chip` — `ok` (groen), `afwijking` (oranje), `handmatig` (neutraal grijs), `blokkerend` (rood). */
@@ -65,6 +104,7 @@ const PROJECT_BRONNEN: ReadonlySet<string> = new Set<ProjectBron>([
   'factuur_meerduidig',
   'geheugen',
   'factuur_conflict',
+  'factuur_plaats_opdrachtgever',
 ])
 
 export function projectBronUitDto(waarde: string | null | undefined): ProjectBron | null {
@@ -109,6 +149,15 @@ export function bepaalProjectFactuurChip(
     }
   }
   if (!huidigProjectId) return null
+  if (bron === 'factuur_plaats_opdrachtgever') {
+    // Run D 02-10 blok B: deterministisch niveau 3 — plaats + opdrachtgever van de projectnaam staan beide op de factuur;
+    // één project voor het hele document, oranje tot een mens bevestigt (boeken); nooit automatisch geboekt.
+    return {
+      klasse: 'afwijking',
+      tekst: 'op plaats + opdrachtgever',
+      titel: `Project voorgesteld omdat een plaats én een opdrachtgever uit de projectnaam beide op de factuur staan (code, geen AI; geen projectnummer of werknummer gevonden).${toelichting} Controleer en bevestig — boeken met dit project maakt het voorstel definitief; automatisch boeken gebeurt hier nooit.`,
+    }
+  }
   if (bron === 'factuur') {
     return {
       klasse: 'ok',

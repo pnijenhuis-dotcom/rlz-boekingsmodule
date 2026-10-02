@@ -496,6 +496,16 @@
   dus niet stil terug. Dit is bestaand gedrag van `regel_prefill.geheugen_grootboek_zeker` en de frontend-spiegel `geheugenGrootboekZeker`
   (gouden set `test_s_geheugen_recency.py`); vastgelegd, niet gewijzigd.
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "run-D-alles-in-een" blok B — DOEL: docs/regels/werkvoorraad-controlescherm.md -->
+- **Controlescherm — projectveld: chip "op plaats + opdrachtgever" (oranje) en kandidaat-knoppen bij meerduidig (blok B run D,
+  Peter 02-10):** een project dat op niveau 3 (plaats-token én opdrachtgever-token van de projectnaam beide op de factuur)
+  is voorgesteld draagt de oranje chip "op plaats + opdrachtgever" (afwijkingsklasse: altijd zichtbaar, ook in het rustige
+  scherm); passen er meerdere projecten, dan blijft het veld leeg mét de chip "meerdere passen, kies" en staan de kandidaten
+  als `linkbtn` "Kies ‹naam›" onder het veld (`data-testid="regel-project-kandidaten"`) — één klik is dezelfde regelwijziging
+  als de combobox, daarna verdwijnen chip en knoppen. Eén project per document: alle regels zonder eigen code/werknummer dragen
+  hetzelfde kop-project. Volledige tekst en motor in `docs/regels/verplichtingen-projecten-voorraad.md` alinea "Projectmatch
+  op plaats + opdrachtgever uit de héle factuurtekst (blok B run D, Peter 02-10)".
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Na boeken direct door, lijstcontext, sneltoetsen, actiebalk, boekingsregels-kolommen (CLAUDE.md `ed6d176` r. 271–294)

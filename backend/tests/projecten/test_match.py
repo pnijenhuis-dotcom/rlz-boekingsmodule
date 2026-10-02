@@ -1,8 +1,9 @@
 """Gedeelde project-matchmotor (`app/projecten/match.py`, blok 10 07-09 — casus Spot Services) — puur, geen DB.
 
 Factuur-motor: volgorde exacte code (groen) > leverancier-werknummer (groen als bevestigd, anders oranje) >
-fuzzy plaats/opdrachtgever (altijd oranje, OVH nooit); meerduidig op een niveau = niets invullen mét de
-kandidaten; genormaliseerde codes (hoofdletters/spaties/leestekens/haken). Offerte-motor `match_project`
+plaats + opdrachtgever (run D 02-10 blok B: DETERMINISTISCH — beide tokens in de projectnaam én in de factuurtekst,
+altijd oranje, OVH nooit; herziet de SequenceMatcher-fuzzy van 07-09); meerduidig op een niveau = niets invullen mét
+de kandidaten; genormaliseerde codes (hoofdletters/spaties/leestekens/haken). Offerte-motor `match_project`
 (verplichting 04-09): gedrag ongewijzigd na de verhuizing."""
 
 from __future__ import annotations
@@ -108,26 +109,101 @@ class TestWerknummer:
         assert (u.project_id, u.niveau) == (P_TILBURG, m.NIVEAU_WERKNUMMER)
 
 
-class TestFuzzy:
-    def test_plaats_of_opdrachtgever_is_altijd_oranje(self) -> None:
-        u = m.bepaal_project_uit_factuur("Koningstraat", KANDIDATEN)
-        assert (u.project_id, u.niveau, u.bevestigd) == (P_KONING, m.NIVEAU_FUZZY, False)
-        assert u.herkomst == m.HERKOMST_FACTUUR_ONBEVESTIGD
-        assert m.bepaal_project_uit_factuur("Heijmans", KANDIDATEN).project_id == P_TILBURG
+class TestPlaatsOpdrachtgever:
+    """Run D 02-10 blok B (casussen Huvanco/Hoogwerkservice 29-09): niveau 3 is deterministisch — plaats-token ÉN
+    opdrachtgever-token van de projectnaam staan beide in de factuurtekst; alleen plaats óf alleen opdrachtgever =
+    niets."""
 
-    def test_ovh_nooit_via_fuzzy(self) -> None:
-        assert m.bepaal_project_uit_factuur("Overhead", KANDIDATEN).project_id is None
+    P_HOOGVLIET = uuid.UUID("aaaaaaaa-0000-0000-0000-000000025170")
+    P_DEURNE = uuid.UUID("aaaaaaaa-0000-0000-0000-000000025013")
+    HOOG = [
+        m.ProjectKandidaat(id=P_HOOGVLIET, naam="25170 Hoogvliet, Troubadourlaan (Weboma)"),
+        m.ProjectKandidaat(id=P_DEURNE, naam="25013 Deurne (Van Wijnen)"),
+        *KANDIDATEN,
+    ]
+
+    def test_projectnaam_wordt_gesplitst_in_plaats_en_opdrachtgever(self) -> None:
+        assert m.plaats_opdrachtgever_tokens("Afgesloten 25170 Hoogvliet, Troubadourlaan (Weboma)") == (
+            frozenset({"hoogvliet", "troubadourlaan"}),
+            frozenset({"weboma"}),
+        )
+        assert m.plaats_opdrachtgever_tokens("[26133] Eindhoven (BAM)") == (
+            frozenset({"eindhoven"}),
+            frozenset({"bam"}),
+        )
+        # Zonder haken is er geen opdrachtgever → nooit een niveau-3-match ("nooit raden").
+        assert m.plaats_opdrachtgever_tokens("26049 Hoofddorp")[1] == frozenset()
+        assert m.plaats_opdrachtgever_tokens(None) == (frozenset(), frozenset())
+
+    def test_plaats_en_opdrachtgever_beide_in_de_tekst_is_oranje_voorstel(self) -> None:
+        # Casus Hoogwerkservice 29-09: kop "500zzp - walterpark - hoogvliet / Weboma / Troubadourlaan Hoogvliet".
+        u = m.bepaal_project_op_plaats_opdrachtgever(
+            self.HOOG, "500zzp - walterpark - hoogvliet / Weboma / Troubadourlaan Hoogvliet"
+        )
+        assert (u.project_id, u.niveau, u.bevestigd) == (self.P_HOOGVLIET, m.NIVEAU_PLAATS_OPDRACHTGEVER, False)
+        assert u.herkomst == m.HERKOMST_FACTUUR_PLAATS_OPDRACHTGEVER
+        assert "hoogvliet" in (u.detail or "") and "weboma" in (u.detail or "") and "25170" in (u.detail or "")
+        assert u.kandidaten is None
+        # Ook via de factuur-motor (niveau 3 ná code/werknummer), hoofdletter-/accentongevoelig.
+        assert m.bepaal_project_uit_factuur("Tilburg, opdracht HEIJMANS", KANDIDATEN).project_id == P_TILBURG
+        assert m.bepaal_project_uit_factuur("Tilburg, opdracht HEIJMANS", KANDIDATEN).herkomst == (
+            m.HERKOMST_FACTUUR_PLAATS_OPDRACHTGEVER
+        )
+
+    def test_alleen_plaats_of_alleen_opdrachtgever_is_niets(self) -> None:
+        assert m.bepaal_project_uit_factuur("Koningstraat", KANDIDATEN).herkomst is None
+        assert m.bepaal_project_uit_factuur("Heijmans", KANDIDATEN).herkomst is None
+        assert m.bepaal_project_op_plaats_opdrachtgever(self.HOOG, "levering Hoogvliet").herkomst is None
+        assert m.bepaal_project_op_plaats_opdrachtgever(self.HOOG, "factuur aan Weboma").herkomst is None
+
+    def test_niveau3_alleen_op_documentniveau_niet_per_regel(self) -> None:
+        assert m.bepaal_project_uit_factuur("Tilburg Heijmans", KANDIDATEN, niveau3=False).herkomst is None
+
+    def test_ovh_nooit_via_niveau3(self) -> None:
+        assert m.bepaal_project_uit_factuur("Overhead intern", KANDIDATEN).project_id is None
         assert m.bepaal_project_uit_factuur("algemene kosten", KANDIDATEN).project_id is None
 
-    def test_meerduidige_naam_vult_niets(self) -> None:
-        u = m.bepaal_project_uit_factuur(
-            "Confide", [*KANDIDATEN, m.ProjectKandidaat(id=P_DUBBEL, naam="26141 Breda (Confide)")]
-        )
-        assert u.project_id is None and len(u.meerduidig) == 2
+    def test_meerdere_kandidaten_vult_niets_en_draagt_de_kandidaten(self) -> None:
+        k = [*KANDIDATEN, m.ProjectKandidaat(id=P_DUBBEL, naam="26141 Tilburg Noord (Heijmans)")]
+        u = m.bepaal_project_uit_factuur("Tilburg Heijmans", k)
+        assert u.project_id is None and {x.id for x in u.meerduidig} == {P_TILBURG, P_DUBBEL}
+        assert u.herkomst == m.HERKOMST_FACTUUR_MEERDUIDIG
+        assert u.kandidaten == [
+            {"id": str(P_TILBURG), "naam": "26127 Tilburg (Heijmans)"},
+            {"id": str(P_DUBBEL), "naam": "26141 Tilburg Noord (Heijmans)"},
+        ]
 
-    def test_te_kort_of_onbekend_is_geen_match(self) -> None:
+    def test_te_kort_onbekend_of_numeriek_is_geen_match(self) -> None:
         assert m.bepaal_project_uit_factuur("abc", KANDIDATEN).herkomst is None
         assert m.bepaal_project_uit_factuur("Volstrekt onbekend werk", KANDIDATEN).herkomst is None
+        assert m.bepaal_project_uit_factuur("2614", KANDIDATEN).herkomst is None
+
+
+class TestWerknummerInTekst:
+    """Run D 02-10 blok B (Huvanco): het werknummer staat als los token in de omschrijving/betreft, niet in `proj`."""
+
+    def test_werknummer_als_token_in_de_tekst_bevestigd_groen_onbevestigd_oranje(self) -> None:
+        w = [m.WerknummerKoppeling(werknummer="2025-0117", project_id=P_TILBURG, bevestigd=True)]
+        u = m.bepaal_werknummer_in_tekst(KANDIDATEN, w, "Betreft: steigerwerk 2025-0117 Tilburg")
+        assert (u.project_id, u.niveau, u.herkomst) == (P_TILBURG, m.NIVEAU_WERKNUMMER, m.HERKOMST_FACTUUR)
+        w2 = [m.WerknummerKoppeling(werknummer="2025-0117", project_id=P_TILBURG, bevestigd=False)]
+        assert m.bepaal_werknummer_in_tekst(KANDIDATEN, w2, None, "werk 20250117").herkomst == (
+            m.HERKOMST_FACTUUR_ONBEVESTIGD
+        )
+
+    def test_deelstring_is_geen_token_en_twee_projecten_is_meerduidig(self) -> None:
+        w = [m.WerknummerKoppeling(werknummer="4711", project_id=P_TILBURG, bevestigd=True)]
+        assert m.bepaal_werknummer_in_tekst(KANDIDATEN, w, "order 47110").herkomst is None
+        w2 = [
+            m.WerknummerKoppeling(werknummer="4711", project_id=P_TILBURG, bevestigd=True),
+            m.WerknummerKoppeling(werknummer="4712", project_id=P_KONING, bevestigd=True),
+        ]
+        u = m.bepaal_werknummer_in_tekst(KANDIDATEN, w2, "werk 4711 en 4712")
+        assert u.project_id is None and len(u.meerduidig) == 2
+
+    def test_zonder_werknummers_of_tekst_niets(self) -> None:
+        assert m.bepaal_werknummer_in_tekst(KANDIDATEN, [], "werk 4711").herkomst is None
+        assert m.bepaal_werknummer_in_tekst(KANDIDATEN, None, None).herkomst is None
 
 
 class TestLegeInvoer:

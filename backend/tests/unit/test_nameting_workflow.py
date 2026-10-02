@@ -65,7 +65,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
     assert re.search(
-        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop, bijlagen-factuur, project-dubbel, webhook-wacht, btw-afronding\]",
+        r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop, bijlagen-factuur, project-dubbel, webhook-wacht, btw-afronding, project-match\]",
         tekst,
     )
     # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
@@ -694,6 +694,34 @@ def test_nameting_sh_feedbackrun_25_09_allowlist_en_via_gh() -> None:
     for onderdeel in FEEDBACKRUN_ONDERDELEN_25_09:
         cmd = {"xml-documenten": "xml-documenten-rapport"}.get(onderdeel, onderdeel)
         assert re.search(r"^\s*" + re.escape(f"{cmd}) echo {onderdeel} ;;"), sh, flags=re.M), f"via_gh_onderdeel mist: {onderdeel}"
+
+
+# --- run D 02-10 blok B: dispatch-onderdeel `project-match` (vier plekken; lees-only db-lezen; eigen oordeelregel) ---
+def test_run_d_project_match_onderdeel_alleen_op_verzoek_lees_only_met_eigen_oordeel(tmp_path: Path) -> None:
+    """Run D 02-10 blok B (projectmatch plaats + opdrachtgever, één project per document): het meetrecept is het
+    dispatch-onderdeel `project-match` — if-tak + options + via_gh_onderdeel + else-tak-oordeel; alleen lees-only
+    `db-lezen project-prefill-herkomst` (v2) op Universal Steigerbouw; niet in 'alles'."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "project-match" ]]; then' in meet
+    recept = 'scripts/gcp/nameting.sh db-lezen project-prefill-herkomst --administratie "Universal Steigerbouw" $FILTER'
+    assert recept in meet
+    assert "--param project_bron=factuur_plaats_opdrachtgever" in meet
+    assert "--param project_bron=factuur_meerduidig" in meet
+    assert 'UIT="verkenning/nameting-project-match-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "project-match"' not in meet, "niet in 'alles'"
+    tak = meet.split('if [[ "$ONDERDEEL" == "project-match" ]]; then', 1)[1].split("\n          fi\n", 1)[0]
+    assert "gcloud run jobs execute" not in tak and "--uitvoeren" not in tak, "lees-only: alleen nameting.sh db-lezen"
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "project-match",
+        {
+            "nameting-project-match-14-09.txt": "kop\nOordeel: project-match — 3 rij(en) …\n",
+            "nameting-vgg-replay-14-09.txt": REPLAY,
+        },
+    )
+    assert oordeel.startswith("Oordeel: project-match — 3 rij(en)"), oordeel
+    sh = (REPO / "scripts" / "gcp" / "nameting.sh").read_text(encoding="utf-8")
+    assert re.search(r"^\s*project-match\) echo project-match ;;", sh, flags=re.M), "via_gh mist: project-match"
 
 
 # --- planning v4 28-09: dispatch-onderdeel `planning-v4` (vier plekken; lees-only; eigen oordeelregel, else-tak) ---

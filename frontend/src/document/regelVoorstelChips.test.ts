@@ -8,6 +8,8 @@ import {
   gbBronUitDto,
   overstapVertalingUitDto,
   projectBronUitDto,
+  projectKandidatenUitDto,
+  toonProjectKandidaten,
 } from './regelVoorstelChips'
 
 describe('regelVoorstelChips — grootboek per regel (blok D 04-09, mockup blok 2)', () => {
@@ -185,6 +187,36 @@ describe('regelVoorstelChips — project uit de factuur (blok 10 07-09, casus Sp
     expect(bepaalProjectFactuurChip('factuur', null, null, false)).toBeNull()
     expect(bepaalProjectFactuurChip('factuur', null, 'p-1', true)).toBeNull()
     expect(bepaalProjectFactuurChip('factuur_meerduidig', null, null, true)).toBeNull()
+  })
+
+  it('run D 02-10 blok B: plaats + opdrachtgever = oranje "op plaats + opdrachtgever" zolang het voorstel in het veld staat', () => {
+    const chip = bepaalProjectFactuurChip('factuur_plaats_opdrachtgever', 'Factuur noemt plaats + opdrachtgever "hoogvliet" + "weboma" — past op 25170 Hoogvliet (Weboma)', 'p-25170', false)
+    expect(chip).toMatchObject({ klasse: 'afwijking', tekst: 'op plaats + opdrachtgever' })
+    expect(chip?.titel).toContain('hoogvliet')
+    expect(chip?.titel).toContain('automatisch boeken gebeurt hier nooit')
+    expect(bepaalProjectFactuurChip('factuur_plaats_opdrachtgever', null, null, false)).toBeNull()
+    expect(bepaalProjectFactuurChip('factuur_plaats_opdrachtgever', null, 'p-25170', true)).toBeNull()
+    expect(projectBronUitDto('factuur_plaats_opdrachtgever')).toBe('factuur_plaats_opdrachtgever')
+  })
+
+  it('run D 02-10 blok B: kandidaten alleen bij meerduidig, zolang het veld leeg is', () => {
+    const kandidaten = projectKandidatenUitDto([
+      { id: 'p-1', naam: '26127 Tilburg (Heijmans)' },
+      { id: 'p-2', naam: '26141 Tilburg Noord (Heijmans)' },
+      { id: '', naam: 'kapot' },
+      'rommel',
+    ])
+    expect(kandidaten).toEqual([
+      { id: 'p-1', naam: '26127 Tilburg (Heijmans)' },
+      { id: 'p-2', naam: '26141 Tilburg Noord (Heijmans)' },
+    ])
+    expect(projectKandidatenUitDto(null)).toBeNull()
+    expect(projectKandidatenUitDto([])).toBeNull()
+    expect(toonProjectKandidaten('factuur_meerduidig', kandidaten, null, false)).toHaveLength(2)
+    expect(toonProjectKandidaten('factuur_meerduidig', kandidaten, 'p-1', false)).toEqual([])
+    expect(toonProjectKandidaten('factuur_meerduidig', kandidaten, null, true)).toEqual([])
+    expect(toonProjectKandidaten('factuur', kandidaten, null, false)).toEqual([])
+    expect(toonProjectKandidaten('factuur_meerduidig', null, null, false)).toEqual([])
   })
 
   it('server-waarden worden gevalideerd', () => {

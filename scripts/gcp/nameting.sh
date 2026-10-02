@@ -134,6 +134,7 @@ via_gh_onderdeel() {
     xml-documenten-rapport) echo xml-documenten ;;  # 25-09 feedbackrun A blok 1: xml-documenten zonder beeld/niet leesbaar + db-lezen documenten-open 250895e8 + request-log ubl-samenvatting
     crediteuren-naamclusters) echo crediteuren-naamclusters ;;  # 25-09 blok 2: naam-clusters kantoorbreed (nooit automatisch samengevoegd) + request-log afhandelen
     project-bronvolgorde) echo project-bronvolgorde ;;  # 25-09 blok 3: geen CLI-commando — db-lezen project-prefill-herkomst (stil geheugen-pad = 0)
+    project-match) echo project-match ;;  # 02-10 run D blok B: geen CLI-commando — db-lezen project-prefill-herkomst v2 (factuur_plaats_opdrachtgever / factuur_meerduidig + project_kandidaten)
     aangifteperiode) echo aangifteperiode ;;  # 25-09 blok 4: geen CLI-commando — request-log bevestig-/letop-route + db-lezen aangifteperiode-bevestigingen + server_timing checks.aangifte
     crediteur-paneel) echo crediteur-paneel ;;  # 25-09 blok 5: geen CLI-commando — request-log POST/PUT crediteuren + db-lezen crediteur-mutaties
     btw-afronding) echo btw-afronding ;;  # 02-10 run D blok A: geen CLI-commando — db-lezen btw-afronding (check groen mét verschil, acceptaties btw_afronding_rlz, btw_rlz_lager_dan_factuur) + job-log + request-log boeken

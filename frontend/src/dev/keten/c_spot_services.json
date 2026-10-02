@@ -821,6 +821,7 @@
     "overstap_vertaling": null,
     "project_bron": "factuur",
     "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)",
+    "project_kandidaten": null,
     "factuur_btw_percentage": null,
     "bedrag_niet_gelezen": false
    },
@@ -840,6 +841,7 @@
     "overstap_vertaling": null,
     "project_bron": "factuur",
     "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)",
+    "project_kandidaten": null,
     "factuur_btw_percentage": null,
     "bedrag_niet_gelezen": false
    },
@@ -859,6 +861,7 @@
     "overstap_vertaling": null,
     "project_bron": "factuur",
     "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)",
+    "project_kandidaten": null,
     "factuur_btw_percentage": null,
     "bedrag_niet_gelezen": false
    }
@@ -881,6 +884,7 @@
    "overstap_vertaling": null,
    "project_bron": null,
    "project_bron_detail": null,
+   "project_kandidaten": null,
    "factuur_btw_percentage": null,
    "bedrag_niet_gelezen": false
   },

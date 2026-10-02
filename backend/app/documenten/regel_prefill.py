@@ -34,11 +34,19 @@ Twee onafhankelijke verrijkingen, één aanroep vanuit `boekvoorstel.haal_boekvo
   extractie leest `proj` op kop- én regelniveau voor (`BoekvoorstelRegelData.project_tekst`: regel wint van kop,
   kop = default voor regels zonder eigen tekst). Déze code matcht deterministisch (`app/projecten/match.py::
   bepaal_project_uit_factuur`): exacte projectcode → GROEN ("factuur"); leverancier-werknummer-mapping → groen als
-  bevestigd, anders ORANJE ("factuur_onbevestigd" — boeken bevestigt 'm, `app_bevestigd`-patroon); fuzzy op
-  plaats/opdrachtgever → altijd oranje; meerduidig → NIETS ingevuld, chip met de kandidaten ("factuur_meerduidig").
-  Alleen lege projectvelden, alleen bij projectplicht (zelfde regel als het leverancier-geheugen — de projectkolom
-  bestaat alleen dáár); het leverancier-geheugen blijft de terugval als de factuur niets zegt. Deze herkomst
-  triggert de A10-autosave (boekvoorstel._PROJECT_FACTUUR_HERKOMSTEN).
+  bevestigd, anders ORANJE ("factuur_onbevestigd" — boeken bevestigt 'm, `app_bevestigd`-patroon); plaats +
+  opdrachtgever → oranje ("factuur_plaats_opdrachtgever"); meerduidig → NIETS ingevuld, chip met de kandidaten
+  ("factuur_meerduidig", `project_kandidaten` in de DTO). Alleen lege projectvelden, alleen bij projectplicht (zelfde
+  regel als het leverancier-geheugen — de projectkolom bestaat alleen dáár). Deze herkomst triggert de A10-autosave
+  (boekvoorstel._PROJECT_FACTUUR_HERKOMSTEN).
+  **Run D 02-10 blok B (casussen Huvanco/Hoogwerkservice 29-09) — volledige tekst, één project per document:** de motor
+  leest kop-`proj`, `betreft`, UBL-`cbc:Note` én de regelomschrijvingen (`factuur_teksten`). Volgorde per DOCUMENT
+  (`_kop_projectmatch`): niveau 1–2 op het kop-`proj` → werknummer als token in de koptekst → klant-loze code in de
+  koptekst → niveau 3 plaats + opdrachtgever over kop + álle regelomschrijvingen (deterministisch, oranje, nooit per
+  regel). Per REGEL (`_met_factuur_project`): niveau 1–2 op de eigen regeltekst (regel-`proj`, omschrijving:
+  code/werknummer/cachecode — nooit fuzzy per regel); geeft de regel zelf niets, dan geldt het KOP-project. Zo krijgt
+  een factuur met één werk één project op alle regels en een factuur met per regel verschillende werknummers/codes
+  per regel het juiste project. De leveranciersnaam zelf telt nooit als match-token.
 
 - **Btw verlegd uit de factuur (blok 4c bundel 08-09, casus Spot Services 2026-608):** `leid_btw_af` is puur
   rekenkundig (netto × tarief ≈ btw) en laat 0 % bewust leeg; de verleggings-vermelding ("Btw verlegd" in kop/
@@ -463,6 +471,49 @@ def _met_leverancier_geheugen(
     return _met_herkomst(replace(regel, **wijzigingen, **extra), **herkomst)
 
 
+def _kop_projectmatch(
+    *,
+    kandidaten: list[project_match.ProjectKandidaat],
+    alle_kandidaten: list[project_match.ProjectKandidaat],
+    werknummers: list[project_match.WerknummerKoppeling],
+    projectformaat: project_match.ProjectcodeFormaat | None,
+    kop_project_tekst: str | None,
+    factuur_teksten: tuple[str | None, ...],
+    regel_omschrijvingen: tuple[str | None, ...],
+    uitgesloten_tekst: str | None = None,
+) -> project_match.ProjectMatch:
+    """Run D 02-10 blok B — het KOP-project van het document (één project per document): (1) niveau 1–2 op het
+    kop-`proj`;
+    (2) werknummer van de leverancier als los token in de koptekst (`betreft`, `cbc:Note`, kop-`proj`); (3) klant-loze
+    code in het administratie-formaat in de koptekst; (4) niveau 3 plaats + opdrachtgever over de koptekst én álle
+    regelomschrijvingen samen — deterministisch, oranje, nooit per regel. De leveranciersnaam (`uitgesloten_tekst`)
+    wordt uit de tekst geknipt zodat "Universal Nederland" als afzender nooit een opdrachtgever-token levert."""
+    leeg = project_match.ProjectMatch(gelezen=None)
+    if not kandidaten:
+        return leeg
+    kop_teksten = tuple(t for t in (kop_project_tekst, *factuur_teksten) if t)
+    if kop_project_tekst:
+        uitkomst = project_match.bepaal_project_uit_factuur(kop_project_tekst, kandidaten, werknummers, niveau3=False)
+        if uitkomst.herkomst is not None:
+            return uitkomst
+    uitkomst = project_match.bepaal_werknummer_in_tekst(kandidaten, werknummers, *kop_teksten)
+    if uitkomst.herkomst is not None:
+        return uitkomst
+    if projectformaat is not None and not projectformaat.leeg and kop_teksten:
+        uitkomst = project_match.bepaal_project_uit_tekst(projectformaat, alle_kandidaten or kandidaten, *kop_teksten)
+        if uitkomst.herkomst is not None:
+            return uitkomst
+    alle_tekst = [*kop_teksten, *(o for o in regel_omschrijvingen if o)]
+    if uitgesloten_tekst:
+        # De eigen naam van de leverancier is geen plaats/opdrachtgever — knip 'm uit élke tekst
+        # (hoofdletterongevoelig).
+        import re as _re
+
+        patroon = _re.compile(_re.escape(uitgesloten_tekst), _re.IGNORECASE)
+        alle_tekst = [patroon.sub(" ", t) for t in alle_tekst]
+    return project_match.bepaal_project_op_plaats_opdrachtgever(kandidaten, *alle_tekst)
+
+
 def _met_factuur_project(
     regel: BoekvoorstelRegelData,
     *,
@@ -471,28 +522,45 @@ def _met_factuur_project(
     project_verplicht: bool,
     projectformaat: project_match.ProjectcodeFormaat | None = None,
     alle_kandidaten: list[project_match.ProjectKandidaat] | None = None,
+    kop_match: project_match.ProjectMatch | None = None,
 ) -> BoekvoorstelRegelData:
     """Blok 10: project uit de op de factuur gelezen tekst — alleen een leeg projectveld bij projectplicht.
-    Meerduidig vult niets maar draagt de kandidaten als chip-detail; geen tekst = ongemoeid."""
+    Meerduidig vult niets maar draagt de kandidaten als chip-detail; geen tekst = ongemoeid.
+    Run D 02-10 blok B: per regel uitsluitend niveau 1–2 op de EIGEN regeltekst (regel-`proj`, omschrijving); geeft de
+    regel niets, dan het KOP-project (`kop_match`, incl. niveau 3 op document-niveau) — nooit fuzzy per regel."""
     if not project_verplicht or regel.project_id is not None or not kandidaten:
         return regel
-    uitkomst = (
-        project_match.bepaal_project_uit_factuur(regel.project_tekst, kandidaten, werknummers)
-        if regel.project_tekst
-        else project_match.ProjectMatch(gelezen=None)
-    )
-    if uitkomst.herkomst is None and projectformaat is not None and not projectformaat.leeg:
-        # Blok 3 25-09 (FV-02, stap 2): klant-loze code in de regeltekst/kop — exact een cijfer-prefix uit de cache in
+    formaat_ok = projectformaat is not None and not projectformaat.leeg
+    # (a) De EIGEN regelomschrijving eerst (blok B 02-10): een werknummer of klant-loze code dáárin maakt de regel
+    #     afwijkend van de kop — "alleen als regelomschrijvingen zelf verschillende werknummers/projectcodes dragen".
+    uitkomst = project_match.bepaal_werknummer_in_tekst(kandidaten, werknummers, regel.omschrijving)
+    if uitkomst.herkomst is None and formaat_ok:
+        uitkomst = project_match.bepaal_project_uit_tekst(
+            projectformaat, alle_kandidaten or kandidaten, regel.omschrijving
+        )
+    # (b) Het gelezen `proj` (regel-`proj` wint van kop-`proj`, kop = default — blok 10): code → werknummer, nooit
+    #     niveau 3.
+    if uitkomst.herkomst is None and regel.project_tekst:
+        uitkomst = project_match.bepaal_project_uit_factuur(regel.project_tekst, kandidaten, werknummers, niveau3=False)
+    if uitkomst.herkomst is None:
+        # Blok B 02-10: een leverancier-werknummer als los token in de `proj`-tekst (Huvanco).
+        uitkomst = project_match.bepaal_werknummer_in_tekst(kandidaten, werknummers, regel.project_tekst)
+    if uitkomst.herkomst is None and formaat_ok:
+        # Blok 3 25-09 (FV-02, stap 2): klant-loze code in de `proj`-tekst — exact een cijfer-prefix uit de cache in
         # het formaat van de administratie (ook een afgesloten project als de factuur er expliciet naar verwijst).
         uitkomst = project_match.bepaal_project_uit_tekst(
-            projectformaat, alle_kandidaten or kandidaten, regel.project_tekst, regel.omschrijving
+            projectformaat, alle_kandidaten or kandidaten, regel.project_tekst
         )
+    if uitkomst.herkomst is None and kop_match is not None and kop_match.herkomst is not None:
+        uitkomst = kop_match  # één project per document: het kop-project geldt voor regels zonder eigen bron
     herkomst = uitkomst.herkomst
     if herkomst is None:
         return regel
-    regel = replace(regel, project_bron=herkomst, project_bron_detail=uitkomst.detail)
+    regel = replace(
+        regel, project_bron=herkomst, project_bron_detail=uitkomst.detail, project_kandidaten=uitkomst.kandidaten
+    )
     if uitkomst.project_id is None:
-        return regel  # meerduidig: niets invullen, wél zichtbaar maken
+        return regel  # meerduidig: niets invullen, wél zichtbaar maken (kandidaten in het scherm)
     return _met_herkomst(replace(regel, project_id=uitkomst.project_id), **{VELD_PROJECT: herkomst})
 
 
@@ -747,6 +815,7 @@ def verrijk_prefill(
     kop_project_tekst: str | None = None,
     factuur_verlegd: bool = False,
     verlegd_basis_detail: str | None = None,
+    factuur_teksten: tuple[str | None, ...] = (),
 ) -> tuple[list[BoekvoorstelRegelData], BoekvoorstelRegelData | None]:
     """Geeft (regels, samengevoegde_regel) terug mét regel-GB-voorstel (blok D), project uit de factuur (blok 10),
     leverancier-geheugen (A10), btw verlegd uit de factuur (blok 4c) en btw-default (blok E); élk gevuld veld draagt
@@ -795,6 +864,29 @@ def verrijk_prefill(
             werknummers = project_match.laad_werknummers(
                 session, administratie_id=administratie_id, vendor_id=vendor_id
             )
+    # Run D 02-10 blok B: het KOP-project van het document (één project per document) — volledige tekst, niveau 3
+    # uitsluitend hier (document-niveau), nooit per regel. De leveranciersnaam is nooit een match-token.
+    kop_match: project_match.ProjectMatch | None = None
+    if project_verplicht and projectkandidaten:
+        leverancier_naam = None
+        if vendor_id is not None:
+            from app.sync.models import VendorCache  # lokaal: alleen voor de naam-uitsluiting
+
+            leverancier_naam = session.scalar(
+                select(VendorCache.naam).where(
+                    VendorCache.administratie_id == administratie_id, VendorCache.id == vendor_id
+                )
+            )
+        kop_match = _kop_projectmatch(
+            kandidaten=projectkandidaten,
+            alle_kandidaten=alle_projecten,
+            werknummers=werknummers,
+            projectformaat=projectformaat,
+            kop_project_tekst=kop_project_tekst,
+            factuur_teksten=factuur_teksten,
+            regel_omschrijvingen=tuple(r.omschrijving for r in regels),
+            uitgesloten_tekst=leverancier_naam,
+        )
 
     regel_observaties: list[regel_gb.RegelObservatie] = []
     engine_observaties: list[Observatie] = []
@@ -849,6 +941,7 @@ def verrijk_prefill(
             project_verplicht=project_verplicht and projectdragend,
             projectformaat=projectformaat,
             alle_kandidaten=alle_projecten,
+            kop_match=kop_match,
         )
         regel = _met_leverancier_geheugen(
             regel,
@@ -892,6 +985,7 @@ def verrijk_prefill(
             project_verplicht=project_verplicht,
             projectformaat=projectformaat,
             alle_kandidaten=alle_projecten,
+            kop_match=kop_match,
         )
         samengevoegde_regel = _met_leverancier_geheugen(
             samengevoegde_regel,

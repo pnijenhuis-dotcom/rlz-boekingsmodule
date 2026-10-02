@@ -262,6 +262,7 @@ def _naar_regel_dto(r: boekvoorstel.BoekvoorstelRegelData) -> schemas.Boekvoorst
         overstap_vertaling=r.overstap_vertaling,
         project_bron=r.project_bron,
         project_bron_detail=r.project_bron_detail,
+        project_kandidaten=r.project_kandidaten,
         factuur_btw_percentage=r.factuur_btw_percentage,
         bedrag_niet_gelezen=r.bedrag_niet_gelezen,
     )

@@ -944,6 +944,9 @@ export interface BoekvoorstelRegelDto {
    * passen, `project_bron_detail` noemt ze); null = leeg/mens/geheugen. Informatief — de server negeert ze bij opslaan. */
   project_bron?: string | null
   project_bron_detail?: string | null
+  /** Run D 02-10 blok B: bij 'factuur_meerduidig' de kandidaten `{id, naam}` die het scherm als keuze toont; óók de bron
+   * 'factuur_plaats_opdrachtgever' (oranje: plaats + opdrachtgever van de projectnaam staan beide op de factuur). */
+  project_kandidaten?: { id: string; naam: string }[] | null
   /** BUG 18-09 (Zilver Horeca): btw-percentage dat de factuurregel zelf draagt (btw-kolom "9%"/"0%", fractie "0.0900") —
    * stuurt de bruto-kolom (netto × (1 + factuur-tarief), nooit geheugen-tarief); `btw_bron` 'factuur_regel' = de btw-code
    * komt uit die kolom (chip "factuur 0 %"). */

@@ -462,6 +462,51 @@
   "Afgesloten …"-naam (Universals afsluitmarkering, 19-09) is geen stopreden maar wordt gemeld. RLZ-factuurregels op een verliezer hangen
   nooit om (herboeken = mens, 02-10 beslispunt b); verwijderen gebeurt nooit — de verliezer gaat op afgesloten via de 0160-flow.
 
+<!-- toegevoegd 02-10-2026 avond, opdracht "run-D-alles-in-een" blok B — DOEL: docs/regels/verplichtingen-projecten-voorraad.md -->
+- **Projectmatch op plaats + opdrachtgever uit de héle factuurtekst, één project per document (blok B run D, Peter 02-10
+  "gooi alles maar in 1 run"; casussen 29-09, screenshots Peter: Huvanco 7 facturen mét hetzelfde werknummer kregen geen/
+  verkeerd project, Hoogwerkservice kreeg per REGEL een ander project; geen migratie, geen instelling; HERZIET niveau 3
+  "fuzzy op plaats/opdrachtgever ≥ 0,85 (SequenceMatcher)" van 07-09; BESLISSINGEN "RUN D 02-10 — BTW < € 0,10, PROJECTMATCH,
+  AFWIJZEN, IC 12 RICHTINGEN, PO STAP-0, NATIVE 1.3 (Peter 02-10)" blok B):** (1) **Volledige tekst.** De factuur-motor
+  (`app/projecten/match.py`, aanroep `regel_prefill.verrijk_prefill(factuur_teksten=…)`) leest kop-`proj`, de
+  `betreft`-regel van de scan, de UBL-`cbc:Note` én de regelomschrijvingen; `boekvoorstel._bereken_prefill` geeft `betreft`
+  + `note` als `factuur_teksten` mee. Niveau 1–2 zijn in betekenis ongewijzigd (exacte code groen, bevestigd werknummer
+  groen, onbevestigd oranje) maar werken nu óók op een werknummer dat als LOS TOKEN in die teksten staat
+  (`match.bepaal_werknummer_in_tekst`; "2025-0117" = "20250117", een deelstring is geen token). (2) **Niveau 3
+  deterministisch:** `match.bepaal_project_op_plaats_opdrachtgever` splitst de projectnaam volgens de naamconventie
+  ("26127 Tilburg (Heijmans)", "Afgesloten 25170 Hoogvliet, Troubadourlaan (Weboma)", Odoo "[26133] Eindhoven (BAM)") in
+  plaats-tokens (de woorden buiten de haken, zonder nummer en afsluitwoord) en opdrachtgever-tokens (de woorden tussen de
+  laatste haken; zonder haken = geen opdrachtgever = nooit een match); tokens ≥ 3 letters, accent- en hoofdletterongevoelig,
+  functie-/vulwoorden (`_STOPWOORDEN`: afgesloten, project, werk, holding, van, der, huur, …) tellen nooit, cijfers nooit.
+  Een plaats-token ÉN een opdrachtgever-token moeten BEIDE in de gelezen tekst staan: precies één kandidaat = ORANJE
+  voorstel `project_bron = factuur_plaats_opdrachtgever` (chip "op plaats + opdrachtgever", detail "Factuur noemt plaats +
+  opdrachtgever "hoogvliet" + "weboma" — past op 25170 …; controleer en bevestig"), meerdere = niets + `project_kandidaten`
+  [{id, naam}] op de regel-DTO (chip "meerdere passen, kies" + knoppen "Kies ‹naam›" onder het lege veld — één klik kiest),
+  alleen plaats óf alleen opdrachtgever = niets, OVH nooit, een puur numerieke tekst nooit. De leveranciersnaam zelf wordt uit
+  de tekst geknipt (afzender ≠ opdrachtgever). (3) **Eén project per document.** `regel_prefill._kop_projectmatch` bepaalt per
+  DOCUMENT het kop-project: niveau 1–2 op kop-`proj` → werknummer als token in de koptekst → klant-loze code (25-09) in de
+  koptekst → niveau 3 over koptekst + álle regelomschrijvingen samen. Per REGEL (`_met_factuur_project`) uitsluitend niveau
+  1–2 op de EIGEN regeltekst (werknummer/klant-loze code in de omschrijving éérst, dan regel-/kop-`proj`), nooit niveau 3
+  (`bepaal_project_uit_factuur(…, niveau3=False)`); geeft de regel zelf niets, dan geldt het kop-project. Twee regels die
+  elk een andere plaats + opdrachtgever noemen maken het document meerduidig (kandidaten), nooit twee projecten op naam.
+  (4) **Werknummer-mapping.** Boeken blijft de menselijke bevestiging (07-09, `leer_werknummers_uit_boeking`: eerste boeking
+  = mapping `factuur`/bevestigd; onbevestigd voorstel uit de kantoormodule = oranje tot de boeking) — de gevraagde "3× op rij"
+  is dus al ná de EERSTE boeking gehaald (strenger dan gevraagd, bewust niet verzwakt: minder mens-klikken; een teller zou
+  een migratie vergen). Nieuw: draagt de factuur géén `proj`, dan leert de boeking het ENIGE werknummer-achtige token uit
+  `betreft`/`cbc:Note` (`match.werknummer_kandidaat_in_koptekst`: cijfer + letter/scheidingsteken, ≥ 4 tekens, geen datum,
+  geen bedrag, puur numeriek nooit; meerdere kandidaten = niets, nooit raden) — zo zijn Huvanco's facturen 2–7 groen ná
+  één boeking. (5) **Autoboek-pad:** een regel mét een ORANJE project-herkomst (`match.ORANJE_PROJECT_HERKOMSTEN` =
+  factuur_onbevestigd, factuur_plaats_opdrachtgever) boekt nooit automatisch — weiger-reden "project-voorstel oranje (…) —
+  mens bevestigt het project", audit `autoboeken_geweigerd` (afwezig-pad-guard; vóór 02-10 kon een fuzzy-project
+  automatisch meeboeken). (6) **Persistentie/DTO:** `project_kandidaten` reist in het prefill-snapshot en de regel-DTO
+  (`BoekvoorstelRegelDto.project_kandidaten`, `api/types.ts`), komt ná het persisteren terug zolang het veld leeg is;
+  `factuur_plaats_opdrachtgever` is een A10-autosave-trigger (`_PROJECT_FACTUUR_HERKOMSTEN`). Meetlat: querybibliotheek
+  `project-prefill-herkomst` v2 (bron `factuur_plaats_opdrachtgever`, kolom `project_kandidaten`), dispatch-onderdeel
+  `project-match` (nameting.yml + nameting.sh). Guards `tests/projecten/test_match.py` (TestPlaatsOpdrachtgever,
+  TestWerknummerInTekst), `tests/documenten/test_project_match_tekst_02_10.py` (Hoogwerkservice, Huvanco 7 facturen, één
+  project per document, kandidaten, leveranciersnaam, autoboek weigert), keten casus i (niveau 3 raadt niet), vitest
+  `regelVoorstelChips.test.ts`, `BoekvoorstelPanel.projectfactuur.test.tsx`. Werkt in productie: niet gemeten.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)

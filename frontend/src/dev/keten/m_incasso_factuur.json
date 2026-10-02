@@ -371,6 +371,7 @@
         "btw_in_kosten": false,
         "btw_bron_detail": null,
         "gb_voorstel_detail": null,
+        "project_kandidaten": null,
         "project_bron_detail": null,
         "factuur_btw_percentage": null
        },
@@ -391,6 +392,7 @@
         "btw_in_kosten": false,
         "btw_bron_detail": null,
         "gb_voorstel_detail": null,
+        "project_kandidaten": null,
         "project_bron_detail": null,
         "factuur_btw_percentage": null
        }
@@ -473,6 +475,7 @@
     "overstap_vertaling": null,
     "project_bron": null,
     "project_bron_detail": null,
+    "project_kandidaten": null,
     "factuur_btw_percentage": null,
     "bedrag_niet_gelezen": false
    },
@@ -492,6 +495,7 @@
     "overstap_vertaling": null,
     "project_bron": null,
     "project_bron_detail": null,
+    "project_kandidaten": null,
     "factuur_btw_percentage": null,
     "bedrag_niet_gelezen": false
    }
@@ -514,6 +518,7 @@
    "overstap_vertaling": null,
    "project_bron": null,
    "project_bron_detail": null,
+   "project_kandidaten": null,
    "factuur_btw_percentage": null,
    "bedrag_niet_gelezen": false
   },

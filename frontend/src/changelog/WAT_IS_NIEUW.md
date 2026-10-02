@@ -10,6 +10,12 @@
 
 <!-- run-d-02-10 -->
 
+- Projectvoorstel leest nu de hele factuur: staan een plaats én een opdrachtgever uit een projectnaam allebei op de factuur (kop, betreft-regel of regels), dan stelt de module dat project voor met de oranje chip "op plaats + opdrachtgever" — u controleert en boekt; nooit meer "lijkt op".
+- Eén factuur, één project: het projectvoorstel geldt voor alle regels; alleen een regel die zelf een ander projectnummer of werknummer noemt krijgt een eigen project.
+- Passen er meerdere projecten, dan blijft het veld leeg en staan de kandidaten als knoppen onder het veld — één klik kiest.
+- Het werknummer van een leverancier wordt ook herkend als het alleen in de betreft-regel of een regelomschrijving staat; ná de eerste boeking zijn de volgende facturen met dat werknummer groen.
+- Een project dat alleen op plaats en opdrachtgever is voorgesteld wordt nooit automatisch geboekt.
+
 - **Btw op de factuur is leidend — een verschil onder € 0,10 blokkeert het boeken niet meer.** Wijkt het btw-bedrag van de factuur minder dan tien cent af van wat het tarief geeft (bijvoorbeeld € 913,27 waar 21 % € 913,33 geeft), dan is de controle "Btw-bedrag past bij tarief" gewoon groen en gaat de factuur-btw naar Reeleezee. Vanaf tien cent wordt de rij oranje mét de bekende knoppen "Btw in kosten (0 %)" en "Zet N %" — u kunt dan nog steeds boeken; alleen als netto + btw niet op het factuurtotaal sluit blijft de rij rood.
 - **Automatisch boeken** loopt bij zo'n klein verschil gewoon door; bij een oranje btw-rij boekt het systeem niet zelf en legt het zichtbaar vast dat een mens moet kijken.
 - **Reconciliatie:** wijkt het bedrag in Reeleezee minder dan tien cent af doordat Reeleezee de btw per tarief herrekent (netto gelijk) en boekt Reeleezee daarbij méér voorbelasting dan de factuur, dan accepteert het systeem dat automatisch met een eigen audit-spoor; boekt Reeleezee juist mínder voorbelasting, dan ziet u dat als bevinding "in meting" op Inzicht › Reconciliatie — nooit stil.

@@ -393,11 +393,18 @@ def _project_teksten_per_regel(
 ) -> list[tuple[uuid.UUID | None, str | None]]:
     """Per geboekte regel (project_id, op de factuur gelezen projecttekst): regel-`proj` als de regelset
     één-op-één de extractie is (gesplitst, gelijk aantal), anders kop-`proj` — precies de prefill-regel
-    (regel wint van kop, kop = default). Geen veldvoorstel = niets te leren."""
+    (regel wint van kop, kop = default). Geen veldvoorstel = niets te leren.
+    Run D 02-10 blok B (Huvanco: het werknummer stond in de betreft-regel, niet in `proj`): zonder enig `proj` valt de
+    kop terug op het ENIGE werknummer-achtige token in `betreft`/`cbc:Note` (`match.werknummer_kandidaat_in_koptekst`,
+    nooit raden bij meerdere) — zo leert de eerste boeking de mapping en zijn facturen 2…n van die leverancier groen."""
     if not veldvoorstel:
         return [(r.project_id, None) for r in regels]
     # Blok 4 (08-09): dezelfde regelset als de prefill — tariefstaffels weg, kop = kop-`proj` óf het enige regel-`proj`.
     kop = veldvoorstel_regels.kop_project_tekst(veldvoorstel)
+    if kop is None:
+        from app.projecten.match import werknummer_kandidaat_in_koptekst  # lazy: geen kring op moduleniveau
+
+        kop = werknummer_kandidaat_in_koptekst(veldvoorstel.get("betreft"), veldvoorstel.get("note"))
     ai_regels = veldvoorstel_regels.boekbare_regels(veldvoorstel)
     uit: list[tuple[uuid.UUID | None, str | None]] = []
     for i, regel in enumerate(regels):

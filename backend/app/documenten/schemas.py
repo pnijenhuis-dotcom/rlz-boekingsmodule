@@ -766,6 +766,9 @@ class BoekvoorstelRegelDto(BaseModel):
     # ze bij opslaan; chip weg zodra de mens het veld aanraakt (zelfde regel als gb_bron/btw_bron).
     project_bron: str | None = None
     project_bron_detail: str | None = None
+    # Run D 02-10 blok B: bij "factuur_meerduidig" de kandidaten [{id, naam}] — het scherm toont ze als keuze; óók
+    # "factuur_plaats_opdrachtgever" (oranje: plaats + opdrachtgever van de projectnaam staan beide op de factuur).
+    project_kandidaten: list[dict] | None = None
     # BUG 18-09 (Zilver Horeca): het btw-percentage dat de factuurregel zelf draagt (btw-kolom, fractie "0.0900"); stuurt
     # de bruto-kolom in het controlescherm (netto × (1 + factuur-tarief), nooit geheugen-tarief). `btw_bron`
     # "factuur_regel" = de btw-code komt uit die kolom (chip "factuur 0 %").

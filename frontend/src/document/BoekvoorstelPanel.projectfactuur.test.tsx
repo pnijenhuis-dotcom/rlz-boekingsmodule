@@ -145,6 +145,52 @@ describe('BoekvoorstelPanel — project uit de factuur (blok 10 07-09, Spot Serv
     expect(screen.getAllByLabelText('Project', { exact: false })[0]).toHaveValue('')
   })
 
+  it('run D 02-10 blok B: plaats + opdrachtgever = oranje chip "op plaats + opdrachtgever" op álle regels (één project per document)', async () => {
+    const detail = 'Factuur noemt plaats + opdrachtgever "hoogvliet" + "weboma" — past op 26140 Koningstraat (Confide); controleer en bevestig'
+    installFetchMock([
+      regel({ project_id: PROJECT_KONING, project_bron: 'factuur_plaats_opdrachtgever', project_bron_detail: detail }),
+      regel({ omschrijving: 'Transport', project_id: PROJECT_KONING, project_bron: 'factuur_plaats_opdrachtgever', project_bron_detail: detail, netto_bedrag: '150.00', btw_bedrag: '31.50' }),
+    ])
+    renderPanel()
+    const chips = await screen.findAllByTestId('regel-project-factuur-chip')
+    expect(chips).toHaveLength(2)
+    for (const chip of chips) {
+      expect(chip).toHaveTextContent('op plaats + opdrachtgever')
+      expect(chip).toHaveClass('chip', 'afwijking')
+      expect(chip).toHaveAttribute('title', expect.stringContaining('hoogvliet'))
+    }
+    // Bij ≥ 2 regels staat óók het kopveld "Project voor alle regels" (FV-07) in de lijst — toets de regelvelden.
+    await waitFor(() => {
+      const waarden = screen.getAllByLabelText('Project', { exact: false }).map((el) => (el as HTMLInputElement).value)
+      expect(waarden.filter((w) => w === '26140 Koningstraat (Confide)')).toHaveLength(2)
+    })
+  })
+
+  it('run D 02-10 blok B: meerduidig toont de kandidaten als keuze; één klik kiest het project en de chip verdwijnt', async () => {
+    installFetchMock([
+      regel({
+        project_id: null,
+        project_bron: 'factuur_meerduidig',
+        project_bron_detail: 'Factuur noemt plaats + opdrachtgever — meerdere projecten passen: 26140 Koningstraat (Confide), 26127 Tilburg (Heijmans). Kies zelf.',
+        project_kandidaten: [
+          { id: PROJECT_KONING, naam: '26140 Koningstraat (Confide)' },
+          { id: PROJECT_TILBURG, naam: '26127 Tilburg (Heijmans)' },
+        ],
+      }),
+    ])
+    const gebruiker = userEvent.setup()
+    renderPanel()
+    const chip = await screen.findByTestId('regel-project-factuur-chip')
+    expect(chip).toHaveTextContent('meerdere passen, kies')
+    const kandidaten = screen.getByTestId('regel-project-kandidaten')
+    expect(kandidaten).toHaveTextContent('Kies 26140 Koningstraat (Confide)')
+    expect(kandidaten).toHaveTextContent('Kies 26127 Tilburg (Heijmans)')
+    await gebruiker.click(screen.getByRole('button', { name: 'Kies 26127 Tilburg (Heijmans)' }))
+    await waitFor(() => expect(screen.getAllByLabelText('Project', { exact: false })[0]).toHaveValue('26127 Tilburg (Heijmans)'))
+    await waitFor(() => expect(screen.queryByTestId('regel-project-kandidaten')).toBeNull())
+    expect(screen.queryByTestId('regel-project-factuur-chip')).toBeNull()
+  })
+
   it('de chip verdwijnt zodra de mens het project zelf kiest (mens wint)', async () => {
     installFetchMock([regel({ project_id: PROJECT_KONING, project_bron: 'factuur' })])
     const gebruiker = userEvent.setup()

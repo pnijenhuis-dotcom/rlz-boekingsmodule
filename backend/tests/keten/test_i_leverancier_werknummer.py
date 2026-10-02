@@ -66,6 +66,16 @@ class TestWerknummer:
         checks = keten.checks(factuur)
         assert "project" not in checks["Verplichte velden"][1]
 
+    def test_niveau3_plaats_opdrachtgever_raadt_niet_op_casus_a(self, keten: Keten, factuur: uuid.UUID) -> None:
+        """Run D 02-10 blok B: niveau 3 is deterministisch (plaats-token ÉN opdrachtgever-token). De tekst van casus a
+        ("Werk: 26084 - Opdrachtgever A (W03611)", projectnaam "26084 Opdrachtgever A (Universal Nederland)") draagt
+        de afzendernaam als opdrachtgever — die telt nooit mee — en geen plaats-token → zonder mapping blijft het veld
+        leeg, er wordt nooit op niveau 3 geraden (vóór 02-10 kon de SequenceMatcher-fuzzy hier "lijkt op" zeggen)."""
+        voorstel = keten.prefill(factuur)
+        assert all(r.project_id is None for r in voorstel.regels)
+        assert all(r.project_bron != "factuur_plaats_opdrachtgever" for r in voorstel.regels)
+        assert all(r.project_kandidaten is None for r in voorstel.regels)
+
     def test_werknummer_tabel_rij(self, keten: Keten, admin_engine: Engine, factuur: uuid.UUID) -> None:
         _werknummer(keten, bevestigd=True)
         with admin_engine.connect() as conn:

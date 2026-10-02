@@ -14,10 +14,21 @@ Twee ingangen:
     1. exacte projectcode (genormaliseerd: hoofdletters/spaties/leestekens weg) → GROEN;
     2. leverancier-werknummer-mapping (`leverancier_werknummer`) → groen als de mapping bevestigd is
        (`app_bevestigd`-patroon, CLAUDE.md "Boekingsgeheugen"), anders oranje;
-    3. plaats-/opdrachtgever-fuzzy op de projectnaam → ALTIJD oranje; het OVH-project nooit via fuzzy
-       (overhead wordt bewust gekozen, nooit geraden — CLAUDE.md "Projecten").
+    3. plaats + opdrachtgever in de projectnaam — DETERMINISTISCH sinds run D 02-10 (blok B, casussen Huvanco/
+       Hoogwerkservice 29-09; herziet de SequenceMatcher-fuzzy van 07-09): een plaats-token én een opdrachtgever-
+       token van de projectnaam ("26127 Tilburg (Heijmans)": plaats = de woorden buiten de haken ná het nummer,
+       opdrachtgever = de woorden tussen de haken) moeten BEIDE genormaliseerd in de gelezen factuurtekst staan;
+       precies één kandidaat → ORANJE voorstel (`factuur_plaats_opdrachtgever`, chip "op plaats + opdrachtgever");
+       meerdere → niets + de kandidaten in het scherm; alleen plaats óf alleen opdrachtgever → niets. Het OVH-project
+       nooit via niveau 3 (overhead wordt bewust gekozen, nooit geraden — CLAUDE.md "Projecten"). Niveau 3 loopt
+       uitsluitend op DOCUMENT-niveau (één project per document) — nooit per regel.
   Meerduidig op een niveau (meerdere kandidaten) = NIETS invullen; de kandidaten reizen mee in de
   uitkomst zodat het controlescherm ze kan tonen ("nooit auto-toewijzen bij twijfel").
+
+Sinds run D 02-10 leest de factuur-motor de VOLLEDIGE tekst (kop-`proj`, `betreft`, UBL-`cbc:Note`,
+regelomschrijvingen): `bepaal_werknummer_in_tekst` vindt een leverancier-werknummer als los token in élke gelezen
+tekst (niveau 2 ongewijzigd in betekenis — bevestigd groen, onbevestigd oranje), `bepaal_project_uit_tekst` de
+klant-loze code (25-09) en `bepaal_project_op_plaats_opdrachtgever` niveau 3 over kop + regels samen.
 
 Alleen ACTIEVE projecten van de administratie zijn kandidaat (de lader filtert `is_actief`/`verdwenen`).
 """
@@ -44,12 +55,16 @@ logger = logging.getLogger(__name__)
 #: Match-niveaus van de factuur-motor (ook de `project_bron`-detailtekst in de UI leest ze).
 NIVEAU_CODE = "code"
 NIVEAU_WERKNUMMER = "werknummer"
-NIVEAU_FUZZY = "fuzzy"
+NIVEAU_FUZZY = "fuzzy"  # historisch (07-09 → 02-10); de factuur-motor levert dit niveau niet meer
+NIVEAU_PLAATS_OPDRACHTGEVER = "plaats_opdrachtgever"  # run D 02-10 blok B: deterministisch niveau 3
 
 #: Herkomst-waarden voor `BoekvoorstelRegelData.prefill_herkomst["project"]` / DTO `project_bron`.
 HERKOMST_FACTUUR = "factuur"  # groen: exacte code of bevestigde werknummer-mapping
 HERKOMST_FACTUUR_ONBEVESTIGD = "factuur_onbevestigd"  # oranje: onbevestigde mapping of fuzzy
 HERKOMST_FACTUUR_MEERDUIDIG = "factuur_meerduidig"  # niets ingevuld: meerdere kandidaten
+HERKOMST_FACTUUR_PLAATS_OPDRACHTGEVER = "factuur_plaats_opdrachtgever"  # oranje: niveau 3 (run D 02-10 blok B)
+#: Oranje project-herkomsten — een mens bevestigt; het autoboek-pad boekt er NOOIT automatisch op (blok B 02-10).
+ORANJE_PROJECT_HERKOMSTEN = frozenset({HERKOMST_FACTUUR_ONBEVESTIGD, HERKOMST_FACTUUR_PLAATS_OPDRACHTGEVER})
 
 #: `leverancier_werknummer.bron` voor mappings die uit een geboekte factuur geleerd zijn.
 WERKNUMMER_BRON_FACTUUR = "factuur"
@@ -87,10 +102,20 @@ class ProjectMatch:
     @property
     def herkomst(self) -> str | None:
         if self.project_id is not None:
+            if self.niveau == NIVEAU_PLAATS_OPDRACHTGEVER:
+                return HERKOMST_FACTUUR_PLAATS_OPDRACHTGEVER
             return HERKOMST_FACTUUR if self.bevestigd else HERKOMST_FACTUUR_ONBEVESTIGD
         if self.meerduidig:
             return HERKOMST_FACTUUR_MEERDUIDIG
         return None
+
+    @property
+    def kandidaten(self) -> list[dict[str, str]] | None:
+        """Meerduidig → de kandidaten als DTO-rijtjes ({id, naam}) voor het controlescherm ("kandidaten in het
+        scherm", blok B 02-10); anders None."""
+        if not self.meerduidig:
+            return None
+        return [{"id": str(k.id), "naam": k.naam} for k in self.meerduidig]
 
     @property
     def detail(self) -> str | None:
@@ -103,6 +128,11 @@ class ProjectMatch:
             if self.niveau == NIVEAU_WERKNUMMER:
                 stand = "bevestigd" if self.bevestigd else "nog niet bevestigd — boeken bevestigt 'm"
                 return f'Werknummer "{self.gelezen}" van deze leverancier hoort bij {self.project_naam} ({stand})'
+            if self.niveau == NIVEAU_PLAATS_OPDRACHTGEVER:
+                return (
+                    f"Factuur noemt plaats + opdrachtgever {self.gelezen} — past op {self.project_naam}; "
+                    "controleer en bevestig (voorstel, geen projectnummer op de factuur)"
+                )
             return f'Factuur vermeldt "{self.gelezen}" — lijkt op {self.project_naam}; controleer en bevestig'
         if self.meerduidig:
             namen = ", ".join(k.naam for k in self.meerduidig)
@@ -150,8 +180,12 @@ def bepaal_project_uit_factuur(
     project_tekst: str | None,
     kandidaten: list[ProjectKandidaat],
     werknummers: list[WerknummerKoppeling] | None = None,
+    *,
+    niveau3: bool = True,
 ) -> ProjectMatch:
-    """Factuur-motor met de vaste volgorde code → werknummer → fuzzy (zie module-docstring)."""
+    """Factuur-motor met de vaste volgorde code → werknummer → plaats + opdrachtgever (zie module-docstring).
+    `niveau3=False` (prefill per REGEL, blok B 02-10): alleen niveau 1–2 — plaats/opdrachtgever loopt uitsluitend op
+    document-niveau (`bepaal_project_op_plaats_opdrachtgever`), nooit per regel."""
     gelezen = " ".join((project_tekst or "").split()) or None
     if gelezen is None or not kandidaten:
         return ProjectMatch(gelezen=gelezen)
@@ -189,21 +223,14 @@ def bepaal_project_uit_factuur(
         if uitkomst is not None:
             return uitkomst
 
-    # 3. Fuzzy op plaats/opdrachtgever in de projectnaam — altijd oranje, OVH nooit. Een puur NUMERIEKE tekst die
-    #    op niveau 1 en 2 niets opleverde is een onbekend nummer, geen plaatsnaam: nooit fuzzy ("2614" ≠ 26140).
-    if doel.isdigit():
+    # 3. Plaats + opdrachtgever in de projectnaam — deterministisch (run D 02-10 blok B), altijd oranje, OVH nooit.
+    #    Een puur NUMERIEKE tekst die op niveau 1 en 2 niets opleverde is een onbekend nummer, geen plaatsnaam
+    #    ("2614" ≠ 26140). De SequenceMatcher-fuzzy van 07-09 is vervallen: "lijkt op" raadde (Hoogwerkservice 29-09
+    #    kreeg per regel een ander project).
+    if not niveau3 or doel.isdigit():
         return ProjectMatch(gelezen=gelezen)
-    fuzzy_kandidaten = [k for k in kandidaten if k.naam and not is_ovh_project(k.naam)]
-    fuzzy_id, _match, fuzzy_naam = _match_op_naam(doel, fuzzy_kandidaten)
-    if fuzzy_id is not None:
-        return ProjectMatch(
-            gelezen=gelezen, project_id=fuzzy_id, project_naam=fuzzy_naam, niveau=NIVEAU_FUZZY, bevestigd=False
-        )
-    op_naam = _naam_bevat(doel, fuzzy_kandidaten)
-    if len({k.id for k in op_naam}) > 1:
-        uniek = {k.id: k for k in op_naam}
-        return ProjectMatch(gelezen=gelezen, meerduidig=tuple(sorted(uniek.values(), key=lambda k: k.naam)))
-    return ProjectMatch(gelezen=gelezen)
+    uitkomst = bepaal_project_op_plaats_opdrachtgever(kandidaten, gelezen)
+    return uitkomst if uitkomst.herkomst is not None else ProjectMatch(gelezen=gelezen)
 
 
 def _naam_bevat(doel: str, kandidaten: list[ProjectKandidaat]) -> list[ProjectKandidaat]:
@@ -355,6 +382,208 @@ def factuur_noemt_ander_project(
     eigen = {code for code, ids in formaat.codes.items() if geheugen_project_id in ids}
     anders = [n for n in nummers if n not in eigen]
     return ", ".join(anders) if anders else None
+
+
+# --- run D 02-10 blok B: werknummer in de volledige tekst + deterministisch niveau 3 (plaats + opdrachtgever) ----
+
+_WOORD = re.compile(r"[^\W\d_]{3,}", re.UNICODE)
+#: Woorden die in projectnamen staan maar niets over plaats of opdrachtgever zeggen (nooit een match-token).
+_STOPWOORDEN = frozenset(
+    {
+        "afgesloten",
+        "project",
+        "werk",
+        "fase",
+        "bouw",
+        "nieuwbouw",
+        "renovatie",
+        "woningen",
+        "woning",
+        "appartementen",
+        "holding",
+        "groep",
+        "beheer",
+        "vastgoed",
+        "steigerbouw",
+        "steiger",
+        "steigers",
+        "diensten",
+        "service",
+        "services",
+        "overhead",
+        "intern",
+        "algemene",
+        "kosten",
+        # functiewoorden/afkortingen (≥ 3 letters) die nooit een plaats of opdrachtgever aanwijzen
+        "van",
+        "der",
+        "den",
+        "het",
+        "een",
+        "bij",
+        "aan",
+        "met",
+        "voor",
+        "per",
+        "btw",
+        "excl",
+        "incl",
+        "vof",
+        "the",
+        "and",
+        "via",
+        "uur",
+        "stuk",
+        "stuks",
+        "prijs",
+        "totaal",
+        "week",
+        "weken",
+        "huur",
+        "levering",
+        "transport",
+        "montage",
+        "demontage",
+        "factuur",
+        "betreft",
+        "referentie",
+        "opdracht",
+        "opdrachtgever",
+        "plaats",
+    }
+)
+
+
+def _woord_tokens(tekst: str | None) -> frozenset[str]:
+    """Genormaliseerde woord-tokens (≥ 3 letters, accenten weg, kleine letters, functiewoorden eruit) —
+    cijfers/bedragen/datums tellen nooit."""
+    if not tekst:
+        return frozenset()
+    import unicodedata
+
+    plat = unicodedata.normalize("NFKD", tekst)
+    plat = "".join(ch for ch in plat if not unicodedata.combining(ch)).lower()
+    return frozenset(t for t in _WOORD.findall(plat) if t not in _STOPWOORDEN)
+
+
+_HAAKJES = re.compile(r"[\(\[]([^\)\]]*)[\)\]]")
+
+
+def plaats_opdrachtgever_tokens(naam: str | None) -> tuple[frozenset[str], frozenset[str]]:
+    """Projectnaam → (plaats-tokens, opdrachtgever-tokens) volgens de naamconventie "26127 Tilburg (Heijmans)" /
+    "Afgesloten 25170 Hoogvliet, Troubadourlaan (Weboma)" / Odoo "[26133] Eindhoven (BAM)": opdrachtgever = de woorden
+    tussen de laatste haken, plaats = de woorden daarbuiten (het nummer en "Afgesloten" tellen niet). Zonder haken is er
+    geen opdrachtgever → zo'n project kan op niveau 3 nooit matchen (nooit raden)."""
+    if not naam:
+        return frozenset(), frozenset()
+    from app.projecten.nummer import zonder_afgesloten_voorvoegsel
+
+    kaal = zonder_afgesloten_voorvoegsel(naam) or naam
+    kaal = _NUMMER_PREFIX.sub("", kaal, count=1)
+    binnen = _HAAKJES.findall(kaal)
+    # Een leidende "[26133]"-Odoo-haak is al door het nummer-prefix weggenomen; de láátste haak is de opdrachtgever.
+    opdrachtgever = _woord_tokens(binnen[-1]) if binnen else frozenset()
+    buiten = _HAAKJES.sub(" ", kaal)
+    return _woord_tokens(buiten), opdrachtgever
+
+
+def bepaal_project_op_plaats_opdrachtgever(kandidaten: list[ProjectKandidaat], *teksten: str | None) -> ProjectMatch:
+    """Niveau 3 (run D 02-10 blok B), deterministisch: een plaats-token ÉN een opdrachtgever-token van de projectnaam
+    staan BEIDE in de gelezen tekst (kop-`proj`, `betreft`, `cbc:Note`, regelomschrijvingen — samen, document-niveau).
+    Precies één kandidaat → ORANJE voorstel; meerdere → meerduidig (niets invullen, kandidaten mee); alleen plaats óf
+    alleen opdrachtgever → niets. OVH nooit. Casus Hoogwerkservice 29-09: "500zzp - walterpark - hoogvliet / Weboma /
+    Troubadourlaan Hoogvliet" → "25170 Hoogvliet, Troubadourlaan (Weboma)" (plaats hoogvliet/troubadourlaan +
+    opdrachtgever weboma); "25013 Deurne (…)" nooit."""
+    tokens: set[str] = set()
+    for tekst in teksten:
+        tokens |= _woord_tokens(tekst)
+    if not tokens or not kandidaten:
+        return ProjectMatch(gelezen=None)
+    treffers: list[tuple[ProjectKandidaat, str, str]] = []
+    for k in kandidaten:
+        if not k.naam or is_ovh_project(k.naam):
+            continue
+        plaats, opdrachtgever = plaats_opdrachtgever_tokens(k.naam)
+        plaats_hit = sorted(plaats & tokens)
+        opdr_hit = sorted(opdrachtgever & tokens)
+        if plaats_hit and opdr_hit:
+            treffers.append((k, plaats_hit[0], opdr_hit[0]))
+    if not treffers:
+        return ProjectMatch(gelezen=None)
+    uniek = {k.id: (k, p, o) for k, p, o in treffers}
+    if len(uniek) == 1:
+        k, p, o = next(iter(uniek.values()))
+        return ProjectMatch(
+            gelezen=f'"{p}" + "{o}"',
+            project_id=k.id,
+            project_naam=k.naam,
+            niveau=NIVEAU_PLAATS_OPDRACHTGEVER,
+            bevestigd=False,
+        )
+    gelezen = ", ".join(sorted({f'"{p}" + "{o}"' for _k, p, o in uniek.values()}))
+    return ProjectMatch(
+        gelezen=gelezen, meerduidig=tuple(sorted((k for k, _p, _o in uniek.values()), key=lambda k: k.naam))
+    )
+
+
+def bepaal_werknummer_in_tekst(
+    kandidaten: list[ProjectKandidaat], werknummers: list[WerknummerKoppeling] | None, *teksten: str | None
+) -> ProjectMatch:
+    """Niveau 2 over de volledige factuurtekst (run D 02-10 blok B — Huvanco: het werknummer stond niet in `proj`
+    maar in de omschrijving/betreft-regel): een leverancier-werknummer dat als LOS TOKEN (genormaliseerd;
+    "Werk 4711-B" = "werk4711b") in een van de teksten staat. Betekenis ongewijzigd: bevestigd = groen, onbevestigd =
+    oranje, twee werknummers naar verschillende projecten = meerduidig. Alleen actieve projecten."""
+    if not werknummers or not kandidaten:
+        return ProjectMatch(gelezen=None)
+    per_id = {k.id: k for k in kandidaten}
+    tokens: set[str] = set()
+    for tekst in teksten:
+        if tekst:
+            tokens |= _tokens(tekst)
+    if not tokens:
+        return ProjectMatch(gelezen=None)
+    treffers: list[tuple[WerknummerKoppeling, str]] = []
+    for w in werknummers:
+        norm = normaliseer_projectcode(w.werknummer)
+        if norm and norm in tokens and w.project_id in per_id:
+            treffers.append((w, w.werknummer))
+    if not treffers:
+        return ProjectMatch(gelezen=None)
+    gelezen = ", ".join(sorted({t for _w, t in treffers}))
+    uitkomst = _uniek_of_meerduidig(
+        gelezen,
+        [per_id[w.project_id] for w, _t in treffers],
+        niveau=NIVEAU_WERKNUMMER,
+        bevestigd=all(w.bevestigd for w, _t in treffers),
+    )
+    return uitkomst if uitkomst is not None else ProjectMatch(gelezen=gelezen)
+
+
+_DATUM_TOKEN = re.compile(r"^(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}|\d{4}[-/.]\d{1,2}[-/.]\d{1,2})$")
+_BEDRAG_TOKEN = re.compile(r"^[€$]?\d{1,3}([.,]\d{3})*([.,]\d{1,2})?$")
+
+
+def werknummer_kandidaat_in_koptekst(*teksten: str | None) -> str | None:
+    """Leerlus-hulp (run D 02-10 blok B, Huvanco): welk token in de koptekst (`betreft`, `cbc:Note`) is het werknummer
+    van de leverancier als de factuur géén `proj` draagt? Deterministisch en smal: een token mét minstens één cijfer én
+    minstens één letter of scheidingsteken ("2025-0117", "W03611", "PO-4711B"), ≥ 4 tekens, geen datum, geen bedrag;
+    puur-numerieke tokens tellen NIET (jaartal, bedrag, projectcode — te ambigu om als werknummer te onthouden). Precies
+    één kandidaat (genormaliseerd uniek) → die tekst; nul of meerdere → None (nooit raden)."""
+    gevonden: dict[str, str] = {}
+    for tekst in teksten:
+        if not tekst:
+            continue
+        for ruw in re.split(r"[\s/,;:|]+", tekst):
+            token = ruw.strip("()[]{}.,;:'\"")
+            if len(token) < 4 or not any(ch.isdigit() for ch in token):
+                continue
+            if token.isdigit() or _DATUM_TOKEN.match(token) or _BEDRAG_TOKEN.match(token):
+                continue
+            norm = normaliseer_projectcode(token)
+            if not norm:
+                continue
+            gevonden.setdefault(norm, token)
+    return next(iter(gevonden.values())) if len(gevonden) == 1 else None
 
 
 # --- laders + leerlus (DB) -------------------------------------------------------------------------------

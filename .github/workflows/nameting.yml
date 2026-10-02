@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie | doorbelasting-btw | xml-documenten | crediteuren-naamclusters | project-bronvolgorde | aangifteperiode | crediteur-paneel | btw-netto | tabwissel | lijst-alles | comfort-controlescherm | planning-v4 | verkoop-overstap | vastly-verkoop | bijlagen-factuur | project-dubbel | webhook-wacht | btw-afronding)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels | projecten-afgesloten | groep-saldi | bua-kandidaten | veldwerkers-dubbelen | jobs-start | btw-niet-plichtig | intake-postvak-audit | checks-cache | extern-geboekt | activa-kaart | ai-heraanbieden | vastly-tweelingen | odoo-taal | dearchiveren-odoo | doorbelasting-pdf | bua-jaarrapport | activa-conventie | doorbelasting-btw | xml-documenten | crediteuren-naamclusters | project-bronvolgorde | aangifteperiode | crediteur-paneel | btw-netto | tabwissel | lijst-alles | comfort-controlescherm | planning-v4 | verkoop-overstap | vastly-verkoop | bijlagen-factuur | project-dubbel | webhook-wacht | btw-afronding | project-match)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop, bijlagen-factuur, project-dubbel, webhook-wacht, btw-afronding]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query, projecten-afgesloten, groep-saldi, bua-kandidaten, veldwerkers-dubbelen, jobs-start, corrigeren, btw-niet-plichtig, intake-postvak-audit, checks-cache, extern-geboekt, activa-kaart, ai-heraanbieden, vastly-tweelingen, odoo-taal, dearchiveren-odoo, doorbelasting-pdf, bua-jaarrapport, activa-conventie, doorbelasting-btw, xml-documenten, crediteuren-naamclusters, project-bronvolgorde, aangifteperiode, crediteur-paneel, btw-netto, tabwissel, lijst-alles, comfort-controlescherm, planning-v4, verkoop-overstap, vastly-verkoop, bijlagen-factuur, project-dubbel, webhook-wacht, btw-afronding, project-match]
       query:
         description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
         type: string
@@ -78,7 +78,7 @@ jobs:
           rc_vgg=0
           # Élk niet-VGG-onderdeel staat hier uitgesloten (21-09: groep-saldi ontbrak sinds 21-09 ochtend → vgg_blok7_nameting.sh
           # weigerde 'm met exit 2 en de workflow werd rood vóór de eigen tak; guard test_nameting_workflow.py).
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" && "$ONDERDEEL" != "doorbelasting-btw" && "$ONDERDEEL" != "xml-documenten" && "$ONDERDEEL" != "crediteuren-naamclusters" && "$ONDERDEEL" != "project-bronvolgorde" && "$ONDERDEEL" != "aangifteperiode" && "$ONDERDEEL" != "crediteur-paneel" && "$ONDERDEEL" != "btw-netto" && "$ONDERDEEL" != "tabwissel" && "$ONDERDEEL" != "lijst-alles" && "$ONDERDEEL" != "comfort-controlescherm" && "$ONDERDEEL" != "planning-v4" && "$ONDERDEEL" != "verkoop-overstap" && "$ONDERDEEL" != "vastly-verkoop" && "$ONDERDEEL" != "bijlagen-factuur" && "$ONDERDEEL" != "project-dubbel" && "$ONDERDEEL" != "webhook-wacht" && "$ONDERDEEL" != "btw-afronding" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" && "$ONDERDEEL" != "projecten-afgesloten" && "$ONDERDEEL" != "groep-saldi" && "$ONDERDEEL" != "bua-kandidaten" && "$ONDERDEEL" != "veldwerkers-dubbelen" && "$ONDERDEEL" != "jobs-start" && "$ONDERDEEL" != "corrigeren" && "$ONDERDEEL" != "btw-niet-plichtig" && "$ONDERDEEL" != "intake-postvak-audit" && "$ONDERDEEL" != "checks-cache" && "$ONDERDEEL" != "extern-geboekt" && "$ONDERDEEL" != "activa-kaart" && "$ONDERDEEL" != "ai-heraanbieden" && "$ONDERDEEL" != "vastly-tweelingen" && "$ONDERDEEL" != "odoo-taal" && "$ONDERDEEL" != "dearchiveren-odoo" && "$ONDERDEEL" != "doorbelasting-pdf" && "$ONDERDEEL" != "bua-jaarrapport" && "$ONDERDEEL" != "activa-conventie" && "$ONDERDEEL" != "doorbelasting-btw" && "$ONDERDEEL" != "xml-documenten" && "$ONDERDEEL" != "crediteuren-naamclusters" && "$ONDERDEEL" != "project-bronvolgorde" && "$ONDERDEEL" != "aangifteperiode" && "$ONDERDEEL" != "crediteur-paneel" && "$ONDERDEEL" != "btw-netto" && "$ONDERDEEL" != "tabwissel" && "$ONDERDEEL" != "lijst-alles" && "$ONDERDEEL" != "comfort-controlescherm" && "$ONDERDEEL" != "planning-v4" && "$ONDERDEEL" != "verkoop-overstap" && "$ONDERDEEL" != "vastly-verkoop" && "$ONDERDEEL" != "bijlagen-factuur" && "$ONDERDEEL" != "project-dubbel" && "$ONDERDEEL" != "webhook-wacht" && "$ONDERDEEL" != "btw-afronding" && "$ONDERDEEL" != "project-match" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -887,6 +887,26 @@ jobs:
             STIL="$(grep -c 'leverancier_geheugen |  |' "$UIT" || true)"
             echo "Oordeel: regels mét herkomst leverancier_geheugen zonder project_bron = $STIL (0 = GROEN: het stille pad komt niet meer voor) — exit $rc_fa" >> "$UIT"
             echo "STATUS project-bronvolgorde: rapport in $UIT (exit $rc_fa = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "project-match" ]]; then
+            # Run D 02-10 blok B (BESLISSINGEN "RUN D 02-10 — BTW < € 0,10, PROJECTMATCH, AFWIJZEN, IC 12 RICHTINGEN, PO STAP-0, NATIVE 1.3 (Peter 02-10)"):
+            # lees-only meetrecept projectmatch op plaats + opdrachtgever / één project per document — querybibliotheek
+            # project-prefill-herkomst (v2: project_bron factuur_plaats_opdrachtgever + kolom project_kandidaten) op Universal Steigerbouw.
+            UIT="verkenning/nameting-project-match-$DATUM.txt"
+            rc_pm=0
+            {
+              for FILTER in "" "--param project_bron=factuur_plaats_opdrachtgever" "--param project_bron=factuur_meerduidig"; do
+                echo "== db-lezen project-prefill-herkomst --administratie Universal Steigerbouw $FILTER =="
+                # shellcheck disable=SC2086
+                scripts/gcp/nameting.sh db-lezen project-prefill-herkomst --administratie "Universal Steigerbouw" $FILTER 2> nameting-pm.stderr || { rc_pm=$?; echo "(nameting.sh exit $rc_pm — stderr:)"; cat nameting-pm.stderr; }
+                echo
+              done
+            } > "$UIT"
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — exit $rc_pm)" >> "$UIT"
+            PO="$(grep -c 'factuur_plaats_opdrachtgever' "$UIT" || true)"
+            MD="$(grep -c 'factuur_meerduidig' "$UIT" || true)"
+            echo "Oordeel: project-match — $PO rij(en) factuur_plaats_opdrachtgever, $MD rij(en) factuur_meerduidig (rijen over alle drie de secties; de gefilterde secties herhalen de ongefilterde) — exit $rc_pm" >> "$UIT"
+            echo "STATUS project-match: rapport in $UIT (exit $rc_pm = uitkomst)"
           fi
           if [[ "$ONDERDEEL" == "aangifteperiode" ]]; then
             # Feedbackrun A 25-09 (BESLISSINGEN "FACTUURDATUM IN EEN INGEDIENDE AANGIFTEPERIODE — ORANJE CHECK, GEEN BLOKKADE (Peter 25-09)"): lees-only meetrecept.

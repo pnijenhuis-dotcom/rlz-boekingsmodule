@@ -13908,3 +13908,43 @@ puur: rlz_meer/rlz_minder/afwezig-pad/geen-btw-oorzaak; run: acceptatie mét aud
 **Beslispunten:** (a) de 0,05-regel van 15-09 blijft voor verschillen zonder btw-gegevens — samenvoegen tot één regel ná de
 meting; (b) `btw_rlz_lager_dan_factuur` krijgt pas een handeling (storno + herboeken achter de aangiftepoort) ná de meting.
 **Klikpunten:** geen (Lusso 260987 boekt na deploy gewoon; de nameting bewijst het).
+
+### Blok B — projectmatch op plaats + opdrachtgever uit de héle factuurtekst, één project per document
+
+**Status:** GEBOUWD 02-10 avond (run D blok B; geen migratie, geen instelling). Canoniek: `docs/regels/verplichtingen-projecten-voorraad.md`
+alinea "Projectmatch op plaats + opdrachtgever uit de héle factuurtekst, één project per document (blok B run D, Peter 02-10)" +
+`docs/regels/werkvoorraad-controlescherm.md` (chip + kandidaat-knoppen). Werkt in productie: niet gemeten (dispatch-onderdeel `project-match`).
+
+**Aanleiding (29-09, screenshots Peter):** Huvanco — 7 facturen mét hetzelfde werknummer kregen geen/verkeerd project ("bij elke factuur
+met hetzelfde nummer"); Hoogwerkservice — kop "500zzp - walterpark - hoogvliet / Weboma / Troubadourlaan Hoogvliet" gaf regel 1 → 25170
+Hoogvliet (fuzzy) en regels 2–4 → 25013 Deurne (regel-geheugen). Twee gaten: de motor las alleen het `proj`-veld van de extractie, en
+niveau 3 was een SequenceMatcher-"lijkt op" per regel.
+
+**Besluit + bouw (bindend):**
+1. **Volledige tekst.** De factuur-motor (`app/projecten/match.py`, via `regel_prefill.verrijk_prefill(factuur_teksten=…)`) leest kop-`proj`,
+   `betreft`, UBL-`cbc:Note` én de regelomschrijvingen. Niveau 1–2 ongewijzigd in betekenis (exacte code groen; bevestigd werknummer groen,
+   onbevestigd oranje) en werken nu óók op een werknummer dat als los token in die teksten staat (`bepaal_werknummer_in_tekst`).
+2. **Niveau 3 deterministisch** (`bepaal_project_op_plaats_opdrachtgever`): plaats-tokens = woorden buiten de haken van de projectnaam
+   (zonder nummer/afsluitwoord), opdrachtgever-tokens = woorden tussen de laatste haken; ≥ 3 letters, accent-/hoofdletterongevoelig,
+   stopwoorden en cijfers tellen nooit, zonder haken geen opdrachtgever = nooit een match. BEIDE moeten in de tekst staan: precies één
+   kandidaat = ORANJE `factuur_plaats_opdrachtgever` (chip "op plaats + opdrachtgever"); meerdere = niets + `project_kandidaten` in de DTO
+   (knoppen "Kies ‹naam›" in het scherm); alleen plaats óf alleen opdrachtgever = niets; OVH nooit; de leveranciersnaam telt nooit mee.
+3. **Eén project per document** (`regel_prefill._kop_projectmatch`): kop-project = niveau 1–2 op kop-`proj` → werknummer in de koptekst →
+   klant-loze code (25-09) in de koptekst → niveau 3 over kop + álle regels samen. Per regel uitsluitend niveau 1–2 op de eigen regeltekst
+   (`bepaal_project_uit_factuur(niveau3=False)`); geen eigen bron = het kop-project. Nooit fuzzy per regel.
+4. **Werknummer-mapping:** boeken blijft de bevestiging (07-09) — de gevraagde "3× op rij" is al ná de eerste boeking gehaald (bewust niet
+   verzwakt). Nieuw: zonder `proj` leert de boeking het ENIGE werknummer-achtige token uit `betreft`/`cbc:Note`
+   (`werknummer_kandidaat_in_koptekst`: cijfer + letter/scheidingsteken, geen datum/bedrag, puur numeriek nooit, meerdere = niets).
+5. **Autoboek-pad:** een oranje project-herkomst (`ORANJE_PROJECT_HERKOMSTEN`) boekt nooit automatisch (weiger-reden + audit
+   `autoboeken_geweigerd`) — afwezig-pad-guard.
+6. **DTO/snapshot:** `project_kandidaten` op `BoekvoorstelRegelDto`/`api/types.ts`, in het prefill-snapshot, terug ná persisteren zolang het
+   veld leeg is; `factuur_plaats_opdrachtgever` is een A10-autosave-trigger.
+
+**Guards:** `tests/projecten/test_match.py` (TestPlaatsOpdrachtgever ×7, TestWerknummerInTekst ×3 — TestFuzzy vervangen),
+`tests/documenten/test_project_match_tekst_02_10.py` (10: Hoogwerkservice, alleen-plaats/-opdrachtgever, kandidaten + persistentie,
+leveranciersnaam, één project per document ×3, Huvanco 7 facturen, onbevestigd voorstel → boeking → groen, autoboek weigert), keten casus i
+(+1: niveau 3 raadt niet op casus a), `test_nameting_workflow` (+1 `project-match`), vitest `regelVoorstelChips.test.ts` (+2),
+`BoekvoorstelPanel.projectfactuur.test.tsx` (+2).
+**Meetlat:** querybibliotheek `project-prefill-herkomst` v2 (bron `factuur_plaats_opdrachtgever`, kolom `project_kandidaten`), dispatch-onderdeel
+`project-match` (Universal Steigerbouw; Oordeel = rijen plaats+opdrachtgever / meerduidig). Klikpunt Peter ná deploy: een Hoogwerkservice-
+factuur openen → alle regels 25170 oranje "op plaats + opdrachtgever"; een Huvanco-factuur boeken → de volgende zes groen.

@@ -202,6 +202,7 @@
         "btw_in_kosten": false,
         "btw_bron_detail": null,
         "gb_voorstel_detail": null,
+        "project_kandidaten": null,
         "project_bron_detail": "Factuur vermeldt \"26084 - Opdrachtgever A (W03611)\" = projectcode van 26084 Opdrachtgever A (Universal Nederland)",
         "factuur_btw_percentage": null
        }
@@ -284,6 +285,7 @@
     "overstap_vertaling": null,
     "project_bron": "factuur",
     "project_bron_detail": "Factuur vermeldt \"26084 - Opdrachtgever A (W03611)\" = projectcode van 26084 Opdrachtgever A (Universal Nederland)",
+    "project_kandidaten": null,
     "factuur_btw_percentage": null,
     "bedrag_niet_gelezen": false
    }
@@ -306,6 +308,7 @@
    "overstap_vertaling": null,
    "project_bron": null,
    "project_bron_detail": null,
+   "project_kandidaten": null,
    "factuur_btw_percentage": null,
    "bedrag_niet_gelezen": false
   },

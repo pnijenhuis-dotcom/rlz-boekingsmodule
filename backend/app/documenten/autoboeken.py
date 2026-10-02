@@ -641,6 +641,17 @@ def probeer_autoboeken_na_extractie(
                     document_id=document_id,
                     reden=f"factuur noemt projectnummer {conflict} — niet het geheugen-project; mens kiest het project",
                 )
+        if regel.project_id is not None and regel.project_bron in project_match.ORANJE_PROJECT_HERKOMSTEN:
+            # Run D 02-10 blok B: een ORANJE project-voorstel (onbevestigd werknummer, plaats + opdrachtgever) is een
+            # voorstel voor een mens — nooit automatisch boeken (autoboeken-ai regel 2: oranje = niet boeken).
+            return _weiger(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                reden=(
+                    f"project-voorstel oranje ({regel.project_bron}: "
+                    f"{regel.project_bron_detail or 'nog niet bevestigd'}) — mens bevestigt het project"
+                ),
+            )
         blokkade = _geheugen_veld_geblokkeerd(geheugen, project_vereist=project_vereist)
         if blokkade is not None:
             return _weiger(administratie_id=administratie_id, document_id=document_id, reden=blokkade)

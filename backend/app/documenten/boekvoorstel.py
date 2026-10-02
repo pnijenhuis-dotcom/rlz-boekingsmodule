@@ -158,6 +158,9 @@ class BoekvoorstelRegelData:
     project_tekst: str | None = None
     project_bron: str | None = None
     project_bron_detail: str | None = None
+    # Run D 02-10 blok B: bij `project_bron = factuur_meerduidig` de kandidaten [{id, naam}] zodat het controlescherm ze
+    # als keuze toont ("meerdere = niets + kandidaten in het scherm"); in het snapshot, in de DTO (informatief).
+    project_kandidaten: list[dict] | None = None
 
 
 @dataclass(frozen=True)
@@ -1123,7 +1126,7 @@ _AUTOSAVE_HERKOMSTEN = frozenset(
 # Blok 10 07-09: een project uit de factuur (exacte code, werknummer-mapping of fuzzy — ingevuld) triggert de autosave
 # óók (opdracht: "via het A10-prefill-/autosave-pad") — de projectplicht-check en het doorbelasten-blok zien dan
 # hetzelfde project als de mens. "factuur_meerduidig" vult niets en triggert dus niet.
-_PROJECT_FACTUUR_HERKOMSTEN = frozenset({"factuur", "factuur_onbevestigd"})
+_PROJECT_FACTUUR_HERKOMSTEN = frozenset({"factuur", "factuur_onbevestigd", "factuur_plaats_opdrachtgever"})
 # Punt 8 run A 02-10: gb_bron van een LEEG gelaten grootboek (leverancier-geheugen onder de 90 %-drempel) — geen
 # autosave-trigger (er is niets gevuld), wél in het snapshot zodat de uitleg-chip ná het persisteren terugkomt.
 _GB_BRON_GEHEUGEN_NIET_INGEVULD = "leverancier_geheugen_niet_ingevuld"
@@ -1149,6 +1152,7 @@ def _regel_snapshot(volgnummer: int, regel: BoekvoorstelRegelData) -> dict:
         "btw_in_kosten": regel.btw_in_kosten,
         "project_bron": regel.project_bron,
         "project_bron_detail": regel.project_bron_detail,
+        "project_kandidaten": regel.project_kandidaten,
         "herkomst": dict(regel.prefill_herkomst or {}),
         # BUG 18-09: factuur-regeltarief reist mee zodat de bruto-kolom en de chip ná het persisteren terugkomen.
         "factuur_btw_percentage": _str_of_none(regel.factuur_btw_percentage),
@@ -1504,6 +1508,7 @@ def _opgeslagen_regel_data(regel: BoekvoorstelRegel, snapshot: dict | None) -> B
         prefill_herkomst=herkomst or None,
         project_bron=project_bron,
         project_bron_detail=project_detail if project_bron else None,
+        project_kandidaten=(snap or {}).get("project_kandidaten") if project_bron else None,
         factuur_btw_percentage=_als_decimal(snap.get("factuur_btw_percentage")) if snap is not None else None,
     )
 
@@ -1710,6 +1715,8 @@ def _bereken_prefill(
         samengevoegde_regel=samenvoeg["samengevoegde_regel"],
         project_verplicht=project_verplicht,
         kop_project_tekst=veldvoorstel_regels.kop_project_tekst(veldvoorstel),
+        # Run D 02-10 blok B: de volledige koptekst voor de projectmatch — `betreft` (AI) en `cbc:Note` (UBL).
+        factuur_teksten=(_str_of_none(veldvoorstel.get("betreft")), _str_of_none(veldvoorstel.get("note"))),
         # Blok 4c (08-09) + Peter 15-09: vermelding / kolomcode "V" / verlegd-leverancier + btw 0 → verlegd-tarief
         # voorstellen (oranje, vóór de default), mét de basis als chip-detail.
         factuur_verlegd=verlegd_basis is not None,

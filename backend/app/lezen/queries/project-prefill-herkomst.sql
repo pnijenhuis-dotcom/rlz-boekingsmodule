@@ -1,10 +1,10 @@
 -- naam: project-prefill-herkomst
--- versie: 1
--- doel: Herkomst van het PROJECT per regel van open boekvoorstellen (blok 3 feedbackrun A 25-09, FV-02 bronvolgorde): uit het jongste prefill-snapshot per document — project_bron (factuur | factuur_onbevestigd | factuur_meerduidig | geheugen | factuur_conflict | geheugen_afgesloten | leeg) + herkomst-tag; meetlat "geheugen alleen als laatste bron en altijd zichtbaar"
+-- versie: 2
+-- doel: Herkomst van het PROJECT per regel van open boekvoorstellen (blok 3 feedbackrun A 25-09, FV-02 bronvolgorde; v2 run D 02-10 blok B): uit het jongste prefill-snapshot per document — project_bron (factuur | factuur_onbevestigd | factuur_plaats_opdrachtgever | factuur_meerduidig | geheugen | factuur_conflict | geheugen_afgesloten | leeg) + herkomst-tag + aantal kandidaten bij meerduidig; meetlat "geheugen alleen als laatste bron en altijd zichtbaar" en "niveau 3 = plaats + opdrachtgever, één project per document"
 -- scope: administratie
 -- parameters: administratie_id, project_bron
 -- optioneel: project_bron
--- kolommen: document_id, status, referentie, snapshot_op, volgnummer, project_id, project_bron, herkomst_project, project_tekst_aanwezig, project_bron_detail
+-- kolommen: document_id, status, referentie, snapshot_op, volgnummer, project_id, project_bron, herkomst_project, project_tekst_aanwezig, project_kandidaten, project_bron_detail
 SELECT d.id AS document_id,
        d.status::text AS status,
        b.referentie,
@@ -14,6 +14,7 @@ SELECT d.id AS document_id,
        rg ->> 'project_bron' AS project_bron,
        rg -> 'herkomst' ->> 'project' AS herkomst_project,
        NULLIF(rg ->> 'omschrijving', '') IS NOT NULL AS project_tekst_aanwezig,
+       CASE WHEN jsonb_typeof(rg -> 'project_kandidaten') = 'array' THEN jsonb_array_length(rg -> 'project_kandidaten') ELSE 0 END AS project_kandidaten,
        rg ->> 'project_bron_detail' AS project_bron_detail
   FROM boekhouding.document d
   LEFT JOIN boekhouding.boekvoorstel b ON b.document_id = d.id

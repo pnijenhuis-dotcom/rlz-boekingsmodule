@@ -37,6 +37,9 @@ import {
   bepaalGbChip,
   bepaalOverstapChip,
   bepaalProjectFactuurChip,
+  projectKandidatenUitDto,
+  toonProjectKandidaten,
+  type ProjectKandidaat,
   btwBronUitDto,
   gbBronUitDto,
   overstapVertalingUitDto,
@@ -163,6 +166,8 @@ interface RegelState {
    * het kop-niveau-geheugen (GeheugenChipBlok) zwijgt op project zolang deze chip staat. */
   projectBron: ProjectBron | null
   projectDetail: string | null
+  /** Run D 02-10 blok B: kandidaten bij `factuur_meerduidig` — keuzeknoppen onder het lege projectveld. */
+  projectKandidaten: ProjectKandidaat[] | null
   /** Odoo-slotstuk 04-09 (C1 hervertaling): informatief spoor per veld als een OPEN voorstel bij de overstap via de
    * mapping is hervertaald — chips "vertaald bij overstap" (oranje) / "niet vertaalbaar — kies" (rood), weg zodra de
    * mens het veld aanraakt (zelfde regel als de gb-/btw-chips). Alleen op geladen server-regels. */
@@ -236,6 +241,7 @@ function nieuweRegel(): RegelState {
     gbDetail: null,
     projectBron: null,
     projectDetail: null,
+    projectKandidaten: null,
     overstap: null,
     omschrijving: '',
     aiZekerheid: null,
@@ -270,6 +276,7 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     gbDetail: r.gb_voorstel_detail ?? null,
     projectBron: projectBronUitDto(r.project_bron),
     projectDetail: r.project_bron_detail ?? null,
+    projectKandidaten: projectKandidatenUitDto(r.project_kandidaten),
     overstap: overstapVertalingUitDto(r.overstap_vertaling),
     omschrijving: r.omschrijving ?? '',
     aiZekerheid,
@@ -329,6 +336,7 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     gbDetail: null,
     projectBron: null,
     projectDetail: null,
+    projectKandidaten: null,
     overstap: null,
     omschrijving: r.omschrijving ?? '',
     aiZekerheid: zekerheid,
@@ -1455,7 +1463,7 @@ export function BoekvoorstelPanel({
         huidig.map((r) =>
           r.projectId === null
             ? r
-            : { ...r, projectId: null, projectBron: null, projectDetail: null, aiZekerheid: null, handmatigeVelden: { ...r.handmatigeVelden, projectId: true } },
+            : { ...r, projectId: null, projectBron: null, projectDetail: null, projectKandidaten: null, aiZekerheid: null, handmatigeVelden: { ...r.handmatigeVelden, projectId: true } },
         ),
       )
       setKopProjectId(null)
@@ -2797,6 +2805,26 @@ export function BoekvoorstelPanel({
                             <HerkomstChip klasse={projectChip.klasse} omhulling="regel" title={projectChip.titel} data-testid="regel-project-factuur-chip">
                               {projectChip.tekst}
                             </HerkomstChip>
+                          ) : null
+                        })()}
+                        {(() => {
+                          // Run D 02-10 blok B: "meerdere = niets + kandidaten in het scherm" — één klik kiest het project
+                          // (zelfde regelwijziging als de combobox; de chip en de knoppen verdwijnen daarna).
+                          const kandidaten = toonProjectKandidaten(regel.projectBron, regel.projectKandidaten, regel.projectId, regel.handmatigeVelden.projectId)
+                          return kandidaten.length > 0 ? (
+                            <div className="regel-herkomst" data-testid="regel-project-kandidaten">
+                              {kandidaten.map((k) => (
+                                <button
+                                  key={k.id}
+                                  type="button"
+                                  className="linkbtn"
+                                  onClick={() => wijzigRegel(regel.key, 'projectId', k.id)}
+                                  title={`Kies ${k.naam} voor deze regel`}
+                                >
+                                  Kies {k.naam}
+                                </button>
+                              ))}
+                            </div>
                           ) : null
                         })()}
                         <OverstapChip vertaling={regel.overstap?.project} veld="project" huidig={regel.projectId} handmatig={regel.handmatigeVelden.projectId} />
