@@ -293,6 +293,54 @@
   `tests/keten/test_ap_bijlagen_bij_factuur.py`, vitest `DocumentDetailScreen.test.tsx` + `WerkvoorraadScreen.test.tsx`; dispatch-onderdeel
   `bijlagen-factuur`. Werkt in productie: niet gemeten.
 
+<!-- toegevoegd 03-10-2026, opdracht "bijlagen-nabundelen-volgt-duplicaat-naar-origineel" -->
+- **Bijlage volgt het duplicaat naar het origineel (BUG 03-10, Peter "werkdetails zonder factuur kan niet"; casus Universal
+  Steigerbouw `3ee6edf0`: de échte nazorgrun `bijlagen-nabundelen --uitvoeren --administratie "Universal Steigerbouw"` (executie
+  `rlz-reconciliatie-z8dj8`, 94 e-mails, 24 gekoppeld) gaf 7 × "overgeslagen — geen factuur-document in deze mail" terwijl de
+  factuur `Factuur RLZ-20801430xx ….pdf` wél in die mails zat — zes keer als `afgevoerd_duplicaat`, één keer (3044, PDF én XML)
+  als `afgewezen` — en de `factuurdetails-….pdf` los op te_controleren bleef; geen migratie; BESLISSINGEN "BOEKEN PRETTIG 1 —
+  BIJLAGEN BIJ DE FACTUUR, RUSTIG SCHERM, OVERHEAD AUTOMATISCH (Peter 02-10)" subkop "Bijlage volgt het duplicaat naar het
+  origineel (03-10)"):** de mail zei bij welke factuur de bijlage hoort; die kennis gooien we niet meer weg. (1) **Motor**
+  `app/documenten/bijlage_doel.py::volg_naar_origineel`: een factuur mét status `afgevoerd_duplicaat` of `afgewezen` wordt gevolgd
+  naar het document dat wél telt — (a) `afwijzing.duplicaat_van_document_id` van de open afvoer-afwijzing, (b) anders de vlag
+  `document.mogelijk_duplicaat_van_id`, (c) anders hetzelfde factuurnummer binnen dezelfde administratie (precies één treffer op
+  `boekvoorstel.referentie_norm` — de ENE normalisatie van 16-09, dezelfde vergelijkingsvorm als de duplicaatcheck; meerdere
+  treffers = nooit raden). Een doel mag GEBOEKT zijn (bestaand gedrag "(geboekt)" → bijlage óók als RLZ-upload); een doel dat zelf
+  weer afgevoerd/afgewezen is wordt doorgevolgd (keten, max 5 stappen); verwijderd/samengevoegd/gesplitst = geen doel; nooit een
+  doel buiten de administratie. Geen doel = `GeenDoel` mét leesbare reden én de afwijsreden. (2) **Nazorg `bijlagen-nabundelen`:**
+  zijn er in de mail geen dragers meer maar wél volgbare facturen, dan zijn de via-duplicaat-doelen de facturen; de dry-run-regel
+  luidt "‹origineel› ← ‹bijlage› […]: kandidaat — via duplicaat → ‹origineel› — zou koppelen aan …" (afgewezen mét tegenhanger:
+  "via afgewezen factuur → …"), de TOTAAL-regel krijgt de teller "… N mislukt, K via duplicaat — …" (de nameting-grep op het vaste
+  voorvoegsel blijft werken). Afgewezen factuur ZONDER tegenhanger → de bijlage blijft los mét uitkomst "overgeslagen — factuur
+  afgewezen (‹reden›) — bijlage ook afwijzen? [‹factuur›; ‹zoekreden›]"; de ÉCHTE run zet daarbij één idempotente tijdlijn-notitie
+  `bijlage_factuur_afgewezen` op de bijlage (dry-run blijft lees-only, nameting-allowlist) → `DocumentDetailResponse.
+  factuur_afgewezen_in_mail` → chip "factuur uit dezelfde e-mail afgewezen" mét link naar de afgewezen factuur + "bijlage ook
+  afwijzen?" bovenin het controlescherm van de bijlage. Nooit automatisch afwijzen. Afgevoerd duplicaat zonder origineel ín de
+  module (origineel buiten de module geboekt) = overgeslagen mét reden. Een bijlage die al aan het duplicaat HING (live-pad van vóór
+  deze fix: `samengevoegd` mét rol, `samengevoegd_in_id` = het duplicaat) wordt niet opnieuw gekoppeld maar VERHUISD
+  (`bijlage_doel.verhuis_bijlagen_naar_origineel`: zelfde rol, tijdlijn op bijlage én origineel, audit `bijlage_naar_origineel`),
+  uitkomst "gekoppeld — verhuisd van duplicaat ‹naam›"; geboekt origineel → alsnog de RLZ-upload. (3) **Live-intakepad:**
+  `verwerking._dubbel_voor_ai` geeft bij uitkomst `dubbel` (byte-identiek vóór de AI-stap: exemplaar afgevoerd óf huls in de
+  verzamelbak) het ORIGINEEL als drager mee (`BijlageResultaat.drager_document_id/-administratie_id/-bestandsnaam`, sleutels uit het
+  boekvoorstel van het origineel); `_verwerk_items_met_bijlagen` neemt via `_drager_van` dat origineel als factuur — de bijlagen uit
+  die mail hangen aan het origineel, detail "— via duplicaat: de factuur uit deze mail was al bekend", nooit aan het afgevoerde
+  exemplaar en nooit los. De referentie-afvoer ná extractie (`duplicaat_afvoer._voer_af`: opt-in automatisch én één-klik door een
+  mens) roept ná de afwijzing `bijlage_doel.verhuis_na_afvoer` aan: bijlagen die al aan het duplicaat hingen verhuizen naar het
+  origineel ín de module (eigen transactie; een fout stopt de afvoer niet maar staat in het log, de nazorg vangt 'm op). (4)
+  **Keuzes zonder Peter:** (a) "hetzelfde factuurnummer" = `referentie_norm` (de opdracht noemde de bh-sleutels; één normalisatie
+  i.p.v. twee), (b) de afgewezen-notitie alleen in de échte run (dry-run = lees-only), (c) de teller `via_duplicaat` telt óók de
+  via-afgewezen-factuur-doelen (één teller zoals gevraagd), (d) de chip staat bovenin het controlescherm (náást de correctiebalk), niet
+  alleen in de ingeklapte tijdlijn. (5) **Guards:** `tests/documenten/test_bijlage_doel.py` (drie bronnen, keten, meerdere treffers,
+  afgewezen zonder tegenhanger, verhuizen idempotent, notitie idempotent + DTO), `tests/intake/test_bijlagen_bij_factuur.py::
+  TestBijlageVolgtDuplicaatNaarOrigineel` (dry-run-regel + TOTAAL-teller, échte run aan het origineel, geboekt origineel mét
+  upload, afgewezen zonder/mét tegenhanger incl. detail-route, al-gekoppelde bijlage verhuist, live-pad `dubbel`, `_voer_af`),
+  gouden-set-casus ap `TestBijlageVolgtDuplicaatNaarOrigineel` (casus c tweemaal: werkbon aan het origineel, 0 AI-calls, standaardlijst
+  1), vitest `DocumentDetailScreen.test.tsx` (chip mét link / geen chip). Testles: de automatische duplicaat-afvoer staat in de suite
+  platformbreed AAN — een tweede document mét hetzelfde factuurnummer én bedrag voert de motor in de test zelf af (fixtures variëren het
+  bedrag). Werkt in productie: niet gemeten (terminal-opdracht `opdrachten/terminal/2026-10-03-bijlagen-nabundelen-herhaling.md`:
+  dry-run Steigerbouw → verwacht 6–7 "via duplicaat" → échte run → kantoorbreed; nameting-opdracht
+  `opdrachten/inbox/2026-10-03-nameting-bijlagen-volgt-duplicaat.md`, dispatch-onderdeel `bijlagen-factuur`).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verzamelbak "Niet toegewezen" (preview, optimistisch toewijzen, verplaatsen, documentenlijst) (CLAUDE.md `ed6d176` r. 494–528)

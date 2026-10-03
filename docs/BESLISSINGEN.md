@@ -13527,6 +13527,28 @@ blijven `niet_verwerkbaar`; (d) de ongedaan-route is een CLI-vorm (`--ongedaan`)
 (e) de bijlage-document-rij deelt de `samengevoegd`-status van 0098 i.p.v. een nieuwe tabel: één representatie voor intake én nazorg,
 RLS/verplaatsen/archief/zoeken werken ongewijzigd.
 
+### Bijlage volgt het duplicaat naar het origineel (03-10)
+
+**Status: GEBOUWD + GETEST 03-10-2026 (CC-inbox-run; opdracht `opdrachten/gedaan/2026-10-03-bijlagen-nabundelen-volgt-duplicaat-naar-origineel.md`,
+rapport `docs/rapporten/2026-10-03-bijlagen-volgt-duplicaat.md`; geen migratie). Werkt in productie: niet gemeten — terminal-opdracht
+`opdrachten/terminal/2026-10-03-bijlagen-nabundelen-herhaling.md` (dry-run Steigerbouw → échte run → kantoorbreed, ná deploy) +
+nameting-opdracht `opdrachten/inbox/2026-10-03-nameting-bijlagen-volgt-duplicaat.md` (dispatch-onderdeel `bijlagen-factuur`).
+Canonieke regeltekst: `docs/regels/intake-extractie.md` alinea 03-10.**
+
+**Aanleiding (Peter 03-10 "werkdetails zonder factuur kan niet"):** de échte nazorgrun van punt 1 op Universal Steigerbouw (`rlz-reconciliatie-z8dj8`:
+94 e-mails, 24 gekoppeld, 0 mislukt) liet 7 bijlagen los staan mét "overgeslagen — geen factuur-document in deze mail", terwijl de factuur in élk
+van die mails wél zat: zes keer als `afgevoerd_duplicaat` (RLZ-2080143088/92/93/94/125/131), één keer als `afgewezen` (RLZ-2080143044, PDF én XML).
+`bijlagen_nabundelen` filterde die statussen weg en gooide daarmee de kennis "deze bijlage hoort bij díe factuur" weg.
+
+| Onderdeel | Besluit / gebouwd |
+|---|---|
+| Motor | `app/documenten/bijlage_doel.py::volg_naar_origineel`: afgevoerd/afgewezen → (1) `afwijzing.duplicaat_van_document_id`, (2) `mogelijk_duplicaat_van_id`, (3) hetzelfde factuurnummer (`referentie_norm`, precies één treffer) binnen de administratie; geboekt = ook doel; keten max 5; nooit raden, nooit buiten de administratie. |
+| Nazorg | dry-run "kandidaat — via duplicaat → ‹origineel›" (afgewezen mét tegenhanger: "via afgewezen factuur → …"), TOTAAL-teller `via duplicaat`; afgewezen zonder tegenhanger = overgeslagen "factuur afgewezen (‹reden›) — bijlage ook afwijzen?" + notitie/chip in de échte run; al-gekoppelde bijlage aan een duplicaat verhuist (`verhuis_bijlagen_naar_origineel`, audit `bijlage_naar_origineel`). |
+| Live-pad | `verwerking`: uitkomst `dubbel` (byte-identiek vóór de AI-stap) draagt het origineel als drager → bijlagen uit die mail aan het origineel; `duplicaat_afvoer._voer_af` verhuist al gekoppelde bijlagen mee (`verhuis_na_afvoer`). |
+| Scherm | `DocumentDetailResponse.factuur_afgewezen_in_mail` → chip "factuur uit dezelfde e-mail afgewezen" mét link + "bijlage ook afwijzen?" bovenin het controlescherm van de losse bijlage; nooit automatisch afwijzen. |
+| Keuzes zonder Peter | factuurnummer = `referentie_norm` (één normalisatie); notitie alleen in de échte run; één teller `via_duplicaat` voor beide routes; chip bovenin i.p.v. alleen in de tijdlijn. |
+| Guards | `tests/documenten/test_bijlage_doel.py`, `tests/intake/test_bijlagen_bij_factuur.py::TestBijlageVolgtDuplicaatNaarOrigineel`, gouden-set-casus ap `TestBijlageVolgtDuplicaatNaarOrigineel`, vitest `DocumentDetailScreen.test.tsx`. |
+
 ## JARVIS-LOGINS — CREDENTIAL-STORE → SECRET MANAGER ALS JOB-EXECUTIE, NOOIT TONEN (Peter 29-09) — besluit 0012 blijft: waarde nooit in log/uitvoer/chat; kopiëren SM → SM is het bestaande patroon (registersync_secret.sh); amendement op de regel van 23-09 "Secret-VERSIES zet Peter zelf": een machine-naar-machine-kopie door de job mag; geen migratie
 
 **Opdracht Peter 29-09 (letterlijk):** kopieer de Reeleezee-webservice-logins van negen administraties (Universal Nederland, Universal Verkoop,
