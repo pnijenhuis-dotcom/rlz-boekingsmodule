@@ -104,6 +104,11 @@ class BijlageResultaat:
     #: Bijlagen bij de factuur (02-10): genormaliseerde sleutels (factuurnummer) van een factuur-document waarop een
     #: niet-eenduidige bijlage uit dezelfde mail kan matchen; niet in `als_dict` (intern).
     sleutels: tuple[str, ...] = ()
+    #: 03-10 (bijlage volgt het duplicaat naar het origineel): bij uitkomst `dubbel` het ORIGINEEL waar de bijlagen uit
+    #: deze mail aan horen (het exemplaar zelf is afgevoerd/huls). Intern, niet in `als_dict`.
+    drager_document_id: uuid.UUID | None = None
+    drager_administratie_id: uuid.UUID | None = None
+    drager_bestandsnaam: str | None = None
 
     def als_dict(self) -> dict:
         return {
@@ -865,6 +870,14 @@ def _dubbel_voor_ai(
         )
         raise geweigerd
     herkomst = dubbel_voor_ai.herkomst_tekst(afzender=afzender, kanaal=kanaal.value)
+    # 03-10: het origineel is de drager van de bijlagen uit deze mail (bijlage volgt het duplicaat naar het origineel);
+    # zijn factuurnummer-sleutels maken een sleutel-match mogelijk als de mail meerdere facturen draagt.
+    drager = {
+        "drager_document_id": treffer.document_id,
+        "drager_administratie_id": treffer.administratie_id,
+        "drager_bestandsnaam": treffer.bestandsnaam,
+        "sleutels": tuple(_sleutels_van_document(treffer.administratie_id, treffer.document_id)),
+    }
     if intake_bericht_id is not None and treffer.intake_bericht_id == intake_bericht_id:
         dubbel_voor_ai.registreer_zelfde_bericht(
             treffer=treffer, bestandsnaam=bijlage.bestandsnaam, sha256_hash=sha, actor_id=actor_id, bron="intake"
@@ -874,6 +887,7 @@ def _dubbel_voor_ai(
             uitkomst="dubbel",
             document_id=treffer.document_id,
             detail=f"{dubbel_voor_ai.REDEN_PREFIX}: byte-identiek aan '{treffer.bestandsnaam}' uit hetzelfde bericht — niet opnieuw verwerkt",
+            **drager,
         )
     exemplaar_id = documenten_service.registreer_niet_toegewezen_document(
         bestandsnaam=bijlage.bestandsnaam,
@@ -905,7 +919,24 @@ def _dubbel_voor_ai(
         uitkomst="dubbel",
         document_id=exemplaar_id,
         detail=f"{dubbel_voor_ai.REDEN_PREFIX}: byte-identiek aan '{treffer.bestandsnaam}' in {waar} — {wat}, geen AI-call",
+        **drager,
     )
+
+
+def _sleutels_van_document(administratie_id: uuid.UUID | None, document_id: uuid.UUID) -> frozenset[str]:
+    """Factuurnummer-sleutels (bijlage_herkenning) van een bestaand document uit zijn opgeslagen boekvoorstel; leeg
+    zonder voorstel/referentie (verzamelbak heeft geen boekvoorstel)."""
+    from app.documenten.models import Boekvoorstel
+
+    if administratie_id is None:
+        return frozenset()
+    try:
+        with scoped_session(administratie_id) as session:
+            voorstel = session.get(Boekvoorstel, document_id)
+            referentie = voorstel.referentie if voorstel is not None else None
+    except Exception:  # noqa: BLE001 — alleen een match-hulpmiddel, nooit een blokkade
+        return frozenset()
+    return bijlage_herkenning.sleutels_uit_tekst(referentie)
 
 
 def _verwerk_afbeelding(
@@ -1048,11 +1079,34 @@ _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 def _administratie_uit_resultaat(r: BijlageResultaat) -> uuid.UUID | None:
     """Scope van een gerouteerd document: `toegewezen` draagt "‹bron› → ‹administratie-uuid›" in het detail
-    (bestaande vorm, ook de nabundel-nazorg leest 'm zo); verzamelbak/splitsingsvoorstel = scope NULL."""
+    (bestaande vorm, ook de nabundel-nazorg leest 'm zo); verzamelbak/splitsingsvoorstel = scope NULL; `dubbel` mét
+    drager (03-10) = de scope van het origineel."""
+    if r.uitkomst == "dubbel" and r.drager_document_id is not None:
+        return r.drager_administratie_id
     if r.uitkomst != "toegewezen" or not r.detail:
         return None
     m = _UUID_RE.search(r.detail)
     return uuid.UUID(m.group(0)) if m else None
+
+
+def _drager_van(r: BijlageResultaat) -> BijlageResultaat | None:
+    """De factuur-drager achter een routing-uitkomst: toegewezen/verzamelbak/splitsingsvoorstel = het document zelf;
+    `dubbel` (03-10, bijlage volgt het duplicaat naar het origineel) = het ORIGINEEL waarvan dit exemplaar een
+    byte-identiek duplicaat is — nooit het afgevoerde exemplaar/de huls."""
+    if r.uitkomst in _DRAGER_UITKOMSTEN and r.document_id is not None:
+        return r
+    if r.uitkomst == "dubbel" and r.drager_document_id is not None:
+        return BijlageResultaat(
+            bestandsnaam=r.drager_bestandsnaam or r.bestandsnaam,
+            uitkomst="dubbel",
+            document_id=r.drager_document_id,
+            detail=r.detail,
+            sleutels=r.sleutels,
+            drager_document_id=r.drager_document_id,
+            drager_administratie_id=r.drager_administratie_id,
+            drager_bestandsnaam=r.drager_bestandsnaam,
+        )
+    return None
 
 
 def _verwerk_items_met_bijlagen(
@@ -1102,8 +1156,9 @@ def _verwerk_items_met_bijlagen(
             continue
         uitkomsten = route(item)
         resultaten.extend(uitkomsten)
-        for r in uitkomsten:
-            if r.uitkomst not in _DRAGER_UITKOMSTEN or r.document_id is None or r.document_id in gezien:
+        for r0 in uitkomsten:
+            r = _drager_van(r0)
+            if r is None or r.document_id is None or r.document_id in gezien:
                 continue
             gezien.add(r.document_id)
             sleutels: set[str] = set(r.sleutels)
@@ -1161,6 +1216,8 @@ def _verwerk_items_met_bijlagen(
         if not gekoppeld:
             continue
         detail = f"bijlage bij {', '.join(gekoppeld)} ({h.reden})"
+        if any(d[0].uitkomst == "dubbel" for d in doelen):
+            detail += " — via duplicaat: de factuur uit deze mail was al bekend, de bijlage hangt aan het origineel"
         if niet_eenduidig:
             detail += " — niet eenduidig (meerdere facturen in de mail, geen treffer op factuur-/werknummer)"
         resultaten.append(

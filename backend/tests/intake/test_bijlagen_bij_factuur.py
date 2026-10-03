@@ -461,6 +461,188 @@ def nb_herkomst() -> str:
     return bijlagen_module.HERKOMST_NAZORG
 
 
+class TestBijlageVolgtDuplicaatNaarOrigineel:
+    """BUG 03-10 (Peter "werkdetails zonder factuur kan niet"): 7 Steigerbouw-mails mét factuur als `afgevoerd_duplicaat`/
+    `afgewezen` → "geen factuur-document in deze mail". De nazorg volgt het duplicaat naar het origineel
+    (`app/documenten/bijlage_doel.py`), het live-pad hangt bijlagen aan het origineel, de referentie-afvoer verhuist ze."""
+
+    def _mail_met_dup(self, actor: uuid.UUID, aid: uuid.UUID, admin_engine: Engine) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+        """Origineel (eerdere mail) + de productiemail: factuur (zelfde nummer, andere bytes) + factuurdetails-PDF."""
+        origineel = documenten_service.upload_document(
+            administratie_id=aid, bestandsnaam=f"{FACTUURNUMMER} 19-8-2026.pdf", inhoud=FACTUUR_PDF, actor_id=actor,
+            bron=DocumentBron.EMAIL, intake_bericht_id=None,
+        ).document_id
+        _, dup, bijlage = TestNazorgBijlagenNabundelen()._gesplitste_mail(actor, aid, admin_engine)
+        return origineel, dup, bijlage
+
+    def test_nazorg_dry_run_toont_via_duplicaat_en_echte_run_koppelt_aan_het_origineel(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine, capsys
+    ) -> None:
+        from app.documenten import afwijzen
+
+        origineel, dup, bijlage_id = self._mail_met_dup(gescoopte_gebruiker, administratie_id, admin_engine)
+        afwijzen.wijs_af(
+            administratie_id=administratie_id, document_id=dup, actor_id=gescoopte_gebruiker, reden="Duplicaat van origineel",
+            duplicaat_van_document_id=origineel, naar_status=DocumentStatus.AFGEVOERD_DUPLICAAT,
+        )
+        telling = nb.nabundel_alle(dry_run=True, administratie_id=administratie_id)
+        assert telling.kandidaten == 1 and telling.via_duplicaat == 1 and telling.overgeslagen == 0
+        k = telling.uitkomsten[0]
+        assert k.uitkomst == nb.UITKOMST_KANDIDAAT and k.kandidaat.via_duplicaat
+        assert k.kandidaat.doelen[0].document_id == origineel
+        regel = k.als_regel()
+        assert "kandidaat" in regel and f"via duplicaat → {FACTUURNUMMER} 19-8-2026.pdf" in regel, regel
+        assert _rij(admin_engine, bijlage_id)["status"] == "te_controleren"  # dry-run schrijft niets
+        assert cli.main(["bijlagen-nabundelen", "--dry-run", "--administratie", str(administratie_id)]) == 0
+        uit = capsys.readouterr().out
+        assert "1 via duplicaat — DRY-RUN" in uit and "via duplicaat →" in uit
+        # Échte run: de bijlage hangt aan het origineel, niet aan het afgevoerde duplicaat.
+        telling = nb.nabundel_alle(dry_run=False, administratie_id=administratie_id)
+        assert telling.gekoppeld == 1 and telling.via_duplicaat == 1 and telling.mislukt == 0
+        rij = _rij(admin_engine, bijlage_id)
+        assert rij["status"] == "samengevoegd" and rij["samengevoegd_in_id"] == origineel and rij["samenvoeg_rol"] == "bijlage"
+        assert nb.nabundel_alle(dry_run=False, administratie_id=administratie_id).kandidaten == 0
+
+    def test_nazorg_geboekt_origineel_is_ook_doel_met_rlz_upload(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        from app.documenten import afwijzen
+
+        origineel, dup, bijlage_id = self._mail_met_dup(gescoopte_gebruiker, administratie_id, admin_engine)
+        afwijzen.wijs_af(
+            administratie_id=administratie_id, document_id=dup, actor_id=gescoopte_gebruiker, reden="dup",
+            duplicaat_van_document_id=origineel, naar_status=DocumentStatus.AFGEVOERD_DUPLICAAT,
+        )
+        with admin_engine.begin() as conn:
+            conn.execute(text("UPDATE boekhouding.document SET status = 'geboekt' WHERE id = :id"), {"id": origineel})
+        fake = FakeBoekClient()
+        telling = nb.nabundel_alle(dry_run=False, administratie_id=administratie_id, client_factory=lambda aid: fake)
+        assert telling.gekoppeld == 1 and telling.via_duplicaat == 1
+        assert "geüpload op PurchaseInvoices/" in (telling.uitkomsten[0].upload or "")
+        assert [u["filename"] for u in fake.uploads] == ["huurstaat-wk27.pdf"]
+        assert _rij(admin_engine, bijlage_id)["samengevoegd_in_id"] == origineel
+
+    def test_nazorg_afgewezen_zonder_tegenhanger_blijft_los_met_chip(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine, capsys
+    ) -> None:
+        from app.documenten import afwijzen, bijlage_doel
+
+        _, dup, bijlage_id = TestNazorgBijlagenNabundelen()._gesplitste_mail(gescoopte_gebruiker, administratie_id, admin_engine)
+        afwijzen.wijs_af(administratie_id=administratie_id, document_id=dup, actor_id=gescoopte_gebruiker, reden="dubbel met eerdere factuur")
+        telling = nb.nabundel_alle(dry_run=True, administratie_id=administratie_id)
+        assert telling.kandidaten == 0 and telling.overgeslagen == 1 and telling.via_duplicaat == 0
+        reden = telling.uitkomsten[0].reden or ""
+        assert reden.startswith("factuur afgewezen (dubbel met eerdere factuur) — bijlage ook afwijzen?"), reden
+        assert _tijdlijn(admin_engine, bijlage_id)[-1]["detail"].get(bijlage_doel.TIJDLIJN_SLEUTEL_AFGEWEZEN) is None  # dry-run = lees-only
+        # Échte run: notitie op de bijlage (chip in het controlescherm), nooit automatisch afgewezen; idempotent.
+        telling = nb.nabundel_alle(dry_run=False, administratie_id=administratie_id)
+        assert telling.overgeslagen == 1 and "notitie op de bijlage gezet" in (telling.uitkomsten[0].reden or "")
+        rij = _rij(admin_engine, bijlage_id)
+        assert rij["status"] == "te_controleren" and rij["samengevoegd_in_id"] is None
+        notities = [g for g in _tijdlijn(admin_engine, bijlage_id) if g["detail"].get(bijlage_doel.TIJDLIJN_SLEUTEL_AFGEWEZEN)]
+        assert len(notities) == 1 and notities[0]["detail"]["factuur_document_id"] == str(dup)
+        telling = nb.nabundel_alle(dry_run=False, administratie_id=administratie_id)
+        assert "notitie stond al op de bijlage" in (telling.uitkomsten[0].reden or "")
+        assert len([g for g in _tijdlijn(admin_engine, bijlage_id) if g["detail"].get(bijlage_doel.TIJDLIJN_SLEUTEL_AFGEWEZEN)]) == 1
+        # Detail-route: chip-gegevens mét link naar de afgewezen factuur.
+        detail = client.get(f"/administraties/{administratie_id}/documenten/{bijlage_id}", headers=_bearer(gescoopte_gebruiker))
+        assert detail.status_code == 200, detail.text
+        chip = detail.json()["factuur_afgewezen_in_mail"]
+        assert chip["document_id"] == str(dup) and chip["bestandsnaam"] == f"{FACTUURNUMMER}.xml" and chip["afwijs_reden"] == "dubbel met eerdere factuur"
+        assert cli.main(["bijlagen-nabundelen", "--dry-run", "--administratie", str(administratie_id)]) == 0
+        assert "bijlage ook afwijzen?" in capsys.readouterr().out
+
+    def test_nazorg_afgewezen_met_tegenhanger_zelfde_factuurnummer(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        from app.documenten import afwijzen
+
+        origineel, dup, bijlage_id = self._mail_met_dup(gescoopte_gebruiker, administratie_id, admin_engine)
+        for d, totaal in ((origineel, "242.00"), (dup, "121.00")):  # zelfde nummer, ander bedrag: geen harde match
+            boekvoorstel.sla_boekvoorstel_op(
+                administratie_id=administratie_id, document_id=d, actor_id=gescoopte_gebruiker, vendor_id=uuid.uuid4(),
+                referentie=FACTUURNUMMER, factuurdatum=date(2026, 8, 19), totaalbedrag=Decimal(totaal), regels=[_regel()],
+            )
+        afwijzen.wijs_af(administratie_id=administratie_id, document_id=dup, actor_id=gescoopte_gebruiker, reden="al eerder binnengekomen")
+        telling = nb.nabundel_alle(dry_run=False, administratie_id=administratie_id)
+        assert telling.gekoppeld == 1 and telling.via_duplicaat == 1
+        assert "via afgewezen factuur →" in telling.uitkomsten[0].als_regel()
+        assert _rij(admin_engine, bijlage_id)["samengevoegd_in_id"] == origineel
+
+    def test_nazorg_bijlage_die_al_aan_het_duplicaat_hing_verhuist_mee(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        """Het live-pad van vóór deze fix: de bijlage hing al aan de factuur, die daarna als duplicaat is afgevoerd."""
+        from app.documenten import afwijzen
+
+        origineel, dup, bijlage_id = self._mail_met_dup(gescoopte_gebruiker, administratie_id, admin_engine)
+        assert nb.nabundel_alle(dry_run=False, administratie_id=administratie_id).gekoppeld == 1  # hangt aan dup
+        assert _rij(admin_engine, bijlage_id)["samengevoegd_in_id"] == dup
+        with admin_engine.begin() as conn:  # afvoer zonder het haakje (legacy-stand) — de nazorg moet 'm vangen
+            conn.execute(text("UPDATE boekhouding.document SET status = 'afgevoerd_duplicaat', mogelijk_duplicaat_van_id = :o WHERE id = :id"), {"o": origineel, "id": dup})
+        telling = nb.nabundel_alle(dry_run=True, administratie_id=administratie_id)
+        assert telling.kandidaten == 1 and "zou verhuizen naar" in (telling.uitkomsten[0].reden or "")
+        telling = nb.nabundel_alle(dry_run=False, administratie_id=administratie_id)
+        assert telling.gekoppeld == 1 and telling.via_duplicaat == 1 and "verhuisd van duplicaat" in (telling.uitkomsten[0].reden or "")
+        rij = _rij(admin_engine, bijlage_id)
+        assert rij["samengevoegd_in_id"] == origineel and rij["status"] == "samengevoegd"
+        assert nb.nabundel_alle(dry_run=False, administratie_id=administratie_id).kandidaten == 0
+        del afwijzen
+
+    def test_live_pad_byte_identiek_duplicaat_hangt_bijlagen_aan_het_origineel(
+        self, administratie_heet_blow: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        """Verwerking.py: de factuur in de mail is vóór de AI-stap een byte-identiek duplicaat → afgevoerd; de huurstaat
+        hangt aan het ORIGINEEL, niet aan het afgevoerde exemplaar en valt niet los."""
+        origineel = documenten_service.upload_document(
+            administratie_id=administratie_heet_blow, bestandsnaam="factuur.pdf", inhoud=FACTUUR_PDF,
+            actor_id=gescoopte_gebruiker, bron=DocumentBron.EMAIL,
+        ).document_id
+        eml = bouw_eml(
+            afzender="administratie@universal-nederland.nl",
+            message_id=f"<tweede-{uuid.uuid4()}@universal.test>",
+            bijlagen=[("factuur.pdf", FACTUUR_PDF, "application", "pdf"), ("huurstaat-wk27.pdf", HUURSTAAT, "application", "pdf")],
+        )
+        resultaat = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
+        per_naam = {r.bestandsnaam: r for r in resultaat.bijlagen}
+        assert per_naam["factuur.pdf"].uitkomst == "dubbel" and per_naam["factuur.pdf"].document_id != origineel
+        assert per_naam["huurstaat-wk27.pdf"].uitkomst == verwerking.UITKOMST_BIJLAGE
+        assert per_naam["huurstaat-wk27.pdf"].document_id == origineel
+        assert "via duplicaat" in (per_naam["huurstaat-wk27.pdf"].detail or "")
+        assert _rij(admin_engine, per_naam["factuur.pdf"].document_id)["status"] == "afgevoerd_duplicaat"
+        bijlagen = _bijlagen_van(admin_engine, origineel)
+        assert [b["bestandsnaam"] for b in bijlagen] == ["huurstaat-wk27.pdf"] and bijlagen[0]["samenvoeg_rol"] == "bijlage"
+        assert _bijlagen_van(admin_engine, per_naam["factuur.pdf"].document_id) == []
+
+    def test_referentie_afvoer_na_extractie_verhuist_de_bijlagen_naar_het_origineel(
+        self, administratie_heet_blow: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        """`duplicaat_afvoer._voer_af` (opt-in automatisch óf één-klik door een mens): bijlagen die al aan de factuur
+        hingen gaan mee naar het origineel in de module."""
+        from app.documenten import duplicaat_afvoer
+
+        resultaat = verwerking.verwerk_eml(_verhuurmail(), actor_id=gescoopte_gebruiker)
+        factuur_id = next(r.document_id for r in resultaat.bijlagen if r.uitkomst == "toegewezen")
+        assert len(_bijlagen_van(admin_engine, factuur_id)) == 2
+        origineel = documenten_service.upload_document(
+            administratie_id=administratie_heet_blow, bestandsnaam="origineel.pdf", inhoud=FACTUUR_PDF,
+            actor_id=gescoopte_gebruiker, bron=DocumentBron.EMAIL,
+        ).document_id
+        duplicaat_afvoer._voer_af(
+            administratie_id=administratie_heet_blow, document_id=factuur_id, actor_id=gescoopte_gebruiker,
+            origineel=duplicaat_afvoer.Origineel(bron="werkvoorraad", referentie=FACTUURNUMMER, document_id=origineel, bestandsnaam="origineel.pdf"),
+            automatisch=False,
+        )
+        assert _rij(admin_engine, factuur_id)["status"] == "afgevoerd_duplicaat"
+        assert _bijlagen_van(admin_engine, factuur_id) == []
+        verhuisd = _bijlagen_van(admin_engine, origineel)
+        assert [b["bestandsnaam"] for b in verhuisd] == ["huurstaat-wk27.pdf", "specificatie.xlsx"]
+        assert all(b["status"] == "samengevoegd" and b["samenvoeg_rol"] == "bijlage" for b in verhuisd)
+        assert len(_audits(admin_engine, "bijlage_naar_origineel")) == 2
+        redenen = [g["detail"].get("reden", "") for g in _tijdlijn(admin_engine, origineel)]
+        assert sum("overgenomen van duplicaat" in r for r in redenen) == 2
+
+
 class TestDagteller:
     def test_bijlagen_gebundeld_telt_audit_bijlage_gekoppeld(self) -> None:
         from datetime import UTC, datetime, timedelta

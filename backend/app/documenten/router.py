@@ -27,6 +27,7 @@ from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import (
     afwijzen,
+    bijlage_doel,
     boek_wachtrij,
     boeken,
     boekvoorstel,
@@ -815,6 +816,12 @@ def document_detail(
         tenaamstelling=d.tenaamstelling,
         geboekt_in_rlz=_naar_geboekt_in_rlz(detail.geboekt_in_rlz),
         samenvoeg_rol=d.samenvoeg_rol,
+        factuur_afgewezen_in_mail=(
+            schemas.FactuurAfgewezenInMailDto(**afgewezen_in_mail)
+            if (afgewezen_in_mail := bijlage_doel.factuur_afgewezen_uit_tijdlijn(detail.gebeurtenissen))
+            and d.status.value not in ("samengevoegd", "verwijderd", "afgewezen", "afgevoerd_duplicaat")
+            else None
+        ),
         bijlagen=[
             schemas.DocumentBijlageDto(
                 id=b.id,

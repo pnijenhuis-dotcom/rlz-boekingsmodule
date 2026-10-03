@@ -1127,6 +1127,20 @@ export function DocumentDetailScreen() {
 
           {/* Gele balk ná "Corrigeren…" (Peter 21-09): reden + vorige boeking, tot het document opnieuw geboekt is. */}
           <CorrectieBalk tijdlijn={detail.tijdlijn} status={detail.status} />
+          {/* 03-10 (bijlage volgt het duplicaat naar het origineel): de factuur uit dezelfde e-mail is afgewezen en er is
+              geen tegenhanger — de bijlage blijft los staan, nooit automatisch afgewezen; de mens beslist. */}
+          {detail.factuur_afgewezen_in_mail && (
+            <div className="hint" data-testid="factuur-afgewezen-in-mail" style={{ marginBottom: 8 }}>
+              <span className="chip warn" style={{ marginRight: 6 }}>
+                factuur uit dezelfde e-mail afgewezen
+              </span>
+              <Link to={documentPad(administratieId, { id: detail.factuur_afgewezen_in_mail.document_id, status: 'afgewezen' })}>
+                {detail.factuur_afgewezen_in_mail.bestandsnaam}
+              </Link>{' '}
+              ({detail.factuur_afgewezen_in_mail.afwijs_reden}) — bijlage ook afwijzen? Dit document is waarschijnlijk een bijlage
+              (werkdetails/specificatie) zonder factuur; er is geen andere factuur mét hetzelfde factuurnummer gevonden.
+            </div>
+          )}
           {corrigerenMogelijk(detail.status, detail.soort) && (
             <CorrigerenDialog
               administratieId={administratieId}

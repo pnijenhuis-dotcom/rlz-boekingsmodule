@@ -259,6 +259,60 @@ describe('DocumentDetailScreen — tijdlijn en duplicaat', () => {
     expect(link).toHaveAttribute('href', `/documenten/${ADMINISTRATIE_ID}/${ORIGINEEL_ID}`)
     expect(screen.queryByText(ORIGINEEL_ID)).not.toBeInTheDocument()
   })
+
+  // 03-10 (bijlage volgt het duplicaat naar het origineel): losse bijlage waarvan de factuur uit dezelfde mail is
+  // afgewezen zonder tegenhanger → chip mét link naar die factuur, nooit automatisch afgewezen.
+  it('toont bij een losse bijlage de chip "factuur uit dezelfde e-mail afgewezen" mét link naar de afgewezen factuur', async () => {
+    installFetchMock({
+      id: DOCUMENT_ID,
+      administratie_id: ADMINISTRATIE_ID,
+      bestandsnaam: 'factuurdetails-3445-2026-7.pdf',
+      status: 'te_controleren',
+      bron: 'email',
+      mogelijk_duplicaat_van: null,
+      toegewezen_aan: null,
+      aangemaakt_op: '2026-09-24T10:00:00Z',
+      laatst_gewijzigd_op: '2026-10-03T10:00:00Z',
+      veldvoorstel: null,
+      tijdlijn: [{ van_status: null, naar_status: 'ontvangen', actor_id: 'x', detail: null, tijdstip: '2026-09-24T10:00:00Z' }],
+      factuur_afgewezen_in_mail: {
+        document_id: ORIGINEEL_ID,
+        bestandsnaam: 'Factuur RLZ-2080143044 1-8-2026.pdf',
+        afwijs_reden: 'dubbel met eerdere factuur',
+        tijdstip: '2026-10-03T10:00:00Z',
+      },
+    })
+
+    renderScherm()
+
+    const blok = await screen.findByTestId('factuur-afgewezen-in-mail')
+    expect(blok).toHaveTextContent('factuur uit dezelfde e-mail afgewezen')
+    expect(blok).toHaveTextContent('dubbel met eerdere factuur')
+    expect(blok).toHaveTextContent('bijlage ook afwijzen?')
+    const link = within(blok).getByRole('link', { name: /RLZ-2080143044/ })
+    expect(link).toHaveAttribute('href', `/documenten/${ADMINISTRATIE_ID}/${ORIGINEEL_ID}`)
+    expect(screen.queryByText(ORIGINEEL_ID)).not.toBeInTheDocument()
+  })
+
+  it('toont de chip niet zonder afgewezen factuur in de mail', async () => {
+    installFetchMock({
+      id: DOCUMENT_ID,
+      administratie_id: ADMINISTRATIE_ID,
+      bestandsnaam: 'factuur.pdf',
+      status: 'te_controleren',
+      bron: 'email',
+      mogelijk_duplicaat_van: null,
+      toegewezen_aan: null,
+      aangemaakt_op: '2026-09-24T10:00:00Z',
+      laatst_gewijzigd_op: '2026-10-03T10:00:00Z',
+      veldvoorstel: null,
+      tijdlijn: [{ van_status: null, naar_status: 'ontvangen', actor_id: 'x', detail: null, tijdstip: '2026-09-24T10:00:00Z' }],
+      factuur_afgewezen_in_mail: null,
+    })
+    renderScherm()
+    await screen.findByText(/Document binnengekomen/)
+    expect(screen.queryByTestId('factuur-afgewezen-in-mail')).not.toBeInTheDocument()
+  })
 })
 
 describe('DocumentDetailScreen — al-betaald-signaal (besluit Peter 25-08, deel 2 punt 1)', () => {

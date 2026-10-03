@@ -621,10 +621,12 @@ def _voer_af(
     `afgevoerd_duplicaat` i.p.v. `afgewezen` — geen afwijzen-substatus meer: telt niet mee in "Afgewezen —
     ter controle" of de Mogelijk-duplicaat-tab, wél terugvindbaar in Archief/Zoeken en via heropenen. De
     `Afwijzing`-rij (reden, kruisverwijzing, toewijzing, tijdlijn, audit) is ONGEWIJZIGD hergebruikt."""
+    from app.documenten import bijlage_doel  # lokaal: bijlage_doel importeert de modellen, niet dit module
+
     _wikkel_af_voor_afvoer(
         administratie_id=administratie_id, document_id=document_id, actor_id=actor_id, origineel=origineel
     )
-    return afwijzen.wijs_af(
+    data = afwijzen.wijs_af(
         administratie_id=administratie_id,
         document_id=document_id,
         actor_id=actor_id,
@@ -636,6 +638,15 @@ def _voer_af(
         automatisch=automatisch,
         naar_status=DocumentStatus.AFGEVOERD_DUPLICAAT,
     )
+    # 03-10 (bijlage volgt het duplicaat naar het origineel): bijlagen die al aan het duplicaat hingen (één mail = één
+    # document, 02-10) verhuizen naar het origineel in de module; origineel buiten de module = niets te verhuizen.
+    bijlage_doel.verhuis_na_afvoer(
+        administratie_id=administratie_id,
+        duplicaat_id=document_id,
+        origineel_id=origineel.document_id,
+        actor_id=actor_id,
+    )
+    return data
 
 
 def _origineel_json(origineel: Origineel) -> dict:

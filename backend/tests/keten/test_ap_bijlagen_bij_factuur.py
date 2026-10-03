@@ -22,6 +22,44 @@ from tests.keten.conftest import GB_INHUUR, PROJECT_26084, TAXRATE_HOOG, Keten
 
 CASUS = Casus(casussen.A_UNIVERSAL_NEDERLAND)
 XML, PDF = CASUS.xml_bestandsnaam(), CASUS.pdf_bestandsnaam()
+CASUS_C = Casus(casussen.C_SPOT)
+PDF_C = CASUS_C.pdf_bestandsnaam()
+WERKBON = maak_tekst_pdf(["Werkbon 7731", "Uren montage 8", "Getekend door uitvoerder"])
+
+
+class TestBijlageVolgtDuplicaatNaarOrigineel:
+    """BUG 03-10 (Peter "werkdetails zonder factuur kan niet"): de factuur uit de mail is al bekend (byte-identiek
+    duplicaat, afgevoerd vóór de AI-stap — casus am) → de werkbon uit diezelfde mail hangt aan het ORIGINEEL, niet aan het
+    afgevoerde exemplaar en valt niet los in de werkvoorraad."""
+
+    def test_werkbon_bij_duplicaat_factuur_hangt_aan_het_origineel(self, keten: Keten) -> None:
+        pdf = CASUS_C.pdf()
+        keten.ai.registreer(pdf, CASUS_C.ai_antwoord())
+        eerste = keten.mail([(PDF_C, pdf)], message_id=f"<eerste-{uuid.uuid4()}@spotservices.example>")
+        origineel = eerste.bijlagen[0].document_id
+        assert eerste.bijlagen[0].uitkomst == "toegewezen" and origineel is not None
+        ai_calls = len(keten.ai.aanroepen)
+
+        tweede = keten.mail(
+            [(f"Fwd {PDF_C}", pdf), ("werkbon-7731.pdf", WERKBON)],
+            afzender="facturen@kempengroep.nl",
+            onderwerp="Fwd: Factuur 2026-608 + werkbon",
+            message_id=f"<tweede-{uuid.uuid4()}@kempengroep.example>",
+            kanaal="facturen_kempengroep",
+        )
+        per_naam = {r.bestandsnaam: r for r in tweede.bijlagen}
+        exemplaar = per_naam[f"Fwd {PDF_C}"]
+        assert exemplaar.uitkomst == "dubbel" and exemplaar.document_id not in (None, origineel)
+        assert keten.status(exemplaar.document_id).value == "afgevoerd_duplicaat"
+        werkbon = per_naam["werkbon-7731.pdf"]
+        assert werkbon.uitkomst == "bijlage" and werkbon.document_id == origineel, tweede.bijlagen
+        assert "via duplicaat" in (werkbon.detail or "")
+        assert len(keten.ai.aanroepen) == ai_calls, "geen AI-call voor duplicaat of bijlage"
+        detail = keten.detail(origineel)
+        assert [b["bestandsnaam"] for b in detail["bijlagen"]] == ["werkbon-7731.pdf"]
+        assert keten.detail(exemplaar.document_id)["bijlagen"] == []
+        assert len(keten.lijst()["documenten"]) == 1  # standaardlijst: alleen het origineel, geen losse werkbon
+        assert keten.status(origineel) == DocumentStatus.TE_CONTROLEREN
 HUURSTAAT = maak_tekst_pdf(["Huurstaat week 31", "Werk 26084 Opdrachtgever A", "Steigermateriaal 120 m2 per week"])
 XLSX = b"PK\x03\x04specificatie-verhuur-geen-omzetbron"
 

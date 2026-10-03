@@ -38,6 +38,17 @@ class DuplicaatReferentieResponse(BaseModel):
     aangemaakt_op: datetime
 
 
+class FactuurAfgewezenInMailDto(BaseModel):
+    """03-10 (bijlage volgt het duplicaat naar het origineel): dit LOSSE document is een bijlage uit een mail waarvan de
+    factuur is afgewezen en er geen tegenhanger is — chip mét link naar de afgewezen factuur ("bijlage ook afwijzen?"),
+    uit de tijdlijn-notitie `bijlage_factuur_afgewezen` van de nazorg. Nooit automatisch afgewezen."""
+
+    document_id: uuid.UUID
+    bestandsnaam: str
+    afwijs_reden: str
+    tijdstip: datetime
+
+
 class DocumentUploadResponse(BaseModel):
     document_id: uuid.UUID
     status: str
@@ -725,6 +736,8 @@ class DocumentDetailResponse(BaseModel):
     # Bijlagen bij de factuur (02-10): de bijlagen uit dezelfde mail (leeg = geen), en op een bijlage-rij zelf de rol.
     bijlagen: list[DocumentBijlageDto] = Field(default_factory=list)
     samenvoeg_rol: str | None = None
+    # 03-10: losse bijlage waarvan de factuur uit dezelfde mail is afgewezen zonder tegenhanger (chip + link).
+    factuur_afgewezen_in_mail: FactuurAfgewezenInMailDto | None = None
 
 
 class BoekvoorstelRegelDto(BaseModel):

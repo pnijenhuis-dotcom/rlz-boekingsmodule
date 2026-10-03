@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-10-03 — Bijlagen volgen de factuur óók als die een duplicaat bleek
+
+<!-- bijlagen-volgt-duplicaat-03-10 -->
+
+- Zat de factuur uit een e-mail al in de administratie (en is de tweede versie dus als duplicaat afgevoerd), dan hangen de werkdetails, specificaties en huurstaten uit die mail voortaan aan de factuur die wél telt — ze staan niet meer als los document in de werkvoorraad.
+- Dat geldt ook met terugwerkende kracht: de nazorg koppelt de losse bijlagen van eerdere mails alsnog aan het origineel, ook als dat origineel al geboekt is (de bijlage gaat dan mee naar Reeleezee).
+- Is de factuur uit de mail afgewezen en is er geen andere factuur met hetzelfde nummer, dan blijft de bijlage staan met een duidelijke melding en een link naar de afgewezen factuur ("bijlage ook afwijzen?") — er wordt nooit iets automatisch afgewezen.
+
 ## 2026-10-02 — Run D: btw op de factuur is leidend, projecten uit de factuurtekst, afwijzen vanuit elk controlescherm, app 1.3 herstelt zijn opslag
 
 <!-- run-d-02-10 -->

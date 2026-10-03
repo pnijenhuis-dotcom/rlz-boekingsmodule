@@ -763,7 +763,8 @@
    "afmelding": null
   },
   "bijlagen": [],
-  "samenvoeg_rol": null
+  "samenvoeg_rol": null,
+  "factuur_afgewezen_in_mail": null
  },
  "boekvoorstel": {
   "document_id": "bbbbbbbb-0000-4000-8000-000000000001",

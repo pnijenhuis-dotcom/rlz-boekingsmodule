@@ -784,6 +784,16 @@ export interface DocumentDetailDto {
   bijlagen?: DocumentBijlageDto[]
   /** Bijlagen bij de factuur (02-10): op een bijlage-rij zelf de rol; null op een gewoon document. */
   samenvoeg_rol?: string | null
+  /** 03-10 (bijlage volgt het duplicaat naar het origineel): dit losse document is een bijlage uit een mail waarvan de
+   *  factuur is afgewezen zonder tegenhanger — chip mét link naar die factuur ("bijlage ook afwijzen?"). */
+  factuur_afgewezen_in_mail?: FactuurAfgewezenInMailDto | null
+}
+
+export interface FactuurAfgewezenInMailDto {
+  document_id: string
+  bestandsnaam: string
+  afwijs_reden: string
+  tijdstip: string
 }
 
 export interface HerkomstMailDto {

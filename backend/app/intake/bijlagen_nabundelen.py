@@ -23,6 +23,16 @@ verplaatsen").
 Dry-run is de default (lees-only, nameting-allowlist): lijst "factuur ← bijlagen" per administratie + totalen; de
 échte run = `gcloud run jobs execute rlz-reconciliatie --args=-m,app.cli,bijlagen-nabundelen,--uitvoeren` ná Peters
 "ja".
+
+Bijlage volgt het duplicaat naar het origineel (BUG 03-10, Peter "werkdetails zonder factuur kan niet"; 7 × "geen
+factuur-document in deze mail" bij Universal Steigerbouw terwijl de factuur er wél in zat als `afgevoerd_duplicaat`/
+`afgewezen`): is de enige factuur in de mail afgevoerd of afgewezen, dan is het doel het origineel/de tegenhanger via
+`app/documenten/bijlage_doel.volg_naar_origineel` (afwijzing-link → vlag → factuurnummer; geboekt origineel = ook doel).
+Dry-run toont "kandidaat — via duplicaat → ‹origineel›", de TOTAAL-regel telt `via duplicaat`. Afgewezen zonder
+tegenhanger = overgeslagen "factuur afgewezen (‹reden›) — bijlage ook afwijzen?" + in de échte run een
+tijdlijn-notitie op
+de bijlage (chip mét link in het controlescherm). Een bijlage die al aan het duplicaat HING (live-pad van vóór deze fix)
+verhuist mee naar het origineel. Nooit automatisch afwijzen, nooit stil.
 """
 
 from __future__ import annotations
@@ -43,6 +53,7 @@ from sqlalchemy import select
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+from app.documenten import bijlage_doel
 from app.documenten import bijlagen as bijlagen_module
 from app.documenten.models import Boekvoorstel, Document, DocumentSoort, DocumentStatus
 from app.documenten.rlz_ids import rlz_bijlage_upload_id, rlz_herboeking_id
@@ -65,16 +76,8 @@ BIJLAGE_OPEN = frozenset(
         DocumentStatus.NIET_TOEGEWEZEN,
     }
 )
-#: Factuur-documenten die niet (meer) als drager tellen.
-_FACTUUR_UITGESLOTEN = frozenset(
-    {
-        DocumentStatus.VERWIJDERD,
-        DocumentStatus.SAMENGEVOEGD,
-        DocumentStatus.AFGEVOERD_DUPLICAAT,
-        DocumentStatus.GESPLITST,
-        DocumentStatus.AFGEWEZEN,
-    }
-)
+#: Factuur-documenten die niet (meer) als drager tellen (één bron: `bijlage_doel.UITGESLOTEN`).
+_FACTUUR_UITGESLOTEN = bijlage_doel.UITGESLOTEN
 
 UITKOMST_KANDIDAAT = "kandidaat"
 UITKOMST_GEKOPPELD = "gekoppeld"
@@ -97,6 +100,12 @@ class DocRef:
     referentie: str | None = None
     geboekt: bool = False
     boek_cyclus: int = 0
+    #: 03-10: een bijlage-rij die al aan een factuur hangt (samengevoegd mét rol) — om 'm van een duplicaat te verhuizen.
+    samengevoegd_in_id: uuid.UUID | None = None
+    samenvoeg_rol: str | None = None
+    #: 03-10: dit doel is gevonden door een afgevoerd duplicaat/afgewezen factuur te volgen ("via duplicaat → …").
+    via: str | None = None
+    via_document_id: uuid.UUID | None = None
 
     @property
     def scope_label(self) -> str:
@@ -110,6 +119,14 @@ class BijlageKandidaat:
     doelen: tuple[DocRef, ...]
     niet_eenduidig: bool
     overgeslagen_reden: str | None = None
+    #: 03-10: de doelen zijn via een afgevoerd duplicaat/afgewezen factuur gevonden (teller `via_duplicaat`).
+    via_duplicaat: bool = False
+    #: 03-10: de factuur in de mail is afgewezen en er is geen tegenhanger — de échte run zet een notitie/chip op de
+    #: bijlage (nooit automatisch afwijzen); de uitkomst blijft overgeslagen.
+    afgewezen_factuur: DocRef | None = None
+    afwijs_reden: str | None = None
+    #: 03-10: de bijlage hangt al aan het duplicaat (live-pad) en verhuist naar het origineel i.p.v. een nieuwe koppeling.
+    verhuizen_van: DocRef | None = None
 
 
 @dataclass(frozen=True)
@@ -125,6 +142,8 @@ class Uitkomst:
         kern = f"{doelen} ← {k.bijlage.bestandsnaam} [{k.bijlage.klasse_reden}]: {self.uitkomst}"
         if k.niet_eenduidig:
             kern += " (niet eenduidig)"
+        if k.via_duplicaat and k.doelen:
+            kern += " — " + "; ".join(d.via for d in k.doelen if d.via)
         if self.reden:
             kern += f" — {self.reden}"
         if self.upload:
@@ -139,11 +158,18 @@ class Telling:
     gekoppeld: int = 0
     overgeslagen: int = 0
     mislukt: int = 0
+    via_duplicaat: int = 0
     uitkomsten: list[Uitkomst] = field(default_factory=list)
     overgeslagen_redenen: dict[str, int] = field(default_factory=dict)
 
     def registreer(self, u: Uitkomst) -> None:
         self.uitkomsten.append(u)
+        if u.kandidaat.via_duplicaat and u.uitkomst in (
+            UITKOMST_KANDIDAAT,
+            UITKOMST_GEKOPPELD,
+            UITKOMST_GEKOPPELD_UPLOAD_FOUT,
+        ):
+            self.via_duplicaat += 1
         if u.uitkomst in (UITKOMST_GEKOPPELD, UITKOMST_GEKOPPELD_UPLOAD_FOUT):
             self.gekoppeld += 1
         elif u.uitkomst == UITKOMST_OVERGESLAGEN:
@@ -263,6 +289,8 @@ def _refs_in_scope(
                     referentie=referentie,
                     geboekt=geboekt,
                     boek_cyclus=voorstel.boek_cyclus if voorstel is not None else 0,
+                    samengevoegd_in_id=d.samengevoegd_in_id,
+                    samenvoeg_rol=d.samenvoeg_rol,
                 )
             )
     return uit
@@ -272,6 +300,39 @@ def _overgeslagen(bericht_id: uuid.UUID, ref: DocRef, reden: str) -> BijlageKand
     return BijlageKandidaat(
         bericht_id=bericht_id, bijlage=ref, doelen=(), niet_eenduidig=False, overgeslagen_reden=reden
     )
+
+
+def _doel_via_duplicaat(ref: DocRef) -> DocRef | bijlage_doel.GeenDoel | None:
+    """03-10: een afgevoerd duplicaat/afgewezen factuur uit de mail → het origineel/de tegenhanger als DocRef (klasse
+    factuur, mét `via`-label), een `GeenDoel` mét reden, of None (ref is niet volgbaar). Lees-only, eigen RLS-scope."""
+    if ref.status not in bijlage_doel.VOLGBAAR:
+        return None
+    with scoped_session(ref.administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        document = session.get(Document, ref.document_id)
+        if document is None:
+            return bijlage_doel.GeenDoel(ref.document_id, ref.bestandsnaam, ref.status, "document niet gevonden")
+        uitkomst = bijlage_doel.volg_naar_origineel(session, document)
+        if uitkomst is None or isinstance(uitkomst, bijlage_doel.GeenDoel):
+            return uitkomst
+        doel = uitkomst.document
+        voorstel = session.get(Boekvoorstel, doel.id)
+        referentie = voorstel.referentie if voorstel is not None else None
+        return DocRef(
+            document_id=doel.id,
+            administratie_id=doel.administratie_id,
+            administratie_naam=ref.administratie_naam,
+            bestandsnaam=doel.bestandsnaam,
+            status=doel.status,
+            soort=doel.soort,
+            klasse=bh.KLASSE_FACTUUR,
+            klasse_reden=f"origineel van {ref.bestandsnaam} ({uitkomst.bron})",
+            sleutels=frozenset(bh.sleutels_uit_tekst(referentie)),
+            referentie=referentie,
+            geboekt=doel.status == DocumentStatus.GEBOEKT,
+            boek_cyclus=voorstel.boek_cyclus if voorstel is not None else 0,
+            via=uitkomst.label,
+            via_document_id=ref.document_id,
+        )
 
 
 def vind_kandidaten(
@@ -326,8 +387,52 @@ def vind_kandidaten(
         bijlagen = [r for r in refs if r.klasse == bh.KLASSE_BIJLAGE]
         if not bijlagen:
             continue
+        # 03-10: de factuur in de mail is afgevoerd als duplicaat of afgewezen → volg 'm naar het origineel/de tegenhanger.
+        volgbaar = [r for r in refs if r.klasse != bh.KLASSE_BIJLAGE and r.status in bijlage_doel.VOLGBAAR]
+        via_doelen: list[DocRef] = []
+        geen_doel: list[tuple[DocRef, bijlage_doel.GeenDoel]] = []
+        if not facturen and volgbaar:
+            for v in volgbaar:
+                try:
+                    uitkomst = _doel_via_duplicaat(v)
+                except Exception as exc:  # noqa: BLE001 — zichtbaar, stopt de rest niet
+                    logger.exception("bijlagen-nabundelen: origineel volgen mislukt voor %s", v.document_id)
+                    uitkomst = bijlage_doel.GeenDoel(
+                        v.document_id, v.bestandsnaam, v.status, f"origineel volgen mislukt ({type(exc).__name__})"
+                    )
+                if isinstance(uitkomst, DocRef):
+                    if all(d.document_id != uitkomst.document_id for d in via_doelen):
+                        via_doelen.append(uitkomst)
+                elif uitkomst is not None:
+                    geen_doel.append((v, uitkomst))
+        via_duplicaat = bool(via_doelen)
+        if via_duplicaat:
+            facturen = via_doelen
+        volgbaar_ids = {v.document_id for v in volgbaar}
         for b in bijlagen:
             if administratie_id is not None and b.administratie_id not in (None, administratie_id):
+                continue
+            if (
+                b.status == DocumentStatus.SAMENGEVOEGD
+                and b.samenvoeg_rol is not None
+                and b.samengevoegd_in_id in volgbaar_ids
+            ):
+                # 03-10: de bijlage hing al aan het duplicaat (live-pad) → verhuizen naar het origineel.
+                dup = next(v for v in volgbaar if v.document_id == b.samengevoegd_in_id)
+                if via_duplicaat:
+                    doel = next((d for d in via_doelen if d.via_document_id == dup.document_id), via_doelen[0])
+                    kandidaten.append(
+                        BijlageKandidaat(
+                            bericht_id=bid,
+                            bijlage=b,
+                            doelen=(doel,),
+                            niet_eenduidig=b.samenvoeg_rol == bijlagen_module.ROL_BIJLAGE_NIET_EENDUIDIG,
+                            via_duplicaat=True,
+                            verhuizen_van=dup,
+                        )
+                    )
+                else:
+                    kandidaten.append(_geen_doel_kandidaat(bid, b, dup, geen_doel))
                 continue
             if b.status not in BIJLAGE_OPEN:
                 kandidaten.append(
@@ -335,7 +440,10 @@ def vind_kandidaten(
                 )
                 continue
             if not facturen:
-                kandidaten.append(_overgeslagen(bid, b, "geen factuur-document in deze mail"))
+                if volgbaar:
+                    kandidaten.append(_geen_doel_kandidaat(bid, b, volgbaar[0], geen_doel))
+                else:
+                    kandidaten.append(_overgeslagen(bid, b, "geen factuur-document in deze mail"))
                 continue
             if len(facturen) == 1:
                 doelen, niet_eenduidig = facturen, False
@@ -361,9 +469,39 @@ def vind_kandidaten(
                 )
                 continue
             kandidaten.append(
-                BijlageKandidaat(bericht_id=bid, bijlage=b, doelen=tuple(doelen), niet_eenduidig=niet_eenduidig)
+                BijlageKandidaat(
+                    bericht_id=bid,
+                    bijlage=b,
+                    doelen=tuple(doelen),
+                    niet_eenduidig=niet_eenduidig,
+                    via_duplicaat=via_duplicaat,
+                )
             )
     return kandidaten, beoordeeld
+
+
+def _geen_doel_kandidaat(
+    bericht_id: uuid.UUID, b: DocRef, dup: DocRef, geen_doel: list[tuple[DocRef, bijlage_doel.GeenDoel]]
+) -> BijlageKandidaat:
+    """03-10: de factuur in de mail is afgevoerd/afgewezen en er is geen origineel/tegenhanger. Afgewezen → "factuur
+    afgewezen (‹reden›) — bijlage ook afwijzen?" mét notitie/chip in de échte run; afgevoerd zonder origineel (bv. buiten
+    de module geboekt) → de reden van de zoektocht. Nooit automatisch afwijzen."""
+    uitkomst = next((g for v, g in geen_doel if v.document_id == dup.document_id), None)
+    detail = uitkomst.reden if uitkomst is not None else "geen origineel gevonden"
+    if dup.status == DocumentStatus.AFGEWEZEN:
+        afwijs_reden = (uitkomst.afwijs_reden if uitkomst is not None else None) or "reden onbekend"
+        return BijlageKandidaat(
+            bericht_id=bericht_id,
+            bijlage=b,
+            doelen=(),
+            niet_eenduidig=False,
+            overgeslagen_reden=f"factuur afgewezen ({afwijs_reden}) — bijlage ook afwijzen? [{dup.bestandsnaam}; {detail}]",
+            afgewezen_factuur=dup,
+            afwijs_reden=afwijs_reden,
+        )
+    return _overgeslagen(
+        bericht_id, b, f"factuur {dup.bestandsnaam} is afgevoerd als duplicaat zonder origineel in de module — {detail}"
+    )
 
 
 _PAD_CACHE: dict[uuid.UUID, bytes] = {}
@@ -463,13 +601,23 @@ def koppel_een(
     from app.documenten.service import _standaard_opslag
 
     if kandidaat.overgeslagen_reden:
-        return Uitkomst(kandidaat, UITKOMST_OVERGESLAGEN, reden=kandidaat.overgeslagen_reden)
+        reden = kandidaat.overgeslagen_reden
+        if kandidaat.afgewezen_factuur is not None and not dry_run:
+            # 03-10: zichtbaar maken op de bijlage zelf (chip mét link in het controlescherm) — nooit automatisch afwijzen.
+            if _noteer_afgewezen(kandidaat, actor_id=actor_id):
+                reden += " · notitie op de bijlage gezet"
+            else:
+                reden += " · notitie stond al op de bijlage"
+        return Uitkomst(kandidaat, UITKOMST_OVERGESLAGEN, reden=reden)
     opslag = opslag or _standaard_opslag()
     b = kandidaat.bijlage
     if dry_run:
         doelen = ", ".join(d.bestandsnaam for d in kandidaat.doelen)
         extra = " + RLZ-upload (factuur geboekt)" if any(d.geboekt for d in kandidaat.doelen) else ""
-        return Uitkomst(kandidaat, UITKOMST_KANDIDAAT, reden=f"zou koppelen aan {doelen}{extra}")
+        werkwoord = "zou verhuizen naar" if kandidaat.verhuizen_van is not None else "zou koppelen aan"
+        return Uitkomst(kandidaat, UITKOMST_KANDIDAAT, reden=f"{werkwoord} {doelen}{extra}")
+    if kandidaat.verhuizen_van is not None:
+        return _verhuis_een(kandidaat, actor_id=actor_id, opslag=opslag, client_factory=client_factory)
 
     uploads: list[str] = []
     inhoud: bytes | None = None
@@ -530,6 +678,73 @@ def koppel_een(
                     upload=f"mislukt: {type(exc).__name__}: {str(exc)[:200]}",
                 )
     return Uitkomst(kandidaat, UITKOMST_GEKOPPELD, upload="; ".join(uploads) or None)
+
+
+def _noteer_afgewezen(kandidaat: BijlageKandidaat, *, actor_id: uuid.UUID) -> bool:
+    """03-10: tijdlijn-notitie `bijlage_factuur_afgewezen` op de losse bijlage (eigen transactie, idempotent)."""
+    b, f = kandidaat.bijlage, kandidaat.afgewezen_factuur
+    assert f is not None
+    with scoped_session(b.administratie_id, actor_id=actor_id) as session:
+        bijlage = session.get(Document, b.document_id)
+        factuur = session.get(Document, f.document_id)
+        if bijlage is None or factuur is None:
+            return False
+        return bijlage_doel.noteer_factuur_afgewezen(
+            session, bijlage=bijlage, factuur=factuur, afwijs_reden=kandidaat.afwijs_reden, actor_id=actor_id
+        )
+
+
+def _verhuis_een(
+    kandidaat: BijlageKandidaat,
+    *,
+    actor_id: uuid.UUID,
+    opslag: DocumentOpslag,
+    client_factory: Callable[[uuid.UUID], object] | None,
+) -> Uitkomst:
+    """03-10: een bijlage die al aan het duplicaat hing gaat over naar het origineel (`bijlage_doel.verhuis_bijlagen_
+    naar_origineel`); geboekt origineel → alsnog de RLZ-upload, net als een gewone koppeling."""
+    assert kandidaat.verhuizen_van is not None and kandidaat.doelen
+    doel, dup, b = kandidaat.doelen[0], kandidaat.verhuizen_van, kandidaat.bijlage
+    with scoped_session(doel.administratie_id, actor_id=actor_id) as session:
+        origineel = session.get(Document, doel.document_id)
+        duplicaat = session.get(Document, dup.document_id)
+        if origineel is None or origineel.status in _FACTUUR_UITGESLOTEN or duplicaat is None:
+            return Uitkomst(
+                kandidaat, UITKOMST_OVERGESLAGEN, reden="origineel niet (meer) gevonden of intussen afgehandeld"
+            )
+        verhuisd = bijlage_doel.verhuis_bijlagen_naar_origineel(
+            session,
+            duplicaat=duplicaat,
+            origineel=origineel,
+            actor_id=actor_id,
+            herkomst=bijlagen_module.HERKOMST_NAZORG,
+        )
+        if b.document_id not in verhuisd:
+            return Uitkomst(
+                kandidaat, UITKOMST_OVERGESLAGEN, reden="bijlage hangt intussen niet meer aan het duplicaat"
+            )
+        bijlage = session.get(Document, b.document_id)
+        naam = bijlage.bestandsnaam if bijlage is not None else b.bestandsnaam
+        pad = bijlage.opslag_pad if bijlage is not None else None
+    if not doel.geboekt:
+        return Uitkomst(kandidaat, UITKOMST_GEKOPPELD, reden=f"verhuisd van duplicaat {dup.bestandsnaam}")
+    try:
+        upload = _upload_naar_backend(
+            doel=doel,
+            bijlage_id=b.document_id,
+            bestandsnaam=naam,
+            inhoud=opslag.lezen(pad=pad) if pad else b"",
+            client_factory=client_factory or _client_voor,
+        )
+    except Exception as exc:  # noqa: BLE001 — de verhuizing staat; de upload-fout is zichtbaar, nooit stil
+        logger.warning("bijlagen-nabundelen: upload mislukt voor %s: %s", b.document_id, exc)
+        return Uitkomst(
+            kandidaat,
+            UITKOMST_GEKOPPELD_UPLOAD_FOUT,
+            reden=f"verhuisd van duplicaat {dup.bestandsnaam}; upload naar Reeleezee mislukt — opnieuw via de nazorg",
+            upload=f"mislukt: {type(exc).__name__}: {str(exc)[:200]}",
+        )
+    return Uitkomst(kandidaat, UITKOMST_GEKOPPELD, reden=f"verhuisd van duplicaat {dup.bestandsnaam}", upload=upload)
 
 
 def nabundel_alle(
@@ -641,6 +856,6 @@ def run_cli(args: argparse.Namespace) -> int:
         print(f"  overgeslagen · {reden}: {n}")
     print(
         f"TOTAAL: {telling.berichten} e-mails, {telling.kandidaten} kandidaten, {telling.gekoppeld} gekoppeld, "
-        f"{telling.overgeslagen} overgeslagen, {telling.mislukt} mislukt — {label}"
+        f"{telling.overgeslagen} overgeslagen, {telling.mislukt} mislukt, {telling.via_duplicaat} via duplicaat — {label}"
     )
     return 1 if telling.mislukt else 0
